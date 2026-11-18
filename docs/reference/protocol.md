@@ -328,6 +328,7 @@ paints the role gets the role without the kids.
 | --- | --- |
 | `label`, `button`, `switch`, `knob`, `fader`, `meter`, `peak`, `chip`, `param`, `power`, `band` | The core: the widget roles. |
 | `note`, `keyboard`, `playhead`, `scrollbar` | The core: the roles of the piano roll. |
+| `clip`, `beats`, `curve`, `hmeter` | The core: the roles of the arrange view. A `clip` names what it shows by `content`, a key that changes when its notes or its waveform change. The frontend gets them with `paw.frontend.preview(id)` or `paw.frontend.peaks(id, points)`, once for each key. |
 | Other names | An extension, with `paw.ui.role`. |
 
 A node with `bind` moves with the live values. Its props that the live
@@ -371,7 +372,8 @@ path)`, or `paw.frontend.act.menu_dismiss()` when the user selects nothing.
 `scene.input` takes a pointer event as `paw.canvas.pointer` does. Its
 fields are `kind` (`down`, `up`, `move`, `hover`, `double` or `wheel`),
 `button`, `ctrl`, `shift`, `alt`, `dx` and `dy`. `x` and `y` are in units
-from the corner of the window.
+from the corner of the window. The kind `leave` tells that the pointer
+left the window. Then the status line stops to show the hint of the view.
 
 The kernel finds the hit region under the event in the scene that
 it sent (`paw_scene::Scene::hit`). It gives the event, in units, to the

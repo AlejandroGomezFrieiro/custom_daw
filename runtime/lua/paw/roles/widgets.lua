@@ -24,32 +24,43 @@ role("label", {
 })
 
 --- Something to click: its text, lit when `on`. A window draws `icon`
---- in place of the text, when it has one of that name.
+--- in place of the text, when it has one of that name, and writes `words`
+--- in place of the text where it has them.
 role("button", {
   props = {
     text = "string", style = "highlight group", on = "boolean", menu = "boolean: it opens a menu",
-    quiet = "boolean: no face until the pointer is on it", off = "boolean: dimmed", tone = "theme token of its text (window)",
-    icon = "up | down | remove | window | plus | automate | learn | plugs | warning | circle (window)",
+    quiet = "boolean: no face until the pointer is on it", off = "boolean: dimmed",
+    tone = "theme token of its text (window)", words = "string (window)",
+    icon = "up | down | remove | window | plus | automate | learn | plugs | warning | circle | mic | speaker (window)",
   },
   cells = function(buf, p)
     buf:text(0, 0, util.fit(tostring(p.text or ""), buf.width), p.on and (p.on_style or "Visual") or p.style)
   end,
 })
 
---- A letter that is on or off (mute, solo, armed): `style` when on.
+--- A letter that is on or off (mute, solo, armed): `style` when on. A
+--- window draws `icon` in place of the letter (a button's icons).
 role("switch", {
-  props = { letter = "string", on = "boolean", style = "highlight group when on", tone = "mute | solo | rec | play_on | select" },
+  props = {
+    letter = "string", on = "boolean", style = "highlight group when on", tone = "mute | solo | rec | play_on | select",
+    icon = "a button's icon (window)",
+  },
   cells = function(buf, p)
     buf:text(0, 0, p.letter or "?", p.on and p.style or "FlagOff")
   end,
 })
 
 --- A value turned between two ends (a pan): `value` from -1 to 1. A rail
---- with a mark where it sits in cells.
+--- with a mark where it sits in cells, or its `text` (`L30`) in `style`
+--- where it has one. A window paints a rail, or with `round` a round knob.
 role("knob", {
-  props = { value = "number -1..1", style = "highlight group of the mark" },
+  props = { value = "number -1..1", style = "highlight group of the mark", text = "string", round = "boolean (window)" },
   cells = function(buf, p)
-    draw.pan(buf, 0, 0, buf.width, p.value or 0, p.style)
+    if p.text then
+      buf:text(0, 0, util.fit(p.text, buf.width), p.style)
+    else
+      draw.pan(buf, 0, 0, buf.width, p.value or 0, p.style)
+    end
   end,
 })
 

@@ -16,7 +16,14 @@ use crate::widgets;
 
 /// The roles this window paints: it says so when it watches scenes, and
 /// is sent them without their cells.
-pub const KNOWN: &[&str] = &["label", "button", "switch", "knob", "fader", "meter", "peak", "chip", "note", "keyboard", "playhead", "scrollbar", "param", "power", "band"];
+pub const KNOWN: &[&str] = &[
+    "label", "button", "switch", "knob", "fader", "meter", "peak", "chip", "note", "keyboard", "playhead", "scrollbar", "param", "power", "band", "clip",
+    "beats", "hmeter", "curve", "trackhead", "recording",
+];
+
+/// The roles that paint over all of their rectangle: what is under them is
+/// not drawn.
+pub const OPAQUE: &[&str] = &["beats", "trackhead"];
 
 fn text(props: &Value, key: &str) -> String {
     props[key].as_str().unwrap_or("").to_string()
@@ -102,7 +109,7 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: 
             painter.rect_filled(shape, CornerRadius::same(4), if on { alpha(t.select, 0.85) } else { face });
             let colour = if on { t.surface } else if props["off"] == true { t.text_3 } else { tone(props, t.text) };
             let font = font_for(rect, false);
-            let whole = text(props, "text");
+            let whole = props["words"].as_str().map_or_else(|| text(props, "text"), String::from);
             // An icon in place of the glyph that stands for it in cells: a
             // text of one character is that glyph alone, a longer one the
             // words after it.
@@ -146,8 +153,29 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: 
             let shape = Rect::from_center_size(rect.center(), vec2(rect.width().max(side) - 1.0, rect.height() - 2.0));
             let face = if on { lit } else if under { t.control_hover } else { t.control };
             painter.rect_filled(shape, CornerRadius::same(3), face);
-            let letter = text(props, "letter");
-            painter.text(shape.center(), Align2::CENTER_CENTER, letter, semi((rect.height() * 0.6).clamp(8.0, T_SMALL)), if on { t.on_hue } else { t.text_2 });
+            let ink = if on { t.on_hue } else { t.text_2 };
+            // An icon in place of its letter, where it names one.
+            match props["icon"].as_str().and_then(icon_named) {
+                Some(icon) => {
+                    let side = (shape.height() - 4.0).clamp(8.0, 12.0);
+                    widgets::icon_on(painter, Rect::from_center_size(shape.center(), vec2(side, side)), icon, ink);
+                }
+                None => {
+                    let letter = text(props, "letter");
+                    painter.text(shape.center(), Align2::CENTER_CENTER, letter, semi((rect.height() * 0.6).clamp(8.0, T_SMALL)), ink);
+                }
+            }
+        }
+        "knob" if props["round"] == true => {
+            // A round knob, turned from the middle; its pointer where the
+            // sound sits.
+            let value = number(props, "value").clamp(-1.0, 1.0);
+            let r = (rect.height().min(rect.width()) / 2.0 - 1.0).max(3.0);
+            let centre = pos2(rect.left() + r + 1.0, rect.center().y);
+            painter.circle(centre, r, if under { t.control_hover } else { t.control }, Stroke::new(1.0, t.divider));
+            let turn = value * 135f32.to_radians();
+            let at = |d: f32| centre + vec2(turn.sin(), -turn.cos()) * d;
+            painter.line_segment([at(r * 0.25), at(r - 1.5)], Stroke::new(2.0, if value.abs() > 1e-3 { t.select } else { t.text }));
         }
         "knob" => {
             // A pan: a rail across, the middle marked, a bar from the middle
@@ -214,7 +242,8 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: 
                 painter.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(1.0, Color32::WHITE), StrokeKind::Inside);
             }
         }
-        _ => return false,
+        // The arrange view's (crate::timeline).
+        other => return crate::timeline::paint(ui, painter, node, other, props, rect, cell, live),
     }
     true
 }
@@ -332,7 +361,7 @@ fn playhead(painter: &Painter, rect: Rect, props: &Value, bind: Option<&str>, li
         return;
     }
     let ruler = rect.top() + ch;
-    painter.vline(x.round() + 0.5, ruler..=rect.bottom(), Stroke::new(1.0, t.play));
+    painter.vline(x.round() + 0.5, ruler..=rect.bottom(), Stroke::new(1.5, t.play));
     painter.add(egui::Shape::convex_polygon(vec![pos2(x - 4.5, ruler - 6.0), pos2(x + 4.5, ruler - 6.0), pos2(x, ruler)], t.play, Stroke::NONE));
 }
 
@@ -388,6 +417,8 @@ fn icon_named(name: &str) -> Option<crate::icons::Icon> {
         "learn" | "plugs" => PLUGS,
         "warning" => WARNING,
         "circle" => CIRCLE,
+        "mic" => MICROPHONE,
+        "speaker" => SPEAKER_HIGH,
         _ => return None,
     })
 }

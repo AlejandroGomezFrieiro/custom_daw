@@ -102,7 +102,7 @@ local function feed_gesture(event)
   e.moved = g.moved
   if event.kind == "up" then
     -- What the drag said is over; the next move says what is under the pointer.
-    state.gesture, state.hint = nil, nil
+    state.gesture, state.hint, state.shape = nil, nil, nil
     -- Whatever the view saw of the press is over too.
     paw.ui.pressed = nil
     if g.handlers.up then g.handlers.up(e) end
@@ -114,17 +114,20 @@ end
 
 --- Show on the status line what is under the pointer, or what it would do.
 --- nil shows nothing. A view calls it while the pointer moves over it.
-function M.hint(text)
+--- `shape` is the shape a window gives the pointer there: "resize_h" over
+--- an edge dragged sideways, "resize_v" over one dragged up or down.
+function M.hint(text, shape)
   state.hinted = true
-  if text ~= state.hint then
-    state.hint = text
+  if text ~= state.hint or shape ~= state.shape then
+    state.hint, state.shape = text, shape
     api.ui_redraw()
   end
 end
 
---- What the status line says about the pointer, if anything.
+--- What the status line says about the pointer, if anything; and the
+--- shape of the pointer, if it has one.
 function M.hint_text()
-  return state.hint
+  return state.hint, state.shape
 end
 
 --- Called by `paw.ui.mouse` first: true when the event was taken here and
@@ -233,7 +236,7 @@ end
 --- under the pointer clears what the status line said.
 function M.done(event)
   if event.kind == "move" and not state.hinted and state.hint then
-    state.hint = nil
+    state.hint, state.shape = nil, nil
     api.ui_redraw()
   end
 end

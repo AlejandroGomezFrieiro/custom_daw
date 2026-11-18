@@ -1457,12 +1457,18 @@ command("view.only", function()
 end, { desc = "Close every panel but the arrange view" })
 command("zoom", function(ctx)
   local name = paw.ui.focused == "pianoroll" and "note_zoom" or "zoom"
+  local arrange = paw.ui.views.arrange
   if ctx.args.by then
     paw.opt[name] = util.clamp(paw.opt[name] * ctx.args.by, 0.125, 64)
   elseif tonumber(ctx.args[1]) then
     paw.opt[name] = tonumber(ctx.args[1])
+  elseif ctx.args[1] == "fit" and name == "zoom" and arrange.geometry then
+    -- The whole song and a bar after it across the timeline.
+    local length = api.project_get().length or 0
+    paw.opt.zoom = util.clamp(arrange.geometry.layout.tw / (length + paw.time.bar()), 0.125, 64)
+    arrange.scroll = 0
   end
-end, { desc = "Set columns per beat, or scale them: `zoom 4`, `zoom by=2`" })
+end, { desc = "Set columns per beat, or scale them, or show the whole song: `zoom 4`, `zoom by=2`, `zoom fit`" })
 command("grid", function(ctx)
   local name = paw.ui.focused == "pianoroll" and "note_grid" or "grid"
   if ctx.args.by then

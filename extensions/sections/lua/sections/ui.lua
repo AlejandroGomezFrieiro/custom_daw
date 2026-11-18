@@ -301,6 +301,10 @@ function M.draw(_, layer)
       local mark = x0 < 0 and "‹" or "▍"
       local label = clip_text(mark .. s.name, math.max(1, x1 - lx - 1))
       ruler:text(lx, 0, label, current and current.index == i and "SectionCurrent" or "Section")
+      -- A click on it goes to the section, in either frontend.
+      ruler:hit(lx, 0, math.max(1, math.min(x1, width) - lx), 1, {
+        kind = "section", cmd = "section.goto " .. i, hint = "section " .. s.name .. ": click goes to its start",
+      })
     end
     if x0 >= 0 and x0 < width then layer.lanes:fill(x0, 0, 1, layer.lanes.height, nil, "SectionEdge") end
   end
@@ -313,22 +317,6 @@ if arrange and arrange.layers then
   if arrange.ruler2 then arrange.ruler2.sections = function() return #S.list() > 0 end end
 else
   paw.notify("sections: this arrange view has no layers to draw on; sections are not shown on the ruler", "warn")
-end
-
--- In the graphical frontend, a band of their own under the ruler: each
--- section over its stretch, the one at the cursor in the colour of focus,
--- and a click goes there.
-if paw.frontend and paw.frontend.bands then
-  table.insert(paw.frontend.bands, function()
-    local current = S.current()
-    local out = {}
-    for i, s in ipairs(S.list()) do
-      out[i] = { beat = s.start, length = s.finish - s.start, name = s.name, command = "section.goto " .. i,
-        hint = "section " .. s.name .. ": click goes to its start",
-        color = current and current.index == i and paw.canvas.palette.select or nil }
-    end
-    return out
-  end)
 end
 
 -- A change made elsewhere (undo, loading) redraws the ruler.

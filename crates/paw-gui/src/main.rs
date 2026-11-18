@@ -12,12 +12,10 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
 mod app;
-mod arrange;
 mod canvas;
 mod chrome;
 mod client;
 mod dialogs;
-mod headers;
 mod icons;
 mod keys;
 mod menu;
@@ -26,12 +24,12 @@ mod panes;
 mod pictures;
 mod portal;
 mod roles;
-mod ruler;
 mod scene;
 mod session;
 #[cfg(test)]
 mod gestures;
 mod theme;
+mod timeline;
 mod widgets;
 
 use client::Client;
@@ -265,7 +263,6 @@ fn run() -> Result<()> {
     let ours = child.is_some();
     let kernel_pid = child.as_ref().map(|c| c.id());
     let mixer = kept["mixer"].as_bool() == Some(true);
-    let (zoom, row_height) = (size("zoom"), size("row_height"));
     eframe::run_native(
         "paw",
         options,
@@ -276,13 +273,7 @@ fn run() -> Result<()> {
             // A frame for what came, and one only: egui draws two for a
             // request to draw at once.
             client.wake_on_events(move || ctx.request_repaint_after(std::time::Duration::from_millis(1)));
-            let mut view = app::View::new(Box::new(client), ours);
-            if let Some(zoom) = zoom {
-                view.arrange.zoom = zoom;
-            }
-            if let Some(height) = row_height {
-                view.arrange.row_height = height;
-            }
+            let view = app::View::new(Box::new(client), ours);
             if mixer {
                 view.eval("if not paw.ui.visible('mixer') then paw.commands.exec('view.toggle mixer') end", json!([]));
             }

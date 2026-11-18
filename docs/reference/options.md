@@ -92,7 +92,7 @@ clip. `:set undo_steps=200` removes the oldest steps at once.
 | --- | --- | --- |
 | `paw.opt.zoom` | `2` | The columns for each beat in the arrange view. |
 | `paw.opt.note_zoom` | `8` | The columns for each beat in the piano roll. |
-| `paw.opt.track_height` | `"auto"` | The rows for each track in the arrange view, 1 to 12. `"auto"` gives 3 to 6 rows, to fit the tracks on the screen. |
+| `paw.opt.track_height` | `"auto"` | The rows for each track in the arrange view, 1 to 12. `"auto"` gives 3 to 4 rows, to fit the tracks on the screen. |
 | `paw.opt.header_width` | `"auto"` | The columns of the track headers, 8 to 60. `"auto"` gives 26, 22, 18 or 12 columns, by the width of the screen. |
 | `paw.opt.devices_width` | `36` | The columns of the device panel. |
 | `paw.opt.mixer_height` | `12` | The rows of the mixer. |

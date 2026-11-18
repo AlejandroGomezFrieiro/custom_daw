@@ -63,9 +63,10 @@ window attached to a kernel that runs already also finds the file.
 | --- | --- |
 | `width`, `height` | The size of the window. |
 | `x`, `y` | The position of the window on the screen, on X11 only. |
-| `zoom` | The zoom of the timeline. |
-| `row_height` | The height of the track rows. |
 | `mixer` | `true` when the mixer shows. |
+
+The zoom and the height of the tracks are the kernel's options
+(`paw.opt.zoom`, `paw.opt.track_height`), the same as in the terminal.
 
 On Wayland, the compositor decides the position of a window. So the
 window keeps no position there. If no screen shows a saved position, the
@@ -91,7 +92,11 @@ graphics card:
 | State | Load |
 | --- | --- |
 | At rest | 0% of a core |
-| While the song plays | about 105% of a core. A frame takes 4 ms of the window's own work. llvmpipe uses the rest to fill pixels on its threads. |
+| While the song plays | about 105% of a core. A frame takes less than 1 ms of the window's own work. llvmpipe uses the rest to fill pixels on its threads. |
+
+llvmpipe uses as many threads as the processor has free. So the load
+that you measure changes with what else runs. To compare two windows, set
+`LP_NUM_THREADS=4` for both.
 
 On a graphics card, the card fills the pixels.
 
@@ -131,7 +136,19 @@ From top to bottom, the window has:
 - the status line.
 
 A pane of the arrange view shows the ruler, the track headers and the
-timeline. The status line tells what the pointer does at its position.
+timeline. It is the arrange view of the terminal, drawn from its scene and
+laid out in cells of the window's monospace font. The ruler is its first
+row, a track is three to four rows tall, and the zoom is columns a beat.
+The window paints these parts as widgets, where they are between cells:
+
+- the clips
+- the ground of each row, with its bar lines
+- the curves of the automation and the tempo
+- the levels and the switches of the headers
+- the playhead.
+
+The live values move the playhead and the levels, with no new scene. The
+status line tells what the pointer does at its position.
 
 ## Transport bar
 
@@ -217,8 +234,7 @@ seconds late or more.
 | Gesture | Effect |
 | --- | --- |
 | Click | Puts the edit cursor and the playhead there. |
-| Drag in the top half | Loops the dragged range. |
-| Drag in the bottom half | Moves the edit cursor and the playhead to where the drag stops. |
+| Drag | Loops the dragged range. |
 | Drag an edge of the loop | Changes the loop. |
 | Double-click | Starts or stops the loop. |
 | Drag an end of the punch range | Moves it. Hold `Shift` to move off the grid. |
@@ -247,10 +263,11 @@ and `:tempo.lane` show and hide it. Its corner shows its range of tempos.
 
 ## Bands under the ruler
 
-Under the markers, each extension that adds a band has a row: for example,
-the sections of the song or the findings of the mix. A click on an entry
-does what the entry is for, for example go to the section. The status line
-tells what the click does.
+Under the markers, each extension that adds a band
+(`paw.frontend.bands`) has a row, in the terminal too: for example, the
+findings of the mix. A click on an entry does what the entry is for. The
+status line tells what the click does. The sections of the song are on the
+ruler's second row, and a click on one goes to its start.
 
 ## Timeline
 
@@ -262,6 +279,7 @@ tells what the click does.
 | Right-drag | Draws a box. The clips that it touches become selected. With `Shift`, they are added. With `Ctrl`, each one changes state. |
 | Hold the middle button | Moves the view. |
 | Right-click | Opens a menu on release, if the pointer did not move: a new clip, paste, a new track. |
+| Drag a clip onto a slot of the session view | Copies the clip into the slot. |
 
 ## Clips
 
@@ -286,7 +304,7 @@ On an audio clip:
 | --- | --- |
 | Drag a top corner | Changes the fade in or the fade out. The fade shows on the clip. |
 | Drag the top line | Changes the gain of the clip. Hold `Shift` for small steps. The height of the waveform follows the gain. |
-| Double-click the top band | Puts a warp marker there: a yellow line down the clip, with a handle at the top. |
+| Double-click the top row | Puts a warp marker there: a yellow line down the clip, with a handle at the top. |
 | Drag the handle of a warp marker | Moves it on the grid, and stretches the sound on each side. Hold `Shift` to move off the grid. |
 | Right-click the handle of a warp marker | Removes it. |
 
@@ -297,34 +315,41 @@ the selection. One clip selected with a click is the clip under the cursor.
 
 ## Track headers
 
-A track header shows, in this order:
+A track header is the terminal's header, with a stripe in the color of
+the track down its left. It shows, line by line:
 
-- the number and the name of the track
-- the switches: input, monitor, `M`, `S` and `R`. A switch that is on has its color.
-- a fader with its level in dB, and a pan knob
-- the input and the devices of the track
-- a meter for each side, with a clip light on top.
+- the number and the name of the track, the letter of its automation mode
+  (`A`, `T`, `L`, `W`) and the switches `M`, `S`, `R` and the loudspeaker
+  (`I` in the terminal, monitor). A switch that is on has its color.
+- the input button (the microphone, `in` in the terminal), the level of
+  the track with the place of its fader on it and its clip light, and the
+  volume in dB
+- a knob for the pan, the devices of the track and the track it plays into
+- the sends, and the input with the level that arrives there.
 
-A shorter row shows less. The shortest row shows only the first line. A
-kind of track from an extension shows its kind before its devices ("Vocal
-track · Kitane  ·  UTAU voice").
+A shorter row shows less. The shortest row shows only the first line. The
+master is the last header, with its level on both sides.
 
-The meters have these colors: green to −18 dB, then yellow-green, yellow,
-orange, and red from 0 dB. A thin line holds the peak for a short time. The
-clip light comes on when a level reaches 0 dB. It stays on until you click
-it, or until playback starts again.
+The level has these colors: green to −18 dB, then yellow-green, yellow,
+orange, and red from 0 dB. A thin line holds the peak for a short time.
+The clip light comes on when a level reaches 0 dB. It stays on until you
+click the volume in dB.
 
 | Gesture | Effect |
 | --- | --- |
 | Click | Selects the track. |
 | Double-click | Opens a prompt for a new name. |
 | Drag up or down | Moves the track. Drop it among the tracks of a group, or under its header, to put it in the group. Drop it outside the group to remove it from the group. |
-| Drag the bottom edge | Changes the height of the track. The track keeps its height. |
-| Double-click the bottom edge | Gives the track the height of the other tracks. |
+| Click `M`, `S`, `R` or `I` | Changes the switch. |
 | Press `M`, `S` or `R` and move across other tracks | Sets the switch of each track as the first one was set. |
-| `Shift` and drag the fader | Moves the fader in small steps. |
-| Double-click the fader | Sets it to 0 dB. |
-| Right-click | A menu on release: color, duplicate, bounce to audio, a new track below, delete, the groups, the VCAs, the take lanes, the automation, the templates, and the entries of extensions. |
+| Drag the level sideways | Changes the volume, one dB a cell. Hold `Shift` for small steps. |
+| Double-click the level | Sets the volume to 0 dB. |
+| Drag the pan sideways | Changes the pan. A double-click sets the center. |
+| Click the microphone | Opens a menu of the audio inputs, MIDI ports and MIDI channels of the track. |
+| Click the volume in dB | Puts out the clip light. |
+| Drag the bottom edge (in the terminal, `Alt` and a drag on the header) | Changes the height of the track, in lines. The track keeps its height. |
+| Double-click the bottom edge | Gives the track the height of the other tracks. |
+| Right-click | A menu on release: color, duplicate, bounce to audio, a new track below, delete, the input, the groups, the VCAs, the take lanes, the automation, the templates, and the entries of extensions. |
 
 The menu of a track has three entries for groups. They are `New group
 with this track…`, `Move into a group…` and `Take out of its group`
@@ -362,13 +387,12 @@ With the templates extension:
 | --- | --- |
 | Record button | Starts a take on the armed tracks. With no track armed, it arms the selected track and tells so. A second click, or stop, ends the take. |
 | `R` on a track | Arms the track. |
-| Input button (the microphone) | Opens a menu of the audio inputs, MIDI ports and MIDI channels of the track. It is blue when the track has an input. The input (for example `UR22mkII · 1/2`) shows under the fader. |
-| Bar under the input button | Shows the level at the input, armed or not. |
-| Loudspeaker | Starts and stops input monitoring. |
+| The microphone on a track, or Input on its menu | A menu of the audio inputs, MIDI ports and MIDI channels of the track. The input (for example `UR22mkII · 1/2`) shows on the last line of the header, with the level that arrives there, armed or not. |
+| The loudspeaker on a track | Starts and stops input monitoring. |
 
-A track without an audio input records MIDI. The take shows in red and
-becomes longer while it records. With punch on, it records only in the
-punch range. With a count-in, the clock shows `count 4`, `count 3` and
+A track without an audio input records MIDI. The take shows in red on
+each armed track and becomes longer while it records. With punch on, it
+records only in the punch range. With a count-in, the clock shows `count 4`, `count 3` and
 other, and the button blinks on the beats until the take starts. The
 timeline menu starts and stops the count-in, and a pre-roll of two bars
 before a punch.
@@ -388,9 +412,9 @@ The mouse of the terminal does the same (see [The mouse](mouse.md)).
 
 ## Automation
 
-With Automation on, each track shows one lane over the timeline. The name
-of the lane is at its left. The last line of the track header selects the
-lane: volume, pan, or a parameter.
+Automation on the transport bar shows the lanes of the selected track as
+rows under its clips, or hides them (`:lane.rows`). The track with the
+cursor shows its volume curve over its empty lane.
 
 | Gesture | Effect |
 | --- | --- |
@@ -399,14 +423,14 @@ lane: volume, pan, or a parameter.
 | Drag a point | Moves it. |
 | Right-click a point | Removes it. |
 | Right-click elsewhere | A menu to clear the lane or to stop it. |
-| Curve button beside a parameter of a device | Gives the parameter a lane and shows the lane. |
+| Curve button beside a parameter of a device | Gives the parameter a lane and shows the lanes of the track as rows. |
 | Right-click the name of a parameter | A menu to automate it (a lane with a point at its value, at the cursor), or to edit its curve in the curve editor. The curve editor opens in a pane split from the pane that has the keyboard. |
 
-A track's menu has Automation ▸ Show or hide the lanes as rows. Then each
-lane of the track is a row under its clips, always ready for points. The
-gestures on these rows are the gestures above. The clips above stay
-editable. A track with no lane gets a lane for its fader. The same menu,
-and the `A` flag on the header, set the automation mode of the track.
+A track's menu has Automation ▸ Show or hide the lanes as rows, as the
+button does. Each lane of the track is then a row under its clips, always
+ready for points, with the gestures above. The clips above stay editable.
+A track with no lane gets a lane for its fader. The same menu sets the
+automation mode of the track, which the letter on the header shows.
 
 ## Session view
 
@@ -612,11 +636,12 @@ Suggestions, with a completion source loaded (see
 | `Shift` and wheel | Scrolls sideways. |
 | `Ctrl` and wheel | Zooms in time at the pointer, in the timeline and in the piano roll. Over the track headers, it makes all tracks taller or shorter. |
 | `Alt` and wheel | Makes the tracks taller or shorter. |
-| `−`, `+` in the corner of the timeline (`Ctrl -`, `Ctrl +`) | Zoom in time. |
-| `Fit` (`Ctrl 0`) | Shows the whole song. |
-| Arrows in the corner (`Ctrl ↑`, `Ctrl ↓`) | Change the height of the tracks, from one line to tall. |
+| `Ctrl -`, `Ctrl +` | Zoom in time the view that has the keyboard (`:zoom by=…`, as `zo` and `zi`). |
+| `Ctrl 0` | Shows the whole song (`:zoom fit`). |
+| `Ctrl ↑`, `Ctrl ↓` | Change the height of the tracks, from one line to twelve. |
 
-After a zoom, the window draws the waveforms again at their new width.
+In the timeline, the wheel scrolls a track, or a bar with `Shift`. After a
+zoom, the window draws the waveforms again at their new width.
 
 ## Sound files and MIDI files
 
@@ -692,8 +717,8 @@ its view needs.
 
 | View | How the window draws it |
 | --- | --- |
-| The arrange view, the session view | The window's own drawing. |
-| The mixer, the piano roll, the device panel, the drum grid | From the scene. The window paints the roles (faders, meters, switches, buttons, sliders, notes) as widgets. |
+| The session view | The window's own drawing. |
+| The arrange view, the mixer, the piano roll, the device panel, the drum grid | From the scene. The window paints the roles (clips, curves, faders, meters, switches, buttons, sliders, notes) as widgets. |
 | A view that paints (the notation, the vocal editor, the undo tree) | From the scene, as a picture. |
 | Any other buffer (a curve `paw://lane/3`, the quickfix list, a text buffer `paw://tracks`, an empty window) | From the scene, cell by cell in the monospace font, as the terminal draws it. |
 

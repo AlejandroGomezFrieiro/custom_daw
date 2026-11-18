@@ -88,6 +88,7 @@ paw.roles = require("paw.roles")
 paw.ui.role, paw.ui.roles = paw.roles.define, paw.roles.registry
 require("paw.roles.widgets")
 require("paw.roles.notes")
+require("paw.roles.arrange")
 require("paw.menu")
 paw.canvas = require("paw.canvas")
 -- The tabs and windows as panes of a graphical frontend (paw/panes.lua).

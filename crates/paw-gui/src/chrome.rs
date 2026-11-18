@@ -135,10 +135,11 @@ impl View {
         x = add.right() + 8.0;
         // Which views show: one segmented switch.
         let roll_open = rows(&self.s.modal["panes"]["panes"]).iter().any(|p| p["view"] == "pianoroll");
+        let lanes_open = self.s.track(self.s.selected).is_some_and(|t| !t.lane_rows.is_empty());
         let views: [(&str, icons::Icon, bool, &str); 5] = [
             ("Session", icons::GRID_FOUR, flag(&self.s.modal["session"]), "session: clips in slots under each track, launched while the song plays"),
             ("Mixer", icons::FADERS, flag(&self.s.modal["mixer"]), ""),
-            ("Automation", icons::CHART_LINE, self.show_automation, ""),
+            ("Automation", icons::CHART_LINE, lanes_open, "automation: the selected track's lanes as rows under it, to draw on, or hidden"),
             ("Piano roll", icons::PIANO_KEYS, roll_open, "piano roll: opens the notes of the clip at the cursor, or closes them"),
             ("More", icons::CARET_DOWN, false, "more views: the undo tree, sections, an extension's panel… each in a pane of the window"),
         ];
@@ -156,7 +157,7 @@ impl View {
                 match label {
                     "Session" => self.command("view.toggle session"),
                     "Mixer" => self.command("view.toggle mixer"),
-                    "Automation" => self.show_automation = !self.show_automation,
+                    "Automation" => self.command("lane.rows"),
                     "Piano roll" => self.command(if roll_open { "view.toggle pianoroll" } else { "clip.edit" }),
                     _ => self.open_menu("views", json!([]), rect.left_bottom() + vec2(0.0, 2.0)),
                 }

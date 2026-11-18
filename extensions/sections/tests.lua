@@ -303,32 +303,22 @@ test("sections: drawn on the ruler", function()
   eq(ruler:find("‹Hook", 1, true) ~= nil, true, "and follows a rename")
 end)
 
---- The entries of the sections' band under the window's ruler.
-local function band()
-  local out = {}
-  for _, e in ipairs(paw.frontend.band_state().entries) do
-    if e.hint:match("^section ") then out[#out + 1] = e end
-  end
-  return out
-end
-
-test("sections: a band under the window's ruler, where a click goes to a section", function()
+test("sections: a click on a section in the ruler's second row goes to its start, from either frontend", function()
   local S = song()
-  local entries = band()
-  local shown = {}
-  for i, e in ipairs(entries) do shown[i] = string.format("%s@%g+%g", e.name, e.beat, e.length) end
-  eq(table.concat(shown, " "), "Intro@0+8 Verse@8+8 Chorus@16+8 Outro@24+8", "each section over its stretch")
-  eq(entries[1].color ~= "" and entries[2].color == "", true, "the one at the cursor in the colour of focus")
-  paw.ui.focus("mixer")
-  paw.frontend.act.band(entries[3].band, entries[3].index)
-  eq(paw.cursor.beat, 16, "a click goes to the Chorus")
-  eq(paw.ui.focused, "arrange", "in the arrange view")
-  eq(band()[3].color ~= "", true, "which is lit now")
-  S.rename("Chorus", "Hook")
-  eq(band()[3].name, "Hook", "the band follows a rename")
-  eq(paw.frontend.state(-1).project.bands.rows > 0, true, "the frontend is told of it")
+  local arrange = paw.ui.views.arrange
+  api.ui_snapshot(100, 30)
+  arrange.scroll = 0
+  api.ui_snapshot(100, 30)
+  local rect
+  for _, r in ipairs(paw.ui.rects) do if r.name == "arrange" then rect = r end end
+  local g = arrange.geometry
+  -- Inside the Chorus, a beat after its start.
+  local x = rect.x + g.hw + math.floor(17 * g.zoom)
+  paw.ui.mouse({ kind = "down", x = x, y = rect.y + 1, button = "left", mods = "" })
+  paw.ui.mouse({ kind = "up", x = x, y = rect.y + 1, button = "left", mods = "" })
+  eq(paw.cursor.beat, 16, "a click goes to the Chorus's start")
+  eq(#paw.frontend.band_state().entries, 0, "and no band of the window's repeats the ruler's row")
   S.set({})
-  eq(#band(), 0, "no sections, no band")
 end)
 
 test("sections: the list in a window of its own goes to, renames and adds sections", function()

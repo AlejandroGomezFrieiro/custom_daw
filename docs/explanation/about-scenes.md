@@ -77,11 +77,13 @@ cells.
 
 ## What is not yet a scene
 
-The mixer, the piano roll, the device panel, the drum grid, text buffers,
-curves, the quickfix list and the views that paint come from scenes. The
-arrange view and the session view are still the window's own drawings in
-egui, fed by `frontend.watch`. They have no roles for clips or curves
-yet. [Limits](../reference/limits.md) has the current list.
+Most views come from scenes. Among them are the arrange view, the mixer,
+the piano roll, the device panel and the drum grid. The arrange view's timeline is a plane of beats along and the
+view's lines down. Lines go down, not tracks, because a take lane and an
+automation lane have heights of their own. Also, a drag of a clip goes
+across all of them in one domain. The session view is still the window's
+own drawing in egui, fed by `frontend.watch`.
+[Limits](../reference/limits.md) has the current list.
 
 ## Why the window looks as it does
 

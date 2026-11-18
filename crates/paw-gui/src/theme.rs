@@ -78,11 +78,6 @@ pub fn colour(value: &Value) -> Color32 {
     value.as_str().and_then(hex).unwrap_or(Color32::from_rgb(0x7a, 0x81, 0x94))
 }
 
-/// A colour of a drawing: `#rrggbb`, `#rrggbbaa`, or none.
-pub fn paint_colour(value: &Value) -> Option<Color32> {
-    value.as_str().and_then(hex)
-}
-
 static THEME: OnceLock<Theme> = OnceLock::new();
 
 /// The window's colours, once the kernel has said them (or the window's own).

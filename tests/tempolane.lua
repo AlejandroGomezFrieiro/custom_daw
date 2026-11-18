@@ -63,7 +63,7 @@ lane_test("tempo lane: the terminal draws two rows under the ruler, with the cur
   local text = table.concat(api.ui_snapshot(120, 24), "\n")
   eq(text:find("tempo", 1, true) ~= nil, true, "the lane is named")
   eq(text:find("120 bpm", 1, true) ~= nil, true, "with the tempo at the cursor")
-  eq(text:find("◢", 1, true) ~= nil, true, "a ramping change is marked")
+  eq(text:find("↗", 1, true) ~= nil, true, "a ramping change is marked")
   eq(text:find("◆", 1, true) ~= nil, true, "and a holding one")
   paw.tempolane.show(false)
   local _, hidden = table.concat(api.ui_snapshot(120, 24), "\n"):gsub("120 bpm", "")

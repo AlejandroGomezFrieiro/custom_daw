@@ -4,20 +4,18 @@
 //! nothing about the project.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use egui::{Color32, Pos2, Rect, Ui, pos2, vec2};
+use egui::{Pos2, Rect, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 use crate::client::Client;
-use crate::model::{self, Clip, Line, PeakHold, Track, flag, int, number, rows, text};
-use crate::pictures::Pictures;
+use crate::model::{self, Track, flag, int, rows, text};
 use crate::theme::th;
-use crate::{arrange, canvas, dialogs, keys, menu, panes, portal, scene, session};
+use crate::{canvas, dialogs, keys, menu, panes, portal, scene, session};
 
 /// What the window asks of a kernel: calls answered, and the state pushed.
 /// A client of a real kernel in the program; a stand-in in the tests.
@@ -59,6 +57,12 @@ impl Kernel for Client {
     }
 }
 
+/// Taller or shorter tracks in the arrange view, by `...` rows, from the
+/// height they have now.
+const TRACK_HEIGHT: &str = "local by = ...; local v = paw.ui.views.arrange; \
+local now = tonumber(paw.opt.track_height) or (v.geometry and v.geometry.th) or 3; \
+paw.opt.track_height = paw.util.clamp(now + by, 1, 12)";
+
 /// How long a message of the window's own stays.
 const MESSAGE_TIME: Duration = Duration::from_secs(5);
 
@@ -69,43 +73,25 @@ pub const STATUS_H: f32 = 22.0;
 /// What the kernel last said, read.
 #[derive(Default)]
 pub struct State {
-    /// What moves on its own: the playhead, meters, the mode.
+    /// What moves on its own: the playhead, the mode.
     pub tick: Value,
     pub modal: Value,
     pub project: Value,
-    pub lines: Vec<Line>,
     pub tracks: Vec<Track>,
-    pub clips: Vec<Clip>,
     pub slots: Value,
     pub kinds: Vec<String>,
     pub selected: i64,
-    pub cursor: f32,
     pub revision: i64,
     pub playing: bool,
     pub recording: bool,
-    pub position: f32,
-    /// Both sides of each track's meter, as meter lengths, and what
-    /// arrives at its input.
-    pub levels: Vec<f32>,
-    pub inputs: Vec<f32>,
 }
 
 impl State {
     pub fn track(&self, id: i64) -> Option<&Track> {
         self.tracks.iter().find(|t| t.id == id)
     }
-    pub fn row_of(&self, id: i64) -> Option<usize> {
-        self.tracks.iter().position(|t| t.id == id)
-    }
-    /// The bar's length in beats.
-    pub fn bar(&self) -> f32 {
-        number(&self.project["bar"]).max(0.25)
-    }
     pub fn focused(&self) -> &str {
         self.modal["focused"].as_str().unwrap_or("")
-    }
-    pub fn mode(&self) -> &str {
-        self.modal["mode"].as_str().unwrap_or("n")
     }
 }
 
@@ -126,7 +112,6 @@ pub struct View {
     /// The kernel this window talks to is its own child: its disk is ours.
     pub ours: bool,
     pub s: State,
-    pub pictures: Pictures,
     pub keys: keys::Keys,
     /// Keys taken from the frame's input before egui saw them.
     pub pending_keys: Vec<egui::Event>,
@@ -142,14 +127,6 @@ pub struct View {
     pub message_time: f64,
     pub message_dismissed: f64,
     pub last_mode: String,
-    /// The meters' held peaks and clip lights, by track id.
-    pub peaks: HashMap<i64, PeakHold>,
-    meters_at: Option<Instant>,
-    meters_playing: bool,
-    /// Where the take being made began.
-    pub rec_start: Option<f32>,
-    pub show_automation: bool,
-    pub arrange: arrange::Arrange,
     pub session: session::Session,
     pub panes: panes::Panes,
     pub canvases: canvas::Canvases,
@@ -183,7 +160,6 @@ impl View {
             acts: RefCell::new(Vec::new()),
             ours,
             s: State { revision: -1, selected: -1, ..State::default() },
-            pictures: Pictures::default(),
             keys: keys::Keys::default(),
             pending_keys: Vec::new(),
             hooked: false,
@@ -193,12 +169,6 @@ impl View {
             message_time: 0.0,
             message_dismissed: 0.0,
             last_mode: String::new(),
-            peaks: HashMap::new(),
-            meters_at: None,
-            meters_playing: false,
-            rec_start: None,
-            show_automation: false,
-            arrange: arrange::Arrange::default(),
             session: session::Session::default(),
             panes: panes::Panes::default(),
             canvases: canvas::Canvases::default(),
@@ -312,24 +282,11 @@ impl View {
 
     /// Take in a state as `paw.frontend.state` gives it.
     pub fn take(&mut self, state: Value) {
-        let playing = flag(&state["playing"]);
-        let recording = flag(&state["recording"]);
-        let position = number(&state["position"]);
-        self.s.playing = playing;
-        self.s.recording = recording;
-        self.s.position = position;
-        // A take is drawn from where the playhead was when it began.
-        match (recording, self.rec_start) {
-            (true, None) => self.rec_start = Some(position),
-            (false, Some(_)) => self.rec_start = None,
-            _ => {}
-        }
+        self.s.playing = flag(&state["playing"]);
+        self.s.recording = flag(&state["recording"]);
         if state.get("project").is_some_and(Value::is_object) {
             self.project(&state);
         }
-        self.s.levels = rows(&state["levels"]).iter().map(|v| model::meter(number(v))).collect();
-        self.s.inputs = rows(&state["inputs"]).iter().map(|v| model::meter(number(v))).collect();
-        self.meters();
         self.modal(&state["modal"]);
         self.session.tick(&state);
         self.s.tick = state;
@@ -339,41 +296,13 @@ impl View {
     fn project(&mut self, state: &Value) {
         let project = &state["project"];
         self.s.revision = int(&state["revision"]);
-        self.s.lines = model::lines(&project["lines"]);
         self.s.tracks = model::tracks(&state["tracks"]);
-        self.s.clips = model::clips(&state["clips"]);
         self.s.slots = state["slots"].clone();
         if let Some(kinds) = state["kinds"].as_array() {
             self.s.kinds = kinds.iter().map(text).collect();
         }
         self.s.selected = state["selected"].as_i64().unwrap_or(-1);
-        self.s.cursor = number(&state["cursor"]);
         self.s.project = project.clone();
-        let ids: Vec<i64> = self.s.clips.iter().map(|c| c.id).collect();
-        self.pictures.keep(|id| ids.contains(&id));
-    }
-
-    /// Peaks are held a moment, then fall; a clip light stays on.
-    fn meters(&mut self) {
-        let now = Instant::now();
-        let dt = self.meters_at.map_or(0.0, |at| now.duration_since(at).as_secs_f32().min(0.5));
-        self.meters_at = Some(now);
-        // A light that came on in the last take is not news in the next.
-        if self.s.playing && !self.meters_playing {
-            self.peaks.clear();
-        }
-        self.meters_playing = self.s.playing;
-        let mut falling = false;
-        for (track, level) in self.s.tracks.iter().zip(self.s.levels.chunks_exact(2)) {
-            let peak = self.peaks.entry(track.id).or_default();
-            peak.update([level[0], level[1]], dt);
-            falling |= peak.moving([level[0], level[1]]);
-        }
-        // While the song plays its ticks draw the meters; after, a peak
-        // falls on frames of its own.
-        if falling && !self.s.playing {
-            self.again = Some(Duration::from_millis(40));
-        }
     }
 
     fn modal(&mut self, modal: &Value) {
@@ -439,7 +368,6 @@ impl View {
             self.title = title;
         }
         self.text_ids.borrow_mut().clear();
-        crate::widgets::new_frame();
         // The whole window, whatever margin the `ui` given has.
         let full = ctx.content_rect();
         ui.set_clip_rect(full);
@@ -449,6 +377,7 @@ impl View {
         ui.painter().hline(full.x_range(), transport.bottom() + 0.5, egui::Stroke::new(1.0, th().divider));
         ui.painter().hline(full.x_range(), status.top() - 0.5, egui::Stroke::new(1.0, th().divider));
         self.main_area(ui, area);
+        self.clip_pictures(&ctx);
         self.transport(ui, transport);
         self.overlays(ui, full, status);
         self.status_line(ui, status);
@@ -481,7 +410,6 @@ impl View {
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt(("pane", view.as_str())));
             child.set_clip_rect(rect.intersect(ui.clip_rect()));
             match view.as_str() {
-                "arrange" => self.draw_arrange(&mut child, rect),
                 "session" => self.draw_session(&mut child, rect),
                 _ => {}
             }
@@ -506,10 +434,10 @@ impl View {
     }
 
     /// Keys typed in a window of the program's: to the kernel's mappings,
-    /// the window keeping a few of its own.
+    /// Ctrl with a few for zoom.
     pub fn window_keys(&mut self, events: &[egui::Event]) {
         let in_roll = self.s.focused() == "pianoroll";
-        // Zoom is the window's own business; the rest are the kernel's.
+        // Ctrl with + - 0 and the arrows zoom; the rest are the kernel's.
         let events: Vec<egui::Event> = events
             .iter()
             .filter(|event| match event {
@@ -527,19 +455,16 @@ impl View {
         }
     }
 
-    /// Zoom is the window's own business: Ctrl with + and - for time, with
-    /// 0 for the whole song, with the up and down keys for the height of
-    /// the tracks.
+    /// Zoom: Ctrl with + and - in time (the focused view's, as `zi` and
+    /// `zo` do), with 0 for the whole song, with the up and down keys for
+    /// the height of the tracks.
     fn window_key(&mut self, key: egui::Key) -> bool {
         match key {
-            egui::Key::Plus | egui::Key::Equals => self.arrange.zoom_step(true),
-            egui::Key::Minus => self.arrange.zoom_step(false),
-            egui::Key::Num0 => {
-                let length = number(&self.s.project["length"]);
-                self.arrange.zoom_fit(length, self.s.bar());
-            }
-            egui::Key::ArrowUp => self.arrange.zoom_rows(false),
-            egui::Key::ArrowDown => self.arrange.zoom_rows(true),
+            egui::Key::Plus | egui::Key::Equals => self.command("zoom by=1.4142"),
+            egui::Key::Minus => self.command("zoom by=0.7071"),
+            egui::Key::Num0 => self.command("zoom fit"),
+            egui::Key::ArrowUp => self.eval(TRACK_HEIGHT, json!([-1])),
+            egui::Key::ArrowDown => self.eval(TRACK_HEIGHT, json!([1])),
             _ => return false,
         }
         true
@@ -556,11 +481,6 @@ impl View {
             ctx.memory_mut(|m| m.surrender_focus(id));
         }
         self.text_focus = focused.is_some_and(|id| ids.contains(&id));
-    }
-
-    /// A text box: kept in the list of those that take the keyboard.
-    pub fn text_box(&self, id: egui::Id) {
-        self.text_ids.borrow_mut().push(id);
     }
 
     // ------------------------------------------------------- leaving, files
@@ -759,15 +679,14 @@ impl View {
     // ------------------------------------------------------------- layout
 
     /// How the window is now, for the kernel to keep: its size and place
-    /// (X11 tells a program where its window is; Wayland does not), the
-    /// zoom, the rows' height and whether the mixer shows.
+    /// (X11 tells a program where its window is; Wayland does not) and
+    /// whether the mixer shows.
     pub fn layout(&self, ctx: &egui::Context) -> Value {
         let (size, at) = ctx.input(|i| (i.viewport().inner_rect.map(|r| r.size()), i.viewport().outer_rect.map(|r| r.min)));
         let ppp = ctx.pixels_per_point();
         let size = size.unwrap_or(vec2(1400.0, 860.0));
         let mut layout = json!({
-            "width": size.x.round(), "height": size.y.round(), "zoom": self.arrange.zoom,
-            "row_height": self.arrange.row_height, "mixer": flag(&self.s.modal["mixer"]),
+            "width": size.x.round(), "height": size.y.round(), "mixer": flag(&self.s.modal["mixer"]),
         });
         if let Some(at) = at
             && std::env::var_os("WAYLAND_DISPLAY").is_none()
@@ -802,11 +721,6 @@ impl View {
     }
 
     // ------------------------------------------------------------- helpers
-
-    /// The track colour of a row, grey for none.
-    pub fn row_colour(&self, row: usize) -> Color32 {
-        self.s.tracks.get(row).map_or(th().text_3, |t| t.color)
-    }
 
     /// Where the pointer is, if it is over `rect`.
     pub fn pointer_in(ui: &Ui, rect: Rect) -> Option<Pos2> {

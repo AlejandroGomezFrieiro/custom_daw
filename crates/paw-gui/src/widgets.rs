@@ -1,30 +1,20 @@
-//! The small parts the window is built from: buttons, the lettered
-//! switches of a track, sliders, knobs, faders and meters. A control only
+//! The small parts the window is built from: buttons, icons, text cut
+//! to fit, the wheel. A control only
 //! reports what is done to it and never changes its own value, so what it
 //! shows is always what the kernel holds.
 
 use std::cell::RefCell;
 
-use egui::{Align2, Color32, CornerRadius, Id, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
+use egui::{Align2, Color32, CornerRadius, Id, Pos2, Rect, Response, Sense, Ui, Vec2, pos2};
 
 use crate::icons::Icon;
-use crate::theme::{self, Icons, T_BASE, T_SMALL, alpha, medium, semi, th};
+use crate::theme::{self, Icons, T_BASE, alpha, medium, th};
 
 thread_local! {
     /// What the pointer does where it is, for the status line: set by
     /// whatever is under it as the frame is drawn.
     static HINT: RefCell<String> = const { RefCell::new(String::new()) };
     static ICONS: RefCell<Icons> = RefCell::new(Icons::default());
-    /// A control took the wheel this frame: what holds it does not scroll.
-    static WHEEL_TAKEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-/// Whether a control took the wheel this frame; and a new frame.
-pub fn wheel_taken() -> bool {
-    WHEEL_TAKEN.with(|w| w.get())
-}
-pub fn new_frame() {
-    WHEEL_TAKEN.with(|w| w.set(false));
 }
 
 /// Say what the pointer does over what is being drawn.
@@ -180,55 +170,6 @@ pub fn name(response: &Response, name: &str) {
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
 }
 
-/// A small lettered switch of a track: mute, solo, arm. Off it is a plain
-/// control with a dim letter; on, the state's colour with a dark one.
-pub fn flag(ui: &mut Ui, rect: Rect, id: Id, label: &str, on: bool, lit: Color32) -> Response {
-    let t = th();
-    let response = ui.interact(rect, id, Sense::click_and_drag());
-    let hover = response.hovered();
-    let face = if on {
-        if hover { theme::mix(lit, Color32::WHITE, 0.88) } else { lit }
-    } else if response.is_pointer_button_down_on() {
-        t.control_press
-    } else if hover {
-        t.control_hover
-    } else {
-        t.control
-    };
-    ui.painter().rect_filled(rect, CornerRadius::same(3), face);
-    let ink = if on { t.on_hue } else if hover { t.text } else { t.text_2 };
-    ui.painter().text(rect.center(), Align2::CENTER_CENTER, label, semi(T_SMALL), ink);
-    response
-}
-
-/// What a control was made to do.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Moved {
-    /// A new value, 0 to 1.
-    To(f32),
-    /// Back to where it rests (a double click).
-    Reset,
-    /// Taken hold of, or let go: for automation written while one is held.
-    Held(bool),
-}
-
-/// Where a drag of a control began, kept between frames.
-#[derive(Clone, Copy, Default)]
-struct Grip {
-    fine: bool,
-    from: f32,
-    from_at: f32,
-    sent: f32,
-}
-
-fn grip(ui: &Ui, id: Id) -> Grip {
-    ui.data(|d| d.get_temp(id)).unwrap_or_default()
-}
-
-fn set_grip(ui: &Ui, id: Id, grip: Grip) {
-    ui.data_mut(|d| d.insert_temp(id, grip));
-}
-
 /// How far the wheel turned this frame, up and down (sideways where it
 /// turned only that way), in its own steps.
 pub fn wheel_y(ui: &Ui) -> f32 {
@@ -249,149 +190,7 @@ pub fn wheel_step(ui: &Ui, response: &Response) -> Option<f32> {
         return None;
     }
     let dy = wheel_y(ui);
-    if dy != 0.0 {
-        WHEEL_TAKEN.with(|w| w.set(true));
-    }
     (dy != 0.0).then(|| dy.signum())
-}
-
-/// What a press, a drag, a double click and the wheel do to a control:
-/// pressed it takes the place `at` gives (or, with Shift, moves a tenth as
-/// far from where it was), dragged it follows, the wheel nudges by `nudge`.
-fn handle(
-    ui: &Ui,
-    response: &Response,
-    id: Id,
-    value: f32,
-    pointer: impl Fn(Pos2) -> f32,
-    fine_scale: f32,
-    jumps: bool,
-    nudge: f32,
-) -> Vec<Moved> {
-    let mut out = Vec::new();
-    let shift = ui.input(|i| i.modifiers.shift);
-    let pos = ui.input(|i| i.pointer.interact_pos());
-    if response.double_clicked() {
-        out.push(Moved::Reset);
-        return out;
-    }
-    if let Some(press) = pressed_on(ui, response, egui::PointerButton::Primary) {
-        let at = pointer(press);
-        let sent = if shift || !jumps { value } else { at };
-        set_grip(ui, id, Grip { fine: shift, from: sent, from_at: at, sent });
-        out.push(Moved::Held(true));
-        if jumps && !shift {
-            out.push(Moved::To(sent));
-        }
-    } else if response.dragged_by(egui::PointerButton::Primary)
-        && let Some(pos) = pos
-    {
-        let mut g = grip(ui, id);
-        let at = pointer(pos);
-        if shift != g.fine {
-            g = Grip { fine: shift, from: g.sent, from_at: at, sent: g.sent };
-        }
-        let sent = if g.fine || !jumps {
-            (g.from + (at - g.from_at) * if g.fine { fine_scale } else { 1.0 }).clamp(0.0, 1.0)
-        } else {
-            at.clamp(0.0, 1.0)
-        };
-        if sent != g.sent {
-            out.push(Moved::To(sent));
-        }
-        set_grip(ui, id, Grip { sent, ..g });
-    }
-    if response.drag_stopped() || (response.clicked() && !response.dragged()) {
-        out.push(Moved::Held(false));
-    }
-    if let Some(step) = wheel_step(ui, response) {
-        out.push(Moved::To((value + step * nudge).clamp(0.0, 1.0)));
-    }
-    out
-}
-
-/// A slider across `rect`: grey on a dark well, blue while it is dragged.
-/// `centred` fills it from the middle, as a pan is.
-pub fn slider(ui: &mut Ui, rect: Rect, id: Id, value: f32, centred: bool) -> (Response, Vec<Moved>) {
-    let t = th();
-    let response = ui.interact(rect, id, Sense::click_and_drag());
-    let well = Rect::from_min_size(pos2(rect.left() + 4.0, rect.center().y - 1.5), vec2(rect.width() - 8.0, 3.0));
-    let p = ui.painter();
-    p.rect_filled(well, CornerRadius::same(1), t.well);
-    let v = value.clamp(0.0, 1.0);
-    let (x0, x1) = if centred {
-        let mid = well.left() + well.width() / 2.0;
-        let at = well.left() + well.width() * v;
-        (mid.min(at), mid.max(at))
-    } else {
-        (well.left(), well.left() + well.width() * v)
-    };
-    let pressed = response.is_pointer_button_down_on();
-    let fill = if pressed { t.select } else if response.hovered() { t.text_2 } else { t.text_3 };
-    p.rect_filled(Rect::from_x_y_ranges(x0..=x1, well.y_range()), CornerRadius::same(1), fill);
-    let thumb = Rect::from_min_size(pos2(rect.left() + (rect.width() - 8.0) * v, rect.center().y - 7.0), vec2(8.0, 14.0));
-    let face = if pressed { t.text } else if response.hovered() { Color32::from_rgb(0xdc, 0xde, 0xe3) } else { t.thumb };
-    p.rect(thumb, CornerRadius::same(2), face, Stroke::new(1.0, Color32::from_black_alpha(0x60)), StrokeKind::Inside);
-    let width = (rect.width() - 8.0).max(1.0);
-    let moved = handle(ui, &response, id, value, |pos| (pos.x - rect.left() - 4.0) / width, 0.1, true, 0.02);
-    (response, moved)
-}
-
-/// A small round knob, for a pan: drag up and down to turn it.
-pub fn knob(ui: &mut Ui, rect: Rect, id: Id, value: f32) -> (Response, Vec<Moved>) {
-    let t = th();
-    let response = ui.interact(rect, id, Sense::click_and_drag());
-    let r = rect.width().min(rect.height()) / 2.0;
-    let face = if response.hovered() || response.is_pointer_button_down_on() { t.control_hover } else { t.control };
-    let p = ui.painter();
-    p.circle(rect.center(), r - 0.5, face, Stroke::new(1.0, t.divider));
-    let turn = (value.clamp(0.0, 1.0) - 0.5) * 270f32.to_radians();
-    let ink = if response.is_pointer_button_down_on() { t.select } else { t.text };
-    let at = |d: f32| rect.center() + vec2(turn.sin(), -turn.cos()) * d;
-    p.line_segment([at(r - 7.0), at(r - 2.5)], Stroke::new(2.0, ink));
-    let moved = handle(ui, &response, id, value, |pos| -pos.y / 120.0, 0.1, false, 0.02);
-    (response, moved)
-}
-
-/// A level meter, coloured by position: green to -18 dBFS, then
-/// yellow-green, yellow, orange, and red from 0 dB. `hold` is the peak
-/// held a moment, drawn as a thin line.
-pub fn meter(ui: &Ui, rect: Rect, level: f32, hold: f32, upright: bool) {
-    let t = th();
-    let p = ui.painter();
-    p.rect_filled(rect, CornerRadius::ZERO, t.meter_well);
-    let level = level.clamp(0.0, 1.0);
-    let bands: [(f32, f32, Color32); 5] = [(0.0, 0.636, t.meter_low), (0.636, 0.773, t.meter_mid), (0.773, 0.864, t.meter_high), (0.864, 0.909, t.meter_hot), (0.909, 1.0, t.meter_clip)];
-    for (from, to, colour) in bands {
-        if level <= from {
-            break;
-        }
-        let to = to.min(level);
-        let band = if upright {
-            Rect::from_x_y_ranges(rect.x_range(), (rect.bottom() - rect.height() * to)..=(rect.bottom() - rect.height() * from))
-        } else {
-            Rect::from_x_y_ranges((rect.left() + rect.width() * from)..=(rect.left() + rect.width() * to), rect.y_range())
-        };
-        p.rect_filled(band, CornerRadius::ZERO, colour);
-    }
-    if hold > 0.02 {
-        let hold = hold.clamp(0.0, 1.0);
-        let colour = if hold >= 0.909 { t.meter_clip } else { t.text };
-        let line = if upright {
-            Rect::from_min_size(pos2(rect.left(), rect.bottom() - rect.height() * hold), vec2(rect.width(), 1.0))
-        } else {
-            Rect::from_min_size(pos2(rect.left() + rect.width() * hold - 1.0, rect.top()), vec2(1.0, rect.height()))
-        };
-        p.rect_filled(line, CornerRadius::ZERO, colour);
-    }
-}
-
-/// The light over a meter that comes on when the level reaches 0 dB and
-/// stays on until it is clicked.
-pub fn clip_light(ui: &mut Ui, rect: Rect, id: Id, on: bool) -> bool {
-    let t = th();
-    ui.painter().rect_filled(rect, CornerRadius::ZERO, if on { t.meter_clip } else { t.meter_well });
-    ui.interact(rect.expand(2.0), id, Sense::click()).clicked()
 }
 
 /// Text cut short with an ellipsis to fit `width`.
