@@ -42,7 +42,7 @@ color. The track of the cursor has a brighter header and a tinted lane.
 | `I` | Selects the next input (audio, MIDI port and channel). |
 | `Alt-i` | Monitors the input. |
 | `R` | Records from the cursor, or stops the recording. While the song plays, the recording starts at the playhead. |
-| `&` `S` `J` `~` | Repeats, splits, joins, mutes the clip. |
+| `&` `S` `J` `~` | Repeats, splits, joins, mutes the clip. `J` joins the clip with the MIDI clips over it (a take over it), or else with the next clip. |
 | `grc` | Renames the clip. |
 | `H` `L` | Moves the clip. |
 | `Alt-h` `Alt-l` | Shortens and lengthens the clip. |
@@ -66,6 +66,7 @@ color. The track of the cursor has a brighter header and a tinted lane.
 | `gM` | Counts a bar in before a recording, or not. |
 | `gI` | Turns punch recording on or off. On a selection, punches over it. |
 | `:preroll 2` | Plays two bars (`3s`: seconds) before the punch in, when you record from a stop. |
+| `:click level=-6` | Sets the level, the accent (`accent=off`) and the output (`output=3`) of the metronome. |
 | `zt` | Shows or hides the take lanes of the track. |
 | `zT` | Shows or hides the tempo lane under the ruler. |
 | `:tempo.move 9` | Moves the tempo change at the cursor to bar 9. |

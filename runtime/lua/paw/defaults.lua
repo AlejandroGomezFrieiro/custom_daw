@@ -795,6 +795,7 @@ command("track.pan", function(ctx)
 end, { desc = "Set the pan from -1 to 1, or nudge it: `track.pan by=0.1`" })
 command("track.move", function(ctx)
   local track = need_track()
+  if cursor.on_master() then return paw.notify("the master track stays after the last track", "warn") end
   if track then track:move(cursor.index() + (ctx.args.by or 1)) end
 end, { desc = "Move the track down or up: `track.move by=-1`" })
 -- What each choice of input means, and the lists, are `paw.audio`'s; here

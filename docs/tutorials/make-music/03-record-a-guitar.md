@@ -61,11 +61,10 @@ interface.
 
 1. Press `0` (the start of the song), then `gl2W`.
    - The loop is over bars 1 and 2. The status line shows `loop 1–2`.
-2. Press `gs` to move the playhead to the start.
-3. Press `r` to arm the track.
-4. Press `R` and play the riff. Play it again on the second time round
+2. Press `r` to arm the track.
+3. Press `R` and play the riff. Play it again on the second time round
    the loop.
-5. When the playhead returns to bar 1 the third time, press `<Space>`.
+4. When the playhead returns to bar 1 the third time, press `<Space>`.
    - A clip with the name `take 1 ‹2/2›` shows. It holds two takes, and
      the second take plays.
 

@@ -226,7 +226,8 @@ function A.paste(value, before, count)
   local cursor = paw.cursor
   if not value then return paw.notify("nothing to paste yet", "warn") end
   if value.kind == "tracks" then
-    local at = (cursor.index() or 0) + (before and 0 or 1)
+    -- On the master, the tracks go after the last one.
+    local at = cursor.on_master() and #api.track_list() + 1 or (cursor.index() or 0) + (before and 0 or 1)
     local first
     for _ = 1, count or 1 do
       for _, snap in ipairs(value.tracks) do
@@ -242,7 +243,9 @@ function A.paste(value, before, count)
   end
 
   local row, at = cursor.index(), cursor.beat
-  if not row then return paw.notify("no track to paste on", "warn") end
+  if not row then
+    return paw.notify(cursor.on_master() and "the master track has no clips: paste on a track" or "no track to paste on", "warn")
+  end
   if not before then
     local edits = api.project_get().edits
     if last_paste and last_paste.row == row and last_paste.beat == at and last_paste.edits == edits then

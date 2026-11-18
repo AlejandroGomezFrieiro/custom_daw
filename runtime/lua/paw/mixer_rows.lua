@@ -383,6 +383,9 @@ local function each(region, fn)
   for _, id in ipairs(strips(region)) do fn(id, rows_in(id, region)) end
 end
 op("d", function(region, ctx)
+  if region.kind == "line" and region.r0 > #paw.groups.rows() then
+    return paw.notify("the master's strip stays: `x` clears a row of it", "warn")
+  end
   if region.kind == "line" then
     local first = region.r0
     keymap.setreg(paw.edit.arrange.delete(region), ctx.register)
