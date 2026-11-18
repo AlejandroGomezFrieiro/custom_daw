@@ -80,6 +80,30 @@ function M.level(t, levels)
   return level
 end
 
+-- The engine's load as shown: its average, when that was taken, and the
+-- value last given out.
+local load = { average = nil, at = nil, shown = 0 }
+
+--- How busy the engine is, 0 to 1, as the status line and every frontend
+--- show it: the load of its blocks averaged over about a second, given in
+--- steps of 2.5% and moved only when the average has left the step shown.
+--- A block's own load wavers all the time, the more so on a busy machine,
+--- and each change of it would be drawn again in the terminal and sent to
+--- every window, which then drew a frame for it. `cpu`: the load just read
+--- (`api.engine_get().cpu`), when the caller has it.
+function M.load(cpu)
+  cpu = cpu or api.engine_get().cpu or 0
+  local now = api.now()
+  if load.at then
+    load.average = load.average + (cpu - load.average) * (1 - math.exp(-math.max(0, now - load.at) / 1000))
+  else
+    load.average = cpu
+  end
+  load.at = now
+  if math.abs(load.average - load.shown) > 0.025 then load.shown = math.floor(load.average * 40 + 0.5) / 40 end
+  return load.shown
+end
+
 --- Everything a track's input can be, in order, under three headings
 --- (`group`): "audio" (none, each channel of the input device, each pair of
 --- neighbouring channels), "midi" (every port, or one) and "channel" (every

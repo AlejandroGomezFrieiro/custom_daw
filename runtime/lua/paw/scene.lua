@@ -69,8 +69,8 @@ end
 --- The values a frontend moves bound nodes by (see crates/paw-scene's
 --- `bind`): the playhead, the clock, the engine's load, and each track's
 --- meter and input, by track id; rounded to what a frontend can show, so
---- that an idle program has nothing new to say (the load, which wavers all
---- the time, in steps of 2.5%, as `frontend.watch` sends it).
+--- that an idle program has nothing new to say (the load as
+--- `paw.audio.load` gives it, as `frontend.watch` sends it).
 local function live()
   local t, e = api.transport_get(), api.engine_get()
   local meters, inputs, levels = {}, {}, paw.audio.levels()
@@ -81,7 +81,7 @@ local function live()
   end
   return {
     position = t.position, playing = t.playing, recording = t.take ~= nil, clock = paw.time.clock(t.position),
-    cpu = math.floor((e.cpu or 0) * 40 + 0.5) / 40, meters = meters, inputs = inputs,
+    cpu = paw.audio.load(e.cpu), meters = meters, inputs = inputs,
   }
 end
 

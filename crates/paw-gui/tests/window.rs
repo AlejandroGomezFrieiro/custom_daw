@@ -616,6 +616,21 @@ impl Scene {
         (ticks() - before) / per_second / seconds * 100.0
     }
 
+    /// The window's share of a processor once it has settled, in percent of
+    /// one: measured five seconds at a time until a measure is under
+    /// `limit`, six times at most; every measure taken, the last last. On a
+    /// busy machine (the other tests, other builds) a window that has just
+    /// started can still be busy after a few seconds, and what it does costs
+    /// more; a window that draws while nothing changes is over the limit in
+    /// every measure.
+    fn settled_cpu_percent(&self, limit: f64) -> Vec<f64> {
+        let mut seen = Vec::new();
+        while seen.len() < 6 && seen.last().is_none_or(|p| *p >= limit) {
+            seen.push(self.cpu_percent(5.0));
+        }
+        seen
+    }
+
     // ----------------------------------------------------- the pointer
 
     fn xdotool(&self, args: &[&str]) -> String {
@@ -1338,9 +1353,8 @@ fn files_dir(name: &str) -> PathBuf {
 #[test]
 fn an_idle_window_uses_little_of_a_processor() {
     let mut w = scene!("idle", DEMO, alone);
-    w.pause(3.0);
-    let idle = w.cpu_percent(5.0);
-    assert!(idle < 5.0, "the idle window uses {idle:.1}% of a core");
+    let idle = w.settled_cpu_percent(5.0);
+    assert!(idle.last() < Some(&5.0), "the idle window uses {idle:.1?}% of a core");
     w.assert_alive("while idle");
 }
 
@@ -1356,9 +1370,8 @@ fn an_idle_window_with_kernel_panes_and_a_window_of_a_view_asks_for_nothing() {
     w.expect("the list in a window of its own", "#paw.canvas.windows() == 1");
     w.expect("both sent as scenes", "#paw.scene.watchers()[1].windows == 2");
     w.find_text("dB", 0);
-    w.pause(3.0);
-    let idle = w.cpu_percent(5.0);
-    assert!(idle < 5.0, "the idle window uses {idle:.1}% of a core");
+    let idle = w.settled_cpu_percent(5.0);
+    assert!(idle.last() < Some(&5.0), "the idle window uses {idle:.1?}% of a core");
     w.assert_alive("while idle with panes");
 }
 

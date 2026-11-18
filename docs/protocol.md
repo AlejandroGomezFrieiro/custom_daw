@@ -173,7 +173,9 @@ it would draw has changed, at most once every `interval` milliseconds:
 
 The payload is what moves on its own (the playhead, the meters, the
 mode: everything `paw.frontend.state(known)` returns when the project has
-not changed). `sections`, when present, holds the parts of the project
+not changed). `cpu` is the engine's load averaged over about a second, in
+steps of 2.5% (`paw.audio.load`), so that an idle program is not heard
+from each time a block took a little longer. `sections`, when present, holds the parts of the project
 that differ from what this connection was last sent, each whole:
 
 | Section | Is |
