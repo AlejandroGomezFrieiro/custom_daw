@@ -39,7 +39,7 @@ after the recording.
 ## Record
 
 Press `r` to arm the track, and `R` to record. For the full steps, see
-[How to record an audio take](record-an-audio-take.md).
+[How to record a guitar or a bass](record-a-guitar-or-a-bass.md).
 
 In the graphical window, the input button on the track header opens the
 same list. The loudspeaker next to it switches the monitor.

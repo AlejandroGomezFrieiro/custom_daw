@@ -109,4 +109,4 @@ Previous: [Arrange the song](04-arrange-the-song.md) · [All lessons](README.md)
 For more, see [The mixer](../../reference/mixer-view.md),
 [Routing](../../reference/routing.md) for sends,
 [Automation](../../reference/automation.md) and
-[How to render a song](../../how-to/render-a-song.md).
+[How to export a song as WAV, FLAC or MP3](../../how-to/export-a-song.md).

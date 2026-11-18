@@ -44,7 +44,7 @@ of the port.
 To keep paw away from the other ports, type `:midi.select Keystation`.
 paw then opens only the ports with that name.
 
-To record what you play, see [How to record an audio take](record-an-audio-take.md).
+To record what you play, see [How to record MIDI from a keyboard](record-midi-from-a-keyboard.md).
 The same steps record MIDI on a track that has no audio input.
 
 To move faders and parameters with the knobs of the keyboard, see
