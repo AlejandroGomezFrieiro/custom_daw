@@ -8,11 +8,12 @@ tracks. Then we use the same keys in a different mode and in a different view.
 
 In the arrange view, a track is a line and time goes along it. One beat is
 one grid step. A clip on a track is like a word on a line. The keys that move
-the cursor are motions. There are groups of motions: small steps, clips,
+the cursor are motions. The motions go in groups: small steps, clips,
 bars, the ends of items, and other tracks. A number before a motion repeats it.
 
 A key can have a different meaning in a different mode (normal, visual,
-insert) or in a different view (the arrange view, the piano roll, the mixer).
+insert). It can also have a different meaning in a different view (the arrange
+view, the piano roll, the mixer).
 The status line always shows the current mode. The view that gets the keys
 has a brighter frame or highlight.]],
   idea = [[

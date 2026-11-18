@@ -1,4 +1,4 @@
-# snippets: a starting set of snippets
+# snippets: a first set of snippets
 
 Snippets for the snippet engine of the core (`paw.snippet`), as
 friendly-snippets is for LuaSnip. They write chords that lead into the
@@ -51,6 +51,7 @@ snippets share, for snippets of your own:
 | `progression` | chords, each voiced from the chord before it |
 | `next_chord` | the next chord of the song |
 
-The suite runs `tests.lua`: the example of the owner (G7 before a C major
-chord on another track, and in the same clip through the picker), the
-chords of each snippet on known material, choices, counts and undo.
+The suite runs `tests.lua`. It tests the example of the owner: G7 before a
+C major chord on another track, and in the same clip through the picker.
+It also tests the chords of each snippet on known material, choices, counts
+and undo.

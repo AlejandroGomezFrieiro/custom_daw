@@ -38,7 +38,7 @@ play it. Drag a clip on the timeline, then press `u` to undo the move.
 - [The control protocol](../../docs/reference/protocol.md): the messages between the window and the kernel, scenes included.
 
 Tests: `cargo test --release -p paw-gui` runs the egui tests in the process
-(egui_kittest), and controls the real window on a private X display.
+(`egui_kittest`), and controls the real window on a private X display.
 
 Licenses: egui, eframe, winit and the other crates have MIT or Apache-2.0
 licenses. The fonts in the program have the SIL Open Font License, and the

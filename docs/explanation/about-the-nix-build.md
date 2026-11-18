@@ -33,8 +33,8 @@ Two other tools can build a Rust workspace with Nix:
   it has no checks.
 
 crane gives the two layers and the checks (clippy, rustfmt, nextest) with
-little work. The dependencies have no git sources, so no hash must be
-written by hand.
+little work. The dependencies have no git sources, so nobody needs to write a
+hash by hand.
 
 ## Why the tests do not run in the build
 

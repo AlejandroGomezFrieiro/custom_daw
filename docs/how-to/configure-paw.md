@@ -89,4 +89,4 @@ See [Windows, buffers and tabs](../reference/windows.md#layouts).
 
 - [How to change the status line](change-the-status-line.md).
 - [Files that paw keeps](../reference/state-files.md): the directory of the configuration, Lua devices and extensions.
-- [Writing a device in Lua](write-a-device-in-lua.md): devices in `~/.config/paw/devices/`.
+- [How to write a device in Lua](write-a-device-in-lua.md): devices in `~/.config/paw/devices/`.

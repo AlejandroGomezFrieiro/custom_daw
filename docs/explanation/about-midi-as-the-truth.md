@@ -7,9 +7,9 @@ keeps one truth, and how extensions keep data that MIDI cannot hold.
 
 ## One truth, many views
 
-A score shows more than MIDI can say: the letter name of a pitch (G sharp
-or A flat), the voice of a note, a staccato, a dynamic. An easy design gives the score a
-model of its own and renders MIDI from it. Then there are two truths. An
+A score shows more than MIDI can say. It shows the letter name of a pitch
+(G sharp or A flat), the voice of a note, a staccato, a dynamic. The first design
+that comes to mind gives the score a model of its own and renders MIDI from it. Then there are two truths. An
 edit in the piano roll changes the MIDI, and the score does not know.
 The two drift apart, and one of them must win.
 
@@ -61,7 +61,7 @@ See [Project objects in Lua](../reference/lua-objects.md#note-attributes-noteatt
 
 The model is the model of REAPER. MIDI belongs to the item, and notation
 shows it. REAPER keeps what MIDI cannot say as notation events on the
-notes (spelling, voice, articulation, text) and with the item (dynamics,
+notes (letter name, voice, articulation, text) and with the item (dynamics,
 clefs, key signatures). paw keeps the same things in `meta`.
 
 One difference: the notation extension reads played music itself

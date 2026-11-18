@@ -14,7 +14,7 @@ extensions/sampler/
   nix/                     how the plugin and the extension are packaged
 ```
 
-![:track.add sampler on the demo song: the instrument picker loading each instrument of a small library and playing a phrase through it as the selection rests, viol narrowing it to the violins, Enter keeping them, and :sampler.info](images/tui-sampler.gif)
+![:track.add sampler on the demo song: the instrument picker loads each instrument of a small library and plays a phrase through it as the selection rests. Then viol narrows it to the violins, Enter keeps them, and :sampler.info](images/tui-sampler.gif)
 
 ## Try it
 
@@ -90,9 +90,12 @@ Run `paw-sampler describe file.sfz`. It prints the description as JSON.
 - When the file is not found, the project keeps its path, and
   `:sampler.info` tells you.
 
-Parameters: gain, polyphony (1 to 256 voices), tune, transpose, attack and
-release scale, velocity sensitivity, release trigger level, filter cutoff
-offset, and the interpolation (linear, Hermite, sinc).
+Parameters:
+
+- gain, polyphony (1 to 256 voices), tune, transpose
+- attack and release scale, velocity sensitivity, release trigger level
+- filter cutoff offset
+- the interpolation (linear, Hermite, sinc).
 
 ### Articulations
 
@@ -136,8 +139,8 @@ tells nothing, it gets a custom code (classifications 1A to 1F, in order).
 | `params` | the parameters |
 
 `delay_ms` is how late the attack comes in the samples. For each sample,
-the player measures it one time, at the load. It is the time from the
-start of the region (after its `offset`) to the first frame at a tenth
+the player measures it one time, at the load. It starts at the start of
+the region (after its `offset`). It ends at the first frame at a tenth
 (-20 dB) of the peak of the sample. For an articulation, it is the median
 over the attack regions that it plays. For the instrument, it is the
 median over all of them (null when there are none).
@@ -155,7 +158,7 @@ with opcodes inherited down the chain. `#define`, `#include`, comments.
 | --- | --- |
 | Mapping | `sample` (files and `*sine *saw *square *triangle *noise *silence`), `default_path`, `key lokey hikey lovel hivel lochan hichan`, `note_offset octave_offset`, `loccN hiccN`, `lorand hirand`, `seq_length seq_position` |
 | Keyswitches | `sw_lokey sw_hikey sw_last sw_lolast sw_hilast sw_default sw_label sw_down sw_up sw_previous` (not `sw_vel`) |
-| Triggers | `trigger` (attack, release, release_key, first, legato), `rt_decay` |
+| Triggers | `trigger` (`attack`, `release`, `release_key`, `first`, `legato`), `rt_decay` |
 | Pitch | `pitch_keycenter` (a key or `sample`), `pitch_keytrack tune transpose pitch_veltrack bend_up bend_down`, `pitcheg_*` |
 | The sample | `offset offset_random end delay loop_mode loop_start loop_end loop_crossfade`, and the loop and key of a WAV (`smpl`) |
 | Level | `volume amplitude pan width position amp_veltrack amp_velcurve_N ampeg_*` (with `vel2*`) |
@@ -210,7 +213,7 @@ A format is one reader (`native/src/formats/`) that fills the one model in
 Measured with `paw-sampler bench`, the best of five runs, on a machine
 busy with other builds:
 
-- A voice of a stereo sample costs about 20 ns a frame with sinc, 10 with
+- A voice of a stereo sample costs about 20 nanoseconds a frame with sinc, 10 with
   Hermite, 6 linear. So 64 voices at 48 kHz take 6 % of a core with sinc,
   and 256 voices take 25 %.
 - A library of 1000 stereo 24-bit files (550 MB on disk, 770 MB in

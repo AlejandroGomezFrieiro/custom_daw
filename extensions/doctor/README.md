@@ -11,7 +11,7 @@ report exists, the report also shows what changed.
 paw.ext.load("/path/to/paw/extensions/doctor")   -- config/init.lua has this line
 ```
 
-![:doctor on the null backend with a test signal: the page of checks, then :doctor unattended running the sound system, input levels and dropouts checks](images/tui-doctor.gif)
+![:doctor on the null backend with a test signal: the page of checks, then :doctor unattended runs the checks of the sound system, input levels and dropouts](images/tui-doctor.gif)
 
 ## Try it
 
@@ -267,10 +267,10 @@ check that you cancel or that times out.
 ### Limits
 
 The doctor ran on the null backend only. There, a test input gives two
-channels of tone, and `paw.midi.inject` acts as a controller. The paths
-for real hardware (a Bluetooth output, a UR22mkII, the latency of
-PipeWire, a loop-back cable, real plugin windows) come from the reports of
-the program. They did not run against the devices.
+channels of tone, and `paw.midi.inject` acts as a controller. The doctor
+also has paths for real hardware (a Bluetooth output, a UR22mkII, the
+latency of PipeWire, a loop-back cable, real plugin windows). These paths
+come from the reports of the program. They did not run against the devices.
 
 ## About
 

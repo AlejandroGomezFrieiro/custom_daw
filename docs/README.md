@@ -47,7 +47,7 @@ each extension (`:help notation`).
 - [How to fix a plugin editor that does not work](how-to/fix-a-plugin-editor.md)
 - [How to open a project without its plugins](how-to/open-a-project-without-its-plugins.md)
 - [How to load an extension](how-to/load-an-extension.md): a bundled extension, your own, or one from Nix
-- [How to drive paw from an agent](how-to/drive-paw-from-an-agent.md): let a coding agent or an assistant edit a project
+- [How to drive paw from an agent](how-to/drive-paw-from-an-agent.md): let an agent that writes code, or an assistant, edit a project
 
 ## Reference
 
@@ -88,7 +88,7 @@ each extension (`:help notation`).
 - [Routing: groups, VCAs, sends and side-chains](reference/routing.md): groups, linked faders, VCAs, outputs, sends, side-chains, output pairs
 - [Narrowed tabs](reference/narrowing.md): a tab of one group, the rest of the song
 - [Frozen tracks](reference/freezing.md): frozen and held tracks
-- [Automation](reference/automation.md): automation modes, writing with the controls
+- [Automation](reference/automation.md): automation modes, how the controls write automation
 - [Stretched and looped clips](reference/stretch.md): stretch, pitch, warp markers, tempo, loops
 - [Markers and regions](reference/markers.md): markers, regions, their keys and commands
 - [Render](reference/render.md): `:render`, formats, tags, stems, bounce
@@ -112,7 +112,7 @@ each extension (`:help notation`).
 - [Timers, programs and other modules in Lua](reference/lua-other.md): timers, helper programs, seats
 - [Events](reference/events.md): every event and its payload
 - [Scripts and `paw ctl`](reference/ctl.md): `paw -l`, `paw ctl`, `paw attach`, `paw doctor`
-- [Extensions](reference/extensions.md): the bundled extensions, files, loading, manifests, what an extension owns, health checks
+- [Extensions](reference/extensions.md): the bundled extensions, files, how to load them, manifests, what an extension owns, health checks
 - [Pictures in the terminal](reference/pictures.md): strips, `paw.plot`, and what a frontend does with strips
 - [Lua API reference](reference/api.md): each function, made from the code
 - [The control protocol](reference/protocol.md): the messages of the socket, scenes, seats, files and sound

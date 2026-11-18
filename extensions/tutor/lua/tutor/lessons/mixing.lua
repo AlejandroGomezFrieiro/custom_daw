@@ -11,13 +11,13 @@ In this lesson, we mix a short song. We change the level and the pan of the
 bass, and we send the keys through a bus. Then we give the melody an echo
 and make the chords fade in.
 
-To mix, you set the level of each track (its fader, in dB) and its position
-from left to right (pan). You mute some tracks, or solo a track to hear it
+To mix, you set the level of each track (its fader, in dB). You also set its
+position from left to right (pan). You mute some tracks, or solo a track to hear it
 alone. You also set where the sound of each track goes. It can go to the
 master, or into a bus that groups tracks under one fader. A send can also
-take a part of it to an effect track. Automation changes a fader (or a parameter) over time.
+take a part of it to an effect track.
 
-The mixer shows one strip for each track. You can make the same changes from
+Automation changes a fader (or a parameter) over time. The mixer shows one strip for each track. You can make the same changes from
 the arrange view.]],
   idea = [[
 In the mixer, the tracks go across. `h` `l` select a strip, and `j` `k`

@@ -15,9 +15,9 @@ vocal:add_clip({ start = 0, length = 4, notes = {
 paw.render("vocal.wav")   -- waits until every phrase is sung at final quality
 ```
 
-![A vocal track added to the demo song with :track.add vocal, its singer chosen with ,V and its phonemizer with :utau.phonemizer, the melody pasted in, lyrics typed in romaji with :utau.lyrics and made kana with :utau.batch romaji_to_hiragana; the phrases turn green as the engine sings them](images/tui-utau.gif)
+![A vocal track added to the demo song with :track.add vocal, its singer chosen with ,V and its phonemizer with :utau.phonemizer, the melody pasted in, lyrics typed in romaji with :utau.lyrics and made kana with :utau.batch. The phrases turn green as the engine sings them](images/tui-utau.gif)
 
-![The vocal editor on the sung melody: the phonemes under the notes, ~ putting a vibrato on the long note, \]c and } raising its dynamics, r singing it again, and Space playing it](images/tui-utau-editor.gif)
+![The vocal editor on the sung melody: the phonemes under the notes, ~ puts a vibrato on the long note, \]c and } raise its dynamics, r sings it again, and Space plays it](images/tui-utau-editor.gif)
 
 ## Try it
 
@@ -329,7 +329,7 @@ editor work, but nothing sings, and an offline render tells you.
   its replacement arrives.
 - A device made later, also the device of an offline render, gets the same
   lists before its first block. So it plays the same phrases.
-- Phrases are placed by whole frames of the song. So live playback and a
+- The device places phrases by whole frames of the song. So live playback and a
   render agree bit for bit (`tests.lua` checks it). A block of 512 frames
   with four phrases costs about 16 µs of its 10.7 ms.
 - `paw.render` sends `render.before`. The extension then waits until every
@@ -368,7 +368,7 @@ editor work, but nothing sings, and an offline render tells you.
 ## About
 
 The extension owns all its parts. The core of paw has no code for
-singing. See [About the core and
+sung notes. See [About the core and
 extensions](../../docs/explanation/about-core-and-extensions.md).
 
 ```

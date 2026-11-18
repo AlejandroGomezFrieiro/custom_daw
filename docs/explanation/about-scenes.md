@@ -31,7 +31,9 @@ not ask for the state many times a second. An idle project sends nothing,
 and an idle window draws nothing. A change sends only the part that
 changed. While the song plays, the values that move (the playhead, the clock,
 the meters) come as small live messages. The window moves its widgets with
-them.  The full description is in [The control
+them.
+
+The full description is in [The control
 protocol](../reference/protocol.md).
 
 ## What a scene is

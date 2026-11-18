@@ -12,7 +12,7 @@ song plays.
 paw.ext.load("extensions/undotree")   -- or put the directory in ~/.config/paw/extensions
 ```
 
-![The melody moved with 3>ic, undone and moved with 2>ic instead; ,uu shows both branches, and Enter goes back to the first](images/tui-undotree.gif)
+![The melody moved with 3>ic, undone and moved with 2>ic instead. Then ,uu shows both branches, and Enter returns to the first](images/tui-undotree.gif)
 
 ## Try it
 
@@ -240,7 +240,7 @@ drawing), `go(id)`, `travel(dir, amount, count)`, `mark_a(id)`,
   label `a change`.
 - A note that moves counts as removed and added. Notes in added or removed
   clips do not count.
-- The comparison by ear switches the full project. There is no A/B of one
+- The comparison by ear switches the full project. It has no A/B of one
   track, and no crossfade at the switch.
 - Vim has `:earlier 1f` (by file writes) and `:undolist`. paw does not. The
   window does both jobs.

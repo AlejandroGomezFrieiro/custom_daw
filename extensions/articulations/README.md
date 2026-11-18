@@ -9,7 +9,7 @@ keyswitches, controllers or programs.
 paw.ext.load("/path/to/paw/extensions/articulations")
 ```
 
-![The demo song's melody under the example violin map: :%art sus tags every note and the band above names the run, \a on a note makes it staccato (each articulation heard as the highlight rests on it), three notes made pizzicato in visual mode, and K saying how the instrument is told](images/tui-articulations.gif)
+![The demo song's melody under the example violin map: :%art sus tags every note and the band above names the run, \a on a note makes it staccato (each articulation heard as the highlight rests on it), three notes made pizzicato in visual mode, and K shows how paw tells the instrument](images/tui-articulations.gif)
 
 ## Try it
 
@@ -79,7 +79,7 @@ Type `:art.check`. The problems of the notes go to the quickfix list.
   a whole-step trill. See [Project objects in
   Lua](../../docs/reference/lua-objects.md#note-attributes-noteattr).
 - A **map** gives the names of the codes on one instrument, and how to
-  send them to it. There is one `.art.toml` file for each instrument.
+  send them to it. Each instrument has one `.art.toml` file.
 - When you bind a map to a track, the track keeps the binding
   (`track.meta.articulations`). The extension gives the core the
   **downgrade map** of the track (`track.attr_map`). It sends the

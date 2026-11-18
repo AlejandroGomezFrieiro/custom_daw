@@ -12,7 +12,7 @@ bd*2 [~ sn] hh(5,8) # vel 1 0.7
 paw.ext.load("extensions/pattern")   -- or put the directory in ~/.config/paw/extensions
 ```
 
-![A pattern clip typed with ,tt into the lead's empty first half while the demo song plays, then edited again and the clip following the text](images/tui-pattern.gif)
+![A pattern clip typed with ,tt into the lead's empty first half while the demo song plays, then edited again, and the clip changes with the text](images/tui-pattern.gif)
 
 ## Try it
 
@@ -115,22 +115,22 @@ from 1: `col 4: unknown name zz: not a note, a number or a drum`.
 
 A pattern is one cycle. A cycle is one bar, unless the clip gives another
 length. Steps with spaces between them share the cycle equally. Each
-example below gives the events of the first cycle as *start–end* in
+example below gives the events of the first cycle as `start–end` in
 cycles.
 
 #### Steps
 
 | Syntax | Example | Events |
 | --- | --- | --- |
-| sequence | `bd sn hh hh` | bd 0–¼, sn ¼–½, hh ½–¾, hh ¾–1 |
-| `~` rest | `bd ~ sn ~` | bd 0–¼, sn ½–¾ |
-| `[ ]` subdivision | `[bd bd] sn` | bd 0–¼, bd ¼–½, sn ½–1 |
+| sequence | `bd sn hh hh` | `bd 0–¼`, `sn ¼–½`, `hh ½–¾`, `hh ¾–1` |
+| `~` rest | `bd ~ sn ~` | `bd 0–¼`, `sn ½–¾` |
+| `[ ]` subdivision | `[bd bd] sn` | `bd 0–¼`, `bd ¼–½`, `sn ½–1` |
 | `.` group | `a b . c d e` | the same as `[a b] [c d e]` |
-| `*n` faster | `hh*4` | four hh, a quarter each. `[hh sn]*2` plays the pair two times in its step |
-| `/n` slower | `[a b c]/2` | a 0–⅔, b ⅔–1⅓ (starts in cycle 0), c 1⅓–2: across two cycles |
-| `!n` replicate | `bd!3 sn` | bd bd bd sn, four equal steps |
-| `!` alone | `bd ! sn` | repeats the step before: bd bd sn |
-| `@n` elongate | `a@3 b` | a 0–¾, b ¾–1 |
+| `*n` faster | `hh*4` | four `hh`, a quarter each. `[hh sn]*2` plays the pair two times in its step |
+| `/n` slower | `[a b c]/2` | `a 0–⅔`, `b ⅔–1⅓` (starts in cycle 0), `c 1⅓–2`: across two cycles |
+| `!n` replicate | `bd!3 sn` | `bd bd bd sn`, four equal steps |
+| `!` alone | `bd ! sn` | repeats the step before: `bd bd sn` |
+| `@n` elongate | `a@3 b` | `a 0–¾`, `b ¾–1` |
 | `_` | `a _ _ b` | the same as `a@3 b` |
 | `..` range | `0 .. 3` | `0 1 2 3` (whole numbers) |
 
@@ -143,19 +143,19 @@ cycles.
 
 | Syntax | Example | Events |
 | --- | --- | --- |
-| `< >` alternation | `<c e g>` | c in cycle 0, e in 1, g in 2, c in 3… |
-| | `<c e> g` | c g, then e g |
-| | `<a <b c>>` | a b a c |
-| | `<a!2 b>`, `<a@3 b>` | a a b. a for three cycles, then b |
-| `{ }` polymeter | `{a b c}%4` | four steps in a cycle, through three: a b c a, b c a b, … |
-| | `{a b c, d e}` | each layer at the steps of the first layer (3): a+d b+e c+d, a+e b+d c+e |
-| `< , >` | `<a b, c d e>` | each layer one step in a cycle: a+c, b+d, a+e, b+c… |
+| `< >` alternation | `<c e g>` | `c` in cycle 0, `e` in 1, `g` in 2, `c` in 3… |
+| | `<c e> g` | `c g`, then `e g` |
+| | `<a <b c>>` | `a b a c` |
+| | `<a!2 b>`, `<a@3 b>` | `a a b`. `a` for three cycles, then `b` |
+| `{ }` polymeter | `{a b c}%4` | four steps in a cycle, through three: `a b c a`, `b c a b`, … |
+| | `{a b c, d e}` | each layer at the steps of the first layer (3): `a+d b+e c+d`, `a+e b+d c+e` |
+| `< , >` | `<a b, c d e>` | each layer one step in a cycle: `a+c`, `b+d`, `a+e`, `b+c`… |
 
 #### Together
 
 | Syntax | Example | Events |
 | --- | --- | --- |
-| `,` stack | `[bd, hh*2]` | bd 0–1 with hh 0–½ and ½–1 |
+| `,` stack | `[bd, hh*2]` | `bd 0–1` with `hh 0–½` and `hh ½–1` |
 | | `bd*2, ~ sn` | also at the top level |
 | `(k,n)` Euclidean | `bd(3,8)` | three hits across eight steps: 0, ⅜, ¾ |
 | `(k,n,r)` | `bd(3,8,2)` | the same, rotated left two steps: ⅛, ½, ¾ |
@@ -233,7 +233,7 @@ c'maj e'min # oct -1 # add <0 5>
 
 | Parameter | Values | Effect |
 | --- | --- | --- |
-| `vel` | 0–1, or above 1 | velocity. 0–1 is a share of 127 (rounded). Above 1 is a MIDI velocity (at most 127). 0 drops the note. Without it, notes have `paw.opt.velocity` (100) |
+| `vel` | 0 to 1, or above 1 | velocity. A value from 0 to 1 is a share of 127 (rounded). Above 1 is a MIDI velocity (at most 127). 0 drops the note. Without it, notes have `paw.opt.velocity` (100) |
 | `legato` | number | the note length as a share of the length of the event (1 by default). The end of the clip cuts notes. 0 drops the note |
 | `add` | whole number | semitones up (or down). For degrees, steps along the scale |
 | `oct` | whole number | octaves up or down |
@@ -243,7 +243,7 @@ c'maj e'min # oct -1 # add <0 5>
 
 - `add` and `oct` do not move drums.
 - A rest in the pattern of a parameter keeps the default.
-- paw drops notes outside 0–127, and the second of two notes with the same
+- paw drops notes outside 0 to 127, and the second of two notes with the same
   pitch that start together.
 
 ### The module

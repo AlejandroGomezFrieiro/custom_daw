@@ -12,7 +12,7 @@ If a program writes over a file and the power fails during the write, the
 file is half old and half new: it is damaged. paw writes a new file next
 to the project, writes it to the disk, and then renames it over the
 project. A rename is atomic on the file system. So after a crash, the file
-is the old project or the new project, complete, never a mix. paw also
+is the complete old project or the complete new project. paw also
 keeps the previous version as a `.bak` file, for the case where the new
 version has a problem.
 

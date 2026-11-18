@@ -233,7 +233,7 @@ JSON-RPC 2.0 over stdio, one message on each line, made directly with
 - Tool definitions have `title` and `annotations` (read-only, destructive,
   open-world). Results are a text block and `structuredContent`.
 - Resources: `resources/list`, `resources/templates/list`,
-  `resources/read`. There are no prompts.
+  `resources/read`. The server has no prompts.
 
 | Resource | Contents |
 | --- | --- |
@@ -259,7 +259,7 @@ is not built.
 ### Limits
 
 - Calls run one at a time and to the end. A long render holds `ping`, and
-  the server ignores `notifications/cancelled`. There are no progress
+  the server ignores `notifications/cancelled`. The server sends no progress
   notifications.
 - Level of each bar, stereo and spectrum are only for WAV files. A FLAC or
   MP3 render gets the loudness numbers.
