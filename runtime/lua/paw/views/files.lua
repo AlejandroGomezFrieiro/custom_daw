@@ -83,7 +83,7 @@ end
 
 --- Set the folder for relative names, as `:cd` does: `dir` is relative to
 --- the folder now; `-` is the folder before; nil is the home folder;
---- false goes back to the default (beside the project).
+--- false returns to the default (beside the project).
 --- Returns the folder, or nil and why not.
 function M.cd(dir)
   if dir == false then

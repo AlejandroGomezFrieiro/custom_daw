@@ -251,8 +251,8 @@ function M.alive(id)
 end
 
 --- Give the state of the window `from` to the window `to` of the same
---- view, in place of its own: a view in a window of its own that goes
---- back into its pane takes what it showed there.
+--- view, in place of its own: a view in a window of its own that returns
+--- into its pane takes what it showed there.
 function M.hand_over(from, to)
   if not (from and to and from.view == to.view and M.keepers[from.view]) then return end
   M.bind(from)

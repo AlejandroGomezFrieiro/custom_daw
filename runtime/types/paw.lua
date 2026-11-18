@@ -359,9 +359,9 @@ function paw.emit(name, payload) end
 ---@param fn any
 function paw.every(ms, fn) end
 
---- What a user sees of an error: one line, without the stack traceback
---- and with the place in the code (`paw/x.lua:12:`) moved to the end, where
---- it does not hide what went wrong. The whole error goes to the log.
+--- What a user sees of an error: one line, without the list of calls.
+--- The place in the code (`paw/x.lua:12:`) moves to the end, where it does
+--- not hide what went wrong. The whole error goes to the log.
 ---@param err any
 function paw.failure(err) end
 
@@ -466,8 +466,8 @@ function paw.tracks() end
 
 --- Call a function. If it fails, show the error as a message and do not
 --- raise it. Returns true and the results of the function, or false and the error.
---- The message is the error's first lines, never a stack traceback
---- (`paw.failure`); the log keeps the traceback.
+--- The message is the first lines of the error (`paw.failure`). The log
+--- keeps the list of calls.
 ---@param fn any
 function paw.try(fn, ...) end
 
@@ -2510,7 +2510,7 @@ function paw.files.buffer_name(dir, tree) end
 
 --- Set the folder for relative names, as `:cd` does: `dir` is relative to
 --- the folder now; `-` is the folder before; nil is the home folder;
---- false goes back to the default (beside the project).
+--- false returns to the default (beside the project).
 --- Returns the folder, or nil and why not.
 ---@param dir any
 function paw.files.cd(dir) end
@@ -3760,10 +3760,9 @@ function paw.keymap.selection() end
 --- Such a mapping also works in visual mode and after an operator.
 --- `linewise = true` is for a motion across rows. `jump = true` keeps the
 --- position of the cursor for `<C-o>`. With `repeatable = false`, `.` does
---- not repeat the mapping. With `nowait = true` (and for each key with
---- `role` "second+" or "second-", the `[` and `]` of a view), a key that
---- also starts longer mappings runs at once, without the wait for more
---- keys. The same key again is a second press. Another key soon after it
+--- not repeat the mapping. `nowait = true` makes a key that also starts
+--- longer mappings run at once, without the wait for more keys. Each key
+--- with `role` "second+" or "second-" (the `[` and `]` of a view) does so. The same key again is a second press. Another key soon after it
 --- that makes a longer mapping (`]g`, `]q`) takes back its change and runs
 --- that mapping.
 ---@param lhs any
@@ -4155,8 +4154,8 @@ function paw.layout.focusable_windows() end
 function paw.layout.get(id) end
 
 --- Give the state of the window `from` to the window `to` of the same
---- view, in place of its own: a view in a window of its own that goes
---- back into its pane takes what it showed there.
+--- view, in place of its own: a view in a window of its own that returns
+--- into its pane takes what it showed there.
 ---@param from any
 ---@param to any
 function paw.layout.hand_over(from, to) end
@@ -6586,8 +6585,8 @@ function paw.takes.lane_count(track) end
 ---@param track any
 function paw.takes.lanes_shown(track) end
 
---- Whether a clip's name is not its own but its takes': the name of the
---- take that plays, or of the recording ("take 1" for "take 1.2").
+--- True if the name of a clip comes from its takes: the name of the take
+--- that plays, or of the recording ("take 1" for "take 1.2").
 ---@param c any
 ---@param takes any
 function paw.takes.named_by_take(c, takes) end

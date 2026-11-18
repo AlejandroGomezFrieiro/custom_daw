@@ -170,10 +170,9 @@ end
 --- Such a mapping also works in visual mode and after an operator.
 --- `linewise = true` is for a motion across rows. `jump = true` keeps the
 --- position of the cursor for `<C-o>`. With `repeatable = false`, `.` does
---- not repeat the mapping. With `nowait = true` (and for each key with
---- `role` "second+" or "second-", the `[` and `]` of a view), a key that
---- also starts longer mappings runs at once, without the wait for more
---- keys. The same key again is a second press. Another key soon after it
+--- not repeat the mapping. `nowait = true` makes a key that also starts
+--- longer mappings run at once, without the wait for more keys. Each key
+--- with `role` "second+" or "second-" (the `[` and `]` of a view) does so. The same key again is a second press. Another key soon after it
 --- that makes a longer mapping (`]g`, `]q`) takes back its change and runs
 --- that mapping.
 function M.set(lhs, rhs, opts)

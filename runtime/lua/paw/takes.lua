@@ -90,8 +90,8 @@ local function play(id, c, entry, shift)
   end
 end
 
---- Whether a clip's name is not its own but its takes': the name of the
---- take that plays, or of the recording ("take 1" for "take 1.2").
+--- True if the name of a clip comes from its takes: the name of the take
+--- that plays, or of the recording ("take 1" for "take 1.2").
 function M.named_by_take(c, takes)
   takes = takes or M.of(c)
   local name = takes and takes.list[takes.active] and takes.list[takes.active].name

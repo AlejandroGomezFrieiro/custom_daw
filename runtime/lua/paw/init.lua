@@ -10,9 +10,9 @@ package.loaded["paw"] = paw
 paw.util = require("paw.util")
 paw.inspect = paw.util.inspect
 
---- What a user sees of an error: one line, without the stack traceback
---- and with the place in the code (`paw/x.lua:12:`) moved to the end, where
---- it does not hide what went wrong. The whole error goes to the log.
+--- What a user sees of an error: one line, without the list of calls.
+--- The place in the code (`paw/x.lua:12:`) moves to the end, where it does
+--- not hide what went wrong. The whole error goes to the log.
 function paw.failure(err)
   local text = tostring(err)
   local short = text:match("^(.-)\n*stack traceback:") or text
@@ -29,8 +29,8 @@ end
 
 --- Call a function. If it fails, show the error as a message and do not
 --- raise it. Returns true and the results of the function, or false and the error.
---- The message is the error's first lines, never a stack traceback
---- (`paw.failure`); the log keeps the traceback.
+--- The message is the first lines of the error (`paw.failure`). The log
+--- keeps the list of calls.
 function paw.try(fn, ...)
   local result = { xpcall(fn, debug.traceback, ...) }
   if not result[1] then
