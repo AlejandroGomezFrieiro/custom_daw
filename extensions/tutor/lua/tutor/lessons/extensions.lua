@@ -95,7 +95,7 @@ and macros work with them.]],
           if look.device(t, "lua:utau") then return loaded("utau") end
         end
       end,
-      done = "A vocal track. It sings once `reautau-engine` and a voicebank are installed (see extensions/utau/README.md); `,v` then adds a vocal track and asks for its singer in one go.",
+      done = "A vocal track. It sings once `paw-utau-engine` and a voicebank are installed (see extensions/utau/README.md); `,v` then adds a vocal track and asks for its singer in one go.",
     },
     {
       say = "Listen to the pattern and the tune: `gs`, `<Space>`, and `<Space>` to stop.",

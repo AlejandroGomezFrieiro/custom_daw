@@ -213,3 +213,99 @@ paw.ui.role("roley.dot", { cells = function(buf) buf:text(0, 0, "o", "Normal") e
   eq(paw.roles.registry["roley.dot"], nil, "unloading takes it away")
   eq(paw.roles.version > before, true, "and frontends are told the roles changed")
 end)
+
+local function offered(kind)
+  for _, info in ipairs(paw.device_types()) do
+    if info.kind == kind then return true end
+  end
+  return false
+end
+
+test("unloading takes away what an extension registered later, its timers, options, and devices written in Lua", function()
+  T.fresh()
+  T.after(read_errors)
+  local root = dir("later")
+  write(root .. "/devices/laterfx.lua", [[
+local dsp = require("paw.dsp")
+local dev = dsp.device { name = "Later fx", params = { { key = "gain", name = "Gain", min = -60, max = 12, default = 0 } } }
+function dev.process(b) end
+return dev
+]])
+  write(root .. "/init.lua", [[
+paw.option.define("later_size", 3, { min = 1, max = 9, integer = true })
+_G.later_ticks = 0
+paw.every(5, function() _G.later_ticks = _G.later_ticks + 1 end)
+paw.command("later.arm", function()
+  paw.command("later.made", function() return "made" end, { desc = "Made later" })
+  paw.keymap.set("<leader>Zl", "later.made", { desc = "Later" })
+  paw.on("later.ping", function() _G.later_heard = true end)
+  _G.later_timer = paw.defer(function() _G.later_fired = true end, 60000)
+end)
+]])
+  local entry = paw.ext.load(root)
+  eq(entry.ok, true, "loads: " .. tostring(entry.error))
+  eq(offered("lua:laterfx"), true, "its device is offered")
+  eq(provided("later", "device_dirs"), root .. "/devices", "and listed as its own")
+  paw.opt.later_size = 5
+  paw.wait(60)
+  eq(_G.later_ticks > 0, true, "its timer runs")
+  paw.cmd("later.arm")
+  eq(paw.commands.get("later.made") ~= nil, true, "a command made from its own command")
+  eq(provided("later", "commands"), ":later.arm :later.made", "is its own too")
+  eq(provided("later", "hooks"), "later.ping", "and the hook")
+  eq(provided("later", "timers"), "timer timer", "and both timers")
+
+  -- A device of its own on a track keeps it loaded, unless forced.
+  local t = paw.add_track({ name = "Uses it" })
+  local d = t:add_device("lua:laterfx")
+  paw.flush()
+  local ok, why = paw.ext.unload("later")
+  eq(ok, nil, "refused while a track holds its device")
+  eq(why, "lua:laterfx on Uses it: remove it first, or `:ext.unload! later` leaves it there", "and says where")
+  eq(paw.ext.loaded.later ~= nil, true, "still loaded")
+  paw.commands.exec("ext.unload! later")
+  eq(paw.ext.loaded.later, nil, "forced, it unloads")
+  eq(paw.ui.message.text, "later unloaded: what it registered is gone; lua:laterfx on Uses it left there until removed", "and says what is left")
+  eq(api.device_get(d.id).kind, "lua:laterfx", "the device stays on its track")
+  eq(offered("lua:laterfx"), false, "but is offered no more")
+
+  eq(paw.commands.get("later.made"), nil, "the command made later is gone")
+  for _, map in ipairs(paw.keymap.every()) do
+    if map.lhs == "<leader>Zl" then error("the key mapped later is still mapped") end
+  end
+  paw.emit("later.ping")
+  eq(_G.later_heard, nil, "the hook added later no longer runs")
+  eq(paw.timers[_G.later_timer], nil, "its timer waiting is cancelled")
+  local ticks = _G.later_ticks
+  paw.wait(60)
+  eq(_G.later_ticks, ticks, "the repeating one stopped")
+  eq(paw.opt.later_size, nil, "its option is gone, with the value set")
+  eq(paw.option.definitions().later_size, nil, "and its definition")
+  -- Loaded again, it starts afresh.
+  eq(paw.ext.load(root).ok, true, "loads again")
+  eq(paw.opt.later_size, 3, "with its option's default")
+  eq(offered("lua:laterfx"), true, "and its device")
+  t:remove()
+  paw.flush()
+  eq(paw.ext.unload("later"), true, "with no device on a track it unloads")
+  _G.later_ticks, _G.later_timer, _G.later_fired = nil, nil, nil
+end)
+
+test("unloading an extension that redefined a core option puts the core's definition back, and leaves the core's timers", function()
+  T.fresh()
+  write(dir("redef") .. "/init.lua", [[
+paw.option.define("lua_devices_watch", 250)
+paw.luadev.watch()
+]])
+  local before = paw.option.definitions().lua_devices_watch
+  local timers = 0
+  for _ in pairs(paw.timers) do timers = timers + 1 end
+  eq(paw.ext.load(dir("redef")).ok, true, "loads")
+  eq(paw.opt.lua_devices_watch, 250, "its default")
+  eq(paw.ext.unload("redef"), true, "unloads")
+  eq(paw.option.definitions().lua_devices_watch, before, "the core's definition is back")
+  eq(paw.opt.lua_devices_watch, before.default, "with its default")
+  local after = 0
+  for _ in pairs(paw.timers) do after = after + 1 end
+  eq(after, timers, "the core's watch, started again while it loaded, is not taken away")
+end)

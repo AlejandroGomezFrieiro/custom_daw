@@ -2,7 +2,7 @@ using System.Reflection;
 using OpenUtau.Core.Render;
 using OpenUtau.Core.Ustx;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>
 /// The few OpenUtau.Core internals the engine needs, reached by reflection (cached FieldInfo/MethodInfo; validated once at startup

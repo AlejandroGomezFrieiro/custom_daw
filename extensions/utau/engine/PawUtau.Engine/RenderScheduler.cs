@@ -3,20 +3,20 @@ using OpenUtau.Core;
 using OpenUtau.Core.Render;
 using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
-using ReaUtau.Protocol;
+using PawUtau.Protocol;
 using Log = Serilog.Log;
-using ProtoPhraseLayout = ReaUtau.Protocol.PhraseLayout;
+using ProtoPhraseLayout = PawUtau.Protocol.PhraseLayout;
 using RenderProgress = OpenUtau.Core.Render.Progress;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>
 /// Renders OpenUtau phrases one at a time and pushes them to the extension as PhraseAudio frames.
 ///
-/// Placement (docs/protocol.md section 7): a phrase's audio starts at <see cref="RenderPhrase.Layout"/>.StartMs, i.e.
+/// Placement : a phrase's audio starts at <see cref="RenderPhrase.Layout"/>.StartMs, i.e.
 /// <c>renderer.Layout(phrase).positionMs - leadingMs</c> -- the slot offset RenderEngine itself uses when mixing, so
 /// sample 0 sits before the first note by the renderer's leading pre-utterance (preutterance for classic, the model head
-/// for DiffSinger). The first sample is therefore heard exactly where REAPER plays the note.
+/// for DiffSinger). The first sample is therefore heard exactly where paw plays the note.
 ///
 /// Audio is cached per (trackId, RenderPhrase.hash). The hash is a content hash (singer, renderer, wavtool, phonemes,
 /// curves, tempo-map stamp), so an unchanged phrase is never re-rendered and survives a move in time (only startSec changes).
@@ -78,7 +78,7 @@ public sealed class RenderScheduler : IDisposable
         public UVoicePart Part = null!;
         public RenderPhrase Phrase = null!;
         public double StartSec, EndSec;
-        public byte Quality = ReaUtau.Protocol.Quality.Final;
+        public byte Quality = PawUtau.Protocol.Quality.Final;
         public ulong Seq;
         /// <summary>DiffSinger job: OpenUtau serializes DiffSinger renders behind a static lock, so at most one runs.</summary>
         public bool IsDs;
@@ -125,19 +125,19 @@ public sealed class RenderScheduler : IDisposable
         this.conn = conn;
         for (int i = 0; i < WorkerCount; i++)
         {
-            var t = new Thread(WorkerLoop) { IsBackground = true, Name = $"reautau-render-{i}" };
+            var t = new Thread(WorkerLoop) { IsBackground = true, Name = $"paw-utau-render-{i}" };
             workers.Add(t);
             t.Start();
         }
     }
 
-    /// <summary>Render workers: REAUTAU_RENDER_WORKERS, else 2..4 by core count. One may run DiffSinger, the others take
+    /// <summary>Render workers: PAW_UTAU_RENDER_WORKERS, else 2..4 by core count. One may run DiffSinger, the others take
     /// classic phrases and other tracks so they never queue behind a multi-second DiffSinger render.</summary>
     public static int WorkerCount
     {
         get
         {
-            if (int.TryParse(Environment.GetEnvironmentVariable("REAUTAU_RENDER_WORKERS"), out var n) && n > 0) return Math.Min(n, 16);
+            if (int.TryParse(Environment.GetEnvironmentVariable("PAW_UTAU_RENDER_WORKERS"), out var n) && n > 0) return Math.Min(n, 16);
             return Math.Clamp(Environment.ProcessorCount / 4, 2, 4);
         }
     }
@@ -524,7 +524,7 @@ public sealed class RenderScheduler : IDisposable
             string why = !Bootstrap.WorldlineAvailable && MissesWorldline(e) && OuInternals.RendererOf(job.Phrase).SingerType == USingerType.Classic
                 ? Bootstrap.NoResamplerMessage : e.Message;
             SendError(ErrorCode.RenderFailed, $"render failed: {why}", false, job.Seq);
-            conn.Send(new ReaUtau.Protocol.Log { Level = LogLevel.Error, Source = "render", Message = $"phrase {job.Hash:x16}: {why}" });
+            conn.Send(new PawUtau.Protocol.Log { Level = LogLevel.Error, Source = "render", Message = $"phrase {job.Hash:x16}: {why}" });
         }
         finally
         {
@@ -555,7 +555,7 @@ public sealed class RenderScheduler : IDisposable
         if (overrideSteps)
         {
             Preferences.Default.DiffSingerSteps = steps;
-            if (job.Quality == ReaUtau.Protocol.Quality.Draft) Preferences.Default.DiffSingerStepsVariance = Math.Min(oldVar, steps);
+            if (job.Quality == PawUtau.Protocol.Quality.Draft) Preferences.Default.DiffSingerStepsVariance = Math.Min(oldVar, steps);
         }
         try { return renderer.Render(phrase, progress, job.Part.trackNo, cts).GetAwaiter().GetResult(); }
         finally

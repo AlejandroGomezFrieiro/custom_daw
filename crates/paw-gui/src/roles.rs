@@ -16,7 +16,7 @@ use crate::widgets;
 
 /// The roles this window paints: it says so when it watches scenes, and
 /// is sent them without their cells.
-pub const KNOWN: &[&str] = &["label", "button", "switch", "knob", "fader", "meter", "chip", "note"];
+pub const KNOWN: &[&str] = &["label", "button", "switch", "knob", "fader", "meter", "peak", "chip", "note"];
 
 fn text(props: &Value, key: &str) -> String {
     props[key].as_str().unwrap_or("").to_string()
@@ -105,6 +105,18 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, row: f
         "note" => note(painter, rect, props, under),
         "fader" => fader(painter, rect, props, under, row),
         "meter" => meter(painter, rect, props, node.bind.as_deref(), live),
+        "peak" => {
+            // The loudest of late in a well, which turns red with the clip
+            // light.
+            let (hold, clipped) = held(props, node.bind.as_deref(), live);
+            let db = 20.0 * hold.max(1e-6).log10();
+            let said = crate::model::decibels(db);
+            let well = rect.shrink2(vec2(0.0, 1.0));
+            painter.rect_filled(well, CornerRadius::same(2), if clipped { alpha(t.meter_clip, 0.25) } else if under { t.control_hover } else { t.well });
+            let colour = if clipped { t.meter_clip } else if db > -0.1 { t.meter_hot } else { t.text_2 };
+            let size = (rect.height() * 0.7).clamp(8.0, T_SMALL + 1.0);
+            painter.text(well.right_center() - vec2(3.0, 0.0), Align2::RIGHT_CENTER, said, mono_medium(size), colour);
+        }
         "chip" => {
             let colour = props["color"].as_str().and_then(hex).unwrap_or(t.control);
             painter.rect_filled(rect, CornerRadius::ZERO, colour);
@@ -178,12 +190,27 @@ fn fader(painter: &Painter, rect: Rect, props: &Value, under: bool, row: f32) {
     painter.hline((cap.left() + 2.0)..=(cap.right() - 2.0), y, Stroke::new(1.0, t.surface));
 }
 
+/// The track a node is bound to the meter of (`meter:<id>`).
+fn bound_track(bind: Option<&str>) -> Option<&str> {
+    bind.and_then(|b| b.strip_prefix("meter:"))
+}
+
+/// The loudest of late and whether the clip light is lit: the live values
+/// when the node is bound to a track's meter, else those it was drawn with.
+fn held(props: &Value, bind: Option<&str>, live: &Value) -> (f32, bool) {
+    match bound_track(bind) {
+        Some(track) => (live["peaks"][track].as_f64().unwrap_or(0.0) as f32, live["clips"][track] == true),
+        None => (number(props, "hold"), props["clipped"] == true),
+    }
+}
+
 /// Level meters, a column each, lit from the bottom in the meter colours
-/// by where they reach, with the loudest of late a line: the live levels
-/// when the meter is bound to a track's, else those it was drawn with.
+/// by where they reach, with the loudest of late a line and the clip light
+/// on top: the live values when the meter is bound to a track's, else
+/// those it was drawn with.
 fn meter(painter: &Painter, rect: Rect, props: &Value, bind: Option<&str>, live: &Value) {
     let t = th();
-    let bound = bind.and_then(|b| b.strip_prefix("meter:")).map(|track| &live["meters"][track]).filter(|v| v.is_array());
+    let bound = bound_track(bind).map(|track| &live["meters"][track]).filter(|v| v.is_array());
     let levels = bound.unwrap_or(&props["levels"]);
     let mut levels: Vec<f32> = levels.as_array().map(|l| l.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect()).unwrap_or_default();
     if levels.is_empty() {
@@ -193,7 +220,11 @@ fn meter(painter: &Painter, rect: Rect, props: &Value, bind: Option<&str>, live:
     let n = levels.len().max(1) as f32;
     let gap = 1.0;
     let w = ((rect.width() - gap * (n - 1.0)) / n).max(1.0);
-    let hold = number(props, "hold");
+    let (hold, clipped) = held(props, bind, live);
+    // The clip light across the top, over a few points of its own.
+    let light = Rect::from_min_size(rect.min, vec2(rect.width(), 4.0));
+    painter.rect_filled(light, CornerRadius::same(1), if clipped { t.meter_clip } else { t.meter_well });
+    let rect = Rect::from_min_max(pos2(rect.left(), light.bottom() + 2.0), rect.max);
     for (i, peak) in levels.iter().enumerate() {
         let column = Rect::from_min_size(pos2(rect.left() + i as f32 * (w + gap), rect.top()), vec2(w, rect.height()));
         painter.rect_filled(column, CornerRadius::ZERO, t.meter_well);
@@ -209,9 +240,6 @@ fn meter(painter: &Painter, rect: Rect, props: &Value, bind: Option<&str>, live:
             if to <= top {
                 break;
             }
-        }
-        if *peak >= 1.0 {
-            painter.rect_filled(Rect::from_min_size(column.min, vec2(w, 3.0)), CornerRadius::ZERO, t.meter_clip);
         }
         if hold > 1e-5 {
             let y = column.bottom() - column.height() * level(hold);

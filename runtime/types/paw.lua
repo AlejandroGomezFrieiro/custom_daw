@@ -312,7 +312,9 @@ function paw.bounce(track, opts) end
 ---@param def any
 function paw.buftype(name, def) end
 
-paw.cancel = paw.api.timer_stop
+--- Stop a timer: `handle` is what `paw.defer` or `paw.every` returned.
+---@param handle any
+function paw.cancel(handle) end
 
 --- The clip of an id, as a `paw.Clip`.
 ---@param id any
@@ -1338,8 +1340,8 @@ function paw.commands.list() end
 ---@param name any
 function paw.commands.main(name) end
 
---- The extension being loaded, whose commands and keys these are: what
---- `:help` takes them to.
+--- The extension being loaded, or whose code registers these commands and
+--- keys later: what `:help` takes them to, and what unloading takes away.
 function paw.commands.owner() end
 
 --- Split a command line into a name and arguments:
@@ -2003,6 +2005,10 @@ function paw.draw.braille(bits) end
 ---@param gap any
 function paw.draw.chips(buf, x, y, list, gap) end
 
+--- Put out a track's clip light and let its loudest of late fall.
+---@param id any
+function paw.draw.clear_peak(id) end
+
 --- Draw a curve as a thin line over `rows` rows of a buffer, from row `y`
 --- down: `value(i)` gives the height, from 0 at the bottom to 1 at the top,
 --- at the `i`th of two points per column. Only the cells the line passes
@@ -2187,6 +2193,12 @@ function paw.draw.track_colour(track, index) end
 ---@param index any
 function paw.draw.track_hue(track, index) end
 
+--- A track's meter as the mixer shows it, in a terminal and in a window
+--- (`scene.live`): both sides, the loudest of late and whether it has
+--- reached full scale since `clear_peak` was last called for it.
+---@param id any
+function paw.draw.track_peak(id) end
+
 --- Whether the terminal shows 24-bit colour: `paw.opt.termcolors` "true" or
 --- "256", or with "auto" (the default) what the environment says: COLORTERM
 --- of truecolor or 24bit, or a TERM that ends in -direct.
@@ -2368,6 +2380,10 @@ function paw.ext.bundled() end
 --- source tree. Nil when neither is there.
 function paw.ext.bundled_dir() end
 
+--- The loaded extension whose code called the function this is called
+--- from, or nil for the core's or the user's.
+function paw.ext.caller() end
+
 --- Loaded extensions, sorted by name.
 function paw.ext.list() end
 
@@ -2417,13 +2433,22 @@ function paw.ext.provides(name) end
 ---@param want any
 function paw.ext.satisfies(version, want) end
 
---- Take an extension away: everything it registered while it loaded is
---- removed, and what it replaced put back (a command or key of the core it
---- remapped). Its modules are forgotten, so loading it again runs them
---- afresh. Options it defined keep their defaults; devices it ships stay
---- among the devices for the session. Returns true, or nil and why not.
+--- Take an extension away: everything it registered is removed (while it
+--- loaded, and later from its handlers and timers), and what it replaced
+--- put back (a command or key of the core it remapped). Its options go
+--- with their values, its timers stop, and the devices written in Lua and
+--- plugin directories it added are no longer offered. Its modules are
+--- forgotten, so loading it again runs them afresh.
+--- 
+--- While a track holds one of its devices it is not unloaded (as Neovim
+--- will not delete a buffer with changes), unless `opts.force`: the
+--- devices then stay where they are, playing, until removed, and are
+--- missing when the project is opened again without the extension.
+--- Returns true (or, forced, what was left on tracks, in words), or nil and
+--- why not.
 ---@param name any
-function paw.ext.unload(name) end
+---@param opts any
+function paw.ext.unload(name, opts) end
 
 --- The name of the buffer that lists a folder, as a tree or not.
 ---@param dir any
@@ -4501,6 +4526,16 @@ function paw.luadev.add_dir(dir, rank) end
 --- Returns what `paw.api.lua_devices_rescan` found.
 function paw.luadev.check() end
 
+--- The kinds of the scripts found in `dir`.
+---@param dir any
+function paw.luadev.kinds_in(dir) end
+
+--- Look in `dir` no more: its scripts' devices are no longer offered (one
+--- of the same name elsewhere takes their place); those made go on.
+--- Returns the kinds of the scripts that were there.
+---@param dir any
+function paw.luadev.remove_dir(dir) end
+
 --- Look at the scripts' files every `paw.opt.lua_devices_watch` ms (0 for
 --- never). Started by itself once a directory is added.
 function paw.luadev.watch() end
@@ -4852,6 +4887,10 @@ function paw.option.check(name, value) end
 ---@param spec any
 function paw.option.define(name, default, spec) end
 
+--- Each option given a default by `paw.option.define`, by name: what it
+--- was given, `{ default, spec }`, the same table until defined again.
+function paw.option.definitions() end
+
 --- Every option that has a default, by name: { name, default }.
 function paw.option.list() end
 
@@ -4861,6 +4900,14 @@ function paw.option.list() end
 ---@param name any
 ---@param text any
 function paw.option.read(name, text) end
+
+--- Take an option's definition away, and the value set for it (an
+--- extension that defined it was unloaded): `paw.opt[name]` is nil again.
+--- With `was`, what `paw.option.definitions` gave before, that comes back
+--- instead, and the value stays.
+---@param name any
+---@param was any
+function paw.option.undefine(name, was) end
 
 --- The main area's size in pixels, from the frontend: once at the start
 --- and whenever it changes. The first time a seat's window says it, the
@@ -5133,6 +5180,11 @@ function paw.plugins.key_names(track) end
 --- the rest. Asked again after `M.names_ttl`.
 ---@param device any
 function paw.plugins.note_names(device) end
+
+--- Look in `dir` no more, and offer the devices found there no more;
+--- those made go on.
+---@param dir any
+function paw.plugins.remove_dir(dir) end
 
 --- Run a command line on each entry of a stack's current list (`:cdo`),
 --- the cursor put on the entry first and its address passed as
@@ -5718,6 +5770,14 @@ function paw.routes.spread(device) end
 --- A connection closed or stopped watching: nothing more is kept for it.
 ---@param client any
 function paw.scene.closed(client) end
+
+--- The values a frontend moves bound nodes by (see crates/paw-scene's
+--- `bind`): the playhead, the clock, the engine's load, and each track's
+--- meter, its loudest of late, its clip light and its input, by track id;
+--- rounded to what a frontend can show, so that an idle program has
+--- nothing new to say (the load as `paw.audio.load` gives it, as
+--- `frontend.watch` sends it). Each call gives them as they are then.
+function paw.scene.live() end
 
 --- After a turn of the kernel: the windows whose drawing may have changed
 --- are pushed now, not at the next tick.
@@ -7531,6 +7591,9 @@ paw.api.lua_devices = nil
 paw.api.lua_devices_add = nil
 
 ---@type fun(...): any
+paw.api.lua_devices_remove = nil
+
+---@type fun(...): any
 paw.api.lua_devices_rescan = nil
 
 ---@type fun(...): any
@@ -7649,6 +7712,13 @@ function paw.api.now() end
 --- where plugins cannot be looked for.
 ---@param dir string
 function paw.api.plugins_add_dir(dir) end
+
+--- Look in a directory added with `plugins_add_dir` no more, and make
+--- no more devices of `kinds`, those found there; devices already made
+--- go on.
+---@param dir string
+---@param kinds string[]
+function paw.api.plugins_remove_dir(dir, kinds) end
 
 --- Look into plugin files again (all, or those `name` matches),
 --- including ones passed over because they failed before. Returns

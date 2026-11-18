@@ -1,8 +1,8 @@
-// ReaUtau engine <-> extension wire protocol message types. Mirror of native/common/protocol.h; field order == [Key] order ==
-// msgpack array order. See docs/protocol.md. Every body is a msgpack ARRAY; minor versions append fields at the end.
+// The engine <-> extension wire protocol message types (lua/utau/proto.lua is the other side); field order == [Key] order ==
+// msgpack array order. Every body is a msgpack ARRAY; minor versions append fields at the end.
 using MessagePack;
 
-namespace ReaUtau.Protocol;
+namespace PawUtau.Protocol;
 
 public static class Proto
 {
@@ -75,7 +75,7 @@ public interface IMessage { byte Type { get; } }
     [Key(0)] public string PartId = ""; [Key(1)] public string TrackId = ""; [Key(2)] public long PosTick; [Key(3)] public long DurTick;
     [Key(4)] public string Name = ""; [Key(5)] public bool Muted;
 }
-/// <summary>Payload = the type-15 NotePayload msgpack (<see cref="NotePayload"/>), carried verbatim.</summary>
+/// <summary>Payload = the NotePayload msgpack (<see cref="NotePayload"/>), carried verbatim.</summary>
 [MessagePackObject] public sealed class NoteMsg
 {
     [Key(0)] public uint Id; [Key(1)] public int PosTick; [Key(2)] public int DurTick; [Key(3)] public int Tone = 60;
@@ -102,7 +102,7 @@ public interface IMessage { byte Type { get; } }
 [MessagePackObject] public sealed class Hello : IMessage
 {
     [IgnoreMember] public byte Type => MsgType.Hello;
-    [Key(0)] public uint ProtocolVersion = Proto.Version; [Key(1)] public byte Role = ReaUtau.Protocol.Role.Extension;
+    [Key(0)] public uint ProtocolVersion = Proto.Version; [Key(1)] public byte Role = PawUtau.Protocol.Role.Extension;
     [Key(2)] public string Version = ""; [Key(3)] public string OpenUtauVersion = ""; [Key(4)] public uint Pid;
     [Key(5)] public string[] Capabilities = Array.Empty<string>();
 }
@@ -189,8 +189,8 @@ public interface IMessage { byte Type { get; } }
 {
     [IgnoreMember] public byte Type => MsgType.PhraseAudio;
     [Key(0)] public string TrackId = ""; [Key(1)] public ulong PhraseHash; [Key(2)] public double StartSec;
-    [Key(3)] public uint SampleRate = 44100; [Key(4)] public byte Channels = 1; [Key(5)] public byte Quality = ReaUtau.Protocol.Quality.Final;
-    [Key(6)] public uint Frames; [Key(7)] public ulong Seq; [Key(8)] public byte Purpose = ReaUtau.Protocol.Purpose.Phrase;
+    [Key(3)] public uint SampleRate = 44100; [Key(4)] public byte Channels = 1; [Key(5)] public byte Quality = PawUtau.Protocol.Quality.Final;
+    [Key(6)] public uint Frames; [Key(7)] public ulong Seq; [Key(8)] public byte Purpose = PawUtau.Protocol.Purpose.Phrase;
 }
 [MessagePackObject] public sealed class PhraseState
 {

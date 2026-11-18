@@ -4,14 +4,15 @@
 --
 -- To make it yours, link this directory as the configuration directory:
 --
---   ln -s /home/alejandro/custom_daw/config ~/.config/paw
+--   ln -s /path/to/paw/config ~/.config/paw
 --
--- or try it for one run with `paw --config /home/alejandro/custom_daw/config`
+-- or try it for one run with `paw --config /path/to/paw/config`
 -- (`paw-gui` takes the same option).
 
 -- Where the bundled plugins are: the `extensions` directory beside this one,
 -- or wherever $PAW_HOME says the source tree is.
-local home = os.getenv("PAW_HOME") or "/home/alejandro/custom_daw"
+local here = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or "."
+local home = os.getenv("PAW_HOME") or (here .. "/..")
 local plugins = home .. "/extensions"
 
 -- The plugins. Take a line out, or put `--` before it, to leave one out;

@@ -1,9 +1,9 @@
 using OpenUtau.Core.Render;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>
-/// Unison / doubling (P4.2, SynthV 2's "Unison", called "Doubling" in its beta): one track sings with up to 16 voices.
+/// Unison / doubling (SynthV 2's "Unison", called "Doubling" in its beta): one track sings with up to 16 voices.
 /// Track options: <c>unison</c> = voice count (1 = off), <c>unison_spacing</c> = stereo spread 0..100 %,
 /// <c>unison_pitch</c> = detune spread in cents, <c>unison_timing</c> = timing spread in ms, <c>unison_level</c> = level
 /// of the doubles in dB relative to the lead.

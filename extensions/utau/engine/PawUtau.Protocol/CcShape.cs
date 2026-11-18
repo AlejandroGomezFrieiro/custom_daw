@@ -1,7 +1,7 @@
-// C# port of shared/native/reaper-midi/cc_shape.{h,cpp}: exact evaluator for REAPER MIDI CC shapes (docs/curve-storage.md).
+// Exact evaluator for the shapes of curve points (square, linear, slow start/end, fast start, fast end, bezier).
 // A segment between consecutive points i, i+1 uses the shape/tension stored on point i; shapes are functions of the
 // PPQ (here: tick) position. Bezier segments depend on the neighbouring points, so evaluate over the whole list.
-namespace ReaUtau.Protocol;
+namespace PawUtau.Protocol;
 
 public static class CcShapeId { public const int Square = 0, Linear = 1, SlowStartEnd = 2, FastStart = 3, FastEnd = 4, Bezier = 5; }
 
@@ -202,7 +202,7 @@ public static class CcShape
     }
 }
 
-/// <summary>Mapping REAPER raw 14-bit curve values to OpenUtau units (mirror of curve_map.{h,cpp}).</summary>
+/// <summary>Mapping raw 14-bit curve values to OpenUtau units.</summary>
 public sealed record CurveDef(string Abbr, int CcMsb, double Min, double Max, double Default, int PbChan = 0)
 {
     public static readonly CurveDef[] All =
@@ -210,13 +210,13 @@ public sealed record CurveDef(string Abbr, int CcMsb, double Min, double Max, do
         new("pitd", -1, -1200, 1200, 0), new("dyn", 16, -240, 120, 0), new("tenc", 17, -100, 100, 0), new("brec", 18, -100, 100, 0),
         new("genc", 19, -100, 100, 0), new("voic", 20, 0, 100, 100), new("shfc", 21, -1200, 1200, 0), new("grwc", 22, 0, 100, 0),
         new("xsy", 23, 0, 100, 0),
-        // renderer-specific curves on pitchbend lanes, MIDI channels 2..16 (native/common/curve_map.h)
+        // renderer-specific curves on pitchbend lanes, MIDI channels 2..16
         new("velc", -1, 0, 200, 100, 1), new("ene", -1, -100, 100, 0, 2), new("pexp", -1, 0, 100, 100, 3),
         new("volc", -1, 0, 200, 100, 4), new("smoc", -1, 0, 10, 0, 5),
         new("cl01", -1, 0, 100, 0, 6), new("cl02", -1, 0, 100, 0, 7), new("cl03", -1, 0, 100, 0, 8), new("cl04", -1, 0, 100, 0, 9),
         new("cl05", -1, 0, 100, 0, 10), new("cl06", -1, 0, 100, 0, 11), new("cl07", -1, 0, 100, 0, 12), new("cl08", -1, 0, 100, 0, 13),
         new("cl09", -1, 0, 100, 0, 14), new("cl10", -1, 0, 100, 0, 15),
-        // macro lanes (P4.3): custom input curves of a track's expression graph, CC 24..31
+        // macro lanes: custom input curves of a track's expression graph, CC 24..31
         new("mc1", 24, 0, 100, 0), new("mc2", 25, 0, 100, 0), new("mc3", 26, 0, 100, 0), new("mc4", 27, 0, 100, 0),
         new("mc5", 28, 0, 100, 0), new("mc6", 29, 0, 100, 0), new("mc7", 30, 0, 100, 0), new("mc8", 31, 0, 100, 0),
     };

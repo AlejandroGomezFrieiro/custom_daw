@@ -2,12 +2,12 @@ using OpenUtau.Api;
 using OpenUtau.Core;
 using OpenUtau.Core.Render;
 using OpenUtau.Core.Ustx;
-using ReaUtau.Protocol;
+using PawUtau.Protocol;
 using Log = Serilog.Log;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
-/// <summary>Builds the three unsolicited registries from OpenUtau's own sources (docs/protocol.md section 7.3).</summary>
+/// <summary>Builds the three unsolicited registries from OpenUtau's own sources.</summary>
 static class Lists
 {
     static readonly string[] RendererIds =

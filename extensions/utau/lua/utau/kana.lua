@@ -1,6 +1,6 @@
 -- Romaji <-> hiragana conversion for lyric batch edits (Hepburn plus the
--- common kunrei/wapuro spellings), ported from ReaUtau's kana module to
--- LuaJIT, which has no `utf8` library. Text that is not entirely convertible
+-- common kunrei/wapuro spellings), in LuaJIT, which has no
+-- `utf8` library. Text that is not entirely convertible
 -- is left alone, so mixed lyrics ("R", "+", "a ka", English) are never
 -- half-converted.
 local K = {}

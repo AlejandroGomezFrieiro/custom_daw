@@ -1,8 +1,8 @@
 -- Per-note singing data: where it lives in the project, and the payload the
--- engine reads (ReaUtau's docs/storage-format.md, section 6).
+-- engine reads (`NotePayload` in engine/PawUtau.Protocol).
 --
--- A note's lyric is `note.meta.lyric`. Everything else ReaUtau keeps per note
--- is in `note.meta.utau`, in the shape `reautau-engine --convert` writes, so
+-- A note's lyric is `note.meta.lyric`. Everything else the engine reads per note
+-- is in `note.meta.utau`, in the shape `paw-utau-engine --convert` writes, so
 -- an imported project is stored as it comes:
 --
 --   tu = 20                                      tuning, cents
@@ -22,7 +22,7 @@ function M.lyric(note, default)
   return lyric
 end
 
---- The ReaUtau properties of a note, or an empty table.
+--- The utau properties of a note, or an empty table.
 function M.props(note)
   return note.meta and type(note.meta.utau) == "table" and note.meta.utau or {}
 end

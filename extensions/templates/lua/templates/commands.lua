@@ -7,6 +7,13 @@ local function clean(err)
   return (tostring(err):gsub("^[^:]*:%d+: ", ""):match("^[^\n]*"))
 end
 
+--- A path as it is said: under the home directory, from `~`.
+local function shown(path)
+  local home = os.getenv("HOME")
+  if home and home ~= "" and home ~= "/" and path:sub(1, #home + 1) == home .. "/" then return "~" .. path:sub(#home + 1) end
+  return path
+end
+
 --- Ask for a name, starting from one, and call `done` with it.
 local function named(given, start, done)
   if given and given ~= "" then return done(given) end
@@ -25,7 +32,7 @@ local function saving(kind, name, save, said)
   local function go()
     local done, path = pcall(save, name)
     if not done then return paw.notify(clean(path), "error") end
-    paw.notify(said(kept, path) .. (kept ~= name and " (a file name cannot hold some of the characters)" or ""))
+    paw.notify(said(kept, shown(path)) .. (kept ~= name and " (a file name cannot hold some of the characters)" or ""))
   end
   local file = io.open(templates.path(kind, name), "r")
   if not file then return go() end
@@ -118,7 +125,7 @@ end, {
 
 command("templates", function()
   local items = templates.list()
-  if #items == 0 then return paw.notify("no templates yet, in " .. templates.dir()) end
+  if #items == 0 then return paw.notify("no templates yet, in " .. shown(templates.dir())) end
   local lines = {}
   for i, item in ipairs(items) do lines[i] = string.format("%-16s %s", item.title, item.name) end
   paw.notify(table.concat(lines, "\n"))

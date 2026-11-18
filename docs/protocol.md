@@ -240,9 +240,11 @@ shows, such as `{"role": "fader", "props": {"at": 0.81, "zero": 0.79,
 "value": -2}}`. Its kids are its cells, which a frontend that does not
 know the role draws; a frontend that said it paints the role is sent it
 without them. The widget roles (`label`, `button`, `switch`, `knob`,
-`fader`, `meter`, `chip`) are the core's; an extension may add more. A
-node with `bind` (`"meter:4"`) is moved by the live values below, and its
-props that those give (a meter's `levels`) are left out. A node with `hit`
+`fader`, `meter`, `peak`, `chip`) are the core's; an extension may add
+more. A node with `bind` (`"meter:4"`) is moved by the live values below,
+and its props that those give (a meter's `levels`, `hold` and `clipped`,
+a peak's `hold` and `clipped`) are left out, so that a view playing sends
+no new scene for them. A node with `hit`
 is a hit region: a press, a move or the wheel there means what the view
 says it does (`hit.kind` and the rest, its action).
 
@@ -281,10 +283,13 @@ values a frontend moves things by without a new scene:
 
 ```json
 {"event": "scene.live", "payload": {"position": 12.5, "playing": true, "recording": false,
-  "clock": "0:07.0", "cpu": 0.075, "meters": {"4": [0.31, 0.3], "0": [0.4, 0.38]}, "inputs": {"4": 0}}}
+  "clock": "0:07.0", "cpu": 0.075, "meters": {"4": [0.31, 0.3], "0": [0.4, 0.38]},
+  "peaks": {"4": 0.5, "0": 0.6}, "clips": {"4": true}, "inputs": {"4": 0}}}
 ```
 
-`meters` are each track's sides by its id, the master's as `"0"`.
+`meters` are each track's sides by its id, the master's as `"0"`; `peaks`
+the loudest of late of each, and `clips` the tracks whose clip light is
+lit (a click on the peak puts it out, as `paw.draw.clear_peak` does).
 
 ## A terminal somewhere else
 

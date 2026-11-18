@@ -1,6 +1,6 @@
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
-/// <summary>Command line: reautau-engine --socket &lt;path&gt; [--data-dir ..] [--cache-dir ..] [--log-level ..]</summary>
+/// <summary>Command line: paw-utau-engine --socket &lt;path&gt; [--data-dir ..] [--cache-dir ..] [--log-level ..]</summary>
 public sealed class Options
 {
     public string SocketPath = "";
@@ -11,7 +11,7 @@ public sealed class Options
     public string WorldlineLib = "";
     public string ConvertPath = "";   // --convert: one-shot project import (no socket)
     public string OutPath = "";
-    public string ExportPath = "";    // --export: one-shot .ustx writer from a REAPER-side JSON description
+    public string ExportPath = "";    // --export: one-shot .ustx writer from the extension's JSON description
     public string InstallPath = "";   // --install: one-shot singer / dependency installer (archive, .vogeon, .oudep)
     public string SingerType = "";    // --singer-type: classic | diffsinger | enunu | ... (default: detected)
     public string ArchiveEncoding = ""; // --archive-encoding: file name encoding of the archive (default: detected)
@@ -43,7 +43,7 @@ public sealed class Options
                 case "--text-encoding": o.TextEncoding = Next(); break;
                 case "--install-to": o.InstallTo = Next(); break;
                 case "-h": case "--help":
-                    Console.Error.WriteLine("usage: reautau-engine --socket <path> | --convert <project file> --out <file.lua> | --export <json> --out <file.ustx|.ust|.mid> | --install <archive|.vogeon|.oudep> [--singer-type t] [--archive-encoding e] [--text-encoding e]  [--data-dir <dir>] [--cache-dir <dir>] [--openutau-dir <dir>] [--log-level trace|debug|info|warn|error]");
+                    Console.Error.WriteLine("usage: paw-utau-engine --socket <path> | --convert <project file> --out <file.lua> | --export <json> --out <file.ustx|.ust|.mid> | --install <archive|.vogeon|.oudep> [--singer-type t] [--archive-encoding e] [--text-encoding e]  [--data-dir <dir>] [--cache-dir <dir>] [--openutau-dir <dir>] [--log-level trace|debug|info|warn|error]");
                     Environment.Exit(0); break;
                 default: throw new ArgumentException($"unknown argument {a}");
             }
@@ -54,14 +54,14 @@ public sealed class Options
         string xdgData = Environment.GetEnvironmentVariable("XDG_DATA_HOME") is { Length: > 0 } d ? d : Path.Combine(home, ".local", "share");
         string xdgCache = Environment.GetEnvironmentVariable("XDG_CACHE_HOME") is { Length: > 0 } c ? c : Path.Combine(home, ".cache");
         // one-shot modes get their own data dir: bootstrap rebuilds the tool folders, which must not happen under a running daemon
-        if (o.DataDir.Length == 0) o.DataDir = Path.Combine(xdgData, "ReaUtau", o.OneShot ? "openutau-data-tool" : "openutau-data");
-        if (o.CacheDir.Length == 0) o.CacheDir = Path.Combine(xdgCache, "ReaUtau");
+        if (o.DataDir.Length == 0) o.DataDir = Path.Combine(xdgData, "paw", "utau", o.OneShot ? "openutau-data-tool" : "openutau-data");
+        if (o.CacheDir.Length == 0) o.CacheDir = Path.Combine(xdgCache, "paw", "utau");
         if (o.OpenUtauDir.Length == 0) o.OpenUtauDir = Path.Combine(xdgData, "OpenUtau");
         // an explicit install target beats wrapper scripts that append their own --openutau-dir / --data-dir
         if (o.InstallTo.Length > 0)
         {
             o.OpenUtauDir = Path.GetFullPath(o.InstallTo);
-            o.DataDir = Path.Combine(o.OpenUtauDir, ".reautau-data");
+            o.DataDir = Path.Combine(o.OpenUtauDir, ".paw-utau-data");
         }
         return o;
     }

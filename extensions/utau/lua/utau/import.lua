@@ -1,6 +1,6 @@
 -- Importing OpenUtau (.ustx), UTAU (.ust) and other singing projects.
 --
--- OpenUtau's own readers do the parsing: `reautau-engine --convert` loads
+-- OpenUtau's own readers do the parsing: `paw-utau-engine --convert` loads
 -- the file and writes it out as a Lua table, which becomes vocal tracks here.
 local api = paw.api
 local engine = require("utau.engine")
@@ -8,13 +8,13 @@ local utau = require("utau")
 
 local M = {}
 
---- What `reautau-engine --convert` makes of a file, as a table.
+--- What `paw-utau-engine --convert` makes of a file, as a table.
 function M.read(path)
   local out = engine.tmp(".lua")
   local code, log = engine.tool({ "--convert", path, "--out", out }, 120)
   local chunk = code == 0 and loadfile(out)
   os.remove(out)
-  if not chunk then error("could not read " .. path .. ": " .. (log:match("reautau%-engine: ([^\n]+)") or "see the engine's output"), 0) end
+  if not chunk then error("could not read " .. path .. ": " .. (log:match("paw%-utau%-engine: ([^\n]+)") or "see the engine's output"), 0) end
   return setfenv(chunk, {})()
 end
 

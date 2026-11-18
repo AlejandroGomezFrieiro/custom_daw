@@ -1,6 +1,6 @@
-using ReaUtau.Protocol;
+using PawUtau.Protocol;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 public static class Program
 {
@@ -8,7 +8,7 @@ public static class Program
     {
         Options opts;
         try { opts = Options.Parse(args); }
-        catch (ArgumentException e) { Console.Error.WriteLine("reautau-engine: " + e.Message); return 2; }
+        catch (ArgumentException e) { Console.Error.WriteLine("paw-utau-engine: " + e.Message); return 2; }
         try
         {
             if (opts.ConvertPath.Length > 0) return Convert.Run(opts);
@@ -18,7 +18,7 @@ public static class Program
         }
         catch (Exception e)
         {
-            Console.Error.WriteLine("reautau-engine: fatal: " + e);
+            Console.Error.WriteLine("paw-utau-engine: fatal: " + e);
             return 1;
         }
     }

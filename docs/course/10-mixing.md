@@ -10,7 +10,7 @@ The mixer shows a strip per track; the same changes can be made from the arrange
 
 ## The idea
 
-In the mixer tracks run across, so `h` `l` choose a strip and `j` `k` a row of it (its devices, sends, fader, pan, mute, solo, arm). `+` `-` change the row under the cursor, by 1 dB on the fader, `]` `[` pan, `M` `s` `r` mute, solo, arm. In the arrange view the same are `+` `-`, `]` `[`, `M` `s` `r`. Routing is done by command: `:track.output Bus` sends the track into the track called Bus, `:track.output` alone back to the master. `A` adds a volume automation point at the cursor, `,at` switches the automation off and on, `,ax` clears it.
+In the mixer tracks run across, so `h` `l` choose a strip and `j` `k` a row of it (its devices, sends, fader, pan, mute, solo, arm). `+` `-` change the row under the cursor, by 1 dB on the fader, `]` `[` pan, `M` `s` `r` mute, solo, arm. In the arrange view the same are `+` `-`, `]` `[`, `M` `s` `r`. Routing is done by command: `:track.output Bus` sends the track into the track called Bus, `:track.output master` back to the master; alone it offers the tracks to choose from. `A` adds a volume automation point at the cursor, `,at` switches the automation off and on, `,ax` clears it.
 
 ## If you know Vim
 

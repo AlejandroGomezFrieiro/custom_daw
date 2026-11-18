@@ -248,11 +248,11 @@
   stays where it was and a ghost in cells shows where it goes, as in the
   terminal.
 - The window's mixer is the terminal's, laid out in cells: its switches
-  are a cell wide, and it lost what only the window's own mixer had: the
-  row naming where a track plays into, a fourth device, the clip light and
-  the peak held that a click cleared. The theme's accent still differs
-  between the terminal (amber focus) and the window (blue selection): the
-  owner's decision.
+  are a cell wide, and its devices have rows of their own only when it is
+  at least twenty rows tall (in the window's usual height they fold into
+  one row that counts them). The theme's accent still differs between the
+  terminal (amber focus) and the window (blue selection): the owner's
+  decision.
 - The drum grid is one view for both frontends, in cells: in a window a
   step is three cells wide whatever the clip's length, the wheel does not
   zoom the steps or scroll them sideways (the grid follows the cursor), and
@@ -408,10 +408,11 @@
   where the system keeps them.
 - Packaged extensions (`paw.withExtensions`) are loaded at startup and
   cannot be left out for one run other than by running the plain program.
-- Unloading an extension (`paw.ext.unload`) takes away what it registered
-  while it loaded, not what it registers later (in a handler, a timer), nor
-  its timers; options it defined keep their defaults, and the Lua devices and
-  plugins it ships stay among the devices for the session. Requirements name
+- Unloading an extension (`paw.ext.unload`) takes away what it registers
+  later only when a function of its files is in it or its code made it
+  there: a key mapped later to a command's name from a module of the
+  core it called is not its own; its timers started with `paw.api.timer_start`
+  rather than `paw.every` or `paw.defer` are not stopped. Requirements name
   extensions and the API's version, not versions of the program or of
   plugins. `:checkhealth` has no check of MIDI ports' latency or of the
   frontends attached, and the window does not show it in a view of its own

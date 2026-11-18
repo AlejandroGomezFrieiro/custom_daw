@@ -330,7 +330,12 @@ selected, `.` again. `grv` `grp` type the strip's volume and pan. The scale left
 first strip is the fader's, and true for every strip, whatever it holds above its fader (`+6` to `-48`, on the rows its cap takes: the
 fader spends most of its travel on the top twenty decibels); the meters beside
 the fader are linear from -60 to 0 and have the loudest of late in numbers
-under them. VCAs (see
+under them; their top row is the clip light, red once a level reached full
+scale until it is clicked (or the peak is) or the transport starts again.
+With room, the row under a strip's name says where the track plays into
+(`→ Master`, `→ Drum bus`; a click there or `:track.output` chooses), and four rows
+name its first devices, the last counting those after (`+2 more`); with
+less, one row counts the devices and sends. VCAs (see
 [Mixing](mixing.md)) have strips after the tracks: `,vn` makes one over the
 selected tracks, `,va` puts them under one, `,vr` takes them out, `,vx` takes
 one away, and `,vl` links the faders of a group.
@@ -630,7 +635,7 @@ Every terminal attached with `paw attach` has tabs and windows of its own.
 **Narrowed tabs.** A tab can be narrowed to a group (`:narrow Strings`,
 `zn`): it starts with the windows of the tab it came from, and everything in
 it (the arrange view, the mixer, the device panel, the session view,
-`paw://tracks`, the pickers, the motions and the Ex ranges) sees only that
+`paw://tracks`, the pickers, `:query`, the motions and the Ex ranges) sees only that
 group's tracks; `:widen` (`zw`) closes it and goes back. The status line says
 `narrowed Strings`. Each tab has its own, so `gt` goes from the whole song to
 the strings and on to the brass. `paw://tracks` in a narrowed tab lists the
@@ -826,7 +831,7 @@ says on the status line what it is and what a click there does.
 | Take lanes | drag across lane k: take k plays there (see Comping with the mouse, above); click a piece to give it take k; click the label for the whole track; right click hides them |
 | Piano roll | as REAPER's: press on empty grid where a note should start and drag as far as it should last (a click gives the roll's note length, which a drawn length becomes); click a note to choose it, Shift or Ctrl to add it or take it out; drag a note to move it and the chosen with it (Ctrl copies, Shift off the grid); drag its first or last cell to move where they start or stop; the right button dragged, or the left with Ctrl, chooses the notes in its box; right click removes a note (Ctrl and a right click offers the fixes the diagnostics have for it), on empty grid opens a menu (choose all, let go, delete, quantize, snap); double click removes a note; Alt and a drag erases every note crossed. With several clips edited, a note is chosen and moved in its own clip, a new one goes into the clip where it is drawn, and Ctrl and a click on another track's note shown behind edits its clip too (or no longer). The keyboard sounds a key under a click or a drag, and a right drag down it chooses the notes of those pitches. The strip under the notes takes the velocity drawn across it (only the chosen notes, if any are); a click on its name (`vel`) shows a controller there instead (the pitch wheel, modulation, expression, the pedal), drawn with the button held, a move's head (the top of its bar) clicked to choose it (Ctrl or Shift adds it) and dragged to move the chosen, Ctrl and a drag choosing those in a box, the right button dragged drawing a straight line and clicked opening its menu. A click on the ruler moves the playhead |
 | Session view | click a slot to choose it; its play mark (`■`, `▶`) launches the clip, and letting go releases a gate or one-shot clip; double click opens a slot's notes, or makes a MIDI clip of a bar in an empty one; an empty slot's dot records a bar into it; drag a clip to another slot (Ctrl copies); right click opens the clip's menu; a scene's name launches its row; the bottom line stops a track, or every track under the scenes; the wheel scrolls the rows, with Shift the tracks |
-| Mixer | drag a fader up or down (Shift finer), the level under it sideways, the pan to where the pointer is; double click puts them back; `M` `S` `R` `I` switch; a click on a device picks it in the device panel; a send's level drags sideways; the wheel nudges the fader, with Shift goes to the next or previous track; right click opens the track's menu |
+| Mixer | drag a fader up or down (Shift finer), the level under it sideways, the pan to where the pointer is; double click puts them back; `M` `S` `R` `I` switch; a click on a device picks it in the device panel, on the row under the name (`→ Master`) chooses where the track plays into, on the peak or the clip light (the meters' top row, red once a level reached full scale) puts the light out; a send's level drags sideways; the wheel nudges the fader, with Shift goes to the next or previous track; right click opens the track's menu |
 | Devices | click or drag a parameter's slider to where the pointer is (Shift drags it finely), double click puts it back; `on` / `off` bypasses the device; the wheel scrolls, with Ctrl it nudges the parameter under the pointer |
 | Menus, pickers, the command line's list | click an entry to choose it (in a picker and the command line's list, the first click selects and a second chooses); the wheel scrolls; a click outside a menu lets it go. Pages such as `:messages` scroll with the wheel |
 | Wheel | in the arrange view scrolls the tracks; with Shift (or sideways) in time; with Ctrl over the timeline zooms in time where the pointer is; with Ctrl or Alt over the headers makes the tracks taller or shorter. In the piano roll scrolls the pitches; with Shift in time; with Ctrl zooms |

@@ -33,7 +33,7 @@ The tutor opens a practice project made for this lesson and checks each step as 
 6. rpp opens and writes REAPER projects. Type `:tutor.try rpp` and `<CR>`, then `:rpp.export tutor-song.rpp` and `<CR>`; a list of what REAPER cannot take opens, and `q` closes it.
    - ✓ tutor-song.rpp is in the folder you started from. The built-in devices stay behind, as the list said.
 7. utau sings notes with lyrics through OpenUtau's engines. Type `:tutor.try utau` and `<CR>`, press `o` for a new track, then type `:utau.voice` and `<CR>` to make it a vocal track.
-   - ✓ A vocal track. It sings once `reautau-engine` and a voicebank are installed (see extensions/utau/README.md); `,v` then adds a vocal track and asks for its singer in one go.
+   - ✓ A vocal track. It sings once `paw-utau-engine` and a voicebank are installed (see extensions/utau/README.md); `,v` then adds a vocal track and asks for its singer in one go.
 8. Listen to the pattern and the tune: `gs`, `<Space>`, and `<Space>` to stop.
    - ✓ That is the course.
 

@@ -1,8 +1,8 @@
 -- UTAU singing for paw: vocal tracks sung by OpenUtau's engines through
--- ReaUtau's reautau-engine. See README.md beside this file.
+-- its own engine, paw-utau-engine (engine/). See README.md beside this file.
 local api = paw.api
 
-paw.option.define("utau_engine", "")         -- path to reautau-engine; found by itself when empty
+paw.option.define("utau_engine", "")         -- path to paw-utau-engine; found by itself when empty
 paw.option.define("utau_openutau_dir", "")   -- OpenUtau's data folder (Singers, Resamplers); read only
 paw.option.define("utau_data_dir", "")       -- the engine's own data folder; its default when empty
 paw.option.define("utau_cache_dir", "")      -- the engine's render cache; its default when empty
@@ -53,7 +53,7 @@ paw.health.register("utau", function(h)
   if engine then
     h.ok("the engine at " .. engine)
   else
-    h.error("reautau-engine not found", { "set paw.opt.utau_engine or $REAUTAU_ENGINE to it",
+    h.error("paw-utau-engine not found", { "set paw.opt.utau_engine or $PAW_UTAU_ENGINE to it",
       "or run the program built with it: nix run .#paw-utau" })
   end
   local state = utau.engine.state

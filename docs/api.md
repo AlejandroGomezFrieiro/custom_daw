@@ -19,7 +19,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
   ```
 
   Fields: `create(target, buf)` gives the buffer's state; `render(win, canvas, ctx)` draws (`ctx.buf` is the buffer, `win.state` the window's own); `on_key(win, key)` for keys with no mapping; `on_mouse(win, event)`; `title(buf)`; `bufname(target, buf)`; `options` (the buffer's to start with); `listed` (false keeps its buffers off `:ls`, and forgets each once no window shows it); `delete(buf)`; `time` (see `timebind`); `claims(name)`, whether a name is a target of the type's by its form (`:vs paw://lane/3`); `window()`, the window to draw when none in the tabs shows the type (one in a graphical frontend's window of its own). Key mappings for its windows are mapped with `{ view = name }`.  Everything a view can do, per window: `grid(win)` (the cursor the keymap moves, as a view's `grid`), `describe(win)` (what `K` says), `status(win, ctx)` (the status line's `view` component), `subscope(win)`, `paint(win, g, ctx)` and `pointer(win, e)` (pixels in a graphical frontend), `help`, and what `paw.layout.powers` maps: `keymaps`, `motions`, `textobjects`, `operators`, whose functions get `ctx.win` and `ctx.buf`.
-- `paw.cancel`: the same as `paw.api.timer_stop`.
+- `paw.cancel(handle)`: Stop a timer: `handle` is what `paw.defer` or `paw.every` returned.
 - `paw.clip(id)`: The clip of an id, as a `paw.Clip`.
 - `paw.cmd(name, args, ctx)`: Run a command. `args` is a table of arguments; `ctx` adds fields such as `count`.
 - `paw.defer(fn, ms)`: Run `fn` once, after `ms` milliseconds (or as soon as the current turn ends).
@@ -334,7 +334,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.commands.label(spec)`: What an undo step made by a command is called: its `label`, or the start of its description, before any example or alternative.
 - `paw.commands.list()`: Every command, sorted by name.
 - `paw.commands.main(name)`: What a bare extension name (`:notation`) stands for: its `.open` or `.show` command, where it has one.
-- `paw.commands.owner()`: The extension being loaded, whose commands and keys these are: what `:help` takes them to.
+- `paw.commands.owner()`: The extension being loaded, or whose code registers these commands and keys later: what `:help` takes them to, and what unloading takes away.
 - `paw.commands.parse(line)`: Split a command line into a name and arguments:
 
   ```lua
@@ -498,6 +498,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.draw.beats(ruler, scroll, span, zoom, origin)`: Number a ruler above a roll that shows `span` beats from `scroll` at `zoom` columns a beat: bars as the project counts them (`origin` is the project beat of the roll's beat 0), beats in between as ticks. Returns where the lines go, as `{ x, bar }`, for the rows underneath.
 - `paw.draw.braille(bits)`: A braille character from its eight dots: bit k is dot k + 1.
 - `paw.draw.chips(buf, x, y, list, gap)`: Small on/off marks side by side, each a letter on a cell of its own: `chips(buf, x, y, { { "M", on, "Mute" }, ... }, gap)`. Returns the columns used.
+- `paw.draw.clear_peak(id)`: Put out a track's clip light and let its loudest of late fall.
 - `paw.draw.curve(buf, y, rows, value, style)`: Draw a curve as a thin line over `rows` rows of a buffer, from row `y` down: `value(i)` gives the height, from 0 at the bottom to 1 at the top, at the `i`th of two points per column. Only the cells the line passes through are touched. Sextants (a connected line), braille dots or lines at three heights a row, as `M.curve_glyphs()` says.
 - `paw.draw.curve_glyphs()`: How curves are drawn in cells: "sextant", "braille" or "line", by `paw.opt.curve_glyphs`; `paw.opt.braille = false` and `paw.opt.ascii` both mean "line" (ascii wins over all, and uses ASCII characters).
 - `paw.draw.db_cell(db, width)`: Where on a meter `width` cells long a level in dB falls, from 0.
@@ -533,6 +534,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.draw.trace(width, samples, y, sub, kind)`: A connected line over a grid of cells, for a curve: `y(sx)` gives the row of the line, from the top, in `sub` rows a cell (3 for sextants, 4 for braille), at the `sx`th of two samples a cell, from 0, or nil for none; `samples` of them. A jump is filled from the last row to this one, so that the line is unbroken. Returns `{ [row * width + col] = bits }`, the bits as `M.sextant` or `M.braille` take them.
 - `paw.draw.track_colour(track, index)`: The colour of a track: its own if it has one, else one of the theme's by its place in the track list.
 - `paw.draw.track_hue(track, index)`: The hue of a track's colour, from 0 to 360.
+- `paw.draw.track_peak(id)`: A track's meter as the mixer shows it, in a terminal and in a window (`scene.live`): both sides, the loudest of late and whether it has reached full scale since `clear_peak` was last called for it.
 - `paw.draw.truecolor()`: Whether the terminal shows 24-bit colour: `paw.opt.termcolors` "true" or "256", or with "auto" (the default) what the environment says: COLORTERM of truecolor or 24bit, or a TERM that ends in -direct.
 - `paw.draw.use_glyphs()`: Take the glyphs `paw.opt.ascii` asks for into `paw.draw.g`.
 - `paw.draw.vmeter(buf, x, y, height, peak, hold)`: A level meter `height` cells tall, lit from the bottom, with the peak held (`hold`, linear) marked by a line over its cell.
@@ -578,6 +580,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 
 - `paw.ext.bundled()`: The names of the bundled extensions, loaded or not, sorted.
 - `paw.ext.bundled_dir()`: The directory of the extensions that come with the program: `$PAW_HOME/extensions`, or `extensions` under the working directory in a source tree. Nil when neither is there.
+- `paw.ext.caller()`: The loaded extension whose code called the function this is called from, or nil for the core's or the user's.
 - `paw.ext.list()`: Loaded extensions, sorted by name.
 - `paw.ext.load(path)`: Load one extension from a directory or a `.lua` file. One the program was built with is not loaded again from elsewhere: the configuration that names the source tree's copy gets the packaged one.
 - `paw.ext.load_bundled(name)`: Load a bundled extension by name; a name already loaded is left alone. Returns the entry, or nil and what is wrong.
@@ -587,7 +590,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.ext.parse_version(text)`: A version's numbers: "1.2.3" gives { 1, 2, 3 }; missing parts are 0. Nil for text that is no version.
 - `paw.ext.provides(name)`: What a loaded extension registered: a list of `{ kind, title, items }`, each item a short label, in the order of `paw.ext.registries`.
 - `paw.ext.satisfies(version, want)`: Whether `version` meets `want`: comparisons separated by spaces or commas, each `>=1.2`, `>1`, `<=2`, `<2.0`, `=1.2.3`, `^1.2` (the same first number, at least 1.2), `~1.2` (the same first two) or a bare version, which means `^`. `*` or nothing is any version.
-- `paw.ext.unload(name)`: Take an extension away: everything it registered while it loaded is removed, and what it replaced put back (a command or key of the core it remapped). Its modules are forgotten, so loading it again runs them afresh. Options it defined keep their defaults; devices it ships stay among the devices for the session. Returns true, or nil and why not.
+- `paw.ext.unload(name, opts)`: Take an extension away: everything it registered is removed (while it loaded, and later from its handlers and timers), and what it replaced put back (a command or key of the core it remapped). Its options go with their values, its timers stop, and the devices written in Lua and plugin directories it added are no longer offered. Its modules are forgotten, so loading it again runs them afresh.  While a track holds one of its devices it is not unloaded (as Neovim will not delete a buffer with changes), unless `opts.force`: the devices then stay where they are, playing, until removed, and are missing when the project is opened again without the extension. Returns true (or, forced, what was left on tracks, in words), or nil and why not.
 
 ## Module paw.files
 
@@ -1123,6 +1126,8 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 
 - `paw.luadev.add_dir(dir, rank)`: Look for devices in `dir` too. `rank` (default `M.RANK_EXTENSION`) says whose script wins where two directories have one of the same name.
 - `paw.luadev.check()`: Look at every script again: those that changed are loaded, and the devices made from them start again with the parameters they had. Returns what `paw.api.lua_devices_rescan` found.
+- `paw.luadev.kinds_in(dir)`: The kinds of the scripts found in `dir`.
+- `paw.luadev.remove_dir(dir)`: Look in `dir` no more: its scripts' devices are no longer offered (one of the same name elsewhere takes their place); those made go on. Returns the kinds of the scripts that were there.
 - `paw.luadev.watch()`: Look at the scripts' files every `paw.opt.lua_devices_watch` ms (0 for never). Started by itself once a directory is added.
 
 ## Module paw.markdown
@@ -1228,8 +1233,10 @@ functions (`paw.api`, plain data in and out) are listed at the end.
   paw.option.define("look", "plain", { values = { "plain", "fancy" } })
   paw.option.define("size", "auto", { type = { "number", "string" }, min = 1, values = { "auto" } })
   ```
+- `paw.option.definitions()`: Each option given a default by `paw.option.define`, by name: what it was given, `{ default, spec }`, the same table until defined again.
 - `paw.option.list()`: Every option that has a default, by name: { name, default }.
 - `paw.option.read(name, text)`: The value typed text stands for in option `name` (`true`, `off`, a number, or the text), or nil and an error that says what it takes. A value that is not text is checked as it is.
+- `paw.option.undefine(name, was)`: Take an option's definition away, and the value set for it (an extension that defined it was unloaded): `paw.opt[name]` is nil again. With `was`, what `paw.option.definitions` gave before, that comes back instead, and the value stays.
 
 ## Module paw.panes
 
@@ -1332,6 +1339,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
   ```
 - `paw.plugins.key_names(track)`: The key names of a track's devices together; where two name a key, the first in the chain wins.
 - `paw.plugins.note_names(device)`: What a device calls its keys, by pitch: a plugin that implements CLAP's `note-name` (a drum kit's drums, a sampler's keyswitches). Empty for the rest. Asked again after `M.names_ttl`.
+- `paw.plugins.remove_dir(dir)`: Look in `dir` no more, and offer the devices found there no more; those made go on.
 
 ## Module paw.qf
 
@@ -1490,6 +1498,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 ## Module paw.scene
 
 - `paw.scene.closed(client)`: A connection closed or stopped watching: nothing more is kept for it.
+- `paw.scene.live()`: The values a frontend moves bound nodes by (see crates/paw-scene's `bind`): the playhead, the clock, the engine's load, and each track's meter, its loudest of late, its clip light and its input, by track id; rounded to what a frontend can show, so that an idle program has nothing new to say (the load as `paw.audio.load` gives it, as `frontend.watch` sends it). Each call gives them as they are then.
 - `paw.scene.turn()`: After a turn of the kernel: the windows whose drawing may have changed are pushed now, not at the next tick.
 - `paw.scene.watchers()`: Who is watching: `{ client, windows }` each, `windows` the names of those it has said the size of.
 
@@ -1956,6 +1965,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.api.log_get()`
 - `paw.api.lua_devices(...)`
 - `paw.api.lua_devices_add(...)`
+- `paw.api.lua_devices_remove(...)`
 - `paw.api.lua_devices_rescan(...)`
 - `paw.api.measure(...)`
 - `paw.api.measure_cancel(...)`
@@ -1986,6 +1996,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.api.note_on(track, pitch, velocity, attr)`: Play a note on a track, with a MIDI 2.0 attribute if one is given.
 - `paw.api.now()`
 - `paw.api.plugins_add_dir(dir)`: Look for CLAP and VST3 plugins in one more directory from now on (an extension's own), and register those in it: `{ kinds, notes }`, the device kinds found there and what could not be used; nil where plugins cannot be looked for.
+- `paw.api.plugins_remove_dir(dir, kinds)`: Look in a directory added with `plugins_add_dir` no more, and make no more devices of `kinds`, those found there; devices already made go on.
 - `paw.api.plugins_rescan(name)`: Look into plugin files again (all, or those `name` matches), including ones passed over because they failed before. Returns notes on what could not be used, or nil without plugins.
 - `paw.api.preview_get()`
 - `paw.api.preview_level(db)`

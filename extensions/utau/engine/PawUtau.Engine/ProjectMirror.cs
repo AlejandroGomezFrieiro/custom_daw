@@ -3,10 +3,10 @@ using K4os.Hash.xxHash;
 using OpenUtau.Api;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
-using ReaUtau.Protocol;
+using PawUtau.Protocol;
 using Serilog;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>A tiny UCommand for mutations OpenUtau has no stock command for; still goes through DocManager (validate, impact, phonemizer triggers).</summary>
 sealed class ActionCommand : UCommand
@@ -112,7 +112,7 @@ public sealed class ProjectMirror
             res.Errors.Add((ErrorCode.InvalidState, $"SetTrackConfig for unknown track {trackId}"));
             return res;
         }
-        DocManager.Inst.StartUndoGroup("reautau-config");
+        DocManager.Inst.StartUndoGroup("paw-utau-config");
         try { ConfigureTrack(te, cfg, res); res.TouchedTracks.Add(trackId); }
         finally { DocManager.Inst.EndUndoGroup(); }
         return res;
@@ -124,7 +124,7 @@ public sealed class ProjectMirror
         var res = new MirrorResult();
         var dm = DocManager.Inst;
         var project = dm.Project;
-        dm.StartUndoGroup("reautau-delta", deferValidate);
+        dm.StartUndoGroup("paw-utau-delta", deferValidate);
         try
         {
             // 1. removeTracks (with their parts)
@@ -308,7 +308,7 @@ public sealed class ProjectMirror
     }
 
     /// <summary>
-    /// Track option "exprgraph" (P4.3) = the text of an OpenUtau expression graph file (format openutau_expression_graph,
+    /// Track option "exprgraph" = the text of an OpenUtau expression graph file (format openutau_expression_graph,
     /// as OpenUtau exports it): the graph goes into the project library under a track-owned id and becomes the track's
     /// override; the expressions it reads or writes are added when the project lacks them. Empty = no graph. Problems
     /// (unreadable file, another renderer, a graph that cannot run) are reported as ConfigAdjusted.
@@ -318,7 +318,7 @@ public sealed class ProjectMirror
         var project = DocManager.Inst.Project;
         int idx = project.tracks.IndexOf(te.Track);
         if (idx < 0) return;
-        string ownId = "reautau_" + new string(te.Id.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+        string ownId = "pawutau_" + new string(te.Id.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
         OpenUtau.Core.ExpressionGraph.UExpressionGraph? graph = null;
         GraphInfo? info = null;
         if (text.Length > 0)
@@ -383,14 +383,14 @@ public sealed class ProjectMirror
     public readonly System.Collections.Concurrent.ConcurrentDictionary<string, GraphInfo> GraphInfos = new();
 
     /// <summary>
-    /// Custom curves a graph reads (curve inputs whose expression ReaUtau has no lane for) are mapped onto the macro lanes
+    /// Custom curves a graph reads (curve inputs whose expression has no lane of its own) are mapped onto the macro lanes
     /// mc1..mc8 (CC 24..31, 0..100), in node order. An input with another range gets a map_range node so the graph still
     /// sees its own units. The lanes are registered as curve expressions named after the graph's inputs.
     /// </summary>
     static void MapCustomInputs(UProject project, OpenUtau.Core.ExpressionGraph.ExpressionGraphFile file,
         OpenUtau.Core.ExpressionGraph.UExpressionGraph graph, GraphInfo info, MirrorResult res)
     {
-        var known = ReaUtau.Protocol.CurveDef.All.Select(d => d.Abbr).ToHashSet();
+        var known = PawUtau.Protocol.CurveDef.All.Select(d => d.Abbr).ToHashSet();
         var lanes = new Dictionary<string, string>();
         foreach (var node in graph.nodes.ToList())
         {
@@ -515,7 +515,7 @@ public sealed class ProjectMirror
                         project.RegisterExpression(d.Clone());
         }
         catch (Exception e) { Serilog.Log.Debug("suggested expressions unavailable: {Message}", e.Message); }
-        // macro lanes (P4.3) always exist, so a macro curve drawn before a graph is chosen is kept and feeds it later
+        // macro lanes always exist, so a macro curve drawn before a graph is chosen is kept and feeds it later
         for (int i = 1; i <= 8; i++)
             if (!project.expressions.ContainsKey("mc" + i))
                 project.RegisterExpression(new UExpressionDescriptor($"macro {i}", "mc" + i, 0, 100, 0) { type = UExpressionType.Curve });
