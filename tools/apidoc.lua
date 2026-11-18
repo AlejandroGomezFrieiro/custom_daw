@@ -295,16 +295,22 @@ function M.page()
           end
           -- Runs of prose and of examples (the lines indented in the
           -- comment), in order: the first prose after the name, the rest
-          -- under it.
+          -- under it. An empty line ends a paragraph of prose.
           local runs = {}
+          local ended = false
           for _, line in ipairs(doc) do
             local code = line:match("^  ") ~= nil
             local last = runs[#runs]
-            if not last or last.code ~= code then
-              last = { code = code }
-              runs[#runs + 1] = last
+            if line == "" then
+              ended = true
+            else
+              if not last or last.code ~= code or ended then
+                last = { code = code }
+                runs[#runs + 1] = last
+              end
+              ended = false
+              last[#last + 1] = code and line:gsub("^  ", "") or line
             end
-            last[#last + 1] = code and line:gsub("^  ", "") or line
           end
           local first = runs[1] and not runs[1].code and table.remove(runs, 1)
           add("- `" .. sig .. "`" .. (first and ": " .. table.concat(first, " ") or ""))

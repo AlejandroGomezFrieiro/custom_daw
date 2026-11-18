@@ -3,9 +3,9 @@
 <!-- tags: quickfix-list qf -->
 
 As in Neovim, the quickfix list is one shared list of what is wrong, or
-found, in the project. Each entry gives a place (a clip, a note, a track, a
-point of a lane, a device or its parameter, a bar), says what it is about,
-and can have a fix. While the list has entries, the status line counts
+found, in the project. Each entry gives a place: a clip, a note, a track, a
+point of a lane, a device or its parameter, or a bar. An entry says what it
+is about, and it can have a fix. While the list has entries, the status line counts
 them: `qf E2 W5`, and `qf 3/7 E2 W5` after you go to one.
 
 ## Problems

@@ -58,7 +58,7 @@ song. The track commands take the track of the cursor.
 | `:5,8>`, `:5,8>>`, `:5,8< 3` | Moves the clips that start there a grid step later, two steps later, three steps earlier. In the piano roll: the notes, by its grid. |
 | `:5,8j` | Joins the MIDI clips on each track into one. |
 | `:5,8transpose 12` | Moves notes by semitones. |
-| `:%quantize`, `:%quantize 1/16` | Snaps notes to the grid of the piano roll, or to a note value or a number of beats. |
+| `:%quantize`, `:%quantize 1/16` | Snaps notes to the grid of the piano roll, or to a note value or a count of beats. |
 | `:t2,t4 mute`, `:t* unmute`, `:t/Drums/ solo`, `:t* unsolo` | Mutes and solos tracks. `mute!` and `solo!` switch each track. `:5,8 mute` mutes the clips in bars 5 to 8. |
 | `:t* volume -3`, `:t2 volume =-6` | Steps the volume of tracks down 3 dB. Sets it to -6 dB. |
 | `:t2 pan =-0.5` | Sets the pan, from -1 (left) to 1 (right). |
@@ -112,7 +112,7 @@ replacement removes what matches: `:%s/vel<10//g`.
 | --- | --- |
 | (none) | Only the first match in each bar changes, as a bar is the line of Ex. |
 | `g` | Every match changes. `:set gdefault` reverses `g`. |
-| `c` | Asks about each match in turn, lit in the view that shows it: `y` yes, `n` no, `a` this and all the remaining, `l` this and stop, `q` or `Esc` stop. The changes occur when the questions end, as one undo step. |
+| `c` | Asks about each match in turn, lit in the view that shows it: `y` yes, `n` no, `a` this and all the others, `l` this and stop, `q` or `Esc` stop. The changes occur when the questions end, as one undo step. |
 | `n` | Only counts the matches. |
 
 ## The preview

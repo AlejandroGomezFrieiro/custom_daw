@@ -38,19 +38,23 @@ gets the function.
   - A factory preset of a plugin takes as long to try as to load. Some plugins stop the program for up to a third of a second.
   - You cannot hear the pickers of templates, UTAU presets and singers, sends and drum maps.
   - The graphical window shows the pane of a picker as text, and the outline of a sound file in block characters, not as a waveform.
-- paw's sampler (extensions/sampler) reads an instrument's samples whole
-  into memory while the program waits, and nothing streams from disk: a
-  library that takes more than 30 s to read is ended by the plugin
-  helper's time limit. Not played: SFZ's LFOs (`amplfo_*`, `fillfo_*`,
-  `pitchlfo_*`, `lfoN_*`), its v2 envelopes (`egN_*`), `<effect>`,
-  `amp_keytrack`, `sw_vel`, controllers on envelope times and offsets, and
-  smoothing per controller (`_smoothccN`); Decent Sampler's effects,
-  modulators, buses, glide, `legatoInterval` and oscillators. SoundFont 2,
-  folders of samples and `.dslibrary` archives are not read; FLAC samples
-  are kept as floats (twice the memory of 16-bit). The plugin lists no
-  presets for `:preset`, has no editor
-  window of its own, one stereo output, and ignores per-note controllers,
-  MPE and note-off velocity.
+- paw's sampler (extensions/sampler):
+  - It reads the samples of an instrument whole into memory while the
+    program waits. Nothing streams from disk. The time limit of the plugin
+    helper stops a library that takes more than 30 s to read.
+  - It does not play these parts of SFZ: the LFOs (`amplfo_*`, `fillfo_*`,
+    `pitchlfo_*`, `lfoN_*`), the v2 envelopes (`egN_*`), `<effect>`,
+    `amp_keytrack` and `sw_vel`. It also does not play controllers on
+    envelope times and offsets, and smoothing for each controller
+    (`_smoothccN`).
+  - It does not play these parts of Decent Sampler: effects, modulators,
+    buses, glide, `legatoInterval` and oscillators.
+  - It does not read SoundFont 2, folders of samples or `.dslibrary`
+    archives.
+  - It keeps FLAC samples as floats (two times the memory of 16-bit).
+  - The plugin lists no presets for `:preset`. It has no editor window of
+    its own and only one stereo output. It ignores per-note controllers,
+    MPE and note-off velocity.
 - The waveform of an audio clip in cells (`paw.opt.wave_scale`) shows the
   lowest to the highest sample of each column. It does not show the
   loudness: there is no darker inner band for the RMS. The graphical window
@@ -65,7 +69,7 @@ gets the function.
   - The graphical frontend keeps its own layout of panels.
   - `:new` starts a new project. `:vnew` and `Ctrl-w n` open an empty window.
 - The quickfix list:
-  - `:g/pattern/` and `:vimgrep` fill it. There is no `:grep` (there are no files to run a program on), and `/` does not fill it.
+  - `:g/pattern/` and `:vimgrep` fill it. paw has no `:grep`, because it has no files to run a program on. `/` does not fill it.
   - `:cfdo` runs one time for each track, as there are no files.
   - The project does not keep the lists, and they do not stay between runs.
   - A location list stays with the number of its window after the window closes.
@@ -90,8 +94,8 @@ gets the function.
 - Help (`:help`):
   - The pages are 78 columns wide, not the width of the window.
   - `:helpgrep` takes words, not patterns.
-  - There is no `:helptags`. paw makes the tags the first time that you ask for help, in about half a second.
-  - There is no help in other languages.
+  - paw has no `:helptags`. paw makes the tags the first time that you ask for help, in about half a second.
+  - Help is only in English.
   - The Nix package installs the extensions next to the program, but not `docs/`. So an installed paw has the pages of the extensions, but not the manual, unless `PAW_HOME` names a source tree.
 
 - Lists edited as text (`paw://tracks` and the others):
@@ -99,8 +103,8 @@ gets the function.
   - An edit of the name of a device does not rename or replace the device.
   - paw puts the lines in columns again only when it reads the buffer again (`:w`, `:e!`).
   - `:s` takes Lua patterns with `\d` `\s` `\w` `\(` `\)` of Vim, not the full syntax of Vim.
-  - There is no `:g`, and no completion of track and device names while you type.
-  - There is no buffer of clips, lanes or notes yet.
+  - These buffers have no `:g`. They do not complete track and device names while you type.
+  - paw has no buffer of clips, lanes or notes yet.
   - The graphical frontend draws a text buffer as the terminal does, in the monospace font, not with its own widgets.
 
 - The key rule ([The key rule](key-rule.md)):
@@ -110,90 +114,121 @@ gets the function.
   - `paw.opt.keys = "classic"` gives the old keys. It will go after a release.
   - In the session view, `m` is still the launch mode and `n` a new clip. They are not the mark and the next match of Vim.
 
-- Notation: a tempo mark writes a point of the song's tempo
-  map when it is written, and nothing keeps the two together after (moving
-  the clip or the mark leaves the point where it was; no option makes the
-  score own the song's tempo); repeats and endings are written, not
-  unfolded; trills, mordents, turns and tremolos are written, not played,
-  and a fermata holds its note's whole value but does not stop the time;
-  playing techniques (`pizz.`, `con sord.`) switch an articulation only
-  on a track with an articulation map (extensions/articulations), and
-  only from where they are written to the end of the clip or the range;
-  swing is not rendered; no CC1 or CC11 is written for sustained instruments; a key
-  change after the first bar is not read by `paw.harmony` (there is no key
-  track in the core: the key the score starts in is the project's); a
-  time signature written in notation is the song's, for every track. A mark
-  writes the MIDI only when it is written: notes the piano roll moves under
-  a dynamic later keep their velocities, and a slur writes nothing (the
-  notes are as long as they are). What notation keeps of a note does not
-  hold a tie the metre does not need (a tied note is one MIDI note, written
-  again as the metre divides it); a grace note before a clip's first beat
-  is kept before the clip, where it is hidden and does not play; the clefs
-  a clip was written on are kept where its notes would choose others, so a
-  note the roll puts far below a treble staff does not make it a grand
-  staff. MusicXML in and out: a stem direction set by hand, a beam
-  joined over a beat, a system kept on the line before (`zj`) and bars
-  to a system are not written out, and stems in a file are left to the
-  layout; cross-staff chords are split by staff; nested tuplets read as one
-  ratio; D.C., D.S., segno, coda, pedal, octave lines, fingering, string
-  and fret, bowings, glissandi, figured bass, cue notes, microtones and
-  tablature staves are counted and left out; a pickup is a first bar whose
-  start is before the clip, which shows its rests; a `rit.` read from a
-  file is written, not ramped in the tempo map; only the first part's time
-  signatures go to the song; the drag-and-drop of a file onto the window
-  and the file pickers do not offer MusicXML (`:open` and `:import` with a
-  path do); a score brought in from a file is written as the clip's
-  transcription when it goes out again; LilyPond writes chord symbols as
-  text, not `ChordNames`. The notation window outlines the roll's note in
-  the terminal only; a track's export transcribes what the clips play.
-  Tuplets are read from the MIDI within a
-  beat (and quarter-note triplets over two); nine to a beat, five over two
-  beats and the like are written only when said in notation.
-  The full score is at concert pitch only; a staff of the score and a part
-  are every MIDI clip of their track, but a tie does not join two clips,
-  a mark's beat in a clip that starts after the score's first is not moved
-  with it, and a note entered before a track's first clip goes nowhere
-  (one entered in a gap goes into the clip before); in a transposed part
+- Notation:
+  - A tempo mark writes a point of the song's tempo map when it is
+    written. After that, nothing keeps the two together. If you move the
+    clip or the mark, the point stays where it was. No option makes the
+    score own the song's tempo.
+  - Repeats and endings are written, not unfolded.
+  - Trills, mordents, turns and tremolos are written, not played. A fermata
+    holds the whole value of its note, but it does not stop the time.
+  - Techniques (`pizz.`, `con sord.`) switch an articulation only on a
+    track with an articulation map (extensions/articulations). They switch
+    it only from where they are written to the end of the clip or the range.
+  - paw does not render swing. It writes no CC1 or CC11 for sustained
+    instruments.
+  - `paw.harmony` does not read a key change after the first bar. The core
+    has no key track: the key that the score starts in is the key of the
+    project.
+  - A time signature written in notation is the time signature of the
+    song, for every track.
+  - A mark writes the MIDI only when it is written. Notes that the piano
+    roll moves under a dynamic later keep their velocities. A slur writes
+    nothing (the notes are as long as they are).
+  - What notation keeps of a note does not hold a tie that the meter does
+    not need. A tied note is one MIDI note, written again as the meter
+    divides it.
+  - A grace note before the first beat of a clip stays before the clip.
+    There it is hidden and does not play.
+  - paw keeps the clefs that a clip was written on, where its notes would
+    choose others. So a note that the roll puts far below a treble staff
+    does not make it a grand staff.
+  - The notation window outlines the note of the roll only in the terminal.
+    The export of a track transcribes what the clips play.
+  - Tuplets are read from the MIDI within a beat (and quarter-note triplets
+    over two beats). Nine to a beat, five over two beats and similar
+    tuplets are written only when you write them in notation.
+  - The full score is at concert pitch only.
+  - A staff of the score and a part are every MIDI clip of their track.
+    But a tie does not join two clips.
+  - In a clip that starts after the first clip of the score, the beat of a
+    mark does not move with the clip.
+  - A note entered before the first clip of a track goes nowhere. A note
+    entered in a gap goes into the clip before.
+  - In a transposed part, the keys and clefs of the popovers and `:s` go
+    by the notes that sound (concert pitch).
+  - A selection over staves takes every pitch of each staff. A block keeps
+    its pitches within one staff only.
+  - A pasted passage is written as it was. paw does not move it to the
+    clef or range of the instrument that it goes to.
+  - A condensed staff pairs two players, as two voices where they part. An
+    edit applies to both only where they are written `a2` (`:score.split`
+    parts them).
+  - `:score` takes the tracks of an arrange selection, not a selection of
+    clips.
+  - Cues are flagged, not beamed.
 
-  the popovers' keys and clefs and `:s` go by the sounding notes; a selection
-  over staves takes each staff's every pitch (a block keeps its pitches
-  within one staff only); a pasted passage is written as it was, not
-  moved to the clef or range of the instrument it goes to; condensing
-  pairs two players, as two voices where they part, and an edit is made
-  for both only where they are written `a2` (`:score.split` parts them);
-  `:score` takes an arrange selection's tracks, not a selection of clips;
-  cues are flagged, not beamed; MusicXML carries no multi-measure rests or
-  cues.
+- MusicXML in notation:
+  - A file that paw writes does not keep a stem direction set by hand or
+    a beam joined over a beat. It does not keep a system kept on the line
+    before (`zj`) or the count of bars in a system.
+  - In a file that paw reads, the layout sets the stems. Cross-staff chords
+    are split by staff. Nested tuplets read as one ratio.
+  - paw counts these parts of a file and leaves them out: D.C., D.S.,
+    segno, coda, pedal and octave lines. It also leaves out fingering,
+    string and fret, bowings, glissandi and figured bass. It also leaves
+    out cue notes, microtones and tablature staves.
+  - A pickup is a first bar whose start is before the clip. The clip shows
+    its rests.
+  - A `rit.` read from a file is written, not ramped in the tempo map.
+  - Only the time signatures of the first part go to the song.
+  - A drag of a file onto the graphical window, and the file pickers, do
+    not offer MusicXML. `:open` and `:import` with a path do.
+  - A score read from a file goes out again as the transcription of the
+    clip.
+  - MusicXML carries no multi-measure rests or cues.
+  - LilyPond output writes chord symbols as text, not `ChordNames`.
 
-  Of the grammar for music: `!` does not run a snippet (snippets expand in
-  the piano roll) nor hand a filter MusicXML (it hands it a line of text an
-  event); `in` takes no count; a chord tied only in some of its notes is
-  written again with those ties lost when it is moved or pasted; `Tab`
-  takes suggestions made for the piano roll's clip (notation does not ask
-  for them); `Ctrl-t` asks on the command line, not in a popover.
+- The grammar for music in notation:
+  - `!` does not run a snippet (snippets expand in the piano roll). It does
+    not give MusicXML to a filter: it gives the filter a line of text for
+    each event.
+  - `in` takes no count.
+  - If you move or paste a chord that is tied only in some of its notes,
+    paw writes it again without those ties.
+  - `Tab` takes suggestions made for the clip of the piano roll (notation
+    does not ask for them).
+  - `Ctrl-t` asks on the command line, not in a popover.
 
-- Articulations (extensions/articulations): the window shows the notes'
-  tags and colours and the shaded, named rows, but not the band, the
-  keyboard's labels or menus of its own; keyswitch rows are labelled, not
-  folded away; the score draws an articulation's mark in the same ink as a
-  written one, and the techniques popover does not offer the map's
-  articulations first; a modifier writes MIDI 1.0 controllers, not the
-  profile's registered controllers (mute type, playing position);
-  `:art.edit` (a map edited in a text buffer) is not there; a generated map
-  is not made again when its library changes; Kontakt and SF2 are not
-  read. `:art.measure` finds onsets by level alone (a sample with a slow
-  swell reads late), and does not yet use the onsets a sampler's
-  `describe` could report; linked controllers are a curve of their own,
-  not one of the choices of the strip under the roll.
+- Articulations (extensions/articulations):
+  - The graphical window shows the tags and colors of the notes and the
+    shaded, named rows. It does not show the band, the labels of the
+    keyboard or menus of its own.
+  - Keyswitch rows are labeled, not folded away.
+  - The score draws the mark of an articulation in the same ink as a
+    written mark. The techniques popover does not offer the articulations
+    of the map first.
+  - A modifier writes MIDI 1.0 controllers, not the registered controllers
+    of the profile (mute type, playing position).
+  - `:art.edit` (a map edited in a text buffer) is not available.
+  - paw does not make a generated map again when its library changes.
+  - paw does not read Kontakt and SF2 libraries.
+  - `:art.measure` finds onsets by level alone (a sample with a slow swell
+    reads late). It does not yet use the onsets that the `describe` of a
+    sampler could report.
+  - Linked controllers are a curve of their own, not one of the choices of
+    the strip under the roll.
 
-- Engraved notation: page breaks of one's own (pages fill as systems
-  come), and the engraving options as a buffer to edit (staff size,
-  spacing, font); articulations inside a slur; systems whose skylines
-  interlock; in the terminal's cell view marks keep fixed rows rather than
-  skylines; the text of an exported PDF is outlines, not searchable text.
+- Engraved notation does not have:
+  - Page breaks of your own (pages fill as systems come).
+  - The engraving options as a buffer to edit (staff size, spacing, font).
+  - Articulations inside a slur.
+  - Systems whose skylines interlock.
+  - Skylines in the cell view of the terminal: there, marks keep fixed rows.
+  - Searchable text in an exported PDF: its text is outlines.
 
 - Language servers:
-  - paw sends each document complete, never as incremental changes.
+  - paw sends each document complete. It does not send incremental changes.
   - paw keeps the related notes of other tracks that a diagnostic names,
     but does not draw them.
   - paw draws annotations on mixer strips, devices and the ruler, not yet
@@ -206,75 +241,98 @@ gets the function.
   - The settings check of MIDI LSP names the render dialog of REAPER in its
     messages.
 
-- Pictures in the terminal: only by the kitty graphics protocol, as direct
-  placements (not Sixel, not iTerm's, not Unicode placeholders), so not
-  through tmux, which does not pass them on; a terminal that puts images
-  over images well is known only by its name (kitty, Ghostty, herdr), and
-  any other has the moving parts drawn into the page; one that puts text
-  over images under it (a strip `under` the text) also only by its name
-  (kitty, Ghostty, herdr, WezTerm); in any other (Konsole) the cells'
-  backgrounds are painted into the picture, and one that is a single run
-  along one row (a cursor block, the note under the cursor, a selection one
-  row high) hides the line under it. The score, the curve editor's plot,
-  the piano roll's controller strip, audio waveforms and the utau editor's
-  pitch and curves are pictures; the arrange view's automation lanes, the
-  velocity strip, the tempo lane and the meters are still cells. In Konsole
-  a scrolled strip sends again the pieces at its edges, whose painted
-  backgrounds changed.
-- Scenes (the window's panes and windows of views the kernel draws; see
-  "Scenes" in [the protocol](protocol.md)): runs, fills, pictures, the
-  widget roles, hit regions (`buf:mark`, `buf:hit`), planes and notes on
-  them, but no roles for clips or curves yet. The window paints the widget
-  roles and notes only; an extension's own role (`paw.ui.role`) shows in its cells there, as it
-  has no `pixels` drawing yet. What a view draws over a role in cells
-  (the roll's cursor and selection, an articulation's tag) the window shows
-  over it in cells too, not as a part of the note. The arrange view, the
-  device panel and the session view are still the window's own drawings,
-  fed by `frontend.watch`. A plane is not scrolled or zoomed by the window
-  itself: the wheel goes to the kernel, which draws it again. Pictures are made into images by paw-raster when their
-  drawing changes, not drawn as egui shapes. Nodes are named by where they
-  are written, so a view that scrolls sends what scrolled again. A drag on
-  a hit region costs a turn of the kernel for each move, also over
-  `--connect`.
-- The window's piano roll is the terminal's, laid out in cells: a row a
-  pitch at the window's cell (Alt and the wheel do not make the rows
-  taller: a taller row would be two cells, in the terminal too, which the
-  roll does not do yet), the tracks near the roll in the `:roll.tracks`
-  list rather than a side panel beside it, a suggestion's alternatives
-  shown with `Alt-1`…`Alt-9` rather than chips to click. It opens at the
-  roll's zoom (`note_zoom`), not fitted to the clip, so short notes are
-  too narrow for their names until zoomed in. While a note is dragged it
-  stays where it was and a copy of it follows the pointer.
-- The window's mixer is the terminal's, laid out in cells: its switches
-  are a cell wide, and its devices have rows of their own only when it is
-  at least twenty rows tall (in the window's usual height they fold into
-  one row that counts them). The theme's accent still differs between the
-  terminal (amber focus) and the window (blue selection): the owner's
-  decision.
-- The drum grid is one view for both frontends, in cells: in a window a
-  step is three cells wide whatever the clip's length, the wheel does not
-  zoom the steps or scroll them sideways (the grid follows the cursor), and
-  a hit is drawn as a block character, not a box shaded by velocity.
+- Pictures in the terminal:
+  - paw sends pictures only by the kitty graphics protocol, as direct
+    placements. It does not use Sixel, the protocol of iTerm, or Unicode
+    placeholders. So pictures do not go through tmux, which does not pass
+    them on.
+  - paw knows a terminal that puts images over images well only by its
+    name (kitty, Ghostty, herdr). In any other terminal, paw draws the
+    parts that move into the page.
+  - paw also knows a terminal that puts text over images (a strip `under`
+    the text) only by its name (kitty, Ghostty, herdr, WezTerm). In any
+    other terminal (Konsole), paw paints the backgrounds of the cells into
+    the picture. There, a single run along one row hides the line under
+    it, for example a cursor block, the note under the cursor or a
+    selection one row high.
+  - The score, the plot of the curve editor, the controller strip of the
+    piano roll, audio waveforms, and the pitch and curves of the utau
+    editor are pictures. The automation lanes of the arrange view, the
+    velocity strip, the tempo lane and the meters are still cells.
+  - In Konsole, a scrolled strip sends again the pieces at its edges,
+    because their painted backgrounds changed.
+- Scenes (the panes of the graphical window, and windows of views that
+  the kernel draws; see "Scenes" in [the protocol](protocol.md)):
+  - A scene has runs, fills, pictures, the widget roles, hit regions
+    (`buf:mark`, `buf:hit`), planes and notes on them. It has no roles for
+    clips or curves yet.
+  - The graphical window paints only the widget roles and notes. The own
+    role of an extension (`paw.ui.role`) shows in its cells there, because
+    it has no `pixels` drawing yet.
+  - A view can draw over a role in cells (the cursor and selection of the
+    roll, the tag of an articulation). The graphical window shows this over
+    the role in cells too, not as a part of the note.
+  - The arrange view, the device panel and the session view are still the
+    own drawings of the graphical window, fed by `frontend.watch`.
+  - The graphical window does not scroll or zoom a plane itself. The wheel
+    goes to the kernel, which draws the plane again.
+  - paw-raster makes pictures into images when their drawing changes. They
+    are not drawn as egui shapes.
+  - The name of a node is the place where it is written. So a view that
+    scrolls sends again what scrolled.
+  - A drag on a hit region costs a turn of the kernel for each move, also
+    over `--connect`.
+- The piano roll of the graphical window is the piano roll of the
+  terminal, laid out in cells:
+  - A row is one pitch, at the cell size of the graphical window. Alt and
+    the wheel do not make the rows taller. A taller row would be two cells,
+    in the terminal too, and the roll does not do that yet.
+  - The tracks near the roll are in the `:roll.tracks` list, not in a side
+    panel beside it.
+  - The alternatives of a suggestion show with `Alt-1`…`Alt-9`, not as
+    chips to click.
+  - It opens at the zoom of the roll (`note_zoom`), not fitted to the clip.
+    So short notes are too narrow for their names until you zoom in.
+  - While you drag a note, the note stays where it was and a copy of it
+    follows the pointer.
+- The mixer of the graphical window is the mixer of the terminal, laid out
+  in cells. Its switches are a cell wide. Its devices have rows of their
+  own only when the mixer is at least twenty rows tall. At the usual
+  height of the graphical window, they fold into one row that counts them.
+  The accent of the theme still differs between the terminal (amber focus)
+  and the graphical window (blue selection). This is the decision of the
+  owner.
+- The drum grid is one view for both frontends, in cells. In the graphical
+  window:
+  - A step is three cells wide for all lengths of clip.
+  - The wheel does not zoom the steps or scroll them sideways. The grid
+    follows the cursor.
+  - A hit is a block character, not a box shaded by velocity.
 - A smooth tempo curve: a drawn stroke makes a change about each beat,
   each change a ramp to the next. The curve editor writes a smooth part as
   ramps of a sixteenth of a beat.
-- In the curve editor: send levels and clip gain are not curves yet; a
-  controller's moves only hold (a ramp is written as many moves); the
-  window draws a lane's held and smooth stretches straight, though they
-  play as shaped; waves are not `paw.snippet` snippets, which write notes.
-- The mouse in the terminal: an audio clip's fades and gain are not dragged
-  (the keys and the clip's commands set them), a track's height is not
-  dragged (the wheel with Ctrl over the headers changes every track's), and
-  the volume curve drawn over a track's lane
-  is not edited with the pointer (its lane shown as a row is). Heights in a
-  lane are as fine as its two lines, and finer only by dragging a point.
-  Where the terminal keeps Shift for its own selection, Shift does not
-  reach the program.
+- In the curve editor:
+  - Send levels and clip gain are not curves yet.
+  - The moves of a controller only hold. A ramp is written as many moves.
+  - The graphical window draws the held and smooth parts of a lane
+    straight, but they play as shaped.
+  - Waves are not `paw.snippet` snippets, which write notes.
+- The mouse in the terminal:
+  - You cannot drag the fades and gain of an audio clip. The keys and the
+    commands of the clip set them.
+  - You cannot drag the height of a track. The wheel with Ctrl over the
+    headers changes the height of every track.
+  - You cannot edit with the pointer the volume curve drawn over the lane
+    of a track. You can edit its lane when it shows as a row.
+  - Heights in a lane are as fine as its two lines. They are finer only
+    when you drag a point.
+  - Where the terminal keeps Shift for its own selection, Shift does not
+    reach the program.
 - Stretch:
   - Ratios are 0.25 to 4 (also each part between warp markers). Shifts are
     24 semitones at most in each direction.
   - paw always makes a stretch from the start of its file. If you put the
-    playhead far into a long clip that just changed, the clip is silent
+    playhead far into a long clip that changed a short time before, the clip is silent
     there until paw reaches that point.
   - Only the `tonal` method keeps formants.
   - A looped clip that follows the tempo stretches evenly. paw does not
@@ -350,23 +408,27 @@ gets the function.
   - The render dialog has no file dialog for the cover: you type its path.
   - Tags are text only: no lyrics, ISRC, composer, disc number or replay
     gain.
-- For instances on other machines: the sound is sent as plain 16-bit
-  samples (about 1 Mbit/s) rather than Opus, which has no encoder in pure
-  Rust worth shipping; nothing is sent the other way (recording from the
-  client's microphone); only sound files are sent and imported from the
-  client's disk (there is no MIDI file import at all, and projects open
-  and save on the instance's disk); options such as the zoom, MIDI step
-  input, the automation lanes and tempo lane shown are shared by every
-  seat; a window's seat does not survive `:reload`.
+- For instances on other machines:
+  - paw sends the sound as plain 16-bit samples (about 1 Mbit/s), not as
+    Opus. Opus has no encoder in pure Rust that is good enough.
+  - paw sends nothing the other way, so you cannot record from the
+    microphone of the client.
+  - paw sends and imports only sound files from the disk of the client. It
+    cannot import a MIDI file from there. Projects open and save on the
+    disk of the instance.
+  - Every seat shares the options, for example the zoom, MIDI step input,
+    and the automation lanes and tempo lane that show.
+  - The seat of a window does not survive `:reload`.
 - Per-track loudness and spectrum in the painted mix report: the measurement
   gives each track only its peak, so the track meters are peaks, not LUFS
   or RMS. What an extension draws on the terminal's arrange view shows in
   the window only as a band it adds too.
-- Dropping files where the pointer is: the window cannot learn where a file
-  from a file manager is dropped (winit 0.30 reports no position), and on
-  Wayland it is told of no drops at all. For a kernel the window attached
-  to, the desktop's file dialog is only shown to import (the file chosen is
-  sent to the kernel); Open and Save as browse the kernel's disk.
+- A drop of files where the pointer is: the graphical window cannot learn
+  where you drop a file from a file manager (winit 0.30 reports no
+  position). On Wayland, it gets no drops at all. When the graphical window
+  is attached to a kernel, it shows the file dialog of the desktop only to
+  import, and sends the chosen file to the kernel. Open and Save as browse
+  the disk of the kernel.
 - Lua devices do not have:
   - a window of their own drawn by the script. They show their parameters
     as sliders, as any device.
@@ -375,8 +437,8 @@ gets the function.
     pattern of an arpeggiator).
   - more than one stereo output.
   - their own latency for delay compensation.
-- The window measured on a real graphics card: it is tried only on Mesa's
-  llvmpipe so far, where playing costs more than a core.
+- The graphical window measured on a real graphics card: it is tried only
+  on Mesa's llvmpipe so far. There, playback costs more than a core.
 - In the window, kanji, hanzi and hangul where the system has no font for
   them: only kana are built in, and the rest show as boxes then.
 - Clip launch:
@@ -431,49 +493,67 @@ gets the function.
     tempo ramp as steps a sixteenth apart, and every control on the channel
     of its track. It does not write the bend and controllers of a note
     (MIDI 2.0).
-- Kinds of track: a kind says how a track is made and how its clips are
-  opened, not how a new clip on it starts (no `new_clip`: a double click
-  makes an empty clip on any track), and a track's kind is changed by
-  commands of the extension (`:utau.voice`, `:drums.map off`), not from a
-  list. The header shows a kind's letter in the column before the name, the
-  same one diagnostics mark, which draw over it. Extensions bring devices
-  written in Lua; one cannot bring a native plugin (CLAP, VST3) of its own
-  to be found when it loads, nor package one with Nix: plugins are found
-  where the system keeps them.
-- Packaged extensions (`paw.withExtensions`) are loaded at startup and
-  cannot be left out for one run other than by running the plain program.
-- Unloading an extension (`paw.ext.unload`) takes away what it registers
-  later only when a function of its files is in it or its code made it
-  there: a key mapped later to a command's name from a module of the
-  core it called is not its own; its timers started with `paw.api.timer_start`
-  rather than `paw.every` or `paw.defer` are not stopped. Requirements name
-  extensions and the API's version, not versions of the program or of
-  plugins. `:checkhealth` has no check of MIDI ports' latency or of the
-  frontends attached, and the window does not show it in a view of its own
-  (it is a page, as `:messages` is). `edit.before` sees a turn's edits as
-  the change events they made, not as the calls that made them, and is not
-  asked during an audition trial (the trial's end is). The API reference
-  documents the `paw.api` functions whose definition it can read in
-  crates/paw-core/src/api.rs; the others (the tempo map's, and a few written
-  across lines) are listed without their parameters.
-- The status line and the files: the window does not draw `paw.statusline`'s
-  line (it is told the pieces, `modal.statusline`) nor the tab line's own
-  sections, and `tabline.always` is the terminal's. A "scope" component has
-  no meaning here, so there is none; disk recording shows as `take N`, with no
-  count of bytes written (the engine does not report one). The file manager
-  moves nothing between disks as a folder (a file is copied and then moved),
-  has no undo of a file operation but the trash, and cannot drag a line into
-  `paw://tracks` (to bring a file in, Enter or `go`); `paw` started with a folder
-  does not open it. The graphical window shows a files buffer as any text buffer.
-- Project diff and merge (extensions/projdiff): the diff and conflict views
-  are drawn in cells, as the window draws any such view, with no painted
-  version of their own (they were driven in the terminal, not in the
-  window); the folds are the view's own, since a text buffer has no folds. A merge keeps a note edited on both sides as a
-  conflict only when its id is the same; a note given a new id by an edit
-  on each side is two notes. Lists with nothing to name their items
-  (controllers) merge as sets, so a controller moved on both sides shows
-  up twice. A conflict is settled by taking one side whole: there is no
-  editing the two together. Anything an extension keeps in `meta` and
-  points at ids with is not followed when two sides give different things
-  the same id: tracks, devices, clips and lanes are renumbered with what
-  points at them in the model's own fields only.
+- Kinds of track:
+  - A kind says how a track is made and how its clips open. It does not
+    say how a new clip on it starts. Kinds have no `new_clip`: a double click
+    makes an empty clip on any track.
+  - Commands of the extension change the kind of a track (`:utau.voice`,
+    `:drums.map off`), not a list.
+  - The header shows the letter of a kind in the column before the name.
+    Diagnostics mark the same column and draw over it.
+  - Extensions bring devices written in Lua. An extension cannot bring a
+    native plugin (CLAP, VST3) of its own to be found when it loads, or
+    package one with Nix. paw finds plugins where the system keeps them.
+- Packaged extensions (`paw.withExtensions`) load at startup. To leave
+  them out for one run, you must run the plain program.
+- Extensions:
+  - `paw.ext.unload` takes away what an extension registers later only
+    when a function of its files is in it, or its code put it there. A key
+    mapped later to the name of a command from a module of the core that
+    it called is not its own.
+  - `paw.ext.unload` does not stop the timers that an extension started
+    with `paw.api.timer_start`. It stops only those of `paw.every` and
+    `paw.defer`.
+  - Requirements name extensions and the version of the API, not versions
+    of the program or of plugins.
+  - `:checkhealth` has no check of the latency of MIDI ports or of the
+    frontends attached. The graphical window does not show it in a view of
+    its own: it is a page, as `:messages` is.
+  - `edit.before` sees the edits of a turn as the change events that they
+    made, not as the calls that made them. paw does not ask it during an
+    audition trial, but it asks at the end of the trial.
+  - The API reference documents the `paw.api` functions whose definition
+    it can read in `crates/paw-core/src/api.rs`. It lists the others (the
+    functions of the tempo map, and a few written across lines) without
+    their parameters.
+- The status line and the files:
+  - The graphical window does not show the line of `paw.statusline` (it
+    gets the pieces, `modal.statusline`). It does not draw the own sections
+    of the tab line, and `tabline.always` is for the terminal only.
+  - A "scope" component has no meaning here, so paw has none.
+  - Disk recording shows as `take N`, with no count of bytes written. The
+    engine does not report one.
+  - The file manager moves nothing between disks as a folder: it copies a
+    file and then moves it.
+  - The file manager has no undo of a file operation other than the trash.
+  - The file manager cannot drag a line into `paw://tracks`. To bring a
+    file in, use `Enter` or `go`.
+  - `paw` started with a folder does not open it.
+  - The graphical window shows a files buffer as any text buffer.
+- Project diff and merge (extensions/projdiff):
+  - The diff and conflict views are drawn in cells, as the graphical window
+    draws any such view. They have no painted version of their own (they
+    were tried in the terminal, not in the graphical window).
+  - The folds are the own folds of the view, because a text buffer has no
+    folds.
+  - A merge keeps a note edited on both sides as a conflict only when its
+    id is the same. A note that an edit on each side gives a new id is two
+    notes.
+  - Lists with nothing to name their items (controllers) merge as sets. So
+    a controller moved on both sides shows two times.
+  - To settle a conflict, you take one side whole. You cannot edit the two
+    sides together.
+  - Two sides can give different things the same id. Then paw renumbers
+    tracks, devices, clips and lanes, with what points at them in the own
+    fields of the model only. It does not follow what an extension keeps in
+    `meta` and points at ids with.

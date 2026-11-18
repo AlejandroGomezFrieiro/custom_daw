@@ -290,14 +290,16 @@ function paw.add_track(opts) end
 ---@param opts any
 function paw.bounce(track, opts) end
 
---- Make a buffer type. See docs/reference/lua-views.md.
+--- Make a buffer type. See `docs/reference/lua-views.md`.
 ---   paw.buftype("notes", { create = function(target) return {} end, render = function(win, canvas, ctx) end })
 --- The fields are these. `create(target, buf)` gives the state of the
 --- buffer. `render(win, canvas, ctx)` draws (`ctx.buf` is the buffer, and
 --- `win.state` is the state of the window). `on_key(win, key)` gets keys
 --- with no mapping. Also `on_mouse(win, event)`, `title(buf)` and
 --- `bufname(target, buf)`. `options` is the options of the buffer at the
---- start. `listed` false keeps its buffers off `:ls`, and forgets each
+--- start.
+--- 
+--- `listed` false keeps its buffers off `:ls`, and forgets each
 --- buffer when no window shows it. Also `delete(buf)` and `time` (see
 --- `timebind`). `claims(name)` tells if a name is a target of the type by
 --- its form (`:vs paw://lane/3`). `window()` is the window to draw when no
@@ -308,8 +310,9 @@ function paw.bounce(track, opts) end
 --- is the cursor that the keymap moves, as the `grid` of a view.
 --- `describe(win)` is the text of `K`. `status(win, ctx)` is the `view`
 --- component of the status line. Also `subscope(win)`, `paint(win, g, ctx)`
---- and `pointer(win, e)` (pixels in a graphical frontend), and `help`. It
---- can also have the fields that `paw.layout.powers` maps: `keymaps`,
+--- and `pointer(win, e)` (pixels in a graphical frontend), and `help`.
+--- 
+--- It can also have the fields that `paw.layout.powers` maps: `keymaps`,
 --- `motions`, `textobjects` and `operators`. Their functions get `ctx.win`
 --- and `ctx.buf`.
 ---@param name any
@@ -330,7 +333,7 @@ function paw.clip(id) end
 ---@param ctx any
 function paw.cmd(name, args, ctx) end
 
---- Run `fn` once, after `ms` milliseconds (or as soon as the current turn ends).
+--- Run `fn` once, after `ms` milliseconds (or when the current turn ends).
 ---@param fn any
 ---@param ms any
 function paw.defer(fn, ms) end
@@ -1167,7 +1170,7 @@ function paw.autosave.recover(file, opts) end
 function paw.canvas.back(name) end
 
 --- A pointer event in pixels as the terminal gives it to the `on_mouse` of
---- a view. It is in cells, with `kind` down, up, drag, scroll_up and other
+--- a view. It is in cells, with `kind` down, up, drag, `scroll_up` and other
 --- kinds, `button`, and `mods` ("C", "A", "S"). Nil for an event that the terminal
 --- cannot tell (the second click of a double click comes as down and up).
 ---@param window any
@@ -1267,10 +1270,13 @@ function paw.canvas.openable() end
 --- monospace font of the window (or of the terminal, for a surface).
 --- `fresh` is true when the window has nothing yet. `glyphs` is true when
 --- the frontend draws glyph operations itself. If not, they come as paths,
---- without the markers. `surface` is true when the drawing goes into the
---- cells of a terminal. Then the view does not draw its background and the
+--- without the markers.
+--- 
+--- `surface` is true when the drawing goes into the cells of a terminal. Then the view does not draw its background and the
 --- data that the bars of the terminal show. `colors` is `{ fg, bg }`, the
---- colors of the terminal. `bars` comes from a frontend that shows a view
+--- colors of the terminal.
+--- 
+--- `bars` comes from a frontend that shows a view
 --- in a separate window, away from the bottom of its main window. The view
 --- then draws the status line and the command line below it. The `paint`
 --- function of the view gets these in its context, as `cell`, `surface`,
@@ -1457,7 +1463,7 @@ function paw.complete.register(spec) end
 function paw.complete.request(trigger) end
 
 --- Show the next alternative (`n` 1), the previous (-1), or with `absolute`
---- the `n`th.
+--- the alternative number `n`.
 ---@param n any
 ---@param absolute any
 function paw.complete.select(n, absolute) end
@@ -1658,7 +1664,7 @@ function paw.curves.is_curve(uri) end
 --- Make curves of your own addresses. `fn(uri, parts)` returns a target
 --- with `points`, `write`, `name`, `format`, `lo`, `hi` and the other
 --- fields, or nil to let other providers have the address
---- (docs/reference/lua-views.md, Curves).
+--- (`docs/reference/lua-views.md`, Curves).
 ---@param name any
 ---@param fn any
 function paw.curves.provide(name, fn) end
@@ -2040,7 +2046,7 @@ function paw.draw.clear_peak(id) end
 
 --- Draw a curve as a thin line over `rows` rows of a buffer, from row `y`
 --- down. `value(i)` gives the height, from 0 at the bottom to 1 at the top,
---- at the `i`th of two points for each column. The function changes only
+--- at point `i`, with two points for each column. The function changes only
 --- the cells on the line. It uses sextants (a connected line), braille dots
 --- or lines at three heights a row, as `M.curve_glyphs()` tells.
 ---@param buf any
@@ -2263,7 +2269,7 @@ function paw.draw.wave_reach(a) end
 --- from 0. The text of a run has the style of the mark, `nil` for none.
 --- "flip" is for cells whose upper part is the wave. Such a cell is an
 --- eighth block in reverse video, because blocks only grow from the bottom.
---- "clip" is for a column that reaches full scale, and "clipflip" for both.
+--- "clip" is for a column that reaches full scale, and `clipflip` for both.
 ---@param peaks any
 ---@param rows any
 function paw.draw.waveform(peaks, rows) end
@@ -2310,7 +2316,7 @@ function paw.ex.complete_pattern(line) end
 ---@param line any
 function paw.ex.complete_range(line) end
 
---- What a range covers, in words: "bars 5–8 on 2 tracks".
+--- What a range covers, in words: "bars 5 to 8 on 2 tracks".
 ---@param r any
 function paw.ex.describe(r) end
 
@@ -2399,7 +2405,7 @@ function paw.ex.split(rest) end
 function paw.ex.substitution(r, pattern, replacement, flags) end
 
 --- Tell how a view of your own maps its columns to the beats of the song,
---- and which clips it edits, for ranges. See docs/reference/lua-commands.md.
+--- and which clips it edits, for ranges. See `docs/reference/lua-commands.md`.
 ---@param name any
 ---@param spec any
 function paw.ex.view(name, spec) end
@@ -2566,7 +2572,7 @@ function paw.frontend.chosen_notes(clip) end
 function paw.frontend.chosen_refs() end
 
 --- The chosen notes of `clip` (and of the clips edited with it) in words,
---- for a toolbar: "3 notes · 5.1.00 – 5.3.00", or "" with none chosen.
+--- for a toolbar: `3 notes · 5.1.00 – 5.3.00`, or "" with none chosen.
 ---@param clip any
 function paw.frontend.chosen_text(clip) end
 
@@ -2632,7 +2638,7 @@ function paw.frontend.lane_span(lane) end
 function paw.frontend.launch_state(ids) end
 
 --- How the window was left (its size, the zoom, the heights of rows and of
---- the piano roll, whether the mixer shows): a table, empty when nothing
+--- the piano roll, if the mixer shows): a table, empty when nothing
 --- was kept. It belongs to the machine, so it is kept here, where a window
 --- attached to this kernel finds it too. (`M.layout_path` names another
 --- file, for tests.)
@@ -3596,7 +3602,7 @@ function paw.keymap.has(mode, map) end
 function paw.keymap.hints() end
 
 --- Keys as a person writes them: `<A-h>` is `Alt-h`, `<leader>at` is `,at`,
---- `<localleader>d` is `\d`, `<C-w>o` is `Ctrl-w o`, `<CR>` is `Enter`. Takes an lhs or a list of keys.
+--- `<localleader>d` is `\d`, `<C-w>o` is `Ctrl-w o`, `<CR>` is `Enter`. Takes an `lhs` or a list of keys.
 ---@param keys any
 function paw.keymap.human(keys) end
 
@@ -3631,9 +3637,10 @@ function paw.keymap.normal(keys) end
 --- end not included) and `kind`: "char" for a stretch of time, "line" for
 --- whole rows, "block" for a rectangle.
 ---   paw.keymap.operator("gl", function(region) ... end, { view = "arrange", desc = "Loop" })
---- With `count = "operator"` the count typed before the operator is its
---- own (how far, how many times: `3gUib` is three steps up over a bar), as
---- `ctx.op_count`, and `ctx.count` is the motion's or object's alone.
+--- With `count = "operator"`, the count typed before the operator is its
+--- own, as `ctx.op_count`. It tells how far or how many times: `3gUib` is
+--- three steps up over a bar. `ctx.count` is the count of the motion or
+--- object alone.
 ---@param lhs any
 ---@param fn any
 ---@param opts any
@@ -4027,7 +4034,7 @@ function paw.layout.enter(win) end
 function paw.layout.equalize() end
 
 --- Exchange the current window with the next window next to it, or with the
---- `count`th, in their row or column. When it is the last window, use the
+--- window number `count`, in their row or column. When it is the last window, use the
 --- previous window. The next window can be a split of several windows.
 ---@param count any
 function paw.layout.exchange(count) end
@@ -4397,7 +4404,7 @@ function paw.lsp.attach(which, address, keep, subject) end
 ---@param subject any
 function paw.lsp.attaches(which, address, subject) end
 
---- Tell a server to forget a request it has not answered yet.
+--- Tell a server to forget a request that it did not answer yet.
 ---@param which any
 ---@param id any
 function paw.lsp.cancel(which, id) end
@@ -4780,12 +4787,14 @@ function paw.midifile.open(path) end
 ---     markers = { { tick, text } }, skipped = { [what] = count } }
 --- 
 --- Channels count from 0. The `type` of a control is "cc" (with `number`),
---- "bend" (0 to 16383, 8192 in the middle), "pressure" (with `key` for the
---- pressure of one note) or "program" (with `program`). Values are as in
---- the file. paw reads format 2 files (independent patterns) as one track
---- after the other. paw reads a file timed in frames of SMPTE time code at
---- 120 beats a minute, because its seconds are then correct. Returns nil
---- and a reason when it is not a MIDI file.
+--- "bend", "pressure" or "program" (with `program`). A bend goes from 0 to
+--- 16383, with 8192 in the middle. A pressure has `key` for the pressure of
+--- one note.
+--- 
+--- Values are as in the file. paw reads format 2 files (independent
+--- patterns) as one track after the other. paw reads a file timed in frames
+--- of SMPTE time code at 120 beats a minute, because its seconds are then
+--- correct. Returns nil and a reason when it is not a MIDI file.
 ---@param data any
 function paw.midifile.parse(data) end
 
@@ -5834,7 +5843,7 @@ function paw.routes.setup() end
 ---@param device any
 function paw.routes.sidechain_sources(device) end
 
---- What a device listens to, as text: the name of the track, with "pre"
+--- What a device listens to, as text: the name of the track, with `pre`
 --- when it takes the sound before the fader. Nil if it listens to nothing.
 ---@param d any
 function paw.routes.sidechain_text(d) end
@@ -6037,8 +6046,8 @@ function paw.snippet.paint(p) end
 ---@param opts any
 function paw.snippet.pick(opts) end
 
---- What a snippet would write here, without writing it: `{ notes, choices,
---- ctx }` or nil and why.
+--- What a snippet would write here, but does not write: `{ notes,
+--- choices, ctx }` or nil and why.
 ---@param name any
 ---@param opts any
 function paw.snippet.preview(name, opts) end
@@ -6426,7 +6435,7 @@ function paw.tempo.at(beat) end
 ---@param beat any
 function paw.tempo.bar_of(beat) end
 
---- Where bar `n` (counting from 1) starts, in beats.
+--- Where bar `n` (the first bar is 1) starts, in beats.
 ---@param n any
 function paw.tempo.bar_start(n) end
 
@@ -6497,7 +6506,7 @@ function paw.tempo.set(beat, bpm, opts) end
 ---@param signatures any
 function paw.tempo.set_points(tempos, signatures) end
 
---- Start bar `bar` (counting from 1) in `num`/`den`, up to the next change.
+--- Start bar `bar` (the first bar is 1) in `num`/`den`, up to the next change.
 ---@param bar any
 ---@param num any
 ---@param den any
@@ -6507,7 +6516,7 @@ function paw.tempo.set_signature(bar, num, den) end
 ---@param beat any
 function paw.tempo.signature_at(beat) end
 
---- Every signature point, the start's first: { beat, bar, num, den }.
+--- Every signature point, the start's first: `{ beat, bar, num, den }`.
 function paw.tempo.signatures() end
 
 --- A tempo change at a beat, which holds. If a change is there, it gets the tempo.
@@ -6548,9 +6557,9 @@ function paw.tempolane.move(beat, to, bpm) end
 ---@param on any
 function paw.tempolane.ramp(beat, on) end
 
---- The tempo at the bottom and at the top of the row. There is a small
---- space around the slowest and the fastest tempo of the map, in tens of
---- beats a minute. The range is at least 80 and centered. So a steady
+--- The tempo at the bottom and at the top of the row. The range keeps a
+--- small space around the slowest and the fastest tempo of the map, in tens
+--- of beats a minute. The range is at least 80 and centered. So a steady
 --- song does not show as a wall.
 function paw.tempolane.range() end
 
@@ -6635,7 +6644,7 @@ function paw.textbuf.insert(how, opts) end
 function paw.textbuf.join(ctx) end
 
 --- Make a kind of text buffer. It shows for the names that its `pattern`
---- matches (`paw://` and the others). See docs/reference/lua-views.md. A kind with
+--- matches (`paw://` and the others). See `docs/reference/lua-views.md`. A kind with
 --- `readonly` (the message for a change) cannot change. `gutter = false`
 --- removes the line numbers. paw does not read a `static` kind again when
 --- the project changes. `paint(canvas, x, y, text, kind, width, row, buf)`
@@ -7402,7 +7411,7 @@ function paw.api.clip_source_length(id) end
 ---@param row integer
 function paw.api.clip_to_slot(id, track, row) end
 
---- Warp markers of an audio clip (session/stretching.rs), counted from 1.
+--- Warp markers of an audio clip (`session/stretching.rs`), counted from 1.
 ---@param id integer
 ---@param beat number
 function paw.api.clip_warp_add(id, beat) end
@@ -7538,7 +7547,7 @@ paw.api.fs_stat = nil
 ---@type fun(...): any
 paw.api.fs_trash = nil
 
---- Restyle the area (x, y, w, h), clipped to (cx, cy, cw, ch), and
+--- Restyle the area `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`, and
 --- overwrite its characters when `fill` is given.
 ---@param x number
 ---@param y number
@@ -7552,7 +7561,7 @@ paw.api.fs_trash = nil
 ---@param ch number
 function paw.api.grid_fill(x, y, w, h, fill, style, cx, cy, cw, ch) end
 
---- Keep the cells (x, y, w, h), clipped to (cx, cy, cw, ch), for pixels
+--- Keep the cells `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`, for pixels
 --- under the name `key` (`buf:strip`), over the text or `under` it.
 --- Returns the number of the surface for `grid_surface_ops`, or nil when
 --- no part of it is on the screen.
@@ -7577,7 +7586,7 @@ function paw.api.grid_surface_ops(index, ops) end
 --- drawn over them from now on covers them.
 function paw.api.grid_surfaces_seal() end
 
---- Draw text at (x, y), clipped to the rectangle (cx, cy, cw, ch).
+--- Draw text at `(x, y)`, clipped to the rectangle `(cx, cy, cw, ch)`.
 --- Returns the number of columns the text takes.
 ---@param x number
 ---@param y number
@@ -7840,8 +7849,8 @@ function paw.api.proc_close_input(id) end
 function paw.api.proc_kill(id) end
 
 --- A process started with `pipe = true`: what it wrote ("" when
---- nothing, nil once it closed its output), and writing to it. A
---- `proc.output` event says when there is something to read.
+--- nothing, nil once it closed its output). `proc_write` writes to it.
+--- A `proc.output` event says when there is something to read.
 ---@param id integer
 ---@param max integer?
 function paw.api.proc_read(id, max) end

@@ -199,7 +199,7 @@ M.providers = {}
 --- Make curves of your own addresses. `fn(uri, parts)` returns a target
 --- with `points`, `write`, `name`, `format`, `lo`, `hi` and the other
 --- fields, or nil to let other providers have the address
---- (docs/reference/lua-views.md, Curves).
+--- (`docs/reference/lua-views.md`, Curves).
 function M.provide(name, fn) M.providers[name] = fn end
 
 --- The curve at an address, or nil and why not.

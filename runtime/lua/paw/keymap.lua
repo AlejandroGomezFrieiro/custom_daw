@@ -92,7 +92,7 @@ local key_names = {
 local modifier_names = { C = "Ctrl", A = "Alt", M = "Alt", S = "Shift", D = "Super" }
 
 --- Keys as a person writes them: `<A-h>` is `Alt-h`, `<leader>at` is `,at`,
---- `<localleader>d` is `\d`, `<C-w>o` is `Ctrl-w o`, `<CR>` is `Enter`. Takes an lhs or a list of keys.
+--- `<localleader>d` is `\d`, `<C-w>o` is `Ctrl-w o`, `<CR>` is `Enter`. Takes an `lhs` or a list of keys.
 function M.human(keys)
   if type(keys) == "string" then keys = M.parse(keys) end
   local out, prev_word = {}, false
@@ -206,9 +206,10 @@ end
 --- end not included) and `kind`: "char" for a stretch of time, "line" for
 --- whole rows, "block" for a rectangle.
 ---   paw.keymap.operator("gl", function(region) ... end, { view = "arrange", desc = "Loop" })
---- With `count = "operator"` the count typed before the operator is its
---- own (how far, how many times: `3gUib` is three steps up over a bar), as
---- `ctx.op_count`, and `ctx.count` is the motion's or object's alone.
+--- With `count = "operator"`, the count typed before the operator is its
+--- own, as `ctx.op_count`. It tells how far or how many times: `3gUib` is
+--- three steps up over a bar. `ctx.count` is the count of the motion or
+--- object alone.
 function M.operator(lhs, fn, opts)
   M.set(lhs, nil, paw.util.merge(opts or {}, { mode = { "n", "x" }, operator = fn }))
 end

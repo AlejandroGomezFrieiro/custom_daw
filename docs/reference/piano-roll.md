@@ -22,16 +22,16 @@ The keys that it shares with the arrange view are in
 | `gC` | Opens the curve of the controller that the strip shows. |
 | `gX` | Opens the curve of the note's own expression. |
 | `Esc` | Releases the notes chosen with the pointer. The view stays. |
-| `Ctrl-w p` | Goes back to the window before (the arrange view). |
+| `Ctrl-w p` | Returns to the window before (the arrange view). |
 | `Ctrl-s` | Writes a snippet, for example the dominant of the next chord. `Tab` and `Ctrl-n` step through its choices. See [Completion](completion.md). |
 
 ## What the view shows
 
-A note that has an articulation (its MIDI 2.0 attribute) shows a short
-tag of it (`pz` for pizzicato) in place of its pitch. `K` names the
-articulation. A key that the instrument of the track names (a drum of a
-kit, a keyswitch of a sampler) shows its name on the keyboard, and `K`
-gives it.
+A note can have an articulation (its MIDI 2.0 attribute). Such a note
+shows a short tag of it (`pz` for pizzicato) in place of its pitch. `K` names the
+articulation. The instrument of the track can name a key (a drum of a
+kit, a keyswitch of a sampler). Such a key shows its name on the keyboard,
+and `K` gives it.
 
 A row over the ruler names the chords that sound, read over every pitched
 track, with the key on the left (`paw.opt.chords`). A dot on the keyboard
@@ -131,11 +131,12 @@ makes `i` and `a` do the same.
 | `Backspace` | Steps back and removes the note. |
 | `z` `x` | Change the octave. |
 | `[` `]` | Change the velocity. |
-| `Esc` | Goes back to normal mode. |
+| `Esc` | Returns to normal mode. |
 
-The clip grows by a bar when the notes go past its end. (The key is `I`
-because `gi` of Vim may be necessary for "insert where you stopped", `R`
-records, and `I` of Vim, "insert at the start of the line", is `0i` here.)
+The clip grows by a bar when the notes go past its end. The key is `I`
+for three reasons. `gi` of Vim may be necessary for "insert where you
+stopped". `R` records. `I` of Vim, "insert at the start of the line", is
+`0i` here.
 
 ## Suggestions
 
@@ -145,8 +146,8 @@ With a completion source loaded (`extensions/continue`, a language server),
 the piano roll can suggest what comes next. A suggestion shows as dashed
 ghost notes in the color of the track, with a badge over them, for example
 `1/3 continue: the bar again`. Suggestions come after a pause in the edits
-(`paw.opt.complete_auto`), never while the song plays or records, or with
-`Ctrl-Space`.
+(`paw.opt.complete_auto`), or when you press `Ctrl-Space`. They do not
+come while the song plays or records.
 
 | Keys | Effect |
 | --- | --- |

@@ -106,7 +106,7 @@ in the device picker, `Ctrl-t` steps between instruments and effects.
 The match is fuzzy, as in fzf: the typed letters must be in the line in
 that order, but not necessarily together. `dfh` finds `Dragonfly Hall`.
 
-- A line ranks higher when the letters are consecutive, when they start words (after a space, `/`, `:`, `.`, `_`, `-`, or at a capital in a word), and when the line is shorter.
+- A line ranks higher when the letters are consecutive, when they start words (after a space, `/`, `:`, `.`, `_`, `-`, or at a capital letter inside a word), and when the line is shorter.
 - Words separated by a space must each match, in any order: `hall drag`.
 - Lowercase matches each case. A word with a capital matches case exactly.
 - `'hall` matches as written, `^drag` at the start of the line, `hall$` at its end, `!plate` not in it.
@@ -139,7 +139,7 @@ file. The top of the pane says what plays: `▶ Soft pad · loop bar 5`.
 | --- | --- |
 | presets (`:preset`) | The preset loaded into the device, with the notes of the track: the bar of its MIDI clip at the cursor (else the last bar before it with notes), again and again. A track without notes plays a built-in phrase in the key of the song (a beat on a drum track). When you move, paw loads the next preset over the same loop. |
 | devices (`,fa`) | The device added to the track of the cursor, with the same phrase. paw makes a plugin in a separate process, so the selection stops on it for 600 ms first, and the pane shows `… loading` until it plays. |
-| files (`,ff`, and the file picker of `:import`) | A sound file alone, from its start, over everything else at `paw.opt.audition_level` dB (-12), with its outline and the place that it has reached. A MIDI file plays its first two bars, at its own tempo, through the track of the cursor if it has an instrument, else through a synth (and a kit for its drums) that paw adds for this. |
+| files (`,ff`, and the file picker of `:import`) | A sound file alone, from its start, over everything else at `paw.opt.audition_level` dB (-12), with its outline and the place that it plays. A MIDI file plays its first two bars, at its own tempo, through the track of the cursor if it has an instrument, else through a synth (and a kit for its drums) that paw adds for this. |
 | beats (`:drums.beat`) | The beat written into the clip, its first bar again and again. |
 | snippets (`Ctrl-s` in the piano roll) | What the snippet writes, one time, with what the other pitched tracks play over the same beats. |
 | tracks, clips, notes, media | With `Ctrl-Space`: the first two bars of a clip through its track, a note with the chord that it starts, an audio file. The tracks picker starts with audition off. |

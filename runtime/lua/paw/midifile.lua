@@ -294,12 +294,14 @@ end
 ---     markers = { { tick, text } }, skipped = { [what] = count } }
 ---
 --- Channels count from 0. The `type` of a control is "cc" (with `number`),
---- "bend" (0 to 16383, 8192 in the middle), "pressure" (with `key` for the
---- pressure of one note) or "program" (with `program`). Values are as in
---- the file. paw reads format 2 files (independent patterns) as one track
---- after the other. paw reads a file timed in frames of SMPTE time code at
---- 120 beats a minute, because its seconds are then correct. Returns nil
---- and a reason when it is not a MIDI file.
+--- "bend", "pressure" or "program" (with `program`). A bend goes from 0 to
+--- 16383, with 8192 in the middle. A pressure has `key` for the pressure of
+--- one note.
+---
+--- Values are as in the file. paw reads format 2 files (independent
+--- patterns) as one track after the other. paw reads a file timed in frames
+--- of SMPTE time code at 120 beats a minute, because its seconds are then
+--- correct. Returns nil and a reason when it is not a MIDI file.
 function M.parse(data)
   -- A RIFF MIDI file (.rmi) holds a plain one.
   if data:sub(1, 4) == "RIFF" and data:sub(9, 12) == "RMID" then

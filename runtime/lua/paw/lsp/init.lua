@@ -129,7 +129,7 @@ function M.notify(which, method, params)
   return send(client, { jsonrpc = "2.0", method = method, params = params or rpc.object() })
 end
 
---- Tell a server to forget a request it has not answered yet.
+--- Tell a server to forget a request that it did not answer yet.
 function M.cancel(which, id)
   local client = client_of(which)
   if client and client.pending[id] then

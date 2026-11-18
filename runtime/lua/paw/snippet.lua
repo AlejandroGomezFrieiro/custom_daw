@@ -284,8 +284,8 @@ local function run(spec, opts, index)
   return { notes = all, remove = remove, choices = choices or {}, ctx = ctx }
 end
 
---- What a snippet would write here, without writing it: `{ notes, choices,
---- ctx }` or nil and why.
+--- What a snippet would write here, but does not write: `{ notes,
+--- choices, ctx }` or nil and why.
 function M.preview(name, opts)
   local spec = M.list[name]
   if not spec then return nil, "no snippet " .. tostring(name) end

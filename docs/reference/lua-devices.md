@@ -138,7 +138,7 @@ singer, is too big for a string on each call.
 - The device maps the file with `dsp.map(path)`. The result `m` has
   `m.data[0]` to `m.data[m.n - 1]`. paw reads the file one time, and all
   the devices that map the same file share it.
-- Map a file in `dev.call` or `dev.init`, never in `process`.
+- Map a file in `dev.call` or `dev.init`. Do not map a file in `process`.
   `m:close()` releases it.
 - For new data, write a new file. Do not write over a file that a device
   has in memory.

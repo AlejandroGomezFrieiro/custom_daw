@@ -629,10 +629,13 @@ end
 --- monospace font of the window (or of the terminal, for a surface).
 --- `fresh` is true when the window has nothing yet. `glyphs` is true when
 --- the frontend draws glyph operations itself. If not, they come as paths,
---- without the markers. `surface` is true when the drawing goes into the
---- cells of a terminal. Then the view does not draw its background and the
+--- without the markers.
+---
+--- `surface` is true when the drawing goes into the cells of a terminal. Then the view does not draw its background and the
 --- data that the bars of the terminal show. `colors` is `{ fg, bg }`, the
---- colors of the terminal. `bars` comes from a frontend that shows a view
+--- colors of the terminal.
+---
+--- `bars` comes from a frontend that shows a view
 --- in a separate window, away from the bottom of its main window. The view
 --- then draws the status line and the command line below it. The `paint`
 --- function of the view gets these in its context, as `cell`, `surface`,
@@ -697,7 +700,7 @@ function M.draw(draw, px)
 end
 
 --- A pointer event in pixels as the terminal gives it to the `on_mouse` of
---- a view. It is in cells, with `kind` down, up, drag, scroll_up and other
+--- a view. It is in cells, with `kind` down, up, drag, `scroll_up` and other
 --- kinds, `button`, and `mods` ("C", "A", "S"). Nil for an event that the terminal
 --- cannot tell (the second click of a double click comes as down and up).
 function M.cell_event(window, event, bare)

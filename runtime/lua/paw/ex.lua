@@ -55,7 +55,7 @@ local function fail(text, ...) error(string.format(text, ...), 0) end
 M.views = {}
 
 --- Tell how a view of your own maps its columns to the beats of the song,
---- and which clips it edits, for ranges. See docs/reference/lua-commands.md.
+--- and which clips it edits, for ranges. See `docs/reference/lua-commands.md`.
 function M.view(name, spec) M.views[name] = spec end
 
 local function roll() return paw.ui.views.pianoroll end
@@ -384,7 +384,7 @@ function M.range(line)
   return r, rest
 end
 
---- What a range covers, in words: "bars 5–8 on 2 tracks".
+--- What a range covers, in words: "bars 5 to 8 on 2 tracks".
 function M.describe(r)
   local parts = {}
   if r.from then

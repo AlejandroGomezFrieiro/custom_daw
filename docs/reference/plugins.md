@@ -59,8 +59,8 @@ paw looks for them in:
 - the directories in `PAW_PLUGIN_LIBS`.
 
 paw loads the display libraries (`libX11` and related libraries) before
-each plugin, because the toolkit of a plugin opens them by name when it
-makes its window. Without them, an editor is an empty black window.
+each plugin. The toolkit of a plugin opens them by name when it makes its
+window. Without them, an editor is an empty black window.
 
 ## Notes
 
@@ -252,6 +252,6 @@ Devices written in Lua also run in a helper process. See
 ## The sampler extension
 
 `extensions/sampler` gives `paw sampler` (`clap:dev.paw.sampler`). It plays
-SFZ and Decent Sampler instruments, with articulations selected for each
-note by MIDI 2.0 attribute or by keyswitch, and it gives sampler tracks.
+SFZ and Decent Sampler instruments, and it gives sampler tracks. A MIDI 2.0
+attribute or a keyswitch selects the articulation of each note.
 See its [README](../../extensions/sampler/README.md).

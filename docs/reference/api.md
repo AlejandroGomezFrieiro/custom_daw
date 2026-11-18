@@ -12,17 +12,23 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 - `paw.add_track(opts)`: A new track, last unless `opts.index` says where: `opts` as `paw.api.track_add` takes them (`name`, `volume`, `output` as a track or an id, ...).
 - `paw.bounce(track, opts)`: Render a track with its devices to audio, as one clip on a new track immediately below it, and mute the original. The new track sends its sound where the original sent it. It uses `paw.render`, so `render.before` runs. `opts.name` is the name of the new track ("<name> (bounced)" by default). `opts.tail` is the seconds rendered after its last clip (2). Returns the new track, or nil when the track has no clips.
-- `paw.buftype(name, def)`: Make a buffer type. See docs/reference/lua-views.md.
+- `paw.buftype(name, def)`: Make a buffer type. See `docs/reference/lua-views.md`.
 
   ```lua
   paw.buftype("notes", { create = function(target) return {} end, render = function(win, canvas, ctx) end })
   ```
 
-  The fields are these. `create(target, buf)` gives the state of the buffer. `render(win, canvas, ctx)` draws (`ctx.buf` is the buffer, and `win.state` is the state of the window). `on_key(win, key)` gets keys with no mapping. Also `on_mouse(win, event)`, `title(buf)` and `bufname(target, buf)`. `options` is the options of the buffer at the start. `listed` false keeps its buffers off `:ls`, and forgets each buffer when no window shows it. Also `delete(buf)` and `time` (see `timebind`). `claims(name)` tells if a name is a target of the type by its form (`:vs paw://lane/3`). `window()` is the window to draw when no window in the tabs shows the type (one in a separate window of a graphical frontend). Map keys for its windows with `{ view = name }`.  A type can also do all that a view can do, for each window. `grid(win)` is the cursor that the keymap moves, as the `grid` of a view. `describe(win)` is the text of `K`. `status(win, ctx)` is the `view` component of the status line. Also `subscope(win)`, `paint(win, g, ctx)` and `pointer(win, e)` (pixels in a graphical frontend), and `help`. It can also have the fields that `paw.layout.powers` maps: `keymaps`, `motions`, `textobjects` and `operators`. Their functions get `ctx.win` and `ctx.buf`.
+  The fields are these. `create(target, buf)` gives the state of the buffer. `render(win, canvas, ctx)` draws (`ctx.buf` is the buffer, and `win.state` is the state of the window). `on_key(win, key)` gets keys with no mapping. Also `on_mouse(win, event)`, `title(buf)` and `bufname(target, buf)`. `options` is the options of the buffer at the start.
+
+  `listed` false keeps its buffers off `:ls`, and forgets each buffer when no window shows it. Also `delete(buf)` and `time` (see `timebind`). `claims(name)` tells if a name is a target of the type by its form (`:vs paw://lane/3`). `window()` is the window to draw when no window in the tabs shows the type (one in a separate window of a graphical frontend). Map keys for its windows with `{ view = name }`.
+
+  A type can also do all that a view can do, for each window. `grid(win)` is the cursor that the keymap moves, as the `grid` of a view. `describe(win)` is the text of `K`. `status(win, ctx)` is the `view` component of the status line. Also `subscope(win)`, `paint(win, g, ctx)` and `pointer(win, e)` (pixels in a graphical frontend), and `help`.
+
+  It can also have the fields that `paw.layout.powers` maps: `keymaps`, `motions`, `textobjects` and `operators`. Their functions get `ctx.win` and `ctx.buf`.
 - `paw.cancel(handle)`: Stop a timer: `handle` is what `paw.defer` or `paw.every` returned.
 - `paw.clip(id)`: The clip of an id, as a `paw.Clip`.
 - `paw.cmd(name, args, ctx)`: Run a command. `args` is a table of arguments. `ctx` adds fields such as `count`.
-- `paw.defer(fn, ms)`: Run `fn` once, after `ms` milliseconds (or as soon as the current turn ends).
+- `paw.defer(fn, ms)`: Run `fn` once, after `ms` milliseconds (or when the current turn ends).
 - `paw.device(id)`: The device, clip or automation lane of an id, as an object.
 - `paw.device_types()`: Descriptions of each kind of device that you can add to a track. A kind that an extension added (`paw.plugins.add_dir`) has its extension in `from`.
 - `paw.emit(name, payload)`: Call each handler for `name`. paw reports a handler that fails, and goes to the next. Returns true, or false and the reason when a handler returned `false, reason`. So a handler refuses the request of an event (`edit.before`, `project.saving`, `key.pre`).
@@ -73,7 +79,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.Clip:exists()`: True if the clip is still in the project.
 - `paw.Clip:get()`: Everything about the clip as plain data (`paw.api.clip_get`).
 - `paw.Clip:note_at(pitch, beat)`: The note on a pitch that sounds at a beat of the clip, and its place in the notes of the clip. Nothing when there is no such note.
-- `paw.Clip:notes(range)`: The notes of a MIDI clip: a list of { pitch, start, length, velocity }. `start` is in beats from the start of the clip. A note can have `meta`, a table of extension data such as a lyric. A note can also have `attr`, the MIDI 2.0 attribute of its note-on (`{ type, data }`, see `paw.attr`).  With a range, only the notes that sound in it. The second value is then the place of each note in the whole list, for `set_note` and `remove_note`:
+- `paw.Clip:notes(range)`: The notes of a MIDI clip: a list of { pitch, start, length, velocity }. `start` is in beats from the start of the clip. A note can have `meta`, a table of extension data such as a lyric. A note can also have `attr`, the MIDI 2.0 attribute of its note-on (`{ type, data }`, see `paw.attr`).
+
+  With a range, only the notes that sound in it. The second value is then the place of each note in the whole list, for `set_note` and `remove_note`:
 
   ```lua
   local notes, at = clip:notes({ from = 4, to = 8, low = "C3", high = "C5" })
@@ -277,7 +285,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 ## Module paw.canvas
 
 - `paw.canvas.back(name)`: Give the keyboard back to the main window from a view in a separate window. It goes to the window that had it before the view went there. If there is no such window, it goes to the arrange view.
-- `paw.canvas.cell_event(window, event, bare)`: A pointer event in pixels as the terminal gives it to the `on_mouse` of a view. It is in cells, with `kind` down, up, drag, scroll_up and other kinds, `button`, and `mods` ("C", "A", "S"). Nil for an event that the terminal cannot tell (the second click of a double click comes as down and up).
+- `paw.canvas.cell_event(window, event, bare)`: A pointer event in pixels as the terminal gives it to the `on_mouse` of a view. It is in cells, with `kind` down, up, drag, `scroll_up` and other kinds, `button`, and `mods` ("C", "A", "S"). Nil for an event that the terminal cannot tell (the second click of a double click comes as down and up).
 - `paw.canvas.close(name)`: Close the separate window of a view. The keyboard returns to the main window, where it was before. For a view docked in the layout, its window there closes, as `:close` does.
 - `paw.canvas.dock(name)`: Put a view in a separate window back into the layout, with the keyboard. It goes where it was before it left the layout. If not, it goes where it docks. If not, it goes in a window split from the current window. paw does this when its separate window closes. `Ctrl-w d` in it does the same.
 - `paw.canvas.draw(draw, px)`: The operations that a function draws on a painter of `px.w` by `px.h` pixels: what a strip shows (`buf:strip`). `draw(g, px)` gets the painter and `px`. If it fails, the error shows where it would draw.
@@ -308,7 +316,13 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
   { "layer", name }                              what follows is that layer
   ```
 
-  The attributes are a sum of 1 bold, 4 italic, 8 underline and 32 strike. It also returns the title of the window, which a view can change.  The options are these. `cell` is the size `{ w, h }` of a cell of the monospace font of the window (or of the terminal, for a surface). `fresh` is true when the window has nothing yet. `glyphs` is true when the frontend draws glyph operations itself. If not, they come as paths, without the markers. `surface` is true when the drawing goes into the cells of a terminal. Then the view does not draw its background and the data that the bars of the terminal show. `colors` is `{ fg, bg }`, the colors of the terminal. `bars` comes from a frontend that shows a view in a separate window, away from the bottom of its main window. The view then draws the status line and the command line below it. The `paint` function of the view gets these in its context, as `cell`, `surface`, `fg` and `bg`. A view that draws cells gives `{ same = true }` when nothing changes.
+  The attributes are a sum of 1 bold, 4 italic, 8 underline and 32 strike. It also returns the title of the window, which a view can change.
+
+  The options are these. `cell` is the size `{ w, h }` of a cell of the monospace font of the window (or of the terminal, for a surface). `fresh` is true when the window has nothing yet. `glyphs` is true when the frontend draws glyph operations itself. If not, they come as paths, without the markers.
+
+  `surface` is true when the drawing goes into the cells of a terminal. Then the view does not draw its background and the data that the bars of the terminal show. `colors` is `{ fg, bg }`, the colors of the terminal.
+
+  `bars` comes from a frontend that shows a view in a separate window, away from the bottom of its main window. The view then draws the status line and the command line below it. The `paint` function of the view gets these in its context, as `cell`, `surface`, `fg` and `bg`. A view that draws cells gives `{ same = true }` when nothing changes.
 - `paw.canvas.paint_cells(name, window, width, height, opts)`: A view that draws cells, at a size in pixels: its snapshot (`paw.api.ui_view_snapshot`) as runs of text, one style for each run. paw draws it again only after a request for a redraw. It also draws it one time each second for the parts that change by themselves (times), and on each call while the song plays. The result is `{ same = true }` when the drawing is the same as the last drawing. `window` keeps the last drawing. The view in a separate window has a line below it for prompts, messages and the keys of the view. This is not so when the frontend draws a status line there itself (`opts.status`). paw sends the windows of a graphical frontend as scenes (`paw.ui.render_scene`).
 - `paw.canvas.pointer(name, event)`: Pass a pointer event from a frontend to a view, which then has the keyboard. It goes to its `pointer` function in pixels. For a view in cells, it goes to its `on_mouse` function, as from the terminal.
 - `paw.canvas.shown(name)`: True if a graphical frontend shows a view. The view is in a separate window, or docked where the screen of the seat is the main area of a frontend. That is a frontend that told its size to `paw.panes`, or the frontend of the instance when there is no terminal.
@@ -372,7 +386,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.complete.poke()`: Start the idle pause again: after an edit.
 - `paw.complete.register(spec)`: Add a source, or replace the one of the same name.
 - `paw.complete.request(trigger)`: Ask every source for this view at once. `trigger` is "manual" (a key, the default) or "auto". Returns the request's id, or nil when there is nothing to ask about or nobody to ask.
-- `paw.complete.select(n, absolute)`: Show the next alternative (`n` 1), the previous (-1), or with `absolute` the `n`th.
+- `paw.complete.select(n, absolute)`: Show the next alternative (`n` 1), the previous (-1), or with `absolute` the alternative number `n`.
 - `paw.complete.show(items, opts)`: Show items as ghost notes in the piano roll without being a source: a snippet's preview, what a fix would do. `opts.clip` is the clip they are for (the one open), `opts.keys = false` shows them only, without the keys that accept or step through them. Nothing, or an empty list, hides them.
 - `paw.complete.tool()`: What the window's piano roll toolbar shows of completion: nil without sources.
 - `paw.complete.unregister(name)`: Remove the source of a name.
@@ -416,7 +430,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.curves.fit(t, points)`: Points made ready for a curve: sorted. Each range with a shape that the curve does not have becomes short pieces of a shape that it has.
 - `paw.curves.generate(wave, from, to, opts)`: A wave from beat `from` to beat `to`: `opts.rate` beats a cycle, `opts.depth` of the height, about `opts.centre` (a fraction, 0.5 when left out), turned into values with `opts.unfrac`. `opts.seed` makes a random one the same each time. Smooth shapes where `opts.smooth` (the curve has them), else many points.
 - `paw.curves.is_curve(uri)`: True if a text names a curve: an address that `target` can read.
-- `paw.curves.provide(name, fn)`: Make curves of your own addresses. `fn(uri, parts)` returns a target with `points`, `write`, `name`, `format`, `lo`, `hi` and the other fields, or nil to let other providers have the address (docs/reference/lua-views.md, Curves).
+- `paw.curves.provide(name, fn)`: Make curves of your own addresses. `fn(uri, parts)` returns a target with `points`, `write`, `name`, `format`, `lo`, `hi` and the other fields, or nil to let other providers have the address (`docs/reference/lua-views.md`, Curves).
 - `paw.curves.quantize(points, grid)`: Points moved onto the grid. When two points go to one step, the later point stays.
 - `paw.curves.smooth(points, times)`: Softer moves: each value becomes the mean of its value and the values next to it, `times` times. The first and the last value do not change.
 - `paw.curves.sorted(points)`: Points sorted by beat, those at the same beat kept in the order given.
@@ -499,7 +513,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.draw.braille(bits)`: A braille character from its eight dots: bit k is dot k + 1.
 - `paw.draw.chips(buf, x, y, list, gap)`: Small on/off marks side by side, each a letter on a cell of its own: `chips(buf, x, y, { { "M", on, "Mute" }, ... }, gap)`. Returns the columns used.
 - `paw.draw.clear_peak(id)`: Put out a track's clip light and let its loudest of late fall.
-- `paw.draw.curve(buf, y, rows, value, style)`: Draw a curve as a thin line over `rows` rows of a buffer, from row `y` down. `value(i)` gives the height, from 0 at the bottom to 1 at the top, at the `i`th of two points for each column. The function changes only the cells on the line. It uses sextants (a connected line), braille dots or lines at three heights a row, as `M.curve_glyphs()` tells.
+- `paw.draw.curve(buf, y, rows, value, style)`: Draw a curve as a thin line over `rows` rows of a buffer, from row `y` down. `value(i)` gives the height, from 0 at the bottom to 1 at the top, at point `i`, with two points for each column. The function changes only the cells on the line. It uses sextants (a connected line), braille dots or lines at three heights a row, as `M.curve_glyphs()` tells.
 - `paw.draw.curve_glyphs()`: How paw draws curves in cells: "sextant", "braille" or "line", from `paw.opt.curve_glyphs`. `paw.opt.braille = false` and `paw.opt.ascii` both mean "line". `paw.opt.ascii` wins over all, and uses ASCII characters.
 - `paw.draw.db_cell(db, width)`: Where on a meter `width` cells long a level in dB falls, from 0.
 - `paw.draw.db_text(db)`: A volume in dB as few cells as it can: `-4.0`, `-inf`, `+2.5`.
@@ -539,7 +553,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.draw.use_glyphs()`: Take the glyphs `paw.opt.ascii` asks for into `paw.draw.g`.
 - `paw.draw.vmeter(buf, x, y, height, peak, hold)`: A level meter `height` cells tall, lit from the bottom, with the peak held (`hold`, linear) marked by a line over its cell.
 - `paw.draw.wave_reach(a)`: How far a sample of size `a` (0 to 1) goes up a waveform, 0 to 1. With `paw.opt.wave_scale` "linear", the size does not change, and a kick shows over a hat. With `"db"`, the scale is in decibels from -48, and quiet sounds show.
-- `paw.draw.waveform(peaks, rows)`: Peaks (`{ min, max }` pairs from -1 to 1, one for each column) as a waveform of `rows` text rows. Each column goes from its lowest to its highest sample around the middle of the rows, in eighths of a row. Returns the rows as text. It also returns, for each row, its runs `{ column, text, mark }` of cells with the same mark. The column counts from 0. The text of a run has the style of the mark, `nil` for none. "flip" is for cells whose upper part is the wave. Such a cell is an eighth block in reverse video, because blocks only grow from the bottom. "clip" is for a column that reaches full scale, and "clipflip" for both.
+- `paw.draw.waveform(peaks, rows)`: Peaks (`{ min, max }` pairs from -1 to 1, one for each column) as a waveform of `rows` text rows. Each column goes from its lowest to its highest sample around the middle of the rows, in eighths of a row. Returns the rows as text. It also returns, for each row, its runs `{ column, text, mark }` of cells with the same mark. The column counts from 0. The text of a run has the style of the mark, `nil` for none. "flip" is for cells whose upper part is the wave. Such a cell is an eighth block in reverse video, because blocks only grow from the bottom. "clip" is for a column that reaches full scale, and `clipflip` for both.
 
 ## Module paw.events
 
@@ -557,7 +571,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.ex.change(item, sets, pattern)`: What a replacement makes of one item: the fields that change, as `paw.api` keeps them.
 - `paw.ex.complete_pattern(line)`: Field names as they are typed in a pattern: `:%s/ve` offers `vel`.
 - `paw.ex.complete_range(line)`: What could finish a range being typed: marks after `'`, tracks after `t/`. Nil when the line is not in the middle of one.
-- `paw.ex.describe(r)`: What a range covers, in words: "bars 5–8 on 2 tracks".
+- `paw.ex.describe(r)`: What a range covers, in words: "bars 5 to 8 on 2 tracks".
 - `paw.ex.exec(line, ctx)`: Run a command line, as typed after `:`, with a range in front if it has one. A line with a range, or an Ex command, is one undo step named after the line (a line typed after `:` always is).
 - `paw.ex.field(name, spec)`: A field that `:s` and `:g` patterns can name (`lyric:la`): `level` (note, clip or track), `type`, `get(item)`, `set(item, value, change)`.
 - `paw.ex.go(r)`: Move to where a range starts, as `:5` does in Vim.
@@ -574,7 +588,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.ex.shown()`: What the views show now, for frontends and tests: `{ from, to, tracks, matches, notes, clips, current }`, or nil.
 - `paw.ex.split(rest)`: Split what follows a range into the command's name, the text after it, and how many times a `>` or `<` was typed.
 - `paw.ex.substitution(r, pattern, replacement, flags)`: What a substitution would do: the matches, the ones it changes, and for each its change (false to remove it).
-- `paw.ex.view(name, spec)`: Tell how a view of your own maps its columns to the beats of the song, and which clips it edits, for ranges. See docs/reference/lua-commands.md.
+- `paw.ex.view(name, spec)`: Tell how a view of your own maps its columns to the beats of the song, and which clips it edits, for ranges. See `docs/reference/lua-commands.md`.
 
 ## Module paw.ext
 
@@ -590,7 +604,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.ext.parse_version(text)`: The numbers of a version: "1.2.3" gives { 1, 2, 3 }. A part that is not there is 0. Nil for text that is not a version.
 - `paw.ext.provides(name)`: What a loaded extension registered: a list of `{ kind, title, items }`, each item a short label, in the order of `paw.ext.registries`.
 - `paw.ext.satisfies(version, want)`: True if `version` agrees with `want`. `want` is comparisons with spaces or commas between them. Each is `>=1.2`, `>1`, `<=2`, `<2.0`, `=1.2.3`, `^1.2` (the same first number, at least 1.2), `~1.2` (the same first two numbers) or a version alone, which means `^`. `*` or nothing is any version.
-- `paw.ext.unload(name, opts)`: Unload an extension. paw removes all that it registered (while it loaded, and later from its handlers and timers). paw puts back what it replaced (a command or key of the core that it mapped again). Its options go with their values, and its timers stop. paw stops to offer the devices written in Lua and the plugin directories that it added. paw forgets its modules, so a new load runs them again.  While a track contains one of its devices, paw does not unload it (as Neovim does not delete a buffer with changes). With `opts.force`, it unloads, and the devices stay and play until you remove them. paw cannot find them when you open the project again without the extension. Returns true (with `opts.force`, the devices that stay on tracks, in words), or nil and the reason.
+- `paw.ext.unload(name, opts)`: Unload an extension. paw removes all that it registered (while it loaded, and later from its handlers and timers). paw puts back what it replaced (a command or key of the core that it mapped again). Its options go with their values, and its timers stop. paw stops to offer the devices written in Lua and the plugin directories that it added. paw forgets its modules, so a new load runs them again.
+
+  While a track contains one of its devices, paw does not unload it (as Neovim does not delete a buffer with changes). With `opts.force`, it unloads, and the devices stay and play until you remove them. paw cannot find them when you open the project again without the extension. Returns true (with `opts.force`, the devices that stay on tracks, in words), or nil and the reason.
 
 ## Module paw.files
 
@@ -617,7 +633,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.frontend.chosen_clips()`: The ids of the chosen clips, in order.
 - `paw.frontend.chosen_notes(clip)`: The places of the selected notes of `clip`, in order. None if the notes of the clip changed after the selection.
 - `paw.frontend.chosen_refs()`: Every chosen note of the clips the roll edits, as `{ clip, place }`.
-- `paw.frontend.chosen_text(clip)`: The chosen notes of `clip` (and of the clips edited with it) in words, for a toolbar: "3 notes · 5.1.00 – 5.3.00", or "" with none chosen.
+- `paw.frontend.chosen_text(clip)`: The chosen notes of `clip` (and of the clips edited with it) in words, for a toolbar: `3 notes · 5.1.00 – 5.3.00`, or "" with none chosen.
 - `paw.frontend.closing()`: Tells if paw would lose data if it closes now: { modified, name, path }.
 - `paw.frontend.completions(prompt)`: The candidates of a prompt, as the terminal shows them above the line. These are the candidates in view around the selected one, as `{ label, desc }`. `chosen` is the place of the selected candidate among them (0 for none).
 - `paw.frontend.dialog_info()`: The data that the window needs to open the file dialog of the desktop. `native` tells if it must use that dialog (the option). When it is off, the dialogs are those of the kernel. `dir` is the folder to start in. It is the folder of the last selected file, or of the project, or home, as in the list picker. `name` is the file name of the project, for "Save as". `render` is the file endings that a render can write.
@@ -628,7 +644,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.frontend.lane_name(lane)`: What a lane moves, in words: `Volume`, `Pan`, `Synth · cutoff`.
 - `paw.frontend.lane_span(lane)`: The stretch of a lane's range that is worth drawing it over: a fader's travel for volume, the whole range for anything else.
 - `paw.frontend.launch_state(ids)`: What each drawn track (`ids`, the master last) plays from its slots, by place. `slot` and `queued` are rows or -1. `stopping` and `back` tell that a stop or a return to the timeline is in the queue. `stopped` tells that the track plays nothing. `progress` is the position of the clip in its loop (0 to 1). `recording` is the row that records, or -1. The result is empty while no slot plays or records.
-- `paw.frontend.layout_get()`: How the window was left (its size, the zoom, the heights of rows and of the piano roll, whether the mixer shows): a table, empty when nothing was kept. It belongs to the machine, so it is kept here, where a window attached to this kernel finds it too. (`M.layout_path` names another file, for tests.)
+- `paw.frontend.layout_get()`: How the window was left (its size, the zoom, the heights of rows and of the piano roll, if the mixer shows): a table, empty when nothing was kept. It belongs to the machine, so it is kept here, where a window attached to this kernel finds it too. (`M.layout_path` names another file, for tests.)
 - `paw.frontend.layout_set(layout)`: Keep the window's layout (see `layout_get`).
 - `paw.frontend.menu(kind, args)`: Menu `kind` for `args`, as plain data for a window to show.
 - `paw.frontend.outputs_menu(device)`: The menu of the other output pairs of a device. For each pair, it gives `{ label, choices }`. The label names the pair and where it plays. The choices (`{ label, checked }`) are "Nowhere" and the tracks that it can play into. `act.route_pair` takes one. `act.spread_outputs` makes a track for each pair that plays nowhere.
@@ -859,7 +875,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.keymap.groups()`: The names given to prefixes with `group`: scope -> keys -> name.
 - `paw.keymap.has(mode, map)`: True if a mapping with the same keys and scope is also made in `mode`.
 - `paw.keymap.hints()`: The keys that can come after the typed keys, when the user stops to type: a list of { key, desc }, and a title. Nil when there is nothing to show.
-- `paw.keymap.human(keys)`: Keys as a person writes them: `<A-h>` is `Alt-h`, `<leader>at` is `,at`, `<localleader>d` is `\d`, `<C-w>o` is `Ctrl-w o`, `<CR>` is `Enter`. Takes an lhs or a list of keys.
+- `paw.keymap.human(keys)`: Keys as a person writes them: `<A-h>` is `Alt-h`, `<leader>at` is `,at`, `<localleader>d` is `\d`, `<C-w>o` is `Ctrl-w o`, `<CR>` is `Enter`. Takes an `lhs` or a list of keys.
 - `paw.keymap.jump(n)`: Return through the places of the jumps (with a negative `n`, go forward again).
 - `paw.keymap.last_selection()`: The last selection made in the focused view, as `'<,'>` names it: the one open now, or the one visual mode last closed. Nil if there is none.
 - `paw.keymap.list(mode, view)`: Mappings that apply in `mode` for `view`, the view's own first.
@@ -872,7 +888,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
   paw.keymap.operator("gl", function(region) ... end, { view = "arrange", desc = "Loop" })
   ```
 
-  With `count = "operator"` the count typed before the operator is its own (how far, how many times: `3gUib` is three steps up over a bar), as `ctx.op_count`, and `ctx.count` is the motion's or object's alone.
+  With `count = "operator"`, the count typed before the operator is its own, as `ctx.op_count`. It tells how far or how many times: `3gUib` is three steps up over a bar. `ctx.count` is the count of the motion or object alone.
 - `paw.keymap.parse(lhs)`: Split `gg<C-x>` into { "g", "g", "<C-x>" }, and expand `<leader>` and `<localleader>`.
 - `paw.keymap.pending()`: The keys typed for a command that is not complete, for display: `"a2d3`.
 - `paw.keymap.play(name, n)`: Play the keys in a register `n` times. `@` as the name plays the last register again.
@@ -892,7 +908,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
   paw.keymap.set("<leader>x", function(ctx) ... end, { view = "arrange" })
   ```
 
-  `ctx` has `count`, `register` and, for mappings made with `char = true`, the key typed after the mapping as `char`.  The options are `mode` (one mode or a list, default "n"), `view` and `desc`. `motion = true` is for a mapping that only moves the cursor. Such a mapping also works in visual mode and after an operator. `linewise = true` is for a motion across rows. `jump = true` keeps the position of the cursor for `<C-o>`. With `repeatable = false`, `.` does not repeat the mapping.
+  `ctx` has `count`, `register` and, for mappings made with `char = true`, the key typed after the mapping as `char`.
+
+  The options are `mode` (one mode or a list, default "n"), `view` and `desc`. `motion = true` is for a mapping that only moves the cursor. Such a mapping also works in visual mode and after an operator. `linewise = true` is for a motion across rows. `jump = true` keeps the position of the cursor for `<C-o>`. With `repeatable = false`, `.` does not repeat the mapping.
 - `paw.keymap.set_mode(mode)`: Change mode. When visual mode stops, the selection closes. `gv` opens it again.
 - `paw.keymap.setreg(value, name, yank)`: Put a value in a register: the unnamed register, and `name` if given. With `yank` and no name, it also goes to `"0`, which a delete never changes. A value is a table with a `kind`. The code that yanks and pastes it decides what else it contains. `"_` discards.
 - `paw.keymap.textobject(lhs, fn, opts)`: Define a text object: `fn(ctx)` returns a region, or nil when there is nothing of that kind at the cursor.
@@ -972,7 +990,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.layout.drop_dead()`: Close the windows of buffers whose target is gone, as when another project is opened (a window with `paw://lane/9` in it): a type says so with `alive(buf)`. A window that cannot close, the last one, is left empty.
 - `paw.layout.enter(win)`: Make a window the current one and give it the keyboard.
 - `paw.layout.equalize()`: Give every window of the current tab an equal share, but strips that do not take the keyboard.
-- `paw.layout.exchange(count)`: Exchange the current window with the next window next to it, or with the `count`th, in their row or column. When it is the last window, use the previous window. The next window can be a split of several windows.
+- `paw.layout.exchange(count)`: Exchange the current window with the next window next to it, or with the window number `count`, in their row or column. When it is the last window, use the previous window. The next window can be a split of several windows.
 - `paw.layout.export(node)`: A tree of windows as plain data, for `paw.layouts` and to save.
 - `paw.layout.find(root, name)`: The window of a view in a tree, one on screen first.
 - `paw.layout.find_id(root, id)`: The window of an id in the tree under `root`.
@@ -1070,7 +1088,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.lsp.adapter(name, spec)`: Add a dialect: how a kind of server is spoken to (see paw/lsp/standard.lua for the functions an adapter has; any it leaves out are the standard ones).
 - `paw.lsp.attach(which, address, keep, subject)`: Make a server keep a subject of an address open, when paw would send it and when it would not (`keep` false releases it). A clip id names its clip.
 - `paw.lsp.attaches(which, address, subject)`: True if a server is attached to an address (for its subject, or for any subject).
-- `paw.lsp.cancel(which, id)`: Tell a server to forget a request it has not answered yet.
+- `paw.lsp.cancel(which, id)`: Tell a server to forget a request that it did not answer yet.
 - `paw.lsp.clients()`: The servers that were enabled, as `{ name, status, error, transport, subjects, capabilities, server, pid, documents, client }`.
 - `paw.lsp.code_actions(location)`: Pick a fix or an action for a location (by default what is under the cursor of the focused view; off a note in the piano roll, the diagnostics where the cursor is), and carry it out as one undo step.
 - `paw.lsp.command(ctx)`: `:lsp [info|start|stop|restart|log] [name]`.
@@ -1173,7 +1191,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.midifile.import(path, opts)`: Import a MIDI file into the project. Its parts go on new tracks below the track of the cursor, at the cursor (or `opts.start`). With `opts.track`, all of it goes as one clip on that track. The tempo map does not change, unless `opts.tempo`. Then the tempo map of the file applies from its start. paw adds the markers of the file. Returns { tracks, clips, notes, skipped }.
 - `paw.midifile.is_midi_file(path)`: True if a path names a MIDI file, from its file ending.
 - `paw.midifile.open(path)`: Open a MIDI file as a new project with no file (see the top of this file). Returns { tracks, notes, skipped }. If paw cannot read the file, it raises an error, and the open project does not change.
-- `paw.midifile.parse(data)`: Read the bytes of a Standard MIDI File. Returns, in ticks (`ppq` for each beat) from the start: 
+- `paw.midifile.parse(data)`: Read the bytes of a Standard MIDI File. Returns, in ticks (`ppq` for each beat) from the start:
 
   ```lua
   { format, ppq, length,
@@ -1184,7 +1202,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
     markers = { { tick, text } }, skipped = { [what] = count } }
   ```
 
-   Channels count from 0. The `type` of a control is "cc" (with `number`), "bend" (0 to 16383, 8192 in the middle), "pressure" (with `key` for the pressure of one note) or "program" (with `program`). Values are as in the file. paw reads format 2 files (independent patterns) as one track after the other. paw reads a file timed in frames of SMPTE time code at 120 beats a minute, because its seconds are then correct. Returns nil and a reason when it is not a MIDI file.
+  Channels count from 0. The `type` of a control is "cc" (with `number`), "bend", "pressure" or "program" (with `program`). A bend goes from 0 to 16383, with 8192 in the middle. A pressure has `key` for the pressure of one note.
+
+  Values are as in the file. paw reads format 2 files (independent patterns) as one track after the other. paw reads a file timed in frames of SMPTE time code at 120 beats a minute, because its seconds are then correct. Returns nil and a reason when it is not a MIDI file.
 - `paw.midifile.parts(file, merge)`: The data for one track: { name, channel, drums, notes, controls }, in ticks. paw splits the one track of a format 0 file by channel. Each other track with notes is one part. With `merge`, all is one part.
 - `paw.midifile.read(path)`: Read a MIDI file from disk: as `parse`, or nil and a reason.
 - `paw.midifile.skipped_text(file)`: What was left out of a file, as one line, or nil.
@@ -1264,14 +1284,14 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 ## Module paw.pick
 
-- `paw.pick.file(opts)`: Select a file from a tree of directories: 
+- `paw.pick.file(opts)`: Select a file from a tree of directories:
 
   ```lua
   paw.pick.file({ title = "Import audio", extensions = { "wav", "mp3" },
                   on_choose = function(path) end })
   ```
 
-   Directories come first, and Enter opens them. `..` goes up. The list shows only files with one of `extensions` (all files without it). It starts in `dir`. If not given, it starts where you last selected a file, then next to the project, then in the home directory. With `directory = true`, the first item selects the directory that shows, and `on_choose` gets it.
+  Directories come first, and Enter opens them. `..` goes up. The list shows only files with one of `extensions` (all files without it). It starts in `dir`. If not given, it starts where you last selected a file, then next to the project, then in the home directory. With `directory = true`, the first item selects the directory that shows, and `on_choose` gets it.
 - `paw.pick.filter(query, items, format, primary, mode)`: The items that match `query`, best first, each as { item, text, score }. `mode` is as `paw.pick.match` takes it.
 
   ```lua
@@ -1493,7 +1513,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.routes.set_sidechain(device, track, pre)`: Set a device's side-chain by a track, a track's id or name ("none" or nil for none), and `pre`. Errors say why it cannot be.
 - `paw.routes.setup()`: Define the commands for sends and sidechains. The runtime calls this once at start.
 - `paw.routes.sidechain_sources(device)`: The tracks that a device can listen to, `{ id, name }` each, in the order of the track list. Its own track, the master and the tracks that its track feeds are not in the list.
-- `paw.routes.sidechain_text(d)`: What a device listens to, as text: the name of the track, with "pre" when it takes the sound before the fader. Nil if it listens to nothing.
+- `paw.routes.sidechain_text(d)`: What a device listens to, as text: the name of the track, with `pre` when it takes the sound before the fader. Nil if it listens to nothing.
 - `paw.routes.spread(device)`: Make a track for each output pair of a device that plays nowhere yet, with the name of the pair, and send the pair there. paw puts the new tracks and the track of the device in a group (or in the group of the track of the device). The track of the device cannot be the group, because its pairs feed the new tracks, which would then feed it again. Returns the new tracks.
 
 ## Module paw.scene
@@ -1547,7 +1567,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.snippet.offered(view)`: The snippets offered in `view` (the focused one when nil), by name.
 - `paw.snippet.paint(p)`: Paint the snippet layer of the piano roll (order 40, see `views/pianoroll.lua`). It marks the notes of the active snippet, and shows its range along the bottom with the items of Tab and `<C-n>`. It shows the notes that the picker would write as ghosts.
 - `paw.snippet.pick(opts)`: Open the picker of the snippets of the focused view. Enter expands the selected snippet `count` times.
-- `paw.snippet.preview(name, opts)`: What a snippet would write here, without writing it: `{ notes, choices, ctx }` or nil and why.
+- `paw.snippet.preview(name, opts)`: What a snippet would write here, but does not write: `{ notes, choices, ctx }` or nil and why.
 - `paw.snippet.preview_marks(clip_id)`: The notes that the snippet under the selection of the picker would write, in the beats of the clip, to draw them. Nil when no picker of snippets is open.
 - `paw.snippet.remove(name)`: Remove a snippet.
 - `paw.snippet.step(dir)`: Step the current choice (the first when none is) to its next value (`dir` 1) or the one before (-1), and rewrite the notes.
@@ -1632,7 +1652,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 - `paw.tempo.at(beat)`: The tempo at a beat (the start if left out).
 - `paw.tempo.bar_of(beat)`: The bar that contains a beat, counted from 1.
-- `paw.tempo.bar_start(n)`: Where bar `n` (counting from 1) starts, in beats.
+- `paw.tempo.bar_start(n)`: Where bar `n` (the first bar is 1) starts, in beats.
 - `paw.tempo.beats_to_seconds`: the same as `paw.api.tempo_seconds`.
 - `paw.tempo.commands(command)`: Define the tempo and time signature commands with `command`.
 - `paw.tempo.describe()`: The whole map as text, for example "120 bpm 4/4 at bar 1, 90 bpm from bar 3 with a ramp, ...".
@@ -1649,9 +1669,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.tempo.seconds_to_beats`: the same as `paw.api.tempo_beat`.
 - `paw.tempo.set(beat, bpm, opts)`: Set the tempo from `beat`. With `opts.ramp`, ramp from here to the tempo of the next point, and do not hold. Without it, a point keeps its value.
 - `paw.tempo.set_points(tempos, signatures)`: Replace the whole map: `set_points({ { beat = 0, bpm = 120 } }, { { beat = 0, num = 4, den = 4 } })`.
-- `paw.tempo.set_signature(bar, num, den)`: Start bar `bar` (counting from 1) in `num`/`den`, up to the next change.
+- `paw.tempo.set_signature(bar, num, den)`: Start bar `bar` (the first bar is 1) in `num`/`den`, up to the next change.
 - `paw.tempo.signature_at(beat)`: The signature at a beat, as two numbers.
-- `paw.tempo.signatures()`: Every signature point, the start's first: { beat, bar, num, den }.
+- `paw.tempo.signatures()`: Every signature point, the start's first: `{ beat, bar, num, den }`.
 
 ## Module paw.tempolane
 
@@ -1662,7 +1682,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.tempolane.fraction(bpm)`: Where a tempo is in the row, 0 at the bottom, 1 at the top.
 - `paw.tempolane.move(beat, to, bpm)`: The change at `beat` to another beat and tempo. The start's change keeps its beat and changes its tempo.
 - `paw.tempolane.ramp(beat, on)`: Make the change at `beat` ramp to the next, or hold again.
-- `paw.tempolane.range()`: The tempo at the bottom and at the top of the row. There is a small space around the slowest and the fastest tempo of the map, in tens of beats a minute. The range is at least 80 and centered. So a steady song does not show as a wall.
+- `paw.tempolane.range()`: The tempo at the bottom and at the top of the row. The range keeps a small space around the slowest and the fastest tempo of the map, in tens of beats a minute. The range is at least 80 and centered. So a steady song does not show as a wall.
 - `paw.tempolane.remove(beat)`: Remove the change at `beat`. You cannot remove the change at the start.
 - `paw.tempolane.show(on)`: Show the row, or hide it (`on` false).
 - `paw.tempolane.shown()`: True if the row shows.
@@ -1683,7 +1703,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.textbuf.increment(n)`: Add `n` to the number at or after the cursor (`Ctrl-a`, `Ctrl-x`).
 - `paw.textbuf.insert(how, opts)`: Start insert mode at the cursor of the current window. `how` is "i" before the cursor, "a" after it, or "I" at the first character that is not a space. It is "A" at the end, "o" on a new line below, or "O" above.
 - `paw.textbuf.join(ctx)`: Join lines (`J`).
-- `paw.textbuf.kind(name, spec)`: Make a kind of text buffer. It shows for the names that its `pattern` matches (`paw://` and the others). See docs/reference/lua-views.md. A kind with `readonly` (the message for a change) cannot change. `gutter = false` removes the line numbers. paw does not read a `static` kind again when the project changes. `paint(canvas, x, y, text, kind, width, row, buf)` draws a line in place of the usual colors.
+- `paw.textbuf.kind(name, spec)`: Make a kind of text buffer. It shows for the names that its `pattern` matches (`paw://` and the others). See `docs/reference/lua-views.md`. A kind with `readonly` (the message for a change) cannot change. `gutter = false` removes the line numbers. paw does not read a `static` kind again when the project changes. `paint(canvas, x, y, text, kind, width, row, buf)` draws a line in place of the usual colors.
 
   ```lua
   paw.textbuf.kind("clips", { pattern = "^paw://clips$", read = ..., format = ..., parse = ..., plan = ... })
@@ -1779,7 +1799,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.ui.recolour()`: Set each group again. Call it after `paw.opt.termcolors` changes.
 - `paw.ui.redraw`: the same as `paw.api.ui_redraw`.
 - `paw.ui.render(buf)`: Draw the whole screen. Called by the kernel.
-- `paw.ui.render_scene(name, w, h, cell, win)`: Draw one view alone as a scene for a graphical frontend (see crates/paw-scene). The scene is `w` by `h` units (fractions are permitted). `cell` is the cell `{ w, h }` of the frontend in pixels, and `win` is the window of the layout that it shows in, if any.  The text that `render_view` writes in whole cells becomes the runs and fills of the scene. The strips that the view keeps under them become its pictures. A view that paints is one picture of the whole area. The kernel keeps the scene, and `paw.api.scene_end` tells what changed in it.
+- `paw.ui.render_scene(name, w, h, cell, win)`: Draw one view alone as a scene for a graphical frontend (see crates/paw-scene). The scene is `w` by `h` units (fractions are permitted). `cell` is the cell `{ w, h }` of the frontend in pixels, and `win` is the window of the layout that it shows in, if any.
+
+  The text that `render_view` writes in whole cells becomes the runs and fills of the scene. The strips that the view keeps under them become its pictures. A view that paints is one picture of the whole area. The kernel keeps the scene, and `paw.api.scene_end` tells what changed in it.
 - `paw.ui.render_screen(buf)`: Draw the whole screen into `buf`: the tab's windows, floats, the status and command lines.
 - `paw.ui.render_view(name, buf)`: Draw one view alone on a buffer of its own. A window of a graphical frontend shows the result (see `paw.canvas.open_view`). A pane of its main area also shows a window of the layout this way (`M.view_win`, while paw draws it). Braille shows there as dots (`paw.canvas`), because the font has no braille.
 - `paw.ui.role`: the same as `paw.roles.define`.
@@ -1903,7 +1925,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.clip_set_notes(id, notes)`
 - `paw.api.clip_source_length(id)`: Beats of sound left in an audio clip's file from where the clip starts in it.
 - `paw.api.clip_to_slot(id, track, row)`: Copy a clip into a row of a track's slots. Returns the copy's id.
-- `paw.api.clip_warp_add(id, beat)`: Warp markers of an audio clip (session/stretching.rs), counted from 1.
+- `paw.api.clip_warp_add(id, beat)`: Warp markers of an audio clip (`session/stretching.rs`), counted from 1.
 - `paw.api.clip_warp_move(id, index, beat)`
 - `paw.api.clip_warp_remove(id, index)`
 - `paw.api.device_add(track, kind, opts)`
@@ -1937,11 +1959,11 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.fs_sound(...)`
 - `paw.api.fs_stat(...)`
 - `paw.api.fs_trash(...)`
-- `paw.api.grid_fill(x, y, w, h, fill, style, cx, cy, cw, ch)`: Restyle the area (x, y, w, h), clipped to (cx, cy, cw, ch), and overwrite its characters when `fill` is given.
-- `paw.api.grid_surface(key, x, y, w, h, cx, cy, cw, ch, under)`: Keep the cells (x, y, w, h), clipped to (cx, cy, cw, ch), for pixels under the name `key` (`buf:strip`), over the text or `under` it. Returns the number of the surface for `grid_surface_ops`, or nil when no part of it is on the screen.
+- `paw.api.grid_fill(x, y, w, h, fill, style, cx, cy, cw, ch)`: Restyle the area `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`, and overwrite its characters when `fill` is given.
+- `paw.api.grid_surface(key, x, y, w, h, cx, cy, cw, ch, under)`: Keep the cells `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`, for pixels under the name `key` (`buf:strip`), over the text or `under` it. Returns the number of the surface for `grid_surface_ops`, or nil when no part of it is on the screen.
 - `paw.api.grid_surface_ops(index, ops)`: The drawing a surface shows: the operations of `paw.canvas.paint`.
 - `paw.api.grid_surfaces_seal()`: The view being drawn is done with the surfaces it kept: what is drawn over them from now on covers them.
-- `paw.api.grid_text(x, y, text, style, cx, cy, cw, ch)`: Draw text at (x, y), clipped to the rectangle (cx, cy, cw, ch). Returns the number of columns the text takes.
+- `paw.api.grid_text(x, y, text, style, cx, cy, cw, ch)`: Draw text at `(x, y)`, clipped to the rectangle `(cx, cy, cw, ch)`. Returns the number of columns the text takes.
 - `paw.api.hl_set(name, def, full)`
 - `paw.api.input_levels()`: The level of each input channel of the device, as linear gain, whatever takes it.
 - `paw.api.json_decode(text)`: Nil and the reason, when the text is not JSON.
@@ -2005,7 +2027,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.preview_stop()`
 - `paw.api.proc_close_input(id)`
 - `paw.api.proc_kill(id)`
-- `paw.api.proc_read(id, max)`: A process started with `pipe = true`: what it wrote ("" when nothing, nil once it closed its output), and writing to it. A `proc.output` event says when there is something to read.
+- `paw.api.proc_read(id, max)`: A process started with `pipe = true`: what it wrote ("" when nothing, nil once it closed its output). `proc_write` writes to it. A `proc.output` event says when there is something to read.
 - `paw.api.proc_spawn(argv, opts)`: --- helper processes and sockets ---
 - `paw.api.proc_status(id)`
 - `paw.api.proc_stop(id)`: Ask it to finish and let it: `proc_status` says when it has.

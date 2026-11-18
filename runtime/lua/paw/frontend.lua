@@ -700,7 +700,7 @@ end
 local function layout_file() return M.layout_path or api.env().state_dir .. "/window.json" end
 
 --- How the window was left (its size, the zoom, the heights of rows and of
---- the piano roll, whether the mixer shows): a table, empty when nothing
+--- the piano roll, if the mixer shows): a table, empty when nothing
 --- was kept. It belongs to the machine, so it is kept here, where a window
 --- attached to this kernel finds it too. (`M.layout_path` names another
 --- file, for tests.)
@@ -2152,7 +2152,7 @@ function M.chosen_refs()
 end
 
 --- The chosen notes of `clip` (and of the clips edited with it) in words,
---- for a toolbar: "3 notes · 5.1.00 – 5.3.00", or "" with none chosen.
+--- for a toolbar: `3 notes · 5.1.00 – 5.3.00`, or "" with none chosen.
 function M.chosen_text(clip)
   local map, count = chosen_map(clip)
   if count == 0 then return "" end

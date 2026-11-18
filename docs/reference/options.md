@@ -21,7 +21,7 @@ An extension adds options of its own with `paw.option.define(name, default, spec
 | --- | --- | --- |
 | `paw.opt.leader` | `","` | What `<leader>` means in a key: the keys that mean the same in every view (`,m` the mixer). |
 | `paw.opt.localleader` | `"\\"` | What `<localleader>` means: the leader of the keys of one view (the notation popovers, `\d`). |
-| `paw.opt.timeoutlen` | `800` | The time in ms to wait for the remaining keys of a sequence, 0 to 10000. |
+| `paw.opt.timeoutlen` | `800` | The time in ms to wait for the next keys of a sequence, 0 to 10000. |
 | `paw.opt.hints` | `true` | Lists the keys that can come after a key sequence that is not complete. |
 | `paw.opt.hint_delay` | `500` | The time in ms before that list shows, 0 to 10000. |
 | `paw.opt.keybar` | `true` | Shows the most important keys of the view and mode on the bottom line. |
@@ -72,7 +72,7 @@ clip. `:set undo_steps=200` removes the oldest steps at once.
 | `paw.opt.pre_roll_seconds` | `0` | The seconds that play before those bars, 0 to 60. |
 | `paw.opt.threads` | `0` | The threads that process tracks. `0` gives one for each core. |
 | `paw.opt.audio_reconnect` | `true` | paw opens an audio device again when it returns. |
-| `paw.opt.scope_rest` | `"play"` | What the remaining tracks do in a narrowed tab: `"play"`, `"mute"` or `"frozen"`. |
+| `paw.opt.scope_rest` | `"play"` | What the other tracks do in a narrowed tab: `"play"`, `"mute"` or `"frozen"`. |
 | `paw.opt.launch_rows` | `8` | The minimum number of rows in the session view. |
 
 ## Media and render

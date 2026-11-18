@@ -453,7 +453,7 @@ local wave_reach = M.wave_reach
 --- from 0. The text of a run has the style of the mark, `nil` for none.
 --- "flip" is for cells whose upper part is the wave. Such a cell is an
 --- eighth block in reverse video, because blocks only grow from the bottom.
---- "clip" is for a column that reaches full scale, and "clipflip" for both.
+--- "clip" is for a column that reaches full scale, and `clipflip` for both.
 function M.waveform(peaks, rows)
   local g = M.g
   local plain = paw.opt.ascii
@@ -583,7 +583,7 @@ end
 
 --- Draw a curve as a thin line over `rows` rows of a buffer, from row `y`
 --- down. `value(i)` gives the height, from 0 at the bottom to 1 at the top,
---- at the `i`th of two points for each column. The function changes only
+--- at point `i`, with two points for each column. The function changes only
 --- the cells on the line. It uses sextants (a connected line), braille dots
 --- or lines at three heights a row, as `M.curve_glyphs()` tells.
 function M.curve(buf, y, rows, value, style)

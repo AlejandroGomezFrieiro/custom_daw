@@ -33,13 +33,13 @@ function M.remove(beat) api.tempo_remove(beat) end
 --- Every tempo point, the start's first: { beat, bpm, ramp }.
 function M.points() return api.tempo_points().tempos end
 
---- Every signature point, the start's first: { beat, bar, num, den }.
+--- Every signature point, the start's first: `{ beat, bar, num, den }`.
 function M.signatures() return api.tempo_points().signatures end
 
 --- The signature at a beat, as two numbers.
 function M.signature_at(beat) return api.tempo_signature(beat or 0) end
 
---- Start bar `bar` (counting from 1) in `num`/`den`, up to the next change.
+--- Start bar `bar` (the first bar is 1) in `num`/`den`, up to the next change.
 function M.set_signature(bar, num, den)
   api.signature_set(api.tempo_bar_start(bar - 1), num, den)
 end
@@ -61,7 +61,7 @@ function M.seconds_between(from, to) return api.tempo_seconds(to) - api.tempo_se
 --- The bar that contains a beat, counted from 1.
 function M.bar_of(beat) return api.tempo_bar_of(beat) + 1 end
 
---- Where bar `n` (counting from 1) starts, in beats.
+--- Where bar `n` (the first bar is 1) starts, in beats.
 function M.bar_start(n) return api.tempo_bar_start(n - 1) end
 
 --- Whether a bar starts at this beat.

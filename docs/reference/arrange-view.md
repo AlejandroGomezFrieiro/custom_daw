@@ -115,8 +115,8 @@ the lane is read or bypassed. The curve and its points (`◆`) show along the
 timeline. `j` and `k` go onto lane rows as onto tracks.
 
 When the lanes are closed, the track of the cursor draws its volume curve
-in the empty parts of its row, not over clips (in sextants,
-`paw.opt.curve_glyphs`). The other tracks show an `A` in their header and
+in the empty parts of its row, not over clips. It draws the curve in
+sextants (`paw.opt.curve_glyphs`). The other tracks show an `A` in their header and
 draw no curve, to keep the notes clear.
 
 | Keys | On a lane row |

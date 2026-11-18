@@ -74,7 +74,7 @@ has changes.
 | Key or command | Effect |
 | --- | --- |
 | `y`, `Enter` | Applies the plan as one undo step. One `u` in any other window undoes all of it. |
-| `n`, `Esc` | Goes back to the buffer. |
+| `n`, `Esc` | Returns to the buffer. |
 | `:w` without changes | Saves the project, as in other buffers. |
 | `:e!` | Discards the changes and reads the buffer again. |
 | `:q` | Does not close a window on a buffer with changes. `:q!` does. |

@@ -35,7 +35,7 @@ paw.seats = require("paw.seats")
 --- go when it is unloaded (paw/ext.lua).
 paw.timers = {}
 
---- Run `fn` once, after `ms` milliseconds (or as soon as the current turn ends).
+--- Run `fn` once, after `ms` milliseconds (or when the current turn ends).
 function paw.defer(fn, ms)
   local handle
   handle = api.timer_start(ms or 0, false, function(...)

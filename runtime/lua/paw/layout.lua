@@ -432,14 +432,16 @@ paw.on("project.loaded", function() M.drop_dead() end)
 
 -- Buffer types ----------------------------------------------------------------
 
---- Make a buffer type. See docs/reference/lua-views.md.
+--- Make a buffer type. See `docs/reference/lua-views.md`.
 ---   paw.buftype("notes", { create = function(target) return {} end, render = function(win, canvas, ctx) end })
 --- The fields are these. `create(target, buf)` gives the state of the
 --- buffer. `render(win, canvas, ctx)` draws (`ctx.buf` is the buffer, and
 --- `win.state` is the state of the window). `on_key(win, key)` gets keys
 --- with no mapping. Also `on_mouse(win, event)`, `title(buf)` and
 --- `bufname(target, buf)`. `options` is the options of the buffer at the
---- start. `listed` false keeps its buffers off `:ls`, and forgets each
+--- start.
+---
+--- `listed` false keeps its buffers off `:ls`, and forgets each
 --- buffer when no window shows it. Also `delete(buf)` and `time` (see
 --- `timebind`). `claims(name)` tells if a name is a target of the type by
 --- its form (`:vs paw://lane/3`). `window()` is the window to draw when no
@@ -450,8 +452,9 @@ paw.on("project.loaded", function() M.drop_dead() end)
 --- is the cursor that the keymap moves, as the `grid` of a view.
 --- `describe(win)` is the text of `K`. `status(win, ctx)` is the `view`
 --- component of the status line. Also `subscope(win)`, `paint(win, g, ctx)`
---- and `pointer(win, e)` (pixels in a graphical frontend), and `help`. It
---- can also have the fields that `paw.layout.powers` maps: `keymaps`,
+--- and `pointer(win, e)` (pixels in a graphical frontend), and `help`.
+---
+--- It can also have the fields that `paw.layout.powers` maps: `keymaps`,
 --- `motions`, `textobjects` and `operators`. Their functions get `ctx.win`
 --- and `ctx.buf`.
 function M.buftype(name, def)
@@ -933,7 +936,7 @@ function M.move_to_edge(edge)
 end
 
 --- Exchange the current window with the next window next to it, or with the
---- `count`th, in their row or column. When it is the last window, use the
+--- window number `count`, in their row or column. When it is the last window, use the
 --- previous window. The next window can be a split of several windows.
 function M.exchange(count)
   local t = tab()

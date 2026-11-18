@@ -75,7 +75,8 @@ A stretched clip has a label before its name, in both frontends:
   clip plays it as far as it is ready. paw makes it many times faster than
   it plays, so a long file plays immediately.
 - The playhead can be past the ready part, for example far into a long
-  clip that just changed. Then the clip fades out just before that point,
+  clip that changed a short time before. Then the clip fades out
+immediately before that point,
   is silent, and fades in where the ready part reaches.
 - A render waits until all of the sound is ready. A render gives the same
   file at any time.
