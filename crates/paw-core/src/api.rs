@@ -670,6 +670,17 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             let saved = sh.session.borrow_mut().project_save(path.as_deref().map(AsRef::as_ref)).lua()?;
             Ok(saved.to_string_lossy().into_owned())
         }
+        // The tabs and windows that the project file keeps, as plain data,
+        // or nil. They are not part of the song: setting them is not an
+        // edit, and the next save writes them.
+        fn project_screen(lua, sh, () => ()) {
+            to_lua(lua, &sh.session.borrow().screen)
+        }
+        fn project_screen_set(lua, sh, value => LuaValue) {
+            let value: Option<Value> = from_lua(lua, value)?;
+            sh.session.borrow_mut().screen = value;
+            Ok(())
+        }
 
         // --- tracks ---
         fn track_list(_, sh, () => ()) {

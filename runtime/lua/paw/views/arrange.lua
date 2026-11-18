@@ -15,6 +15,9 @@ local view = {
   -- `layer.x(beat)` is the column of a beat in any of them. Also `scroll`, `zoom`, `span` (beats shown),
   -- `top`, `rows` and `th` (the first track shown, how many, rows per track).
   layers = {},
+  -- Tracks need rows: two fifths of a column's height, and a third of the
+  -- room where three or more windows share it (paw/ui.lua).
+  share = { column = 2 / 5, least = 1 / 3 },
 }
 paw.seats.fields("arrange", view, { "scroll", "top", "flags", "seen_index", "seen_fit", "seen_lane", "seen_beat", "geometry", "comp" },
   { scroll = 0, top = 1, flags = {} })

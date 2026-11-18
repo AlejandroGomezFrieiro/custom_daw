@@ -37,9 +37,11 @@ end
 local function fresh()
   paw.project.new()
   paw.transport.loop_enabled = false
-  -- The panes an earlier test opened would share the screen with this one's.
-  for _, win in ipairs(require("paw.layout").windows(paw.ui.layout)) do
-    if win.view ~= "arrange" then paw.ui.hide(win.view) end
+  -- The windows and tabs an earlier test opened would share the screen
+  -- with this one's: each test starts from the default start layout.
+  local L = require("paw.layout")
+  if #paw.ui.tabs > 1 or #L.windows(paw.ui.layout) ~= 1 or L.windows(paw.ui.layout)[1].view ~= "arrange" then
+    L.restore({ { layout = L.default_tree() } })
   end
   paw.ui.close()
   paw.ui.focus("arrange")

@@ -77,12 +77,16 @@ end
 
 --- The size of the main area in pixels, from the frontend: at the start
 --- and each time that it changes. The first time that the window of a seat
---- gives it, paw shows the device panel. A window shows the devices of the
---- selected track next to the timeline unless the user closes them.
+--- gives it, paw shows the device panel when the tab has its place, closed,
+--- as the default start layout has (`paw.layout.default_tree`): a window
+--- shows the devices of the selected track next to the timeline unless the
+--- user closes them. A start layout of the configuration's own is shown as
+--- it is.
 function M.area(width, height)
   local started = area.started
   area = { w = math.max(0, math.floor(width)), h = math.max(0, math.floor(height)), started = started or width > 0 }
-  if not started and area.w > 0 and not paw.ui.visible("devices") then paw.ui.show("devices") end
+  local place = not started and area.w > 0 and L.find(paw.ui.layout, "devices")
+  if place and place.hidden and paw.ui.start_layout == nil then paw.ui.show("devices") end
   api.ui_redraw()
 end
 
@@ -153,6 +157,8 @@ function M.focus(id)
   end
 end
 
+local point
+
 --- A pointer event in a pane, in pixels from its corner (as
 --- `paw.canvas.pointer` takes them). A press gives it the keyboard first.
 --- For a pane drawn in cells, `drawn` tells how: its `cell`, and its size
@@ -163,6 +169,15 @@ function M.pointer(id, event, drawn)
   if event.kind == "down" then M.focus(id) end
   local view = paw.ui.views[win.view]
   if not view then return end
+  -- With the state of this window, then of the one with the keyboard.
+  L.bind(win)
+  local ok, err = pcall(point, view, id, event, drawn)
+  L.settle()
+  if not ok then error(err, 0) end
+end
+
+-- The event as the view takes it.
+function point(view, id, event, drawn)
   if view.paint then
     if view.pointer then view:pointer(event) end
   else

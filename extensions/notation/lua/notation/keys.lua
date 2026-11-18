@@ -655,11 +655,13 @@ local escaped_at = -math.huge
 nmap("<Esc>", function()
   local now = api.now()
   if now - escaped_at < 2000 then
-    paw.notify("normal mode: " .. keymap.human("<leader>n") .. " goes back to the arrange view, :q or ZZ closes the notation")
+    paw.notify("normal mode: " .. keymap.human("<leader>n") .. " goes back to the window before, :q or ZZ closes the notation")
   end
   escaped_at = now
 end, "Stay in the view (,n leaves)", { repeatable = false })
-nmap("<leader>n", function() paw.ui.focus("arrange") end, "Back to the arrange view")
+nmap("<leader>n", function()
+  if not paw.layout.back() then paw.notify("the notation is the only window here: `:e arrange` shows the arrange view in it", "warn") end
+end, "Back to the window before")
 nmap("ZZ", "close", "Close the notation")
 
 -- On a selection.

@@ -954,7 +954,7 @@ function view:pointer(e)
   end
 end
 
---- Closing the window gives the keyboard back to the arrange view, and
+--- Closing the window gives the keyboard back to the window before, and
 --- leaving the view from the keyboard closes the window.
 function view:on_close()
   gui.drag, gui.box, gui.hover = nil, nil, nil

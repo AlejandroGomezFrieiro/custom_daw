@@ -349,14 +349,14 @@ function M.leave(name)
 end
 
 --- Give the keyboard back to the main window from a view in a separate
---- window. It goes to the window that had it before the view went there.
---- If there is no such window, it goes to the arrange view.
+--- window. It goes to the window that had it before the view went there,
+--- else to the current window of the tab.
 function M.back(name)
   local window = M.open_views[name]
   local L = paw.layout
   local win = window and window.back and L.find_id(paw.ui.layout, window.back)
-  if win and not win.hidden then return L.enter(win) end
-  paw.ui.focus("arrange")
+  if not (win and not win.hidden) then win = L.current() end
+  if win then L.enter(win) end
 end
 
 --- Give a view in a window the keyboard, as a click in it does.

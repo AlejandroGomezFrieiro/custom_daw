@@ -300,6 +300,8 @@ function K.key(key)
   -- The keys of a finished command (`dd`, `3>ic`) label the undo step it makes.
   -- Keys typed into a prompt are text, not commands.
   local typed = not paw.ui.grabber and paw.keymap.pending() .. key
+  -- A key acts in the window with the keyboard, with its state.
+  paw.layout.settle()
   paw.limit.guard("the key " .. key, paw.keymap.dispatch, key)
   if typed and paw.keymap.pending() == "" then api.undo_keys(typed) end
 end

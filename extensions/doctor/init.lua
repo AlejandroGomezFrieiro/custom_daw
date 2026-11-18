@@ -30,7 +30,7 @@ local function close()
   if doctor.running() then doctor.cancel() end
   paw.canvas.close("doctor")
   if paw.ui.float and paw.ui.float.name == "doctor" then paw.ui.close() end
-  if paw.ui.focused == "doctor" then paw.ui.focus("arrange") end
+  if paw.ui.focused == "doctor" then paw.canvas.back("doctor") end
   -- Taking the keyboard showed its place in the layout: it goes again.
   paw.ui.hide("doctor")
 end

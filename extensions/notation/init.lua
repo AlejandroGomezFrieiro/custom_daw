@@ -16,6 +16,8 @@ require("notation.part_keys")
 -- Last: it takes in every key of the view for the score's staves.
 require("notation.staves")
 
+-- Where three or more windows share the room, the staves take half of it at most.
+view.share = { most = 1 / 2 }
 paw.ui.view("notation", view)
 paw.ui.dock("notation", { side = "bottom", hidden = true })
 -- Staves need rows: the panel takes twice the share of the arrange view.

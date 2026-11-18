@@ -13,7 +13,7 @@ local L = require("paw.layout")
 local M = {
   Buf = require("paw.buf"),
   views = {},
-  focused = "arrange",
+  focused = nil,   -- the view of the window with the keyboard
   messages = {},   -- every message so far, oldest first
   message = nil,   -- the one on the command line now
   grabber = nil,   -- function that takes every key while set (prompts)
@@ -27,6 +27,7 @@ local M = {
 M.tabs = { { layout = L.default_tree() } }
 M.tab = 1
 M.layout = M.tabs[1].layout
+M.focused = L.windows(M.layout)[1].view
 M.bars = { { view = "status", size = 1 }, { view = "cmdline", size = 1 } }
 
 -- Each seat has its own focus, floating view, prompt, tabs and windows,
@@ -38,7 +39,12 @@ paw.seats.keep("ui",
     M.focused, M.float, M.grabber, M.rects, M.pressed = focused, float, grabber, rects, pressed
     M.tabs, M.tab, M.layout = tabs, tab, tabs[tab].layout
   end,
-  function(_, _, _, _, tabs, tab) return "arrange", nil, nil, {}, paw.seats.copy(tabs), tab, nil end)
+  function(_, _, _, _, tabs, tab)
+    local copied = L.copy_tabs(tabs)
+    local t = copied[tab]
+    local win = t and (t.win and L.find_id(t.layout, t.win) or L.windows(t.layout)[1])
+    return win and win.view, nil, nil, {}, copied, tab, nil
+  end)
 
 --- Register a view. It replaces a view with the same name.
 ---   paw.ui.view("clock", { render = function(self, buf) buf:text(0, 0, os.date()) end })
@@ -46,8 +52,19 @@ paw.seats.keep("ui",
 --- with no mapping, `modal` (each key goes to `on_key`), `on_mouse(self, event)`,
 --- `on_show(self)`, `on_hide(self)`. A view is a buffer type with one
 --- buffer, with the name of the view or the name from `bufname`.
+---
+--- `window_state` names the fields of the view's table that are each
+--- window's own (the cursor, the scroll, the open clip). Then any number of
+--- windows show the view, and the table holds the state of the window that
+--- draws or acts (`paw.layout.bind`). `window_fresh` names the fields a
+--- new window starts without, such as caches. Without `window_state`, the
+--- view shows in one window at a time. `open_target(self, target)` opens
+--- a thing by name in the window (`:e roll://7`), and `window_target(self)`
+--- gives that name back for a saved layout. `share` says what part of the
+--- room the view keeps where windows share it: `{ column, least, most }`.
 function M.view(name, def)
   def.name = name
+  if def.window_state then L.window_fields(name, def, def.window_state, def.window_fresh) end
   M.views[name] = def
   api.ui_redraw()
   return def
@@ -86,7 +103,9 @@ function M.show(name)
   api.ui_redraw()
 end
 
---- Close the window of a view, in each tab. The view keeps its place for the next time.
+--- Close the window of a view, in each tab. The view keeps its place for
+--- the next time. The last window of a tab does not close: it goes on
+--- showing the view, as `Ctrl-w c` leaves it.
 function M.hide(name)
   local node = bar(name)
   if node then
@@ -95,13 +114,9 @@ function M.hide(name)
     local view = M.views[name]
     if view and view.on_hide then view:on_hide() end
   end
-  if M.focused == name then
-    M.focus_next()
-    -- The last window of the tab does not close: the arrange view takes
-    -- the keyboard, or this view stays if it is the arrange view.
-    if M.focused == name and not M.visible(name) then
-      M.focus("arrange")
-    end
+  if M.focused == name and not M.visible(name) then
+    -- The keyboard goes to the window that had it before.
+    if not L.back() then M.focus_next() end
   end
   api.ui_redraw()
 end
@@ -110,13 +125,15 @@ end
 function M.toggle(name)
   local win = L.find(M.layout, name)
   if (win and not win.hidden) or not (win or L.homes[name]) then
-    -- The only window of the tab does not hide: the arrange view takes
-    -- its place, as `Ctrl-w o` left no other to go to.
+    -- The only window of the tab does not close, as `Ctrl-w c` does not:
+    -- it goes on showing the view.
     local alone = win and focusable(name)
     for _, other in ipairs(win and L.windows(M.layout) or {}) do
       if other ~= win and focusable(other.view) then alone = false end
     end
-    if alone and name ~= "arrange" and M.views.arrange then return L.show_in(win, "arrange") end
+    if alone then return paw.notify("the last window does not close: `:e <name>` shows something else in it", "warn") end
+    -- A view in several windows: the one found closes.
+    if win and not L.one_window(name) then return L.close(win) end
     return M.hide(name)
   end
   M.show(name)
@@ -219,13 +236,16 @@ local function shares(children, total)
   return sizes
 end
 
---- Whether a node is, or holds, the window of a view.
-local function holds(node, name)
-  if node.view then return node.view == name end
-  for _, win in ipairs(L.windows(node)) do
-    if win.view == name then return true end
+--- The share of the room that the views in a node ask for (`view.share`):
+--- the largest `least` or `column` of its windows, the smallest `most`.
+local function share(node, key)
+  local out
+  for _, win in ipairs(node.view and { node } or L.windows(node)) do
+    local view = M.views[win.view]
+    local v = view and view.share and view.share[key]
+    if v then out = out and (key == "most" and math.min(out, v) or math.max(out, v)) or v end
   end
-  return false
+  return out
 end
 
 -- Move `amount` cells between the children at `others`: a positive amount
@@ -251,11 +271,13 @@ local function spread(children, sizes, others, amount)
 end
 
 -- Where views share a node, the weights and the sizes of the panels beside
--- the arrange view can leave it a sliver: in a column it keeps two fifths of
--- the height, taken first from the panels that share by weight and then from
--- those with a size of their own (down to their `min`, else one row). Where
--- three or more share it keeps a third of the room, as `Ctrl-w =` gives it,
--- and the notation view takes at most half.
+-- a view can leave it a sliver. A view says what it needs in `share`:
+-- `column`, the part of a column's height it keeps (taken first from the
+-- panels that share by weight and then from those with a size of their
+-- own, down to their `min`, else one row); `least`, the part it keeps
+-- where three or more share the room; `most`, the part it takes at most
+-- there. The arrange view keeps two fifths of a column and a third of the
+-- room, as `Ctrl-w =` gives it, and the notation view takes at most half.
 local function limit_shares(children, sizes, total, vertical)
   local flexible = {}
   for i, child in ipairs(children) do
@@ -270,26 +292,27 @@ local function limit_shares(children, sizes, total, vertical)
   end
   if #flexible >= 3 then
     for _, i in ipairs(flexible) do
-      local half = math.floor(total / 2)
-      if holds(children[i], "notation") and sizes[i] > half then
-        sizes[i] = sizes[i] - spread(children, sizes, others_of(i, flexible), sizes[i] - half)
+      local most = share(children[i], "most")
+      local cap = most and math.floor(total * most + 1e-9)
+      if cap and sizes[i] > cap then
+        sizes[i] = sizes[i] - spread(children, sizes, others_of(i, flexible), sizes[i] - cap)
       end
     end
     for _, i in ipairs(flexible) do
-      local third = math.floor(total / 3)
-      if holds(children[i], "arrange") and sizes[i] < third then
-        sizes[i] = sizes[i] + spread(children, sizes, others_of(i, flexible), sizes[i] - third)
+      local least = share(children[i], "least")
+      local want = least and math.floor(total * least + 1e-9)
+      if want and sizes[i] < want then
+        sizes[i] = sizes[i] + spread(children, sizes, others_of(i, flexible), sizes[i] - want)
       end
     end
   end
   if not vertical or #children < 2 then return end
   for i, child in ipairs(children) do
-    local want = math.floor(total * 2 / 5)
-    if holds(child, "arrange") and sizes[i] < want then
-      local all = {}
-      for j in ipairs(children) do all[#all + 1] = j end
+    local column = share(child, "column")
+    local want = column and math.floor(total * column + 1e-9)
+    if want and sizes[i] < want then
       local fixed = {}
-      for _, j in ipairs(all) do
+      for j in ipairs(children) do
         if j ~= i and children[j].size then fixed[#fixed + 1] = j end
       end
       local need = want - sizes[i]
@@ -422,6 +445,8 @@ end
 --- is drawn over them after (a menu, a float) covers them.
 local function draw(view, buf, ctx)
   M.drawing_win = ctx and ctx.win
+  -- The view draws with the state of its window.
+  if ctx and ctx.win then L.bind(ctx.win) end
   -- The hit regions it marks on the screen are where the pointer finds them.
   if M.screen then paw.roles.begin(view.name, ctx and ctx.win and ctx.win.id) end
   draw_view(view, buf, ctx)
@@ -663,6 +688,7 @@ function M.render_screen(buf)
     end
   end
   M.rects.sizes = sizes
+  L.settle()
   if #resized > 0 then
     paw.defer(function()
       for _, id in ipairs(resized) do paw.emit("win.resized", { win = id }) end
@@ -743,7 +769,10 @@ function M.render_scene(name, w, h, cell, win)
   api.scene_begin(w, h)
   if view and view.paint then
     local px = { w * cell.w, h * cell.h }
-    local drawing = paw.canvas.paint(name, px[1], px[2], { cell = cell, glyphs = true })
+    if win then L.bind(win) end
+    local ok, drawing = pcall(paw.canvas.paint, name, px[1], px[2], { cell = cell, glyphs = true })
+    L.settle()
+    if not ok then error(drawing, 0) end
     api.scene_picture({ x = 0, y = 0, w = w, h = h }, { ops = drawing and drawing.ops or {}, px = px })
     return
   end
@@ -752,6 +781,7 @@ function M.render_scene(name, w, h, cell, win)
   local ok, err = pcall(api.scene_draw, name, math.floor(w), math.floor(h))
   local pictures = M.pictures
   M.view_win, M.pictures, M.scene_drawing = nil, nil, nil
+  L.settle()
   if not ok then error(err, 0) end
   for _, p in ipairs(pictures) do
     -- The whole strip, cut to the part that shows.
@@ -859,6 +889,9 @@ local function route(event)
     local win = target.win and L.find_id(M.layout, target.win)
     if win then L.enter(win) else M.focus(target.name) end
   end
+  -- The view takes the pointer with the state of the window under it.
+  local under = target.win and L.find_id(M.layout, target.win)
+  if under then L.bind(under) end
   if paw.mouse.to_surface(target, event) then return end
   local e = paw.util.merge(event, {
     x = event.x - target.x, y = event.y - target.y, view_x = target.x, view_y = target.y, w = target.w, h = target.h,
@@ -880,6 +913,7 @@ function M.mouse(event)
   if paw.mouse.take(event) then return end
   route(event)
   paw.mouse.done(event)
+  L.settle()
 end
 
 -- The timer that takes the message shown off the screen, while one is due:
@@ -1009,10 +1043,13 @@ M.locators = {}  -- view -> locator
 ---   go(location)    put its cursor there
 function M.locator(view, spec) M.locators[view] = spec end
 
---- The location under the cursor of the focused view (or `view`).
-function M.location(view)
+--- The location under the cursor of the focused view (or `view`). With
+--- `win`, the cursor of that window: each window of a view has its own.
+function M.location(view, win)
   local loc = M.locators[view or M.focused]
-  return loc and loc.at() or nil
+  if not loc then return nil end
+  if win then return L.within(win, loc.at) end
+  return loc.at()
 end
 
 --- Go to a location in the view that shows it best, and focus that view.
@@ -1021,6 +1058,13 @@ end
 function M.go(location)
   for _, name in ipairs({ "pianoroll", "devices", "arrange", "mixer" }) do
     local loc = M.locators[name]
+    -- A window of the view that shows the place already has it first.
+    for _, win in ipairs(loc and L.windows(M.layout) or {}) do
+      if win.view == name and L.within(win, loc.place, location) then
+        L.enter(win)
+        return loc.go(location)
+      end
+    end
     if loc and loc.place(location, true) then
       if not M.visible(name) then M.show(name) end
       M.focus(name)
