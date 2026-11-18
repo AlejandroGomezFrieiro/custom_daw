@@ -153,7 +153,7 @@ function M.command(ctx, opts)
   local how = { format = a.format, tracks = a[2] == "tracks" or nil }
   if a[1] == "stems" then
     local dir = a[2] ~= "tracks" and a[2] or a[3]
-    how.dir = dir and tostring(dir) or nil
+    how.dir = dir and paw.util.expand_path(tostring(dir)) or nil
   else
     how.group = paw.scope.find(a[1])
   end

@@ -10,8 +10,7 @@ command, see [Takes](../reference/takes.md).
 1. Select the bars of the part in visual mode, and press `gl` to loop
    them.
 2. Arm the track with `r`.
-3. Put the cursor at the loop start, or before it. Press `gp` to move
-   the playhead to the cursor, then press `R`.
+3. Put the cursor at the loop start, or before it. Press `R`.
 4. Play the part again on each time round the loop.
 5. Press `<Space>` to stop. The clip shows the number of takes, for
    example `take 3 ‹3/3›`. The last take plays.

@@ -870,6 +870,17 @@ fn start_cpal(
                         frame[1] = right[i];
                     }
                 }
+                // The metronome on an output pair of its own (`click_output`).
+                if let Some((first, l, r)) = engine.click_output(n) {
+                    for (i, frame) in chunk.chunks_exact_mut(channels).enumerate() {
+                        if let Some(s) = frame.get_mut(first) {
+                            *s += l[i];
+                        }
+                        if let Some(s) = frame.get_mut(first + 1) {
+                            *s += r[i];
+                        }
+                    }
+                }
             }
             let budget = frames as f32 / sample_rate;
             load += (began.elapsed().as_secs_f32() / budget.max(1e-6) - load) * 0.2;

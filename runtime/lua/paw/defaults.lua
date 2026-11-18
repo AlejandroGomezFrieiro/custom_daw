@@ -53,9 +53,35 @@ command("transport.record", function()
   if transport.recording then
     transport.recording = false
   else
+    -- From a stop, the take starts at the cursor, as `<S-CR>` plays from
+    -- it; while the song plays, it starts where the song is.
+    if not transport.playing then transport.seek(cursor.beat) end
     transport.record()
   end
-end, { desc = "Record armed tracks from the playhead, or stop recording" })
+end, { desc = "Record armed tracks from the cursor (or, while the song plays, from the playhead), or stop recording" })
+-- MIDI overdub (`paw.opt.midi_record = "merge"`): a MIDI take that lands
+-- over clips joins its notes into them, in the step that recorded it. A
+-- take round a loop stays a clip of takes, for comping.
+paw.on("clip.added", function(e)
+  if paw.opt.midi_record ~= "merge" then return end
+  local ok, c = pcall(api.clip_get, e.id)
+  if not ok or c.kind ~= "midi" or not tostring(c.name):match("^take %d+$") then return end
+  local ok_track, t = pcall(api.track_get, c.track or e.track)
+  if not ok_track or not t.armed then return end
+  if paw.takes.count(e.id) > 1 then return end
+  local from, to, over = c.start, c.start + c.length, { [e.id] = true }
+  local any = false
+  for _, other in ipairs(api.clip_list(t.id)) do
+    if other.id ~= e.id and other.kind == "midi" and other.start < to - 1e-9 and other.start + other.length > from + 1e-9 then
+      over[other.id], any = true, true
+      from, to = math.min(from, other.start), math.max(to, other.start + other.length)
+    end
+  end
+  if not any then return end
+  local step = api.undo_current()
+  edit.arrange.join(t.id, from, to, over)
+  api.undo_join(step)
+end)
 command("transport.metronome", function()
   transport.metronome = not transport.metronome
 end, { desc = "Toggle the metronome" })
@@ -69,6 +95,57 @@ api.transport_set("count_in", count_in_bars(paw.opt.count_in))
 paw.on("option.changed", function(e)
   if e.name == "count_in" then api.transport_set("count_in", count_in_bars(e.value)) end
 end)
+-- The metronome's level, accent and output are options the kernel is told
+-- of: `paw.opt.click_level` (dB), `click_accent`, `click_output` (the first
+-- output channel of a pair, 0 for with the song).
+local function send_click()
+  for _, name in ipairs({ "click_level", "click_accent", "click_output" }) do
+    local ok, err = pcall(api.transport_set, name, paw.opt[name])
+    if not ok then paw.notify(tostring(err):gsub("^[^:]*:%d+: ", ""), "warn") end
+  end
+end
+send_click()
+paw.on("option.changed", function(e)
+  if e.name:match("^click_") then send_click() end
+end)
+local function click_said()
+  local o = paw.opt
+  return string.format("click at %+g dB, %s, %s", o.click_level, o.click_accent and "the first beat higher" or "every beat the same",
+    o.click_output > 0 and string.format("on outputs %d/%d", o.click_output, o.click_output + 1) or "with the song")
+end
+command("click", function(ctx)
+  local a = ctx.args
+  local level = a.level ~= nil and tonumber(a.level) or nil
+  if a.level ~= nil and not level then return paw.notify("click: level=-6, in dB", "warn") end
+  local words = { on = true, yes = true, ["1"] = true, ["true"] = true, off = false, no = false, ["0"] = false, ["false"] = false }
+  local accent = a.accent
+  if accent ~= nil and type(accent) ~= "boolean" then accent = words[tostring(accent)] end
+  if a.accent ~= nil and accent == nil then return paw.notify("click: accent=on or accent=off", "warn") end
+  local output = a.output
+  if output == "song" or output == "mix" or output == "main" then output = 0 end
+  if output ~= nil then output = tonumber((tostring(output):match("^(%d+)"))) end
+  if a.output ~= nil and not output then return paw.notify("click: output=3 (outputs 3 and 4), or output=song", "warn") end
+  local ok, err = pcall(function()
+    if level then paw.opt.click_level = level end
+    if accent ~= nil then paw.opt.click_accent = accent end
+    if output then paw.opt.click_output = output end
+  end)
+  if not ok then return paw.notify((tostring(err):gsub("^[^:]*:%d+: ", "")), "warn") end
+  paw.notify(click_said())
+end, { desc = "The metronome's sound: `click level=-6`, `click accent=off`, `click output=3` (outputs 3 and 4, for headphones), `click output=song`; alone, what it is" })
+-- The selected track plays the MIDI keyboard while no track is armed
+-- (`paw.opt.midi_follows_selection`): the kernel is told which track.
+local function send_follow()
+  if paw.seats.current ~= 0 then return end
+  local id = paw.opt.midi_follows_selection and cursor.track_id() or nil
+  api.engine_follow(id ~= 0 and id or nil)
+end
+paw.on("cursor.changed", send_follow)
+paw.on("project.loaded", send_follow)
+paw.on("option.changed", function(e)
+  if e.name == "midi_follows_selection" then send_follow() end
+end)
+send_follow()
 -- The undo history's limits are options the kernel is told of.
 local function send_undo_limits()
   api.undo_limits(paw.opt.undo_steps, math.floor(paw.opt.undo_memory * 1024 * 1024))
@@ -426,24 +503,69 @@ command("track.output", function(ctx)
   set(target)
 end, { desc = "Play the track into another: `track.output Drum bus`, `track.output master`; alone, choose from a list", raw = true, complete = "tracks" })
 
-command("send", function(ctx)
-  local track = need_track()
-  if not track then return end
-  local level = tonumber(ctx.args[2]) or tonumber(ctx.args.level) or paw.opt.send_level
-  local function add(target)
-    paw.frontend.act.add_send(track.id, target, level)
-    if ctx.args.pre then
-      local sends = track:get().sends
-      paw.frontend.act.set_send(track.id, #sends, nil, true)
+--- The tracks a command for each track is about: those of a selection
+--- of whole tracks in the arrange view or of strips in the mixer, else the
+--- cursor track.
+local function selected_tracks()
+  local selection = keymap.selection()
+  if selection and (selection.view == "arrange" or selection.view == "mixer") then
+    local rows, out = paw.groups.rows(), {}
+    for row = math.max(1, selection.r0), selection.r1 do
+      if rows[row] then out[#out + 1] = rows[row] end
     end
-    paw.notify(string.format("%s ↗ %s at %g dB%s", track.name, api.track_get(target).name, level, ctx.args.pre and ", ahead of the fader" or ""))
+    if #out > 0 then return out end
+  end
+  local id = cursor.track_id()
+  return id and { id } or {}
+end
+
+command("send", function(ctx)
+  local ids = selected_tracks()
+  if #ids == 0 then return paw.notify("no track selected", "warn") end
+  local asked = tonumber(ctx.args[2]) or tonumber(ctx.args.level)
+  local level = asked or paw.opt.send_level
+  local pre = ctx.args.pre ~= nil and ctx.args.pre ~= false and ctx.args.pre ~= 0 and ctx.args.pre ~= "0" or nil
+  local function add(target)
+    local to, said = api.track_get(target).name, {}
+    for _, id in ipairs(ids) do
+      local name = api.track_get(id).name
+      local index
+      for i, send in ipairs(api.track_get(id).sends) do
+        if send.target == target then index = i end
+      end
+      if id == target or target == 0 then
+        said[#said + 1] = name .. " cannot send to " .. (target == 0 and "the master" or "itself")
+      elseif index then
+        -- The send is there: a level or `pre` given sets it; else it is as it was.
+        local send = api.track_get(id).sends[index]
+        local was = send.level
+        local changed = (asked and math.abs(asked - was) > 1e-9) or (ctx.args.pre ~= nil and (send.pre or false) ~= (pre or false))
+        if changed then
+          paw.frontend.act.set_send(id, index, asked, ctx.args.pre ~= nil and (pre or false) or nil)
+          local now = api.track_get(id).sends[index].level
+          said[#said + 1] = string.format("%s ↗ %s now at %g dB (was %g)%s", name, to, now, was,
+            pre and ", ahead of the fader" or "")
+        else
+          said[#said + 1] = string.format("%s already sends to %s at %g dB: unchanged", name, to, was)
+        end
+      else
+        paw.frontend.act.add_send(id, target, level)
+        if pre then paw.frontend.act.set_send(id, #api.track_get(id).sends, nil, true) end
+        said[#said + 1] = string.format("%s ↗ %s at %g dB%s", name, to, level, pre and ", ahead of the fader" or "")
+      end
+    end
+    if keymap.mode == "x" then keymap.set_mode("n") end
+    paw.notify(#said == 1 and said[1] or string.format("%d tracks: %s", #said, table.concat(said, "; ")))
   end
   local name = ctx.args[1]
-  if not name then return pick_target(track.id, "Send " .. track.name .. " to", false, add) end
+  if not name then
+    local first = api.track_get(ids[1]).name
+    return pick_target(ids[1], "Send " .. (#ids == 1 and first or #ids .. " tracks") .. " to", false, add)
+  end
   local target = track_named(tostring(name))
   if not target or target == 0 then return paw.notify("no track `" .. tostring(name) .. "` to send to", "warn") end
   add(target)
-end, { desc = "Send the track's sound to another as well, at `send_level` dB unless told: `send Reverb -9`, `send Reverb -9 pre=1`; alone, choose from a list", complete = { "tracks" } })
+end, { desc = "Send the track's sound (or the selected tracks') to another as well, at `send_level` dB unless told: `send Reverb -9`, `send Reverb -9 pre=1`; again with a level, set the send's level; alone, choose from a list", complete = { "tracks" } })
 
 command("send.remove", function(ctx)
   local track = need_track()
@@ -657,7 +779,7 @@ command("track.volume", function(ctx)
   local track = need_track()
   if not track then return end
   if ctx.args.by then
-    track.volume = track.volume + ctx.args.by * (ctx.count or 1)
+    track.volume = util.fader_db(track.volume, track.volume + ctx.args.by * (ctx.count or 1))
   elseif tonumber(ctx.args[1]) then
     track.volume = tonumber(ctx.args[1])
   end
@@ -673,6 +795,7 @@ command("track.pan", function(ctx)
 end, { desc = "Set the pan from -1 to 1, or nudge it: `track.pan by=0.1`" })
 command("track.move", function(ctx)
   local track = need_track()
+  if cursor.on_master() then return paw.notify("the master track stays after the last track", "warn") end
   if track then track:move(cursor.index() + (ctx.args.by or 1)) end
 end, { desc = "Move the track down or up: `track.move by=-1`" })
 -- What each choice of input means, and the lists, are `paw.audio`'s; here
@@ -868,7 +991,7 @@ command("import", function(ctx)
     local rest, word = path:match("^(.-)%s+tempo=(%S+)%s*$")
     if rest then path, tempo = rest, word end
   end
-  if path and path ~= "" then return bring((path:gsub("^~", os.getenv("HOME") or "~"))) end
+  if path and path ~= "" then return bring(util.expand_path(path)) end
   local endings = {}
   for _, list in ipairs({ audio_extensions, paw.midifile.extensions }) do
     for _, ext in ipairs(list) do endings[#endings + 1] = ext end
@@ -887,7 +1010,7 @@ command("open", function(ctx)
   end
   local path = ctx.args[1]
   if path and path ~= "" and paw.files.is_dir(path) then return paw.files.open(path, { here = true }) end
-  if path and path ~= "" then return go((path:gsub("^~", os.getenv("HOME") or "~"))) end
+  if path and path ~= "" then return go(util.expand_path(path)) end
   paw.pick.file({ title = "Open", on_choose = go })
 end, { desc = "Open a project, a MIDI file as a new project, or a sound file on a new track: `open song.json`, `open song.mid`, `open take.wav`; alone, choose it from a list", raw = true, complete = "files" })
 
@@ -896,7 +1019,7 @@ command("export", function(ctx)
   if not path or not paw.midifile.is_midi_file(path) then
     return paw.notify("usage: export <song.mid> [clip|selection]; `:render` makes sound files", "warn")
   end
-  path = path:gsub("^~", os.getenv("HOME") or "~")
+  path = util.expand_path(path)
   local opts = {}
   if what == "clip" then
     local clip = cursor.clip()
@@ -1043,16 +1166,41 @@ command("clip.split", function()
   clip.length = at
   clip:track():add_clip(right)
 end, { desc = "Split the clip at the cursor" })
+--- The clips over a clip (a take over it), and over those, on its track.
+local function clips_over(clip)
+  local from, to = clip.start, clip.start + clip.length
+  local found = { [clip.id] = true }
+  local list = clip:track():clips()
+  local grew = true
+  while grew do
+    grew = false
+    for _, other in ipairs(list) do
+      if not found[other.id] and other.start < to - 1e-9 and other.start + other.length > from + 1e-9 then
+        found[other.id], grew = true, true
+        from, to = math.min(from, other.start), math.max(to, other.start + other.length)
+      end
+    end
+  end
+  return found, from, to
+end
+
 command("clip.join", function()
   local clip = need_clip()
   if not clip then return end
+  local track = clip:track().id
+  -- Clips over each other first, as `:j` joins them; else the next one.
+  local over, from, to = clips_over(clip)
+  if next(over, next(over)) then
+    edit.arrange.join(track, from, to, over)
+    return paw.notify("joined the clips over each other")
+  end
   local finish, next_clip = clip.start + clip.length, nil
   for _, other in ipairs(clip:track():clips()) do
     if other.start >= finish - 1e-9 and (not next_clip or other.start < next_clip.start) then next_clip = other end
   end
-  if not next_clip then return paw.notify("no clip after this one to join it with", "warn") end
-  edit.arrange.join(clip:track().id, clip.start, next_clip.start + next_clip.length)
-end, { desc = "Join the clip with the next one on the track" })
+  if not next_clip then return paw.notify("no clip after this one, or over it, to join it with", "warn") end
+  edit.arrange.join(track, clip.start, next_clip.start + next_clip.length)
+end, { desc = "Join the clip with the clips over it (a take over it), or else with the next one on the track" })
 command("clip.rename", function(ctx)
   local clip = need_clip()
   if not clip then return end
@@ -1527,7 +1675,7 @@ command("write", function(ctx)
   if path and paw.midifile.is_midi_file(path) then
     return paw.notify("a project is not saved as a MIDI file: `:export " .. path .. "` writes one", "warn")
   end
-  if path and paw.files.is_dir((path:gsub("^~", os.getenv("HOME") or "~"))) then
+  if path and paw.files.is_dir(util.expand_path(path)) then
     return paw.notify(path .. " is a folder: name a file in it, `:w " .. path:gsub("/+$", "") .. "/song.json`", "warn")
   end
   paw.notify("saved " .. paw.project.save(path))
@@ -1591,13 +1739,23 @@ end, {
   complete = function() return paw.lanes.modes end,
 })
 command("engine", function(ctx)
-  if ctx.args.threads then paw.opt.threads = tonumber(ctx.args.threads) end
+  local wanted = ctx.args.threads ~= nil and tonumber(ctx.args.threads) or nil
+  if ctx.args.threads ~= nil and not wanted then return paw.notify("engine: threads=N, a number, or 0 for as many as the machine has", "warn") end
+  local before = api.engine_get().threads
+  if wanted then paw.opt.threads = wanted end
   if ctx.args[1] or ctx.args.rate or ctx.args.buffer then
     api.engine_restart({ backend = ctx.args[1] and tostring(ctx.args[1]), sample_rate = ctx.args.rate, buffer_size = ctx.args.buffer })
   end
+  -- The audio thread takes the new threads at its next block: wait for it,
+  -- so that the count said is the one that runs.
+  if wanted and wanted ~= before then
+    local deadline = api.now() + 500
+    while api.engine_get().threads == before and api.now() < deadline do api.sleep(5) end
+  end
   local e = api.engine_get()
-  paw.notify(string.format("%s: %s, %d Hz, %d %s, %d xruns", e.backend, e.device, e.sample_rate, e.threads,
-    e.threads == 1 and "thread" or "threads", e.xruns))
+  local asked = wanted and wanted > 0 and e.threads ~= wanted and string.format(" (%d asked)", wanted) or ""
+  paw.notify(string.format("%s: %s, %d Hz, %d %s%s, %d xruns", e.backend, e.device, e.sample_rate, e.threads,
+    e.threads == 1 and "thread" or "threads", asked, e.xruns))
 end, { desc = "Show the audio engine, restart it, or set its threads: `engine pipewire rate=48000 buffer=256`, `engine threads=4`" })
 command("engine.status", function()
   local e = api.engine_get()
@@ -1914,6 +2072,12 @@ command("info", function()
     local d = device:get()
     lines[#lines + 1] = string.format("  %d. %s%s", i, d.name, d.bypass and "  (bypassed)" or "")
   end
+  -- MIDI with nothing to play it is silent: say so, and how to fix it.
+  local midi = false
+  for _, c in ipairs(track.id ~= 0 and api.clip_list(track.id) or {}) do midi = midi or c.kind == "midi" end
+  if midi and not kind and not (t.midi_output and t.midi_output.port) and paw.fx.preferred(track.id) == "instrument" then
+    lines[#lines + 1] = { text = "  no instrument: its MIDI makes no sound. Press `a` and choose one (synth, a plugin)", style = "Warn" }
+  end
   for _, lane in ipairs(api.lane_list(track.id)) do
     lines[#lines + 1] = string.format("  automation  %s, %d points%s", lane.param or lane.target, lane.point_count, lane.enabled and "" or ", off")
   end
@@ -1961,7 +2125,7 @@ map("K", "info", { desc = "Describe what is under the cursor", role = "describe"
 map("gI", "punch", { desc = "Punch in and out: record only between two points, or not" })
 map("gI", "punch selection", { mode = "x", desc = "Punch in and out over the selection" })
 map("ge", "device.editor", { desc = "Show or hide the plugin's window" })
-map("R", "transport.record", { desc = "Record, or stop recording" })
+map("R", "transport.record", { desc = "Record from the cursor, or stop recording" })
 map(":", "cmdline", { mode = nx, desc = "Type a command" })
 map("?", "pick.keys", { mode = nx, desc = "Show key mappings" })
 map("u", "undo", { desc = "Undo", repeatable = false })
@@ -2210,7 +2374,17 @@ for _, lhs in ipairs({ "ie", "ae" }) do
 end
 
 -- Arrange: operators.
-local function aop(lhs, fn, desc) keymap.operator(lhs, fn, { view = "arrange", desc = desc }) end
+-- An operator acts on tracks and clips: on the master, which has no clips
+-- and no place in the list of tracks, it says so.
+local function aop(lhs, fn, desc)
+  keymap.operator(lhs, function(region, ctx)
+    local n = #paw.groups.rows()
+    if cursor.on_master() or (n > 0 and region.r0 > n) then
+      return paw.notify("the master track has no clips and stays: move to a track with `k`", "warn")
+    end
+    return fn(region, ctx)
+  end, { view = "arrange", desc = desc })
+end
 aop("d", function(region, ctx)
   keymap.setreg(edit.arrange.delete(region), ctx.register)
   if region.kind == "line" then settle(region.r0) end
@@ -2265,7 +2439,7 @@ amap("P", function(ctx) edit.arrange.paste(keymap.getreg(ctx.register), true, ct
 amap("&", "clip.duplicate", "Repeat the clip after itself")
 amap("~", "clip.mute", "Mute or unmute the clip")
 amap("S", "clip.split", "Split the clip at the cursor")
-amap("J", "clip.join", "Join the clip with the next one")
+amap("J", "clip.join", "Join the clip with those over it, or with the next one")
 amap("<CR>", "clip.edit", "Edit the clip's notes")
 amap("i", "clip.insert", "Enter notes here, in a new clip if there is none")
 amap("grc", "clip.rename", "Rename the clip")
@@ -2333,7 +2507,7 @@ local function main_value(sign) return function(region, ctx)
   if region.kind ~= "line" then return edit.arrange.transpose(region, n) end
   for _, id in ipairs(edit.arrange.tracks(region)) do
     local track = paw.track(id)
-    track.volume = util.clamp(track.volume + n, -60, 6)
+    track.volume = util.fader_db(track.volume, track.volume + n)
   end
 end end
 local function pan_value(sign) return function(region, ctx)
@@ -2945,7 +3119,7 @@ end
 command("track.volume.set", function()
   local track = need_track()
   if not track then return end
-  paw.ui.ask_value({ label = track.name .. " volume", now = track.volume, unit = "dB", min = -150, max = 24 }, function(v)
+  paw.ui.ask_value({ label = track.name .. " volume", now = track.volume, unit = "dB", min = -120, max = 24 }, function(v)
     track.volume = v
     paw.notify(string.format("%s at %+.1f dB", track.name, track.volume))
   end)

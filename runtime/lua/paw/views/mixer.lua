@@ -285,6 +285,8 @@ function view:render(buf, ctx)
   for i, id in ipairs(tracks) do
     if id == cursor_track then index = i end
   end
+  -- On the master, the last tracks show beside it.
+  if cursor_track == 0 then index = #tracks end
   if index <= self.scroll then self.scroll = index - 1 end
   if index > self.scroll + room then self.scroll = index - room end
   self.scroll = util.clamp(self.scroll, 0, math.max(0, #tracks - room))
@@ -300,7 +302,11 @@ function view:render(buf, ctx)
   end
   -- The master, after the last track behind a heavier rule.
   body:fill(x, 0, 1, h, g.strip_sep, "Rule")
-  block = strip(body, x + 1, api.track_get(0), nil, false, h, sw) or block
+  -- The cursor reaches it too: `l` from the last strip, `$`.
+  local on_master = cursor_track == 0
+  local mst = strip(body, x + 1, api.track_get(0), nil, on_master, h, sw, on_master and ctx.focused and row or nil)
+  if mst and on_master and row and ctx.focused then mark_row(body, mst, row) end
+  block = mst or block
   strips[#strips + 1] = block
   -- The scale beside the first strip, on the rows the fader's cap takes.
   if block and block.rows >= 6 then

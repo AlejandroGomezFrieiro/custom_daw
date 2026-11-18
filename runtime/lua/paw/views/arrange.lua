@@ -955,7 +955,13 @@ function view:render(buf, ctx)
     })
   end
   local master = api.track_get(0)
-  header(self, headers, mst.y, mst.h, master, nil, false, api.lane_list(0), draw.track_hue(master))
+  -- The cursor reaches it with `j` from the last track, and `/master`.
+  local on_master = cursor_track == 0
+  header(self, headers, mst.y, mst.h, master, nil, on_master, api.lane_list(0), draw.track_hue(master))
+  if on_master then
+    local cw = math.max(1, math.floor(opt.grid * zoom))
+    lanes:fill(col(cursor.beat), mst.y, cw, 1, nil, paw.keymap.mode == "x" and "CursorVisual" or "Cursor")
+  end
   -- Beside the master, its automation when it has some; else nothing.
   for _, l in ipairs(api.lane_list(0)) do
     if l.target == "volume" and l.point_count > 0 then
@@ -1031,6 +1037,8 @@ view.grid = {
   set = function(row, col)
     local list = paw.groups.rows()
     local id = list[util.clamp(row, 1, #list)]
+    -- The row after the last track is the master's.
+    if row > #list and paw.cursor.master_reachable() then id = 0 end
     -- Staying on the same track keeps the cursor on the lane row it is on.
     if #list > 0 and id ~= paw.cursor.track_id() then paw.cursor.set_track(id) end
     paw.cursor.set_beat(col)
@@ -1052,6 +1060,9 @@ view.grid = {
       for _, clip in ipairs(api.clip_list(id)) do
         if clip.name:lower():find(wanted, 1, true) then hits[#hits + 1] = { row = row, col = clip.start } end
       end
+    end
+    if api.track_get(0).name:lower():find(wanted, 1, true) then
+      hits[#hits + 1] = { row = #paw.groups.rows() + 1, col = paw.cursor.beat }
     end
     return hits
   end,

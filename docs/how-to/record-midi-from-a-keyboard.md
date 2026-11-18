@@ -18,9 +18,8 @@ shows each MIDI port that paw finds, and if it is open.
 
 ## Record a take
 
-1. Move the cursor to where the take starts. Press `gp` to move the
-   playhead to the cursor.
-2. Press `R`, and play.
+1. Move the cursor to where the take starts.
+2. Press `R`, and play. The take starts at the cursor.
 3. Press `<Space>` to stop. The take is a new MIDI clip on the track.
 4. To edit the notes, press `Enter` on the clip. The piano roll opens.
 
@@ -30,17 +29,22 @@ on top of the old clip.
 ## Merge a take into the clip
 
 1. Record the new take over the clip, as above.
-2. Keep the cursor in the bar of the two clips, and type `:j`. paw merges
-   the clips of that bar into one clip, with the notes of both.
+2. Put the cursor on the clips and press `J`. paw merges the clips into
+   one clip, with the notes of both.
 
-If the clips cover more than one bar, give the bars: `:5,8j` merges the
-clips in bars 5 to 8.
+To merge the clips of some bars, type the bars: `:5,8j` merges the clips
+in bars 5 to 8.
+
+To merge each take into the clip under it while you record (overdub),
+type `:set midi_record merge`. `u` undoes the take and the merge in one
+step. A take round a loop stays a clip of takes. To make each take a new
+clip again, type `:set midi_record new`.
 
 ## Record over a loop
 
 1. Move the cursor to the first bar of the part. Type `gl4W` to loop four
    bars from the cursor.
-2. Press `gp`, then press `R`.
+2. Press `R`.
 3. Play the part again each time round the loop.
 4. Press `<Space>` to stop. The clip over the loop has a take for each time
    round. The last take plays.

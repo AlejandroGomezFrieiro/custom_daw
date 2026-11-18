@@ -29,14 +29,33 @@ end
 M.lens = nil
 
 --- The id of the track of the cursor, or of the first track when that track
---- does not exist now. Nil when the project has no tracks.
+--- does not exist now. Nil when the project has no tracks. 0 when the
+--- cursor is on the master track (`on_master`).
 function M.track_id()
   local lens = M.lens and M.lens()
   if lens then return lens end
-  if track_id and pcall(api.track_get, track_id) and track_id ~= 0 then return track_id end
+  if track_id == 0 then return 0 end
+  if track_id and pcall(api.track_get, track_id) then return track_id end
   track_id = api.track_list()[1]
   return track_id
 end
+
+--- Whether the cursor is on the master track: the row after the last
+--- track in the arrange view, the strip after the last in the mixer.
+function M.on_master()
+  return track_id == 0
+end
+
+--- Whether a move of the cursor can go on from the last track to the
+--- master: a move of its own in normal mode, in the views that draw the
+--- master after the tracks. After an operator or in a selection, only
+--- tracks count.
+local function master_reachable()
+  local keymap = paw.keymap
+  return keymap.mode == "n" and not keymap.motion_for
+    and (paw.ui.focused == "arrange" or paw.ui.focused == "mixer")
+end
+M.master_reachable = master_reachable
 
 --- The track the cursor is on, as a `paw.Track`, or nil.
 function M.track()
@@ -53,9 +72,11 @@ function M.index()
 end
 
 --- 1-based row of the cursor track among the tracks that are drawn: the
---- same as `index` until a group is folded.
+--- same as `index` until a group is folded. On the master, the row after
+--- the last track.
 function M.row()
   local id = M.track_id()
+  if id == 0 then return #paw.groups.rows() + 1 end
   for i, other in ipairs(paw.groups.rows()) do
     if other == id then return i end
   end
@@ -88,16 +109,23 @@ end
 
 --- Move by rows. In normal mode, the rows of open automation lanes count.
 --- After an operator or in a selection, only tracks count, as for `dj`.
+--- From the last track, a move down goes on to the master, and from the
+--- master a move up comes back to the tracks.
 function M.move_track(delta)
+  local reach = master_reachable()
   if paw.lanes.any_open() and paw.keymap.mode == "n" then
     local lines = paw.groups.rows({ lanes = true })
     if #lines == 0 then return end
-    local to = lines[paw.util.clamp((M.line() or 1) + delta, 1, #lines)]
+    local at = M.on_master() and #lines + 1 or (M.line() or 1)
+    if reach and at + delta > #lines then return M.set_track(0) end
+    local to = lines[paw.util.clamp(at + delta, 1, #lines)]
     return M.set_track(to.track, to.lane)
   end
   local list = paw.groups.rows()
   if #list == 0 then return end
-  M.set_track(list[paw.util.clamp((M.row() or 1) + delta, 1, #list)])
+  local at = M.row() or 1
+  if reach and at + delta > #list then return M.set_track(0) end
+  M.set_track(list[paw.util.clamp(at + delta, 1, #list)])
 end
 
 --- Put the cursor at a beat (not before 0).

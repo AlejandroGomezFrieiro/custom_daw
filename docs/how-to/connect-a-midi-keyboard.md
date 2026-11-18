@@ -23,12 +23,15 @@ connect it. paw finds ports that appear later, also while it runs.
 1. Press `o` to add a track.
 2. Press `a`, type `synth` and press `Enter`. You can also add a plugin
    (see [How to add a track with a virtual instrument](add-an-instrument-track.md)).
-3. Press `r` to arm the track. A track plays the keyboard only when it is
-   armed or when its monitor is on.
-4. Play some keys. You hear the synth, and the meter of the track moves.
+3. Play some keys. You hear the synth, and the meter of the track moves.
+   The selected track plays the keyboard. Go to a different track with `j`
+   or `k`, and the keyboard plays that track.
 
-To hear the keyboard without a recording, press `<A-i>` in place of `r`.
-This switches the monitor of the track on.
+When a track is armed (`r`), only the armed tracks play the keyboard. A
+track with its monitor on (`<A-i>`) also plays the keyboard.
+
+To play only the armed and monitored tracks, type
+`:set midi_follows_selection false`.
 
 ## Take one keyboard only
 

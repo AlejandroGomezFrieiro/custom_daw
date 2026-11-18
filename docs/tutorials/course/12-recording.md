@@ -31,13 +31,13 @@ The tutor opens a practice project for this lesson. It checks each step when you
    - ✓ Voice gets its sound from that input. The header shows the input and its level. `<A-i>` lets you hear it without a recording.
 2. `r` arms the track for a recording, and its `R` becomes red. Press `r`.
    - ✓ The track is armed. You also hear the input of an armed track.
-3. `R` starts the recording from the playhead. Press `R`. Sing or play for some seconds. Then press `R` to stop the recording, and `<Space>` to stop the song.
+3. `R` starts the recording from the cursor, as `<S-CR>` plays from it. Press `R`. Sing or play for some seconds. Then press `R` to stop the recording, and `<Space>` to stop the song.
    - *Hint:* Press `R` before `<Space>`. If you press only `<Space>`, record mode stays on (`rec` is lit in the status line), and the next `<Space>` records again.
    - ✓ A new audio clip with your take shows where the recording started. The clip shows its waveform.
 4. Now we record MIDI. Press `r` to disarm Voice, `j` to go to Keys, and `r` to arm Keys.
    - *Hint:* `:midi.inputs` shows the MIDI ports that paw finds.
    - ✓ Keys is armed and has no audio input, so it records MIDI. Play your keyboard, and you hear the synth.
-5. Press `gs` to go to the start and `R` to record. Play some notes on your MIDI keyboard. Then press `R` and `<Space>` to stop.
+5. Press `0` to put the cursor at the start and `R` to record. Play some notes on your MIDI keyboard. Then press `R` and `<Space>` to stop.
    - ✓ A MIDI clip contains the notes that you played. `<CR>` on the clip opens it in the piano roll.
 6. Press `r` to disarm Keys. Then listen: press `gs` and `<Space>`, and `<Space>` to stop.
    - ✓ Your recordings play with the drums.

@@ -92,14 +92,14 @@ end
 local function nudge(id, row, steps)
   local track = paw.track(id)
   if row.kind == "volume" then
-    track.volume = util.clamp(track.volume + steps, -60, 6)
+    track.volume = util.fader_db(track.volume, track.volume + steps)
   elseif row.kind == "pan" then
     track.pan = util.clamp(util.round(track.pan + 0.1 * steps, 0.01), -1, 1)
   elseif row.kind == "send" then
     local sends = api.track_get(id).sends
     local send = sends[row.index]
     if send then
-      send.level = util.clamp(send.level + steps, -60, 6)
+      send.level = util.fader_db(send.level, send.level + steps)
       api.track_set(id, "sends", sends)
     end
   elseif row.kind == "insert" then
@@ -209,6 +209,8 @@ view.grid = {
   set = function(row, col)
     local list = paw.groups.rows()
     local id = list[util.clamp(row, 1, math.max(1, #list))]
+    -- The strip after the last track is the master's.
+    if row > #list and paw.cursor.master_reachable() then id = 0 end
     local _, before = view.grid.get()
     if id and id ~= paw.cursor.track_id() then paw.cursor.set_track(id) end
     -- Going to another strip keeps the kind of row (the fader stays the
@@ -217,6 +219,17 @@ view.grid = {
   end,
   step = function() return 1 end,
   rows = true,
+  -- Strips by name, the master's too, for `/`.
+  search = function(text)
+    local wanted, hits = text:lower(), {}
+    local list = paw.groups.rows()
+    local _, col = view.grid.get()
+    for row, id in ipairs(list) do
+      if api.track_get(id).name:lower():find(wanted, 1, true) then hits[#hits + 1] = { row = row, col = col } end
+    end
+    if api.track_get(0).name:lower():find(wanted, 1, true) then hits[#hits + 1] = { row = #list + 1, col = col } end
+    return hits
+  end,
   -- The row under the cursor is a cell: a selection takes it in.
   extent = function(_, col) return math.floor(col + 0.5) + 1 end,
 }
@@ -245,7 +258,11 @@ mmap("G", function(ctx)
 end, "The strip's bottom row, or row N", far)
 mmap("0", "cursor.first_track", "The first strip", far)
 mmap("^", "cursor.first_track", "The first strip", far)
-mmap("$", "cursor.last_track", "The last strip", far)
+mmap("$", function(ctx)
+  -- The master is the last strip; a count or a selection counts tracks only.
+  if not ctx.count and paw.cursor.master_reachable() then return paw.cursor.set_track(0) end
+  paw.commands.exec("cursor.last_track", ctx)
+end, "The last strip: the master", far)
 mmap("|", function(ctx)
   local list = paw.groups.rows()
   local id = list[util.clamp(ctx.count or 1, 1, math.max(1, #list))]
@@ -366,6 +383,9 @@ local function each(region, fn)
   for _, id in ipairs(strips(region)) do fn(id, rows_in(id, region)) end
 end
 op("d", function(region, ctx)
+  if region.kind == "line" and region.r0 > #paw.groups.rows() then
+    return paw.notify("the master's strip stays: `x` clears a row of it", "warn")
+  end
   if region.kind == "line" then
     local first = region.r0
     keymap.setreg(paw.edit.arrange.delete(region), ctx.register)

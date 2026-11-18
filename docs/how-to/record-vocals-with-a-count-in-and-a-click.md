@@ -29,13 +29,12 @@ record the click.
 
 ## Record
 
-1. Move the cursor to where the take starts, and press `gp`. The playhead
-   moves to the cursor.
+1. Move the cursor to where the take starts.
 2. Press `R`. The metronome counts one bar, and the status line shows
    `count`. The playhead does not move during the count.
 3. Sing after the count. The song plays, and paw records.
 4. Press `<Space>` to stop. The take is a clip that starts at the
-   playhead, not at the start of the count.
+   cursor, not at the start of the count.
 
 To record the same lines many times, see
 [How to record takes over a loop and comp them](record-takes-and-comp.md).

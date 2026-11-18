@@ -114,6 +114,59 @@ fn the_metronome_follows_the_map() {
 }
 
 #[test]
+fn the_click_has_a_level_an_accent_and_an_output() {
+    let peak = |out: &[f32]| out.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    let run = |click: Option<Msg>| {
+        let (mut engine, mut handle) = Engine::new(SR);
+        send(&mut handle, Msg::SetMetronome(true));
+        if let Some(click) = click {
+            send(&mut handle, click);
+        }
+        send(&mut handle, Msg::Play);
+        let (mut l, mut r) = (vec![0.0; 4800], vec![0.0; 4800]);
+        let mut main = Vec::new();
+        let mut own = Vec::new();
+        for _ in 0..30 {
+            engine.process(&mut l, &mut r);
+            main.extend_from_slice(&l);
+            if let Some((first, cl, _)) = engine.click_output(l.len()) {
+                assert_eq!(first, 2, "outputs 3/4 are channels 2 and 3 from 0");
+                own.extend_from_slice(cl);
+            }
+        }
+        (main, own)
+    };
+    let (plain, _) = run(None);
+    let (quiet, _) = run(Some(Msg::SetClick {
+        gain: 0.5,
+        accent: true,
+        output: 0,
+    }));
+    let ratio = peak(&quiet) / peak(&plain);
+    assert!((ratio - 0.5).abs() < 0.01, "half the gain, half the level: {ratio}");
+
+    let (flat, _) = run(Some(Msg::SetClick {
+        gain: 1.0,
+        accent: false,
+        output: 0,
+    }));
+    let heard = onsets(&flat, 50);
+    assert_eq!(
+        flat[heard[0] + 5],
+        flat[heard[1] + 5],
+        "with no accent the bar's first beat sounds as the others"
+    );
+
+    let (main, own) = run(Some(Msg::SetClick {
+        gain: 1.0,
+        accent: true,
+        output: 3,
+    }));
+    assert_eq!(peak(&main), 0.0, "on an output of its own, the click is not in the song");
+    assert!((peak(&own) - peak(&plain)).abs() < 1e-6, "but on its outputs");
+}
+
+#[test]
 fn audio_regions_keep_to_time_through_a_ramp() {
     // A file with one click per second: wherever the region starts, its
     // clicks are a second apart however the tempo moves.

@@ -222,7 +222,7 @@ offline flag.
 | `device:set_offline(true)` | The same in Lua. |
 | the plug button on the card of a plugin | The same in the graphical window. An offline card says so, and has an Online button. |
 | `:plugins.online` | Set every offline device online. |
-| `:plugins.offline` | Set every plugin offline. |
+| `:plugins.offline` | Set every plugin offline: CLAP, LV2 and VST3 plugins, and devices written in Lua. |
 
 To open a project with its plugins offline:
 
@@ -232,6 +232,10 @@ To open a project with its plugins offline:
 | Ex | `:edit song.json offline` |
 | Lua | `paw.open(path, { plugins_offline = true })` |
 | recovery | the "(plugins offline)" entries of `:recover`, or `:recover 1 offline` |
+
+These also set the devices written in Lua offline, because they run code
+in a process of their own, as a plugin does. The devices that come with
+paw stay online.
 
 The offline flags that these set are saved with the project.
 

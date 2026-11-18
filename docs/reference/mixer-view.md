@@ -15,18 +15,20 @@ sends, the fader, the pan, mute, solo, arm and the input monitor.
 - The meters next to the fader are linear from -60 to 0 dB. The highest recent level shows in numbers under them.
 - The top row of the meters is the clip light. It goes red when a level reaches full scale, and stays red until you click it (or the peak), or until the transport starts again.
 - If there is room, the row under the name of a strip gives the track that it plays into (`→ Master`, `→ Drum bus`). A click there, or `:track.output`, chooses it. Four rows name its first devices, and the last row counts the others (`+2 more`). With less room, one row counts the devices and the sends.
+- The Master strip comes last, after a heavier rule. The cursor goes to it with `$` or `l`. Its rows are its devices, the fader and the pan. `a` adds a device to it, for example a limiter.
 - VCAs have strips after the tracks. The arrange view makes them (`,vn` and the other keys of [the arrange view](arrange-view.md)). See [Render](render.md).
 
 ## Keys
 
 | Keys | Effect |
 | --- | --- |
-| `h` `l` | Go to the next and the previous strip. |
-| `0` `$`, `5\|` | Go to the first and the last strip, the fifth strip. |
+| `h` `l` | Go to the previous and the next strip. `l` on the last track goes to the Master strip. |
+| `0` `$`, `5\|` | Go to the first strip, the Master strip, the fifth strip. In a selection, `$` goes to the last track. |
+| `/master` | Goes to the Master strip. `/` finds a strip by its name. |
 | `j` `k` | Go along the rows of the strip. |
 | `gg` `G` | Go to the top and the bottom row. |
 | `w` `b` | Go to the next and the previous kind of row. |
-| `+` `-` | Change the row: a dB on the fader or a send, a tenth of pan, a switch on or off, an insert on or bypassed. `6 Ctrl-x` is six dB down. |
+| `+` `-` | Change the row: a dB on the fader or a send, a tenth of pan, a switch on or off, an insert on or bypassed. `6 Ctrl-x` is six dB down. The fader goes from -60 to +6 dB. A level above +6 dB (typed with `grv`, up to +24 dB) goes down one dB at a time. |
 | `]` `[` | Pan the strip, from any row. |
 | `Enter` | Types the value of the row. On a switch, switches it. On an insert, shows its window. |
 | `x` | Clears the row: 0 dB, the center, off. A send or an insert goes away. |

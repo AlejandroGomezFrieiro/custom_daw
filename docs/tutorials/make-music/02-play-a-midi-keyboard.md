@@ -50,8 +50,8 @@ If the list has no MIDI port for your keyboard, press `<Esc>`. Then type
 
 ## Record a take over the loop
 
-1. Press `gs` to move the playhead to the start.
-2. Press `R` to record. Play a melody over the four bars.
+1. Press `0` to move the cursor to the start of the song.
+2. Press `R` to record from the cursor. Play a melody over the four bars.
 3. When the playhead returns to bar 1, press `R` to stop the recording.
    Then press `<Space>` to stop the song.
    - A clip with the name `take 1` shows on the Lead track. It holds the

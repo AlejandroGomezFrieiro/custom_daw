@@ -20,6 +20,17 @@ To change the tempo, press `grt`, type the tempo and press `Enter`.
 The metronome plays through the main output with the song. paw does not
 put the click in a rendered file.
 
+## Change the sound of the click
+
+- To make the click quieter or louder, type `:click level=-6`. The level
+  is in dB, from -60 to +12.
+- To play the same click on each beat, type `:click accent=off`.
+  `:click accent=on` plays the higher click on the first beat again.
+- To hear the click only in headphones on outputs 3 and 4 of the audio
+  interface, type `:click output=3`. The click is then not in the main
+  output. `:click output=song` puts it back with the song.
+- Type `:click` to see the settings.
+
 ## Count in before a take
 
 1. Press `gM`. The status line shows `count 1`. A take that starts from a

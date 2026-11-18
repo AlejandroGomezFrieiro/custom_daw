@@ -116,6 +116,10 @@ pub struct Mapper {
     /// When set, only these tracks are heard, with what they pass through,
     /// as if they were soloed; the project is not changed.
     pub audible: Option<HashSet<Id>>,
+    /// The track that plays MIDI input as if it were monitored, without
+    /// the project saying so: the selected track, while no track is armed
+    /// (`paw.opt.midi_follows_selection`).
+    pub follow: Option<Id>,
     /// What the engine was last told to play of each track that is not live.
     played: HashMap<Id, Played>,
 }
@@ -150,6 +154,7 @@ impl Mapper {
             deferred: Vec::new(),
             held_files: HashMap::new(),
             audible: None,
+            follow: None,
             played: HashMap::new(),
         }
     }
@@ -770,6 +775,10 @@ pub fn sync(
         }
     }
 
+    // The selected track plays the MIDI keyboard while no track is armed.
+    let follow = map
+        .follow
+        .filter(|_| !new.tracks.iter().any(|t| t.armed));
     for track in new.all_tracks() {
         let Some(&slot) = map.tracks.get(&track.id) else {
             continue;
@@ -777,7 +786,8 @@ pub fn sync(
         let (first, channels) = track.input_channels().unwrap_or((0, 0));
         // An armed track is always heard, so that what is recorded is what
         // the player hears; the monitor switch is for hearing it otherwise.
-        let input = (first, channels, track.armed || track.monitor, track.armed);
+        let followed = follow == Some(track.id) && channels == 0 && track.id != MASTER_ID;
+        let input = (first, channels, track.armed || track.monitor || followed, track.armed);
         if map.inputs.get(&track.id) != Some(&input) {
             map.inputs.insert(track.id, input);
             send(Msg::SetInput {

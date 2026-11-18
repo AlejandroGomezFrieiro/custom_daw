@@ -69,8 +69,10 @@ test("guide: set levels and pan, and keep the master out of the red", function()
   eq(guitar.volume .. " " .. bass.volume, "0 0", "V$ selects every strip, and 6- lowers each fader")
   local quiet = T.render({ tail = 0, bits = 32 }).peak
   near(quiet, loud / 2, loud * 0.02, "the master is 6 dB lower (" .. quiet .. ")")
-  keys(":lua paw.master:add_device('limiter')<CR>")
-  eq(paw.master:devices()[1].kind, "limiter", "a limiter on the master")
+  keys("$")
+  eq(paw.cursor.track_id(), 0, "$ goes to the Master strip")
+  keys("aLimiter<CR>")
+  eq(paw.master:devices()[1].kind, "limiter", "a adds a limiter on the master")
   keys("0V$6+")
   local limited = T.render({ tail = 0, bits = 32 }).peak
   eq(limited < 0.9, true, "keeps the peaks below its ceiling of -1 dB (" .. limited .. ")")
@@ -162,6 +164,11 @@ test("guide: send several tracks to one reverb", function()
   keys("u")
   eq(#pad:get().sends, 0, "u takes the send away")
   keys("@:")
+  -- Many tracks in one step, and a new level for a send that is there.
+  keys("ggVjj:send Reverb -9<CR>")
+  eq(guitar:get().sends[1].level .. " " .. #pad:get().sends, "-9 1", "V selects the tracks, :send sends each")
+  keys("<Esc>gg:send Reverb -12<CR>")
+  eq(guitar:get().sends[1].level, -12, ":send again with a level changes the send")
 
   -- The level of a send in the mixer.
   keys(",m")

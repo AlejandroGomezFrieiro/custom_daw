@@ -75,7 +75,7 @@ replace mode.]],
       done = "The track is armed. You also hear the input of an armed track.",
     },
     {
-      say = "`R` starts the recording from the playhead. Press `R`. Sing or play for some seconds. Then press `R` to stop the recording, and `<Space>` to stop the song.",
+      say = "`R` starts the recording from the cursor, as `<S-CR>` plays from it. Press `R`. Sing or play for some seconds. Then press `R` to stop the recording, and `<Space>` to stop the song.",
       keys = { "R", { wait = 1000 }, "R", "<Space>" },
       check = function(_, look)
         local clip = look.clips("Voice")[1]
@@ -92,8 +92,8 @@ replace mode.]],
       hint = "`:midi.inputs` shows the MIDI ports that paw finds.",
     },
     {
-      say = "Press `gs` to go to the start and `R` to record. Play some notes on your MIDI keyboard. Then press `R` and `<Space>` to stop.",
-      keys = { "gs", "R", { sim = play_three_notes, instead = {} }, "R", "<Space>" },
+      say = "Press `0` to put the cursor at the start and `R` to record. Play some notes on your MIDI keyboard. Then press `R` and `<Space>` to stop.",
+      keys = { "0", "R", { sim = play_three_notes, instead = {} }, "R", "<Space>" },
       check = function(_, look)
         local clip = look.clips("Keys")[1]
         return clip and clip.kind == "midi" and #clip:notes() > 0 and not paw.transport.playing and not paw.transport.recording

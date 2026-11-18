@@ -70,6 +70,11 @@ clip. `:set undo_steps=200` removes the oldest steps at once.
 | `paw.opt.count_in` | `0` | The bars that the metronome counts before a recording from a stop, 0 to 16. |
 | `paw.opt.pre_roll` | `0` | The bars that play before a punch in, when you record from a stop, 0 to 64. |
 | `paw.opt.pre_roll_seconds` | `0` | The seconds that play before those bars, 0 to 60. |
+| `paw.opt.click_level` | `0` | The level of the metronome in dB, -60 to 12. `:click level=-6` sets it. |
+| `paw.opt.click_accent` | `true` | The metronome plays a higher click on the first beat of a bar. |
+| `paw.opt.click_output` | `0` | The first output channel of the pair that the metronome plays on, 1 to 63. `0` plays it with the song. |
+| `paw.opt.midi_follows_selection` | `true` | The selected track plays the MIDI keyboard when no track is armed. `false`: only armed and monitored tracks play it. |
+| `paw.opt.midi_record` | `"new"` | A MIDI take over a clip: `"new"` makes a clip of its own, `"merge"` joins its notes into the clip under it (overdub). |
 | `paw.opt.threads` | `0` | The threads that process tracks. `0` gives one for each core. |
 | `paw.opt.audio_reconnect` | `true` | paw opens an audio device again when it returns. |
 | `paw.opt.scope_rest` | `"play"` | What the other tracks do in a narrowed tab: `"play"`, `"mute"` or `"frozen"`. |

@@ -1156,6 +1156,12 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().set_audible(tracks);
             Ok(())
         }
+        // The track that plays MIDI input while no track is armed, as if
+        // monitored, or none with nil (`paw.opt.midi_follows_selection`).
+        fn engine_follow(_, sh, track => Option<Id>) {
+            sh.session.borrow_mut().set_follow(track);
+            Ok(())
+        }
         // The number of threads that process tracks, with the audio thread. 0
         // lets paw select the number. `engine_get().threads` gives the number in use.
         fn engine_set_threads(_, sh, threads => usize) {

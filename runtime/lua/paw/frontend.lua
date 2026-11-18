@@ -1686,7 +1686,7 @@ function A.keys(keys)
   paw.keymap.feed(keys)
 end
 
-function A.set_volume(track, db) api.track_set(track, "volume", paw.util.clamp(db, -60, 6)) end
+function A.set_volume(track, db) api.track_set(track, "volume", paw.util.fader_db(api.track_get(track).volume, db)) end
 
 --- A fader, a pan or a parameter is under the pointer (`on`), or let go:
 --- in touch mode it writes automation for as long as it is held. `device`
@@ -1832,7 +1832,7 @@ function A.render(o)
   elseif range ~= "song" then
     opts.range = range
   end
-  local path = tostring(o.path or ""):gsub("^~", os.getenv("HOME") or "~")
+  local path = paw.util.expand_path(tostring(o.path or ""))
   if path == "" then error("render: name a file to write", 0) end
   local stem = path:gsub("%.[Ww][Aa][Vv]$", ""):gsub("%.[Ff][Ll][Aa][Cc]$", ""):gsub("%.[Mm][Pp]3$", "")
     :gsub("%.[Oo][Gg][Gg]$", ""):gsub("%.[Oo][Pp][Uu][Ss]$", "")
@@ -1890,7 +1890,7 @@ end
 function A.set_send(track, index, level, pre)
   local sends = api.track_get(track).sends
   if not sends[index] then return end
-  if level ~= nil then sends[index].level = paw.util.clamp(level, -60, 6) end
+  if level ~= nil then sends[index].level = paw.util.fader_db(sends[index].level, level) end
   if pre ~= nil then sends[index].pre = pre and true or nil end
   api.track_set(track, "sends", sends)
 end

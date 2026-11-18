@@ -26,6 +26,9 @@ use crate::tempo::TempoMap;
 
 /// Largest block handed to devices. Longer callbacks are split.
 pub const MAX_BLOCK: usize = 1024;
+/// The most frames of one call whose clicks can go to an output of their
+/// own: as many as a backend hands the engine at once.
+const CLICK_FRAMES: usize = 8192;
 pub const MAX_TRACKS: usize = 1024;
 pub const MAX_DEVICES: usize = 8192;
 /// Input channels beyond this many are ignored.
@@ -131,9 +134,9 @@ impl TrackRt {
     }
 
     /// An armed track with an audio input records that; one without plays
-    /// and records MIDI input.
+    /// and records MIDI input. A monitored one without plays it only.
     fn takes_midi(&self) -> bool {
-        self.armed && self.input_channels == 0
+        (self.armed || self.monitor) && self.input_channels == 0
     }
 
     /// Whether a message from MIDI input on `port` is for this track.
@@ -500,6 +503,14 @@ pub enum Msg {
         end: f64,
     },
     SetMetronome(bool),
+    /// The metronome's gain (1 for its own level), whether the first beat
+    /// of a bar is higher, and the first output channel (from 1) of the
+    /// pair it plays on, or 0 for with the song.
+    SetClick {
+        gain: f32,
+        accent: bool,
+        output: u16,
+    },
     Play,
     /// Count in, then play: click `clicks` times, `every` frames apart and
     /// the first of every `per_bar` higher, and start playing on the frame
@@ -948,6 +959,14 @@ pub struct Engine {
     loop_start: f64,
     loop_end: f64,
     metronome: bool,
+    /// The metronome's gain, accent and output (see [`Msg::SetClick`]).
+    click_gain: f32,
+    click_accent: bool,
+    click_output: u16,
+    /// The clicks of the frames of a call, when they go to an output of
+    /// their own; and where in them the block under way starts.
+    click_buf: [Vec<f32>; 2],
+    click_at: usize,
     flush_notes: bool,
     /// Playback is about to start somewhere new: notes already under way at
     /// that position need to be started.
@@ -1147,6 +1166,11 @@ impl Engine {
             loop_start: 0.0,
             loop_end: 4.0,
             metronome: false,
+            click_gain: 1.0,
+            click_accent: true,
+            click_output: 0,
+            click_buf: [vec![0.0; CLICK_FRAMES], vec![0.0; CLICK_FRAMES]],
+            click_at: 0,
             flush_notes: false,
             chase: false,
             reapply: false,
@@ -1393,6 +1417,15 @@ impl Engine {
                 self.loop_end = end;
             }
             Msg::SetMetronome(on) => self.metronome = on,
+            Msg::SetClick {
+                gain,
+                accent,
+                output,
+            } => {
+                self.click_gain = gain;
+                self.click_accent = accent;
+                self.click_output = output;
+            }
             Msg::Play => {
                 self.playing = true;
                 self.chase = true;
@@ -1639,7 +1672,9 @@ impl Engine {
             if t.live.len() < t.live.capacity() {
                 t.live.push(kind);
             }
-            if let Some(take) = capture.as_deref_mut() {
+            // A track that is only monitored plays what comes in, but
+            // records nothing.
+            if let Some(take) = capture.as_deref_mut().filter(|_| t.armed) {
                 take.shared.begin(self.position);
                 let _ = take.midi.push(MidiCapture {
                     slot: entry.slot,
@@ -1720,6 +1755,21 @@ impl Engine {
         self.devices.get_mut(slot as usize)?.get_mut().as_mut()
     }
 
+    /// The metronome's clicks of the last call to [`process_input`], when
+    /// they go to an output pair of their own: the first channel of the
+    /// pair (from 0), and the left and right frames.
+    ///
+    /// [`process_input`]: Self::process_input
+    pub fn click_output(&self, frames: usize) -> Option<(usize, &[f32], &[f32])> {
+        (self.click_output > 0 && frames <= CLICK_FRAMES).then(|| {
+            (
+                self.click_output as usize - 1,
+                &self.click_buf[0][..frames],
+                &self.click_buf[1][..frames],
+            )
+        })
+    }
+
     /// Render the next `left.len()` frames with no input. `left` and `right`
     /// must be the same length.
     pub fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
@@ -1745,6 +1795,11 @@ impl Engine {
         }
         let total = left.len().min(right.len());
         let sr = self.sample_rate;
+        if self.click_output > 0 {
+            let room = total.min(CLICK_FRAMES);
+            self.click_buf[0][..room].fill(0.0);
+            self.click_buf[1][..room].fill(0.0);
+        }
         let mut done = 0;
         while done < total {
             // A count-in that has run its course starts the song on this frame.
@@ -1832,6 +1887,7 @@ impl Engine {
                     + self.shared.output_latency() as f64;
                 self.heard_ns = callback_ns + ((done as f64 / sr + late) * 1e9) as u64;
             }
+            self.click_at = done;
             self.segment(
                 &mut left[done..done + n],
                 &mut right[done..done + n],
@@ -2203,9 +2259,20 @@ impl Engine {
         let count = starts.len();
         let mut next = 0;
         let fall = (-1.0 / (sr as f32 * 0.02)).exp();
+        let level = 0.3 * self.click_gain;
+        let accents = self.click_accent;
+        // On an output of its own, the clicks go beside the song, not in it.
+        let at = self.click_at;
+        let own = self.click_output > 0 && at + n <= CLICK_FRAMES;
+        let [own_l, own_r] = &mut self.click_buf;
+        let (out_l, out_r) = if own {
+            (&mut own_l[at..at + n], &mut own_r[at..at + n])
+        } else {
+            (out_l, out_r)
+        };
         for i in 0..n {
             while next < count && starts[next].0 == i {
-                let accent = starts[next].1;
+                let accent = starts[next].1 && accents;
                 self.click = Click {
                     phase: 0.0,
                     env: 1.0,
@@ -2214,7 +2281,7 @@ impl Engine {
                 next += 1;
             }
             if self.click.env > 1e-4 {
-                let s = (self.click.phase * std::f32::consts::TAU).sin() * self.click.env * 0.3;
+                let s = (self.click.phase * std::f32::consts::TAU).sin() * self.click.env * level;
                 out_l[i] += s;
                 out_r[i] += s;
                 self.click.phase = (self.click.phase + self.click.freq / sr as f32).fract();

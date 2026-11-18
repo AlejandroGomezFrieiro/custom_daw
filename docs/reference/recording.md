@@ -70,13 +70,22 @@ graphical window) lists all the inputs of a track:
 
 - **Monitor.** You hear the input of a track when the track is armed, or
   when its monitor is on. An armed track always monitors, so what you hear
-  is what paw records. A track with no input ignores both.
+  is what paw records. A track with no input ignores both. A track without
+  an audio input that is monitored plays MIDI input, and records nothing.
+- **The selected track plays the keyboard.** While no track is armed, the
+  track of the cursor plays MIDI input as if its monitor is on. It records
+  nothing. `paw.opt.midi_follows_selection = false` turns this off. The
+  project does not change.
 - **What records.** While `paw.transport.recording` is on and the
   transport plays:
   - each armed track with an audio input records its dry input (before
     its devices) to a WAV file.
   - each armed track without an audio input plays and records MIDI input:
     from all ports, or from the port (and channel) of its `midi_input`.
+- **Where a take starts.** `R` (`:transport.record`) with the song
+  stopped moves the playhead to the cursor, and records from there, as
+  `Shift-Enter` plays from the cursor. While the song plays, `R` records
+  from the playhead. `paw.transport.record()` records from the playhead.
 - **The end of a take.** A stop, or recording off, ends the take. A seek
   starts a new take. paw adds the clips of a take, audio and MIDI, as one
   undo step. Notes that are held at the end are cut there.
@@ -117,6 +126,30 @@ count-in.
   `count 3`, and the record button blinks on the beats.
 - A stop, or `Esc`, during the count cancels it: no take, nothing
   recorded, record mode off.
+
+## The click
+
+The metronome and the count-in play the same click.
+
+| Command | Effect |
+| --- | --- |
+| `:click` | Shows the level, the accent and the output of the click. |
+| `:click level=-6` | The level of the click in dB, -60 to +12 (`paw.opt.click_level`). |
+| `:click accent=off` | The same click on each beat. `accent=on`: a higher click on the first beat of a bar (`paw.opt.click_accent`). |
+| `:click output=3` | The click plays on outputs 3 and 4 of the audio device, and not in the main output (`paw.opt.click_output`). `output=song`: with the song. |
+
+- An output that the device does not have plays no click.
+- A render never has the click.
+
+## MIDI overdub
+
+`paw.opt.midi_record` tells what a MIDI take over a clip becomes.
+
+- `"new"` (the default): the take is a clip of its own, on top of the
+  clip. `J` or `:j` merges them later.
+- `"merge"`: when the take ends, paw joins its notes into the MIDI clips
+  that it is over, in the same undo step as the take. A take round a loop
+  stays a clip of takes.
 
 ## Punch in and out
 

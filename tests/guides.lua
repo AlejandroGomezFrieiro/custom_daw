@@ -145,7 +145,7 @@ test("make music 2: a lead played on a MIDI keyboard is recorded over the loop a
   eq(loudest > 0.01, true, "the synth plays the keys")
 
   -- Record: the notes come a little late, as a person plays them.
-  step("gs", "R")
+  step("0", "R")
   for i, pitch in ipairs({ "E5", "C5", "A4", "C5" }) do
     local deadline = api.now() + 10000
     while paw.transport.position < i - 1 + 0.08 and api.now() < deadline do api.sleep(2) end
@@ -206,7 +206,7 @@ test("make music 3: a guitar through an amp chain is recorded in two takes and c
 
   step("0", "gl2W")
   eq(paw.transport.loop_start == 0 and paw.transport.loop_end == 8, true, "the loop is bars 1 and 2")
-  step("gs", "r", "R")
+  step("r", "R")
   -- Two times round the loop: stop when the playhead returns to bar 1 the third time.
   local deadline, rounds, last = api.now() + 30000, 0, 0
   while api.now() < deadline and rounds < 2 do

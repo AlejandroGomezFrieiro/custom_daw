@@ -131,12 +131,16 @@ function M.online()
   return count
 end
 
---- Set every plugin offline. Returns how many.
+-- What runs code from outside paw, in a process of its own: plugins, and
+-- devices written in Lua (`paw.luadev`).
+local PLUGIN_FORMATS = { clap = true, lv2 = true, vst3 = true, lua = true }
+
+--- Set every plugin offline, devices written in Lua too. Returns how many.
 function M.offline()
   local count = 0
   each_device(function(device)
     local d = device:get()
-    if not d.offline and (d.format == "clap" or d.format == "lv2" or d.format == "vst3") then
+    if not d.offline and PLUGIN_FORMATS[d.format] then
       device:set_offline(true)
       count = count + 1
     end
@@ -152,7 +156,7 @@ end, { desc = "Bring every offline device up" })
 paw.command("plugins.offline", function()
   local count = M.offline()
   paw.notify(string.format("%d plugin%s offline", count, count == 1 and "" or "s"))
-end, { desc = "Set every plugin offline: not run, passed over, kept with its state" })
+end, { desc = "Set every plugin offline, devices written in Lua too: not run, passed over, kept with its state" })
 
 --- Set one device offline, or back online.
 function M.toggle(device)
