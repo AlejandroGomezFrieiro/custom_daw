@@ -1,9 +1,9 @@
 # paw-mcp
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server for paw.
-An assistant such as Claude can use it to read a project and work in it:
-make a song, edit it, mix it, render it, and read the levels and spectrum
-of the rendered file in place of listening.
+An assistant such as Claude can use it to read a project and work in it.
+It can make a song, edit it, mix it and render it. Then it reads the levels
+and the spectrum of the rendered file, because it cannot listen.
 
 ## Try it
 
@@ -25,8 +25,8 @@ of the rendered file in place of listening.
    claude mcp add paw -- /path/to/paw/target/release/paw-mcp --socket /tmp/paw.sock
    ```
 
-4. Ask Claude: "Add a bass track with a four-bar riff." The answer gives the
-   ids of the new track and clip.
+4. Ask Claude: "Add a bass track with a four-bar riff."
+   The answer gives the ids of the new track and clip.
 5. Type `paw ctl --socket /tmp/paw.sock eval 'return #paw.tracks()'`. The
    number includes the new track.
 
@@ -94,7 +94,7 @@ start there, and the server saves and renders only there (see `--root`).
 3. Restart Claude Desktop.
 
 Claude Desktop does not start servers in a directory that you choose. So
-give `--root`. Use the socket path of the running paw (`echo
+give `--root`. Use the socket path of paw (`echo
 $XDG_RUNTIME_DIR/paw.sock`), or `"--spawn"` in place of `"--socket", ...`.
 
 ## Reference
@@ -202,9 +202,9 @@ through the typed tools.
 - The server checks paths after it resolves `..` and symbolic links.
 
 **`--allow-eval`** adds the escape hatches. They are code in the kernel
-process with the rights of the user: Lua with the full `paw` interface and
-the `io`, `os` and `ffi` of LuaJIT, commands (with `:lua`, `:w <path>` and
-`:q`), and keys.
+process with the rights of the user. They are Lua with the full `paw`
+interface and the `io`, `os` and `ffi` of LuaJIT, commands (with `:lua`,
+`:w <path>` and `:q`), and keys.
 
 **WARNING:** With `--allow-eval`, an assistant can read and write any file,
 start programs, and quit paw. `--root` does not apply to the escape
@@ -251,7 +251,7 @@ kernel on the null backend. It tests:
 - the handshake for each revision, and the tool schemas
 - a song made with the typed tools only, read back, rendered and measured
 - undo, a call that rolls back, the argument errors, the escape hatches
-- a kernel that stops and comes back
+- a kernel that stops and returns
 
 Run it with `nix develop -c cargo test -p paw-mcp`. It builds `paw` if it
 is not built.
@@ -268,8 +268,8 @@ is not built.
 - Note names have sharps (`A#4`).
 - The meter of `get_track` is the live peak of the engine: -120 dB when
   nothing plays. `diagnose` with `measure` finds the tracks that clip.
-- The typed tools have no recording, MIDI input, audio inputs and
-  monitoring, plugin editor windows, cursor, marks or selections. The
+- The typed tools have no recording, MIDI input, audio inputs, input
+  monitors, plugin editor windows, cursor, marks or selections. The
   escape hatches reach those.
 - `unsaved changes` counts from saves through this server, or from its
   first run in the kernel. The kernel only reports if the project has any
