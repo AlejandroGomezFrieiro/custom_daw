@@ -41,8 +41,9 @@ To try the presets one after the other, press `]p` and `[p`.
 3. Press `4l` to draw a note of one beat, then press `Esc`.
 4. Press `Space`. The note plays.
 
-In the graphical window, type the name into the "Add a device" box of the
-device panel. To make an empty clip, double-click the timeline.
+In the graphical window, click `+ add a device` under the devices of the
+device panel, type the name in the picker and press `Enter`. To make an
+empty clip, double-click the timeline.
 
 ## See also
 
