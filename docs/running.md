@@ -149,7 +149,7 @@ rest of what you typed is dropped, not run as new commands.
 
 New to it? There is a course of seventeen short lessons that runs inside the
 program, in the manner of `vimtutor`: load `extensions/tutor` (see
-[Extensions](extensions.md#extensions)) and type `:tutor`. The same lessons are in
+[How to load an extension](how-to/load-an-extension.md)) and type `:tutor`. The same lessons are in
 [docs/tutorials/course](tutorials/course/README.md) for reading, with a one-page
 [key reference](reference/keys.md).
 

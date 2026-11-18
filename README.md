@@ -13,7 +13,7 @@ the sound, keeps the project and hosts plugins; everything you touch, every
 view, command and key, is Lua that your own configuration can change. Extend
 it with [your `init.lua`](docs/configuration.md), [extensions](#extensions),
 [devices written in Lua](docs/devices.md#writing-a-device-in-lua) and
-[kinds of track](docs/extensions.md#everything-an-extension-can-own), and
+[kinds of track](docs/reference/extensions.md#kinds-of-track), and
 package them for Nix or share them as a git repository.
 
 paw ships a complete DAW core but leaves the score, drum grids and singing
@@ -166,7 +166,7 @@ so `:ext.unload` takes it away cleanly. It can also ship the native programs
 it needs, built by Nix: [utau](extensions/utau) brings its own singing
 engine and [sampler](extensions/sampler) its own sample player, and the core
 knows nothing about either. Write one view and it works in the terminal and
-the window alike. See [extensions](docs/extensions.md) and the
+the window alike. See [extensions](docs/reference/extensions.md) and the
 [API reference](docs/reference/api.md); LuaLS completes `paw.*` from
 [runtime/types](runtime/types). With Claude Code, the
 [`paw-extension` skill](.claude/skills/paw-extension/SKILL.md) knows how.

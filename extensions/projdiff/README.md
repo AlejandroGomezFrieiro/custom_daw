@@ -153,4 +153,4 @@ project shows no change. Numbers are shown to four decimals.
 
 The views are drawn in cells, like every extension's view that has no
 painted twin, so the graphical frontend draws them as the terminal does
-(docs/extensions.md, "One interface, both frontends").
+(docs/reference/extensions.md, "Views in the graphical window").

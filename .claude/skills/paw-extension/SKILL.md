@@ -1,6 +1,6 @@
 ---
 name: paw-extension
-description: Create, extend or debug an extension for paw (the personal audio workstation in this repository): a directory of Lua that adds commands, keys, views, buffer types, kinds of track, Lua devices, picker sources, query fields, status line components, hooks, health checks, and optionally native parts built by Nix. Use whenever a task adds a feature to paw that is not core (see docs/extensions.md "Core and plugins"), writes or changes anything under extensions/ or ~/.config/paw/extensions, or asks "how do I make paw do X" where the answer is Lua — even if it only says "add a command", "a new view", "a tracker", "a plugin for paw".
+description: Create, extend or debug an extension for paw (the personal audio workstation in this repository): a directory of Lua that adds commands, keys, views, buffer types, kinds of track, Lua devices, picker sources, query fields, status line components, hooks, health checks, and optionally native parts built by Nix. Use whenever a task adds a feature to paw that is not core (see docs/explanation/about-core-and-extensions.md), writes or changes anything under extensions/ or ~/.config/paw/extensions, or asks "how do I make paw do X" where the answer is Lua — even if it only says "add a command", "a new view", "a tracker", "a plugin for paw".
 ---
 
 # Creating a paw extension
@@ -10,10 +10,13 @@ over one API, `paw`. An extension is ordinary Lua that calls that API — there
 is no separate plugin interface. Read these before writing anything (they are
 the source of truth; this page is the map):
 
-- `docs/extensions.md` — what belongs in the core vs an extension, layout,
-  manifests and versions, what an extension owns and `:ext.unload`, health
-  checks, pictures in the terminal (strips), everything an extension can own
-  (devices, track kinds, native engines, Nix packaging).
+- `docs/explanation/about-core-and-extensions.md` — what belongs in the core
+  vs an extension, and why.
+- `docs/reference/extensions.md` — layout, manifests and versions, what an
+  extension owns and `:ext.unload`, views in the graphical window, health
+  checks, what the core gives an extension (devices, track kinds, native
+  engines, Nix packaging). `docs/reference/pictures.md` — strips and
+  `paw.plot`.
 - `docs/reference/scripting.md` and the `lua-*.md` pages beside it — the API by area; `docs/reference/events.md` (every hook, one
   table) and buffer types / text buffer kinds.
 - `docs/reference/api.md` (`:help paw.<name>`) — every public function, generated.
@@ -43,7 +46,7 @@ take out what your extension adds. An extension's README follows
    `tests/keys_constitution.lua` and `paw.keyrule.broken()` check it.
 3. **Terminal first, both frontends from one code path.** Draw views in
    cells with `buf:text`/`buf:fill`; the window renders the same scene (see
-   docs/extensions.md "One interface, both frontends"). For pixels, use
+   docs/reference/extensions.md "Views in the graphical window"). For pixels, use
    strips (`buf:strip`, `paw.plot.*`) under the cells, with the cell drawing
    as the fallback. Never write a second window-only UI.
 4. **Everything undoable, everything said.** Edits go through the API so they
