@@ -9,6 +9,8 @@ keyswitches, controllers or programs.
 paw.ext.load("/path/to/paw/extensions/articulations")
 ```
 
+![The demo song's melody under the example violin map: :%art sus tags every note and the band above names the run, \a on a note makes it staccato (each articulation heard as the highlight rests on it), three notes made pizzicato in visual mode, and K saying how the instrument is told](images/tui-articulations.gif)
+
 ## What is kept where
 
 The articulation is the note's **MIDI 2.0 attribute** (`note.attr = { type,

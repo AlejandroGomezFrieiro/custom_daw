@@ -7,8 +7,11 @@
 #   gui_start          a kernel with the demo song, and the window on it
 #   term_start         the terminal UI in WezTerm (see wezterm.lua); with
 #                      CONFIG, that configuration directory instead of
-#                      --clean, and with EDIT, Neovim on that file in a pane
-#                      above it
+#                      --clean, with EDIT, Neovim on that file in a pane
+#                      above it, with PAW_HOME that as the program's home
+#                      (`~`; never yours), and with PLUGINS the plugins on
+#                      CLAP_PATH and the rest scanned (set the paths, so
+#                      that none of yours are)
 #   rec_start name     record the screen into $WORK/name.mkv
 #   cap "text"         the caption from now on
 #   rec_stop           stop recording
@@ -92,7 +95,8 @@ term_start() {
   # Nothing of the session this is run from: not its agent, not its mux.
   unset SSH_AUTH_SOCK WEZTERM_UNIX_SOCKET WEZTERM_PANE
   wezterm --config-file "$HERE/wezterm.lua" start --always-new-process --cwd "$ROOT" -- \
-    "$BIN/paw" ${CONFIG:+--config "$CONFIG"} $([ -z "$CONFIG" ] && echo --clean) --no-plugins --audio null --listen "$SOCK" \
+    env ${PAW_HOME:+HOME="$PAW_HOME"} "$BIN/paw" ${CONFIG:+--config "$CONFIG"} $([ -z "$CONFIG" ] && echo --clean) $([ -z "$PLUGINS" ] && echo --no-plugins) \
+    --audio null --listen "$SOCK" \
     -e "${SETUP:-$DEMO}" >"$D/term.out" 2>&1 &
   APP=$!
   sleep 6

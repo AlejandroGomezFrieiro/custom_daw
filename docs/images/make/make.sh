@@ -28,6 +28,7 @@ ROOT=$(cd "$HERE/../../.." && pwd)
 WORK=${WORK:-$ROOT/target/test-scratch/media}
 MAKE=$HERE
 export WORK MAKE
+mkdir -p "$WORK"
 
 # make_set dir out: every scene in dir, the GIFs and stills into out.
 make_set() {

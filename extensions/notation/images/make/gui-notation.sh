@@ -32,5 +32,4 @@ glide 1150 700 8; xdotool click 1; pause 0.3
 key g at i e; pause 1.4
 shot x-gn4.png
 key Return; pause 1.6
-still gui-notation.png
 rec_stop

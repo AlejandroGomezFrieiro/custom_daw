@@ -6,7 +6,6 @@
 SETUP=$TUI_DEMO
 rig_start
 term_start
-still tui.png
 rec_start tui-arrange
 cap "Space plays; j w move over tracks and clips as over lines and words"
 pause 0.5; key space; pause 0.6
