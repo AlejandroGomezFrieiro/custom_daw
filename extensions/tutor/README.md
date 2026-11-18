@@ -24,11 +24,11 @@ or link the directory into `~/.config/paw/extensions`. Then, in paw:
 | --- | --- |
 | `:tutor` | the course, where you left off (lesson 1 the first time) |
 | `:tutor 5`, `:tutor visual` | a lesson by number or name; one you were in carries on where you were |
-| `:tutor list`, `,hl` | the lessons and how far you got, to choose one |
-| `,hh` (`:tutor hint`) | a hint for the step |
-| `,hn` (`:tutor next`) | skip the step; at the end of a lesson, go on to the next one |
-| `,hr` (`:tutor restart`) | start the lesson again from a fresh practice project |
-| `,hq` (`:tutor quit`) | leave the tutor and reopen your own project |
+| `:tutor list`, `:tutor.list`, `,hl` | the lessons and how far you got, to choose one |
+| `,hh` (`:tutor hint`, `:tutor.hint`) | a hint for the step |
+| `,hn` (`:tutor next`, `:tutor.next`) | skip the step; at the end of a lesson, go on to the next one |
+| `,hr` (`:tutor restart`, `:tutor.restart`) | start the lesson again from a fresh practice project |
+| `,hq` (`:tutor quit`, `:tutor.quit`) | leave the tutor and reopen your own project |
 | `:tutor reset` | forget all progress |
 | `:tutor.try sections` | load one of the bundled extensions for this session (lesson 16) |
 

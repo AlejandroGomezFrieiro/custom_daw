@@ -92,7 +92,9 @@ below gives the events of the first cycle as *start–end* in cycles.
 | `..` range | `0 .. 3` | `0 1 2 3` (whole numbers) |
 
 `*` and `/` take a number (`hh*1.5`) or a pattern of numbers: `hh*<2 3>`
-plays two hats in one cycle and three in the next.
+plays two hats in one cycle and three in the next. A step repeats at most
+256 times, and a clip takes at most 20000 notes from a pattern: past that
+the text is refused with an error, as one that does not parse is.
 
 ### Cycles
 

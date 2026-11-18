@@ -17,6 +17,15 @@ function M.num(n)
   return string.format("%.17g", n)
 end
 
+--- A number to read: at most four decimals, so that what floating point
+--- adds to a sum (0.8000000000000007) does not show.
+function M.short(n)
+  if type(n) ~= "number" or n ~= n or math.abs(n) == math.huge then return M.num(n) end
+  local text = string.format("%.4f", n):gsub("0+$", ""):gsub("%.$", "")
+  if text == "-0" then text = "0" end
+  return text
+end
+
 --- Whether a table holds only the keys 1 to n (an empty one does).
 function M.is_array(t)
   local n = 0
@@ -67,9 +76,11 @@ function M.equal(a, b)
   return true
 end
 
---- A value for a line of text: strings quoted, long values cut.
-function M.show(v, limit)
+--- A value for a line of text: strings quoted, long values cut; with
+--- `short` a number as `M.short` writes it.
+function M.show(v, limit, short)
   limit = limit or 48
+  if short and type(v) == "number" then return M.short(v) end
   local text
   if v == nil then
     text = "none"

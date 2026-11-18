@@ -5,6 +5,18 @@ local T = ...
 local test, eq, near, fresh = T.test, T.eq, T.near, T.fresh
 local api = paw.api
 
+--- The messages shown since `mark` (the last one when it was taken): the
+--- list keeps the last 500, so it is followed by the message, not counted.
+local function since(mark)
+  local out, after = {}, mark == nil
+  for _, m in ipairs(paw.ui.messages) do
+    if after then out[#out + 1] = m end
+    if m == mark then after = true end
+  end
+  return out
+end
+local function mark() return paw.ui.messages[#paw.ui.messages] end
+
 local sampler
 local function load()
   if not sampler then
@@ -149,6 +161,37 @@ test("sampler: loading an instrument is one undo step, kept with the project", f
   paw.open(path)
   local again = running(sampler.device_of(paw.tracks()[1].id))
   eq(sampler.describe(again).name, "basic", "the project brings it back")
+end)
+
+test("sampler: a file that is not there, or not an instrument, is said so in a line with no stack trace", function()
+  local track, device = sampler_track("basic.sfz")
+  if not track then return device end
+  paw.cursor.set_track(track)
+  paw.ui.focus("arrange")
+  local from = mark()
+  paw.commands.exec("sampler.load " .. T.scratch .. "/nonexistent.sfz")
+  eq(paw.ui.message and paw.ui.message.text, "sampler: no such file: " .. T.scratch .. "/nonexistent.sfz", "a missing file is said so")
+  local bytes = {}
+  for i = 0, 255 do bytes[#bytes + 1] = string.char((i * 37) % 256) end
+  for name, body in pairs({
+    junk = "\0\1\2 this is <not> an sfz {{{ <region> sample=\n\255\254",
+    binary = table.concat(bytes),
+    empty = "",
+    missing = "<region> sample=nowhere/at/all.wav lokey=0 hikey=127\n",
+    preset = "<?xml version='1.0'?><DecentSampler><groups><group><sample path='nope.wav'/></group></groups></DecentSampler>",
+  }) do
+    local path = T.scratch .. "/" .. name .. (name == "preset" and ".dspreset" or ".sfz")
+    write(path, body)
+    paw.commands.exec("sampler.load " .. path)
+    paw.commands.exec("sampler.track " .. path)
+  end
+  paw.commands.exec("sampler.track " .. T.scratch .. "/nonexistent.sfz")
+  eq(paw.ui.message and paw.ui.message.text, "sampler: no such file: " .. T.scratch .. "/nonexistent.sfz", "and when making a track")
+  local said = {}
+  for _, m in ipairs(since(from)) do said[#said + 1] = m.text end
+  local text = table.concat(said, "\n")
+  eq(text:find("traceback", 1, true), nil, "no stack trace: " .. text)
+  eq(text:find("junk", 1, true) ~= nil, true, "the file is named: " .. text)
 end)
 
 test("sampler: an instrument heard in a trial is taken back without a trace", function()

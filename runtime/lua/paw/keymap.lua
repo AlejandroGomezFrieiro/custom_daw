@@ -185,6 +185,7 @@ function M.set(lhs, rhs, opts)
       if name ~= "mode" and name ~= "view" then map[name] = value end
     end
     map.norepeat = opts.repeatable == false
+    map.ext = map.ext or paw.commands.owner()
     maps[mode][scope][table.concat(keys)] = map
   end
 end

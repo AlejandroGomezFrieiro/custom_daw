@@ -55,7 +55,10 @@ harmonics  = { m2 = "14.0", out = "ks=A1 cc1=96", tag = "hrm", name = "Harmonics
 con-sord   = { m2 = "mute=straight", out = "cc20=127", off = "cc20=0", text = "con sord." }
 ```
 
-The whole example is in `articulations/examples/violin-section.art.toml`.
+The whole example is in this extension's folder, at
+`articulations/examples/violin-section.art.toml` (from the top of paw's
+source: `extensions/articulations/articulations/examples/violin-section.art.toml`);
+`:art.map examples/violin-section` binds it.
 One inline table, one line, per articulation, in the order the popover
 numbers them. `out` is a line of events: `ks=D1` a keyswitch note
 (`ks=D1:127` with a velocity), `hold=D1` held while the articulation lasts,
@@ -179,6 +182,13 @@ icon alone. What is left is mostly what the profile makes a controller
 (`sul pont`, `con sord`) or a library's own word; it gets a code of the
 library's own (classification 1A and up), and two articulations of one code
 get two variations of it, so that every articulation can be chosen.
+
+What the library does not say comes from the profile: each coded
+articulation gets the profile's tag (`stc`, `pz`, the tags `:g/art=pz/`
+finds), a class for its colour, and the score's mark (`staccato`) or text
+(`pizz.`, `trem.`, `harm.`) where there is one. Every generated map links
+dynamics on CC1 and CC11 (`[linked]`), so `\c` works on it at once; edit
+the file when the library listens to other controllers.
 
 ## With notation
 

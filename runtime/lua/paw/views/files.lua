@@ -470,6 +470,10 @@ local function kind(name, tree)
     end,
     keywords = {},
     first_style = "TrackName",
+    keys = {
+      { "<CR>", tree and "open, place" or "open, place a sound" }, { "d", "trash", "dd" }, { "o", "new" }, { "y", "copy", "yyp" },
+      { "go", "new track" }, { "gh", "hear" }, { "-", "up" }, { ":", "does it", ":w" }, { "?", "keys" },
+    },
     hint = tree
       and "edit names and `:w` · Enter or `za` opens a folder · `dd` trash, `o` new (`name/` a folder), `yyp` copy · Enter places a sound · `go` new track · `gh` hear · `-` up"
       or "edit names and `:w` · Enter opens, places a sound at the cursor · `dd` trash, `o` new (`name/` a folder), `yyp` copy · `go` new track · `gh` hear · `-` up",

@@ -1481,7 +1481,9 @@ E.asked = asked
 --- Systems down pages: each page `pg.height` tall, `pg.gap` between, its
 --- systems from `pg.margin` (the first page's below `pg.header` more), a
 --- system that does not fit starting the next. A full page's systems are
---- spread over it. Returns the pages (`{ y, systems }`) and their end.
+--- spread over it, by at most a sixteenth of the page between two, so
+--- that a page of a few tall systems (a full score) does not open wide
+--- gaps. Returns the pages (`{ y, systems }`) and their end.
 local function paginate(systems, pg, y0, set_y, row)
   local pages, page = {}, nil
   local function new_page()
@@ -1528,12 +1530,13 @@ local function paginate(systems, pg, y0, set_y, row)
     local free = p.y + pg.height - pg.margin - p.at
     local count = #p.systems
     if i < #pages and count > 1 and free > 0 and free < pg.height / 3 then
-      local each = floor(free / (count - 1) / row) * row
+      local each = floor(min(free / (count - 1), pg.height / 16) / row) * row
       for k, sys in ipairs(p.systems) do set_y(sys, sys.y + (k - 1) * each) end
     end
   end
   return pages, y0 + #pages * (pg.height + pg.gap) - pg.gap
 end
+E.paginate = paginate
 
 --- Measures broken into systems (`notation.breaks`), each system spread
 --- to the width, its marks placed against its staves' skylines and its
