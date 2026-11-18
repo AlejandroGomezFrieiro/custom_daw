@@ -273,6 +273,8 @@ extension has a README.
 paw is a personal project for the taste of one person, and it changes at its
 own speed. Send bug reports, questions and ideas as GitHub issues. Before a
 pull request that is larger than a small fix, open an issue.
+[The instructions for agents and contributors](AGENTS.md) give the rules for
+code and for documentation.
 
 The tests (`cargo test --release`, `tests/tools/suite.sh`) must pass, and
 each new behavior must have a test. The tests use a null audio backend and a private X

@@ -8,7 +8,7 @@ case "$file" in *.md) ;; *) exit 0 ;; esac
 [ -f "$file" ] || exit 0
 root=$(git -C "$(dirname "$file")" rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -x "$root/tools/vale.sh" ] && [ -f "$root/.vale.ini" ] || exit 0
-case "$file" in "$root"/target/*|"$root"/.claude/*) exit 0 ;; esac
+case "$file" in "$root"/target/*|"$root"/.claude/*|"$root"/CLAUDE.md) exit 0 ;; esac
 out=$("$root/tools/vale.sh" --minAlertLevel=error --output=line --no-exit "$file" 2>&1)
 if [ -n "$out" ]; then
   {

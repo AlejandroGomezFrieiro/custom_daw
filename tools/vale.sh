@@ -37,6 +37,6 @@ for a in "$@"; do
   case "$a" in -*) opts+=("$a") ;; *) files+=("$a") ;; esac
 done
 if [ ${#files[@]} -eq 0 ]; then
-  files=(README.md docs crates/*/README.md extensions/*/README.md)
+  files=(README.md AGENTS.md docs crates/*/README.md extensions/*/README.md)
 fi
 "$vale_bin" --config "$root/.vale.ini" "${opts[@]}" "${files[@]}"

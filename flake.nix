@@ -264,7 +264,7 @@
       docsCheck = pkgs: pkgs.runCommand "paw-docs-vale" {
         src = nixpkgs.lib.fileset.toSource {
           root = ./.;
-          fileset = nixpkgs.lib.fileset.unions ([ ./.vale.ini ./.vale ./README.md ./docs ./extensions ./crates ]);
+          fileset = nixpkgs.lib.fileset.unions ([ ./.vale.ini ./.vale ./README.md ./AGENTS.md ./docs ./extensions ./crates ]);
         };
         nativeBuildInputs = [ pkgs.vale ];
       } ''
@@ -272,7 +272,7 @@
         for d in ${valeStyles pkgs}/* $src/.vale/styles/*; do ln -s "$d" styles/; done
         export VALE_STYLES_PATH=$PWD/styles
         cd $src
-        vale --config .vale.ini --minAlertLevel=error README.md docs crates/*/README.md extensions/*/README.md
+        vale --config .vale.ini --minAlertLevel=error README.md AGENTS.md docs crates/*/README.md extensions/*/README.md
         touch $out
       '';
 

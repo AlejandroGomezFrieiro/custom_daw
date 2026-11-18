@@ -1,0 +1,104 @@
+# Instructions for agents
+
+This file is for AI agents and for people who change paw. Read it before
+you change anything. The rules here are not optional.
+
+## What paw is
+
+paw is a personal audio workstation for Linux. A small Rust kernel plays
+the sound, keeps the project and hosts plugins. Everything that the user
+touches is Lua over one API, `paw`. The model is Neovim: a small core, a
+modal grammar of keys, Ex commands, and a configuration that can change
+everything.
+
+## The philosophy
+
+1. **Terminal first.** Each feature works in the terminal before the
+   graphical window. The terminal is the main frontend, not a fallback.
+2. **One view, two frontends.** A view is written once in Lua. The kernel
+   sends it as a scene to each frontend. Never write a second view that
+   only the window has. See
+   [About scenes](docs/explanation/about-scenes.md).
+3. **The key rule.** `h j k l w b e 0 ^ $ gg G` only move. `+ -` and
+   `Ctrl-a` `Ctrl-x` change the main value, `[ ]` the second value. `< >`
+   are time. `K` describes. `Esc` cancels. The keys of one view go on
+   `<localleader>`. See [The key rule](docs/reference/key-rule.md).
+4. **MIDI is the truth.** Notes, controllers and clips are the data. An
+   extension keeps its own data in `meta` and never owns clip data. A
+   project must open and play without the extension. See
+   [About MIDI as the truth](docs/explanation/about-midi-as-the-truth.md).
+5. **A small core, extensions for the rest.** A feature that is not
+   needed by all users is an extension. Core changes for an extension are
+   generic, not specific to that extension. See
+   [About the core and extensions](docs/explanation/about-core-and-extensions.md).
+6. **Each action is undoable and gives feedback.** One user action is one
+   undo step. Each action says what it did. Each failure gives a clear
+   message, not a stack trace.
+7. **Fast keys.** A key stays well under 100 ms on a large project.
+
+To write an extension, use the skill in
+[.claude/skills/paw-extension](.claude/skills/paw-extension/SKILL.md).
+
+## Documentation standards
+
+All documentation follows three standards. The skill in
+[.claude/skills/diataxis-docs](.claude/skills/diataxis-docs/SKILL.md)
+gives the details. Read it before you write or change a page.
+
+- **Diátaxis.** Each page is one of four kinds: a tutorial, a how-to
+  guide, a reference page or an explanation. The pages are in
+  `docs/tutorials`, `docs/how-to`, `docs/reference` and
+  `docs/explanation`. [docs/README.md](docs/README.md) lists them.
+- **ASD-STE100 Simplified Technical English.** Short sentences, active
+  voice, the present, past and future tenses only, one word for one
+  thing, American spelling.
+- **Vale.** Vale checks every Markdown file with the project's styles.
+  Run `nix develop -c tools/vale.sh` on the files that you change. Vale
+  must report 0 errors. A hook runs Vale after each Markdown edit, and
+  `nix flake check` fails on a Vale error.
+
+Other rules for documentation:
+
+- The user guide is for musicians first. Write about what the user
+  wants to do, in the words of the user.
+- Each fact is true. Examine the code, or run paw to see the result. The
+  steps of a guide have a test in `tests/guides.lua`.
+- Never edit generated files. `docs/reference/api.md` comes from the doc
+  comments through `tools/apidoc.lua`. The course in
+  `docs/tutorials/course` comes from the tutor's lessons.
+- Each extension has a README that `:help` shows. It names every command
+  and key of the extension, and a test makes sure of this.
+
+## How to work
+
+```sh
+nix develop -c cargo build --release -j 8      # the Lua runtime is in the binary: build first
+nix develop -c tests/tools/suite.sh            # the Lua tests
+nix develop -c tests/tools/suite.sh only <words>
+nix develop -c cargo test --release -p <crate> # the Rust tests of a crate
+nix develop -c target/release/paw --clean --no-plugins -l tools/apidoc.lua check
+nix develop -c tools/vale.sh                   # the docs
+nix flake check                                # all of the checks
+```
+
+- Each change has a test. A fix of the user experience has a test that
+  uses the real keys.
+- When you touch the window (`crates/paw-gui`), run its tests too:
+  `cargo test --release -p paw-gui`.
+- Do not run `tests/tools/loaded.sh` unless the owner asks for it. It
+  puts a heavy load on the machine.
+
+## Safety and privacy
+
+- Tests use `--audio null`, a private X display and their own
+  `XDG_*` folders. Never use the owner's display, audio devices or
+  configuration (`~/.config/paw`).
+- Never write into the owner's data folders (for example
+  `~/.local/share/OpenUtau`).
+- Never name the owner's personal projects that are not published, and
+  never write a path in the owner's home folder into the repository.
+
+## Commits
+
+- Commit when the tests pass. Push only when the owner asks.
+- Keep the code style of the file that you change.
