@@ -763,7 +763,7 @@ clip plays, to delete with `dd` and `:w` (see [Media files](reference/media.md),
 deleted played may still be needed by `u`: the trash keeps it.
 
 An extension makes its own listing with `paw.textbuf.kind` (see
-[Scripting](scripting.md)); `paw.files.open(folder, { tree = true })` shows
+[Views and buffers in Lua](reference/lua-views.md#text-buffers)); `paw.files.open(folder, { tree = true })` shows
 a folder, and `paw.files.sound_info(path)` reads a file's header.
 
 ## The quickfix list
@@ -783,7 +783,7 @@ say among them; renders that go over full scale, are louder than
 plugins that stopped, put out invalid numbers or are not installed; and
 plugin files a scan could not use. Each keeps its own place too: the
 marks, `]d`, `:diagnostics`, the mix report and the messages stay as they
-were. Extensions add to it (see [Scripting](scripting.md)).
+were. Extensions add to it (see [Views and buffers in Lua](reference/lua-views.md#text-buffers)).
 
 | Keys or command | |
 | --- | --- |
@@ -881,7 +881,7 @@ crosses. Over a picture the pointer goes to the view in pixels where the
 terminal reports them, else at the middle of the cell.
 
 A picture is a **strip**: a rectangle of cells a view keeps for pixels as
-it draws (`buf:strip`, see [Extensions](extensions.md)), under a key of its
+it draws (`buf:strip`, see [Pictures in the terminal](reference/pictures.md)), under a key of its
 own, so that a view can have several, and the same view in two windows
 (`:vs`) has one in each, kept apart. The score is one strip over its
 window; the curve editor's plot (`gC`) is another, the piano roll's

@@ -1,5 +1,5 @@
 -- Text buffers: a listing of the project edited as text, after oil.nvim.
--- docs/terminal.md says how they are used, docs/scripting.md how an
+-- docs/terminal.md says how they are used, docs/reference/lua-views.md how an
 -- extension adds a kind of its own.
 --
 --   :e paw://tracks          :vs paw://sends          :e paw://markers
@@ -256,7 +256,7 @@ end
 -- Kinds -------------------------------------------------------------------------------
 
 --- Make a kind of text buffer. It shows for the names that its `pattern`
---- matches (`paw://` and the others). See `docs/scripting.md`. A kind with
+--- matches (`paw://` and the others). See docs/reference/lua-views.md. A kind with
 --- `readonly` (the message for a change) cannot change. `gutter = false`
 --- removes the line numbers. paw does not read a `static` kind again when
 --- the project changes. `paint(canvas, x, y, text, kind, width, row, buf)`

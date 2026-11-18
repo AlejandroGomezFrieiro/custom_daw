@@ -1,5 +1,5 @@
 -- Windows, buffers and tabs, after Neovim's. docs/terminal.md says how they
--- are used, docs/scripting.md how to write a buffer type.
+-- are used, docs/reference/lua-views.md how to write a buffer type.
 --
 -- A buffer is something to show and edit; its type says how. A window is a
 -- rectangle of the screen showing one buffer. A tab holds a tree of
@@ -432,7 +432,7 @@ paw.on("project.loaded", function() M.drop_dead() end)
 
 -- Buffer types ----------------------------------------------------------------
 
---- Make a buffer type. See `docs/scripting.md`.
+--- Make a buffer type. See docs/reference/lua-views.md.
 ---   paw.buftype("notes", { create = function(target) return {} end, render = function(win, canvas, ctx) end })
 --- The fields are these. `create(target, buf)` gives the state of the
 --- buffer. `render(win, canvas, ctx)` draws (`ctx.buf` is the buffer, and

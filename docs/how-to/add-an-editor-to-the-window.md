@@ -2,7 +2,7 @@
 
 This guide shows you how to add an editor that draws in pixels to an
 extension. It also shows how to open the editor from the graphical window. It
-assumes that you have an extension (see [Extensions](../extensions.md)).
+assumes that you have an extension (see [How to load an extension](load-an-extension.md)).
 The window needs no code for it.
 
 ## Write the view

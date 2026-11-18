@@ -118,7 +118,7 @@ test("tags are found for keys, commands, options, Lua modules, sections and page
   eq(where("gU"), "keys.md gU", "a key: its row in the key table")
   eq(where(":s"), "terminal.md :s", "a command")
   eq(where("'timebind'"), "terminal.md 'timebind'", "an option")
-  eq(where("paw.qf"), "scripting.md paw.qf", "a Lua module")
+  eq(where("paw.qf"), "lua-addresses.md paw.qf", "a Lua module")
   eq(where("key-rule"), "terminal.md key-rule", "a section named in the page")
   eq(where("quickfix-list"), "terminal.md quickfix-list", "a heading")
   eq(where("terminal"), "terminal.md terminal", "a page")

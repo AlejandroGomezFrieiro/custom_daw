@@ -446,7 +446,7 @@ test("an extension adds a kind of text buffer of its own", function()
   drums:add_clip({ start = 8, length = 4, name = "Break" })
   paw.flush()
   api.undo_checkpoint()
-  -- The example of docs/scripting.md.
+  -- The example of docs/reference/lua-views.md.
   paw.textbuf.kind("clips", {
     pattern = "^paw://track/(%d+)/clips$",
     title = function(ctx) return "Clips of track " .. ctx.args[1] end,

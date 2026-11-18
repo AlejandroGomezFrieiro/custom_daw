@@ -269,8 +269,8 @@ end
 function M.page()
   local out = { "# Lua API reference", "", "<!-- " .. HEADER .. " -->", "",
     "Each public function of the `paw` modules, module by module, with the",
-    "comment from its source. [Scripts](../scripting.md) and",
-    "[Extensions](../extensions.md) tell how the functions work together. The",
+    "comment from its source. [Scripts](scripting.md) and",
+    "[Extensions](extensions.md) tell how the functions work together. The",
     "functions of the kernel (`paw.api`, plain data in and out) are at the end.",
     "`runtime/types/paw.lua` contains the same data for editors (LuaLS).", "" }
   local function add(line) out[#out + 1] = line end

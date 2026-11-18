@@ -13,7 +13,7 @@ sound, keeps the project and hosts plugins. Each view, command and key that
 you use is Lua, and your configuration can change it. To extend paw, use
 [your `init.lua`](docs/configuration.md), [extensions](#extensions),
 [devices written in Lua](docs/reference/lua-devices.md) and
-[kinds of track](docs/extensions.md#everything-an-extension-can-own). You can
+[kinds of track](docs/reference/extensions.md#kinds-of-track). You can
 package them for Nix or share them as a git repository.
 
 The core of paw is a complete DAW. Extensions add the score, the drum grids
@@ -29,7 +29,7 @@ paw.keymap.set("<leader>T", "track.add Strings device=synth", { desc = "A string
 paw works in the [terminal](docs/terminal.md). It is modal and you use it
 from the keyboard. Where the terminal can show pictures (kitty graphics), paw
 shows them. The same views also open in a [graphical window](crates/paw-gui/README.md)
-for the mouse, from the same Lua. [Lua scripts](docs/scripting.md), a
+for the mouse, from the same Lua. [Lua scripts](docs/reference/scripting.md), a
 [socket](docs/reference/protocol.md) (`paw ctl`) and an [AI agent](#for-agents)
 can also control paw.
 
@@ -184,7 +184,7 @@ know about them.
 
 A view that an extension writes works in the terminal and in the graphical
 window. See
-[extensions](docs/extensions.md) and the [API reference](docs/reference/api.md).
+[extensions](docs/reference/extensions.md) and the [API reference](docs/reference/api.md).
 LuaLS completes `paw.*` from [runtime/types](runtime/types). With Claude Code,
 the [`paw-extension` skill](.claude/skills/paw-extension/SKILL.md) gives the
 instructions.
@@ -216,7 +216,7 @@ them in Nix: `paw.withExtensions (exts: [ exts.utau ])`.
 
 An AI agent with a shell controls paw as a script does. It uses
 `paw ctl --json eval '<lua>'` on a paw that runs, or `paw -l script.lua`
-headless (see "Driving paw from an agent" in [scripting](docs/scripting.md)).
+headless (see [How to drive paw from an agent](docs/how-to/drive-paw-from-an-agent.md)).
 A client without a shell uses the MCP server, `paw-mcp`. It gives tools that
 return JSON, a `lua` tool for all other operations, and the manual and the
 API reference as resources. Each batch of changes from an agent is one named

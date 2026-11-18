@@ -1,6 +1,6 @@
 -- Hooks: edits before and after they become undo steps, undo and redo,
 -- saving, keys before the keymap, the selection and the views on screen,
--- and the table of every event in docs/scripting.md. Loaded by
+-- and the table of every event in docs/reference/events.md. Loaded by
 -- tests/suite.lua with its helpers.
 local T = ...
 local test, eq, fails = T.test, T.eq, T.fails
@@ -207,9 +207,9 @@ test("ext.loaded and ext.unloaded are heard", function()
 end)
 
 test("every event the runtime and the kernel emit is in the table of events", function()
-  local doc = T.read_file("docs/scripting.md")
-  local section = doc:match("\n### Events\n(.-)\n#")
-  assert(section, "docs/scripting.md has an Events section")
+  local doc = T.read_file("docs/reference/events.md")
+  local section = doc:match("\n## Every event\n(.*)$")
+  assert(section, "docs/reference/events.md has a section of every event")
   local listed = {}
   for name in section:gmatch("`([%w_.*]+)`") do listed[name] = true end
   local missing = {}

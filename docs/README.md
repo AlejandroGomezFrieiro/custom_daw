@@ -39,6 +39,8 @@ each extension (`:help notation`).
 - [How to write a device in Lua](how-to/write-a-device-in-lua.md)
 - [How to fix a plugin editor that does not work](how-to/fix-a-plugin-editor.md)
 - [How to open a project without its plugins](how-to/open-a-project-without-its-plugins.md)
+- [How to load an extension](how-to/load-an-extension.md): a bundled extension, your own, or one from Nix
+- [How to drive paw from an agent](how-to/drive-paw-from-an-agent.md): let a coding agent or an assistant edit a project
 
 ## Reference
 
@@ -72,8 +74,16 @@ each extension (`:help notation`).
 - [Completion](reference/completion.md): suggestions, their keys and options, the fields of a source
 - [Several clips in the piano roll](reference/roll-clips.md): context notes, edit many clips, `paw.roll_clips`, layers
 - [Language servers and diagnostics](reference/language-servers.md): keys, addresses, subjects, server configs, the protocol, MIDI LSP
-- [Scripts](scripting.md): the `paw` module, `paw ctl`, scripts and other programs
-- [Extensions](extensions.md): what is in the core, what an extension can add
+- [The Lua interface](reference/scripting.md): the `paw` module, its layers and units, and the pages below
+- [Project objects in Lua](reference/lua-objects.md): tracks, devices, clips, notes, attributes, the transport, tempo, automation
+- [Commands, keys and options in Lua](reference/lua-commands.md): `paw.command`, ranges, `paw.ex`, `paw.keymap`, `paw.option`
+- [Views and buffers in Lua](reference/lua-views.md): views, roles, buffer types, text buffers, the pointer, curves, layers
+- [Addresses, diagnostics and lists in Lua](reference/lua-addresses.md): `paw.address`, `paw.diagnostic`, `paw.qf`, `paw.lsp`, queries
+- [Timers, programs and other modules in Lua](reference/lua-other.md): timers, helper programs, seats
+- [Events](reference/events.md): every event and its payload
+- [Scripts and `paw ctl`](reference/ctl.md): `paw -l`, `paw ctl`, `paw attach`, `paw doctor`
+- [Extensions](reference/extensions.md): the bundled extensions, files, loading, manifests, what an extension owns, health checks
+- [Pictures in the terminal](reference/pictures.md): strips, `paw.plot`, and what a frontend does with strips
 - [Lua API reference](reference/api.md): each function, made from the code
 - [The control protocol](reference/protocol.md): the messages of the socket, scenes, seats, files and sound
 - [Limits: what paw does not do yet](reference/limits.md): what paw does not do, and the known limits of what it does
@@ -92,3 +102,6 @@ each extension (`:help notation`).
 - [About the harmony reading](explanation/about-the-harmony-reading.md): how paw finds chords and keys, and why providers can replace it
 - [About MIDI 2.0 in paw](explanation/about-midi-2.md): fractions, controllers for each note, ports, MPE
 - [About the plugin sandbox](explanation/about-the-plugin-sandbox.md): one process for each plugin, and what it costs
+- [About the core and extensions](explanation/about-core-and-extensions.md): where the line is, why, and how far an extension goes
+- [About MIDI as the truth](explanation/about-midi-as-the-truth.md): why the notes are the truth, and where extensions keep their data
+- [About seats](explanation/about-seats.md): many people in one instance, and the state of each

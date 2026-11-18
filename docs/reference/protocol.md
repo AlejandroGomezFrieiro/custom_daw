@@ -318,7 +318,7 @@ terminal does. Reverse and dim are resolved with the cells.
 ### Roles
 
 A `role` is a named element that a view marked over its rectangle
-(`buf:mark`, see [Roles](../scripting.md#roles)). `role` is its name, and
+(`buf:mark`, see [Roles](lua-views.md#roles)). `role` is its name, and
 `props` is what it shows, for example `{"role": "fader", "props": {"at":
 0.81, "zero": 0.79, "value": -2}}`. Its kids are its cells. A frontend that
 does not know the role draws the cells. A frontend that told paw that it

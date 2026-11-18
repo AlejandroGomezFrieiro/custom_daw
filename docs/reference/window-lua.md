@@ -93,7 +93,7 @@ end)
 calls each one with the clip, before the piano roll opens. A function that
 opens the clip in an editor of its own returns true. A kind of track with
 an `editor` (see [Everything an extension can
-own](../extensions.md#everything-an-extension-can-own)) does not need an
+own](extensions.md#what-the-core-gives-an-extension)) does not need an
 opener: a double-click on its clip opens its editor.
 
 ## `paw.panes`
@@ -197,7 +197,7 @@ interface](../terminal.md)). A view that draws cells can also keep strips
 for a part of itself, each drawn by a function, with
 `buf:strip(x, y, w, h, { key, draw, under })`. `paw.plot` draws curves over
 time in them (see [Pictures in the
-terminal](../extensions.md#pictures-in-the-terminal)).
+terminal](pictures.md)).
 
 The vocal editor of [extensions/utau](../../extensions/utau) is a view that
 paints ([gui.lua](../../extensions/utau/lua/utau/gui.lua)). It shows notes

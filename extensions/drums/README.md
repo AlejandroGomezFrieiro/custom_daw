@@ -1,137 +1,181 @@
 # drums
 
-A drum track made in one step, and a grid to program it on whose rows are
-the pieces of the kit, by name: one view, in the terminal and in a window.
+A drum track in one step, and a grid to program it. The rows of the grid
+are the pieces of the kit, by name. The grid is one view, in the terminal
+and in the graphical window.
 
 ```lua
 paw.ext.load("/path/to/paw/extensions/drums")
 ```
 
-`extensions/drums/demo.lua` is a song to try it with
-(`paw -e 'dofile("extensions/drums/demo.lua")'`).
-
 ![The demo song's drums in the grid: claps put in by name with / and Enter, one made softer, the bar repeated with &, and played](images/tui-drums.gif)
 
-## What a drum track is
+## Try it
 
-An ordinary track whose clips are ordinary MIDI clips, so playback,
-rendering, the piano roll, undo and the `pattern` extension work on them
-as on any other. What makes it a drum track is a **drum map** kept with the
-track in the project (`track.meta.drums`): which notes are which pieces, in
-which order, with what names. The grid shows a clip through that map,
-whatever plays it: the built-in kit, a kit of your own samples, or a plugin
-such as MT-PowerDrumKit.
+1. Type `:ext.load drums`.
+2. Press `,kn`. A new drum track appears below the cursor track, and its
+   clip opens in the grid.
+3. Type `/snare` and press Enter. The cursor goes to the row of the snare.
+4. Press `l` four times, then Enter. A hit appears on the second beat, and
+   you hear the snare.
+5. Press `&`. The bar repeats to the end of the clip.
 
-| Command | Keys | What it does |
+`extensions/drums/demo.lua` is a song for more practice:
+`paw -e 'dofile("extensions/drums/demo.lua")'`.
+
+## How to
+
+### How to make a drum track
+
+- Press `,kn`, or type `:drums.track Drums bars=2`. The new track has the
+  built-in `drums` kit and the General MIDI map.
+- To play a folder of samples, type `:drums.track Drums kit=~/samples/808`.
+
+### How to use a drum plugin
+
+1. Put the plugin (MT-PowerDrumKit, or any kit with the General MIDI map) on
+   a track.
+2. Type `:drums.map gm-kit` (with toms and two crashes), or `:drums.map gm`.
+
+The clips of the track now open in the grid.
+
+### How to play a folder of samples
+
+1. Put the cursor on the drum track.
+2. Type `:drums.kit ~/samples/808`.
+
+The grid names its rows after the files. To change one sample, put the
+cursor on its row and type `:drums.pad level=-3 pan=0.2`.
+
+### How to start from a beat
+
+1. Open the clip in the grid.
+2. Press `gb` and choose a beat. The beat replaces the notes of the clip.
+
+### How to add a map of your own
+
+1. Add the map to `require("drums").maps` in your `init.lua`:
+
+   ```lua
+   local maps = require("drums").maps
+   maps.mykit = { label = "My kit", rows = { { note = 36, name = "Kick" }, { note = "E2", name = "Snare" } } }
+   maps.gm.rows[2].name = "Snare (top)"
+   paw.opt.drums_map = "mykit"          -- the map of new drum tracks
+   ```
+
+2. Type `:drums.map mykit` on a track.
+
+### In the graphical window
+
+- Right-click the timeline and choose **New drum track**.
+- In the menu of a track header, choose **Drum map…**.
+- In the menu of a clip, choose **Open in the drum grid** or **Drum beat to
+  start from…**.
+- Double-click a clip of a drum track to open it in the grid.
+
+## Reference
+
+### Commands
+
+| Command | Keys | Effect |
 | --- | --- | --- |
-| `drums.track [name] [map=] [kit=] [bars=]` | `,kn` | A new track below the cursor's with the built-in `drums` kit, the General MIDI map, a name and a colour, and a bar to program, open in the grid. With `kit=<folder>` it plays samples instead |
-| `drums.map [name]` | `,km` | Make the track under the cursor a drum track, whatever its instrument, with a map; with no name, choose one. `drums.map off` makes it an ordinary track again |
-| `drums.edit` | `Enter` | Open the clip under the cursor in the grid. `Enter` (`clip.edit`) does this by itself on a drum track's clips, and the piano roll on others |
-| `drums.kit <folder>` | | Play the drum track (or a new one) from a folder of sound files, by their names |
-| `drums.pad level= pan= tune= group= file=` | | Change the sample of the grid's row |
-| `drums.beat [name]` | `gb` in the grid | Fill the clip with a beat to start from, in place of its notes |
-| `drums.rename <name>` | | Rename the grid's row under the cursor |
+| `drums.track [name] [map=] [kit=] [bars=]` | `,kn` | makes a track below the cursor track, with the built-in `drums` kit, the General MIDI map, a name, a color and a bar to program, and opens it in the grid. `kit=<folder>` plays samples |
+| `drums.map [name]` | `,km` | makes the track under the cursor a drum track with a map, with any instrument. Without a name, you choose. `drums.map off` makes it an ordinary track |
+| `drums.edit` | `Enter` | opens the clip under the cursor in the grid. `Enter` (`clip.edit`) does this on the clips of a drum track, and opens the piano roll on other clips |
+| `drums.kit <folder>` | | plays the drum track (or a new track) from a folder of sound files, by their names |
+| `drums.pad level= pan= tune= group= file=` | | changes the sample of the row of the grid |
+| `drums.beat [name]` | `gb` in the grid | fills the clip with a beat to start from, in place of its notes |
+| `drums.rename <name>` | | renames the row of the grid under the cursor |
 
-In the window, the timeline's right-click menu has **New drum track**, a
-track header's has **Drum map…**, and a clip's has **Open in the drum grid**
-and **Drum beat to start from…**.
-
-**A plugin kit.** Put MT-PowerDrumKit (or any kit that follows the General
-MIDI map) on a track, then `:drums.map gm-kit` (toms and two crashes) or
-`:drums.map gm`. Its clips now open in the grid.
-
-## Maps
-
-Maps are plain tables in `require("drums").maps`; an `init.lua` can add one
-or change one:
-
-```lua
-local maps = require("drums").maps
-maps.mykit = { label = "My kit", rows = { { note = 36, name = "Kick" }, { note = "E2", name = "Snare" } } }
-maps.gm.rows[2].name = "Snare (top)"
-paw.opt.drums_map = "mykit"          -- what new drum tracks get
-```
+### Maps
 
 | Map | Rows |
 | --- | --- |
-| `gm` | the pieces a beat needs: kick, snare, rim, clap, closed, pedal and open hat, high, mid and low tom, crash, ride, ride bell, cowbell, tambourine |
-| `gm-kit` | a drum kit as a drummer sets one up: two snares, five toms, two crashes, splash, china, ride and bell |
+| `gm` | the pieces for a beat: kick, snare, rim, clap, closed, pedal and open hat, high, mid and low tom, crash, ride, ride bell, cowbell, tambourine |
+| `gm-kit` | a drum kit as a drummer puts it together: two snares, five toms, two crashes, splash, china, ride and bell |
 | `gm-full` | every General MIDI percussion note, 35 to 81 |
 
-A track keeps a copy of its rows, so a project opens the same wherever it
-goes. A note the map does not name still gets a row, at the bottom, named
-after General MIDI and drawn dimmer, so nothing in a clip is hidden.
+- Maps are plain tables in `require("drums").maps`.
+- A track keeps a copy of its rows. So a project opens the same on each
+  machine.
+- A note that the map does not name gets a row at the bottom, named after
+  General MIDI and dimmer. So the grid shows all the notes of a clip.
 
-## The grid in the terminal
+### The grid
 
-One row per piece with its name, one column per step, each hit drawn as
-tall as it is hard (`▁` to `█`), in the track's colour; beats are shaded in
-turn and bars marked. The title says the piece and place under the cursor,
-the step, and how hard the hit there is.
+Each piece has a row with its name. Each step has a column. A hit is as
+tall as its velocity (`▁` to `█`), in the color of the track. Beats have
+shades in turn, and bars have marks. The title gives the piece, the place
+and the step under the cursor, and the velocity of the hit there.
 
-| Keys | |
+| Keys | Effect |
 | --- | --- |
-| `h` `l`, `j` `k` | a step, a row; counts work |
-| `w` `b` | the next and previous hit on the row |
-| `W` `B`, `0` `$` `^` | bars; the start and end of the clip, the row's first hit |
-| `gg` `G`, `5G` | the first and last row, row 5 |
-| `/snare` | go to a piece by name |
-| `Enter` | put a hit in, or take it out; a new hit is heard |
-| `+` `-` (or `]` `[`) | harder and softer, by 16 (a count multiplies) |
-| `]g` `[g` | coarser and finer steps; `T` triplets, or straight again |
-| `&`, `3&` | repeat the bar the cursor is in to the end of the clip, or three times |
-| `dd`, `x` | clear the row; remove the hit |
+| `h` `l`, `j` `k` | a step, a row. Counts work |
+| `w` `b` | the next and the previous hit on the row |
+| `W` `B`, `0` `$` `^` | bars. The start and the end of the clip, the first hit of the row |
+| `gg` `G`, `5G` | the first and the last row, row 5 |
+| `/snare` | goes to a piece by name |
+| `Enter` | adds a hit, or removes it. You hear a new hit |
+| `+` `-` (or `]` `[`) | harder and softer, by 16. A count multiplies |
+| `]g` `[g` | larger and smaller steps |
+| `T` | triplets, or straight again |
+| `&`, `3&` | repeats the bar of the cursor to the end of the clip, or three times |
+| `dd`, `x` | clears the row. Removes the hit |
 | `d` `y` `>` `<` | operators: delete, yank, move a step later or earlier |
-| `gs` | swing: every other step later by `drums_swing` of a step (`50gs` half a step). Hits already swung are not moved again |
-| `p` `P` | paste after or at the cursor; a block lands on the rows under the cursor |
-| `gh`, `gp`, `gb` | hear the piece; playhead to the cursor; a beat to start from |
-| `Esc`, `Ctrl-w p` | cancel (the grid stays); back to the window before |
+| `gs` | swing: moves every second step later by `drums_swing` of a step (`50gs` half a step). Hits that have swing do not move again |
+| `p` `P` | pastes after the cursor or at the cursor. A block goes on the rows under the cursor |
+| `gh` | plays the piece |
+| `gp` | moves the playhead to the cursor |
+| `gb` | a beat to start from |
+| `Esc` | cancels. The grid stays |
+| `Ctrl-w p` | returns to the window before |
 
-Text objects: `ih` the cell, `ir` `ar` the row, `ib` the bar on every row, `ic`
-every hit. Visual mode: `v` a stretch of time on every row, `Ctrl-v` a
-block, `V` whole rows; then `x`, `+` `-`, `gs`, `y`, `p`. Registers, counts,
-`.` and macros work as everywhere.
+- Text objects: `ih` the cell, `ir` `ar` the row, `ib` the bar on every row,
+  `ic` every hit.
+- Visual mode: `v` a time on every row, `Ctrl-v` a block, `V` full rows.
+  Then `x`, `+` `-`, `gs`, `y`, `p`.
+- Registers, counts, `.` and macros work as in all views.
 
-## The grid with the pointer
+### The grid with the pointer
 
-The grid is one view, the same in the terminal and in a window: a window
-shows it in a pane, in its own font, with the toolbar's buttons as buttons.
-It opens on a double click of a drum track's clip (never another track's),
-from the clip's menu, or with any of the commands above. The pointer does
-the same in both:
+The pointer does the same in the terminal and in the graphical window.
+The graphical window shows the grid in a pane, in its own font, with the
+buttons of the toolbar as buttons. A double click opens the clip of a
+drum track in the grid. It does not open the clips of other tracks.
 
-- Click a cell for a hit, click a hit to take it out; right click removes.
-- Drag along a row: from an empty cell it paints hits, from a hit it
-  erases, on that row only wherever the pointer wanders; the whole stroke is
-  one undo step.
-- The velocity lane under the rows (with room for it) shows how hard each
-  hit of the cursor's row is, as bars two rows tall; click or drag across
-  it to set them.
-- Click a row's name to hear the piece.
-- The toolbar under the title plays the clip round and round, sets the
-  step (1/4 to 1/32, 1/8 and 1/16 triplets), and the clip's length in bars.
-- The ruler moves the playhead; the playhead moves across while it plays.
-- The wheel scrolls the rows.
+| Gesture | Effect |
+| --- | --- |
+| click an empty cell | adds a hit |
+| click a hit, right click | removes the hit |
+| drag along a row from an empty cell | paints hits on that row only. The stroke is one undo step |
+| drag along a row from a hit | erases hits on that row only |
+| click or drag on the velocity lane | sets the velocity of the hits of the cursor row. The lane is under the rows, when there is space. Each hit is a bar two rows tall |
+| click the name of a row | plays the piece |
+| the toolbar | plays the clip in a loop, sets the step (1/4 to 1/32, triplets of 1/8 and 1/16), sets the length of the clip in bars |
+| the ruler | moves the playhead |
+| the wheel | scrolls the rows |
 
-The steps and hits are roles (`step`, `hit`) and every part a hit region
-(see "Roles" in docs/scripting.md), which is how one drawing serves both.
+The steps and hits are roles (`step`, `hit`), and each part is a hit
+region (see "Roles" in [Views and buffers in
+Lua](../../docs/reference/lua-views.md#roles)). So one drawing works in both
+frontends.
 
-## Kits
+### Kits
 
-The built-in `drums` device plays the fifteen pieces of `gm` (and the rest
-of `gm-kit`: second snare, floor toms, second crash, china, splash, second
-ride), all synthesized. The closed and pedal hat cut the open hat off.
-
-The built-in `sampler` device plays one sound file per note, each with a
-level, a pan, a tuning, and a group: pads of the same group cut each other
-off. `:drums.kit ~/samples/808` makes one from the files in a folder by
-their names (`kick`, `BD`, `snare`, `hh closed`, `OpenHat`, `pedal hat`,
-`tom lo`, `ride bell`, `cowbell`, `tamb`, ...); the hats share a group, and
-files it does not recognise go on notes from 60 up. The grid's rows are
-named after the files. The kit is the device's state, so it is saved in
-the project, undone like any edit and heard in renders; the files are read
-when the project opens, and `paw.api.device_call(id, "status")` says which
-were found.
+- The built-in `drums` device plays the fifteen pieces of `gm`. It also
+  plays the rest of `gm-kit`: a second snare, floor toms, a second crash,
+  china, splash, a second ride. All are synthesized. The closed hat and the pedal
+  hat stop the open hat.
+- The built-in `sampler` device plays one sound file for each note, each
+  with a level, a pan, a tune value and a group. Pads of the same group stop
+  each other.
+- `:drums.kit` reads the names of the files: `kick`, `BD`, `snare`, `hh
+  closed`, `OpenHat`, `pedal hat`, `tom lo`, `ride bell`, `cowbell`,
+  `tamb`, and other. The hats share a group. Files with other names go on
+  notes from 60 up.
+- The kit is the state of the device. The project saves it, undo applies
+  to it, and renders play it. paw reads the files when the project opens.
+  `paw.api.device_call(id, "status")` tells which files it found.
 
 ```lua
 local kit = require("drums.kit")
@@ -140,11 +184,21 @@ kit.set_pad(kit.device(track), 38, { level = -3, pan = 0.2, tune = -1 })
 kit.pads(kit.device(track))       -- { { note, file, level, pan, tune, group }, ... }
 ```
 
-## Options
+### Options
 
-| Option | Default | |
+| Option | Default | Effect |
 | --- | --- | --- |
-| `drums_map` | `"gm"` | the map new drum tracks get |
-| `drums_step` | `0.25` | beats a column of the grid is |
-| `drums_velocity` | `100` | how hard a new hit is |
-| `drums_swing` | `0.33` | how far `gs` moves every other step, as part of a step |
+| `drums_map` | `"gm"` | the map of new drum tracks |
+| `drums_step` | `0.25` | the beats of one column of the grid |
+| `drums_velocity` | `100` | the velocity of a new hit |
+| `drums_swing` | `0.33` | how far `gs` moves every second step, as a part of a step |
+
+## About
+
+A drum track is an ordinary track with ordinary MIDI clips. So playback,
+renders, the piano roll, undo and the `pattern` extension work on it as on
+all tracks. A **drum map**, kept with the track in the project
+(`track.meta.drums`), makes it a drum track. The map tells which notes are
+which pieces, in which order, with which names. The grid shows a clip
+through that map, with any instrument: the built-in kit, a kit of your own
+samples, or a plugin.
