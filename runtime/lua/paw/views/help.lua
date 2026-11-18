@@ -146,9 +146,9 @@ end
 pager.on_key, pager.on_mouse = view.on_key, view.on_mouse
 paw.ui.view("pager", pager)
 
---- Show lines of text in a floating window. Each line is a string or
---- `{ text = ..., style = ... }`. With `opts.bottom` it opens at the end;
---- `opts.width` and `opts.height` size it (100 by 30).
+--- Show lines of text in a float. Each line is a string or
+--- `{ text = ..., style = ... }`. With `opts.bottom`, it opens at the end.
+--- `opts.width` and `opts.height` give its size (100 by 30).
 function paw.ui.page(title, lines, opts)
   pager.lines, pager.scroll = {}, opts and opts.bottom and math.huge or 0
   for _, line in ipairs(lines) do

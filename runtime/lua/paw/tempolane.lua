@@ -24,7 +24,7 @@ local function changed()
   if paw.emit then paw.emit("lanes.changed", {}) end
 end
 
---- Whether the row is shown.
+--- True if the row shows.
 function M.shown() return shown end
 
 --- Show the row, or hide it (`on` false).
@@ -34,15 +34,16 @@ function M.show(on)
   changed()
 end
 
---- Show the tempo lane, or hide it; returns whether it shows.
+--- Show the tempo lane, or hide it. Returns true if it shows.
 function M.toggle()
   M.show(not shown)
   return shown
 end
 
---- The tempo at the bottom and at the top of the row: a little room round
---- the slowest and fastest tempo in the map, in tens of beats a minute, and
---- never less than 80 apart, centred, so that a steady song is not drawn as a wall.
+--- The tempo at the bottom and at the top of the row. There is a small
+--- space around the slowest and the fastest tempo of the map, in tens of
+--- beats a minute. The range is at least 80 and centered. So a steady
+--- song does not show as a wall.
 function M.range()
   local lo, hi = math.huge, 0
   for _, p in ipairs(paw.tempo.points()) do
@@ -73,7 +74,7 @@ end
 
 local function clamp_bpm(bpm) return math.max(1, math.min(999, bpm)) end
 
---- A tempo change at a beat, holding; one already there takes the tempo.
+--- A tempo change at a beat, which holds. If a change is there, it gets the tempo.
 function M.add(beat, bpm)
   api.tempo_set(math.max(0, beat), clamp_bpm(bpm))
 end
@@ -104,7 +105,7 @@ function M.move(beat, to, bpm)
   return true
 end
 
---- Take away the change at `beat`; the start's cannot be.
+--- Remove the change at `beat`. You cannot remove the change at the start.
 function M.remove(beat)
   for i, p in ipairs(paw.tempo.points()) do
     if i > 1 and math.abs(p.beat - beat) < 1e-6 then

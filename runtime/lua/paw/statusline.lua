@@ -433,10 +433,10 @@ local function sections_for(which, view, active)
   return sections
 end
 
---- The segments for a screen `width` wide, as `{ left = {...}, right = {...} }`;
---- each is a list of `{ text, style }` pieces with a `rank` (lower is
---- dropped last), the `section` it came from, `pill` for a coloured label
---- and `name` for the one cut before anything is dropped.
+--- The segments for a screen `width` wide, as `{ left = {...}, right = {...} }`.
+--- Each is a list of `{ text, style }` pieces with a `rank` (lower ranks go
+--- last) and the `section` that it came from. `pill` is for a colored label.
+--- `name` is for the segment that paw cuts before it removes segments.
 ---   which: "status" (default), "winbar", "inactive_winbar" or "tabline"
 function M.segments(width, which, extra)
   which = which or "status"
@@ -516,8 +516,8 @@ local function fit(s, width, theme)
 end
 
 --- The line for `width` columns, fitted: `{ left, right }` as `segments`
---- gives them, and `text` for each side as `{ text, style }` pieces with the
---- separators between, ready to draw or to send to a window.
+--- gives them. `text` is for each side, as `{ text, style }` pieces with the
+--- separators between them, ready to draw or to send to a window.
 function M.line(width, which, extra)
   local theme = theme_of(M.config().theme)
   local s = fit(M.segments(width, which, extra), width, theme)
@@ -580,13 +580,13 @@ function M.tabline(width)
   return M.line(width, "tabline").right
 end
 
---- Whether the tab line is shown with one tab.
+--- True if the tab line shows with one tab.
 function M.tabline_always()
   local c = M.config()
   return c.tabline ~= nil and c.tabline.always == true
 end
 
---- Whether `setup` has changed the line from the one that comes with the program.
+--- True if `setup` changed the line from the line that comes with paw.
 function M.customized() return M.set_up == true end
 
 --- What the window is told: the line as pieces, for the width it has.

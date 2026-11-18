@@ -7,19 +7,19 @@ paw.option.define("editor_on_add", true) -- a plugin added by hand opens its own
 
 -- Adding by hand ----------------------------------------------------------------
 
---- Whether a person is at the program: a terminal UI is attached, or a
---- graphical frontend has asked for the state lately. Scripts (`-l`) and a
---- kernel nobody is looking at are not.
+--- True if a person uses paw: a terminal UI is attached, or a graphical
+--- frontend asked for the state recently. Scripts (`-l`) and a kernel that
+--- nobody looks at do not count.
 function M.interactive()
   if api.ui_attached() then return true end
   local polled = paw.frontend.polled
   return polled ~= nil and api.now() - polled < 5000
 end
 
---- Add a device as a person does, from the device picker, the window's
---- "Add a device" box or `:device.add`: like `track:add_device`, and then
---- a plugin with a window of its own shows it (`paw.opt.editor_on_add`), as
---- REAPER does. Some instruments make no sound until it has been open once.
+--- Add a device as a person does, from the device picker, the "Add a device"
+--- box of the window or `:device.add`. It works as `track:add_device`. Then
+--- a plugin with a window shows its window (`paw.opt.editor_on_add`), as
+--- REAPER does. Some instruments make no sound until their window opens one time.
 function M.add(track, kind, opts)
   local device = M.place(track, kind, opts)
   M.added(device, kind, opts)
@@ -100,7 +100,7 @@ function M.shown(device)
   return shown_of(api.device_get(id_of(device)))
 end
 
---- Show a parameter first on the device's card; kept with the device.
+--- Show a parameter first on the card of the device. The device keeps this setting.
 function M.show_param(device, key)
   local d = api.device_get(id_of(device))
   local meta = type(d.meta) == "table" and d.meta or {}
@@ -152,8 +152,8 @@ function M.focus_param(id, key)
   end
 end
 
---- Choose one of the device's parameters by typing part of its name: it is
---- shown first on the window's card and chosen in the device panel.
+--- Select one of the parameters of the device: type a part of its name. It
+--- shows first on the card of the window, and it is selected in the device panel.
 function M.pick_param(device)
   device = device or M.target()
   if not device then return end
@@ -409,10 +409,10 @@ local function save_library() write_json(library_path(), M.library()) end
 --- Forget what was read, for tests that change the file underneath.
 function M.reload_library() library = nil end
 
---- Whether a kind of device is a favourite.
+--- True if a kind of device is a favorite.
 function M.is_favourite(kind) return M.library().favourites[kind] == true end
 
---- Make a kind of device a favourite, or not; returns whether it is now.
+--- Make a kind of device a favorite, or not. Returns true if it is a favorite now.
 function M.toggle_favourite(kind)
   local fav = M.library().favourites
   fav[kind] = not fav[kind] or nil
@@ -456,9 +456,9 @@ function M.device_list(wanted)
   return out
 end
 
---- The line a device is listed with: a star for a favourite, then its
---- name, vendor, the extension it came with if one did, its format and
---- whether it is an instrument or an effect.
+--- The line that lists a device: a star for a favorite, then its name and
+--- vendor. Then the extension that it came with, if any, its format, and
+--- if it is an instrument or an effect.
 function M.device_line(info)
   return string.format("%s %-28s %-14s %s%s %s", info.favourite and "★" or " ", info.name,
     info.vendor ~= "" and info.vendor or "—", info.from and ("[" .. info.from .. "] ") or "", info.format, info.category)
@@ -478,9 +478,10 @@ local function passes(info, tag)
   return false
 end
 
---- Which kind of device a track most likely wants next: "instrument" for
---- one that makes sound from MIDI and has no instrument yet, "effect" for
---- the rest (a track with an instrument, the master, a track of audio).
+--- The kind of device that a track probably needs next. "instrument" is
+--- for a track that makes sound from MIDI and has no instrument yet.
+--- "effect" is for the other tracks (a track with an instrument, the
+--- master, a track of audio).
 function M.preferred(track_id)
   if not track_id or track_id == 0 then return "effect" end
   local track = paw.track(track_id)
@@ -496,11 +497,11 @@ function M.preferred(track_id)
   return "instrument"
 end
 
---- How well a device matches what was typed, or nil when it does not:
---- the `@` words filter, the rest is matched against the whole line, a
---- match in the name alone counts for more than one that needs the vendor,
---- and the device chosen last time for the same words comes first. A device
---- of the category `wanted` (see `preferred`) comes before others.
+--- How well a device matches the typed text, or nil when it does not match.
+--- The `@` words filter. The other words must match the whole line. A match
+--- in the name alone counts for more than a match that needs the vendor.
+--- The device selected last time for the same words comes first. A device
+--- of the category `wanted` (see `preferred`) comes before the others.
 function M.rank(info, query, line, wanted)
   local words = {}
   for word in query:gmatch("%S+") do
@@ -533,8 +534,8 @@ function M.rank(info, query, line, wanted)
   return score
 end
 
---- The devices matching `query`, best first, at most `limit`: what the
---- window's "Add a device" box lists.
+--- The devices that match `query`, best first, at most `limit`. The "Add a
+--- device" box of the window shows this list.
 function M.search(query, limit, wanted)
   local out = {}
   for _, info in ipairs(M.device_list(wanted)) do

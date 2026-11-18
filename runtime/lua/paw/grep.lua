@@ -125,8 +125,8 @@ function M.matcher(pattern, mode)
   return function(text) return paw.pick.match(pattern, text, false, mode) ~= nil end
 end
 
---- The records whose text matches `pattern`; `opts.mode` as `matcher`
---- takes it, `opts.fields` a set of fields to look in (all without it).
+--- The records whose text matches `pattern`. `opts.mode` is as `matcher`
+--- takes it. `opts.fields` is a set of fields to search (all without it).
 function M.search(pattern, opts)
   opts = opts or {}
   local test = M.matcher(pattern, opts.mode)

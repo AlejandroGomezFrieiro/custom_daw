@@ -61,8 +61,8 @@ local function file_for(track)
   return string.format("%s/%s-frozen-%d-%d.wav", dir, name, os.time(), track)
 end
 
---- The options a freeze renders with: the whole song from its start, the
---- track alone before its fader, as 32-bit float, so that the file plays
+--- The render options of a freeze: the whole song from its start, the
+--- track alone before its fader, as 32-bit float. So the file plays
 --- what the track did.
 function M.render_opts(track, opts)
   opts = opts or {}

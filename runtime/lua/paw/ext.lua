@@ -33,8 +33,8 @@ end
 
 -- Versions --------------------------------------------------------------------------
 
---- A version's numbers: "1.2.3" gives { 1, 2, 3 }; missing parts are 0.
---- Nil for text that is no version.
+--- The numbers of a version: "1.2.3" gives { 1, 2, 3 }. A part that is not there is 0.
+--- Nil for text that is not a version.
 function M.parse_version(text)
   local a, b, c = tostring(text or ""):match("^%s*v?(%d+)%.?(%d*)%.?(%d*)")
   if not a then return nil end
@@ -48,10 +48,10 @@ local function compare(a, b)
   return 0
 end
 
---- Whether `version` meets `want`: comparisons separated by spaces or
---- commas, each `>=1.2`, `>1`, `<=2`, `<2.0`, `=1.2.3`, `^1.2` (the same
---- first number, at least 1.2), `~1.2` (the same first two) or a bare
---- version, which means `^`. `*` or nothing is any version.
+--- True if `version` agrees with `want`. `want` is comparisons with spaces
+--- or commas between them. Each is `>=1.2`, `>1`, `<=2`, `<2.0`, `=1.2.3`,
+--- `^1.2` (the same first number, at least 1.2), `~1.2` (the same first two
+--- numbers) or a version alone, which means `^`. `*` or nothing is any version.
 function M.satisfies(version, want)
   local v = M.parse_version(version)
   if not v then return false end
@@ -511,19 +511,19 @@ local function devices_in_use(entry)
   return { tracks = tracks, used = used }
 end
 
---- Take an extension away: everything it registered is removed (while it
---- loaded, and later from its handlers and timers), and what it replaced
---- put back (a command or key of the core it remapped). Its options go
---- with their values, its timers stop, and the devices written in Lua and
---- plugin directories it added are no longer offered. Its modules are
---- forgotten, so loading it again runs them afresh.
+--- Unload an extension. paw removes all that it registered (while it
+--- loaded, and later from its handlers and timers). paw puts back what it
+--- replaced (a command or key of the core that it mapped again). Its
+--- options go with their values, and its timers stop. paw stops to offer
+--- the devices written in Lua and the plugin directories that it added. paw
+--- forgets its modules, so a new load runs them again.
 ---
---- While a track holds one of its devices it is not unloaded (as Neovim
---- will not delete a buffer with changes), unless `opts.force`: the
---- devices then stay where they are, playing, until removed, and are
---- missing when the project is opened again without the extension.
---- Returns true (or, forced, what was left on tracks, in words), or nil and
---- why not.
+--- While a track contains one of its devices, paw does not unload it (as
+--- Neovim does not delete a buffer with changes). With `opts.force`, it
+--- unloads, and the devices stay and play until you remove them. paw cannot
+--- find them when you open the project again without the extension. Returns
+--- true (with `opts.force`, the devices that stay on tracks, in words), or
+--- nil and the reason.
 function M.unload(name, opts)
   local entry = M.loaded[name]
   if not entry then return nil, "no extension `" .. tostring(name) .. "` is loaded" end
@@ -591,9 +591,9 @@ function M.load_dir(dir)
   end
 end
 
---- The directory of the extensions that come with the program:
---- `$PAW_HOME/extensions`, or `extensions` under the working directory in a
---- source tree. Nil when neither is there.
+--- The directory of the extensions that come with paw:
+--- `$PAW_HOME/extensions`, or `extensions` under the current directory in a
+--- source tree. Nil when there is no such directory.
 function M.bundled_dir()
   for _, root in ipairs({ os.getenv("PAW_HOME") or ".", "." }) do
     if #api.read_dir(root .. "/extensions") > 0 then return root .. "/extensions" end
@@ -610,8 +610,8 @@ function M.bundled()
   return out
 end
 
---- Load a bundled extension by name; a name already loaded is left alone.
---- Returns the entry, or nil and what is wrong.
+--- Load a bundled extension by name. A name that is loaded does not change.
+--- Returns the entry, or nil and the problem.
 function M.load_bundled(name)
   if M.loaded[name] then return M.loaded[name] end
   for _, known in ipairs(M.bundled()) do

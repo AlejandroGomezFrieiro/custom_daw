@@ -13,7 +13,7 @@ local M = {}
 
 local store = {}  -- store[namespace][document] = list
 
---- Publish what `namespace` labels in a document, replacing what it put there before.
+--- Publish the labels of `namespace` in a document. They replace its old labels there.
 function M.set(namespace, doc, list)
   local out = {}
   for _, a in ipairs(list or {}) do
@@ -26,7 +26,8 @@ function M.set(namespace, doc, list)
   api.ui_redraw()
 end
 
---- Forget a namespace's labels, of one document or all; with no namespace, everyone's.
+--- Forget the labels of a namespace, of one document or all. With no
+--- namespace, forget the labels of all namespaces.
 function M.reset(namespace, doc)
   for ns, docs in pairs(store) do
     if not namespace or ns == namespace then

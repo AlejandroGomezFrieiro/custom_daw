@@ -294,11 +294,11 @@ local function correlate(h, profile, tonic)
 end
 M.correlate = correlate
 
---- Keys over notes in project beats, bar by bar: `bars` is a list of bar
---- starts with the end after the last. `chords` (as `chords` gives them),
---- when given, weigh their roots and basses as much again: what the
---- harmony stands on says more about the tonic than a melody's notes.
---- Each key `{ at, length, tonic, mode }` with mode "major" or "minor".
+--- Keys over notes in project beats, bar by bar. `bars` is a list of bar
+--- starts, with the end after the last bar. When `chords` (as `chords`
+--- gives them) are given, their roots and basses count two times. The
+--- harmony tells more about the tonic than the notes of a melody. Each key
+--- is `{ at, length, tonic, mode }`, with mode "major" or "minor".
 function M.keys(notes, bars, chords)
   local n = #bars - 1
   if n < 1 then return {} end

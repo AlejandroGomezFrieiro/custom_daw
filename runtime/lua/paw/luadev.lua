@@ -67,9 +67,10 @@ function M.kinds_in(dir)
   return out
 end
 
---- Look in `dir` no more: its scripts' devices are no longer offered (one
---- of the same name elsewhere takes their place); those made go on.
---- Returns the kinds of the scripts that were there.
+--- Stop to find scripts in `dir`. paw stops to offer the devices of its
+--- scripts (a script with the same name in a different folder takes their
+--- place). The devices that exist continue to work. Returns the kinds of
+--- the scripts that were there.
 function M.remove_dir(dir)
   M.dirs[dir] = nil
   return api.lua_devices_remove(dir)

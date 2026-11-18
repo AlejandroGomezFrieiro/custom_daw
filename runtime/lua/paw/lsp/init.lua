@@ -103,8 +103,8 @@ end
 
 local function live(client) return client and (client.proc or client.transport == "lua" and client.server) end
 
---- Ask a server something; `cb(err, result)` is called with its answer.
---- Returns the request's id, or nil when the server is not there.
+--- Send a request to a server. paw calls `cb(err, result)` with its answer.
+--- Returns the id of the request, or nil when the server is not there.
 function M.request(which, method, params, cb)
   local client = client_of(which)
   if not live(client) then
@@ -144,7 +144,7 @@ end
 --- `completionProvider`) are taken too.
 local LSP_NAMES = { hoverProvider = "hover", completionProvider = "completion", codeActionProvider = "actions",
   diagnosticProvider = "diagnostics", analysisProvider = "analysis" }
---- Whether a running server (a client or its name) offers a feature:
+--- True if a server that runs (a client or its name) gives a feature:
 --- "hover", "completion", "actions", "diagnostics", "analysis".
 function M.has(which, feature, lane)
   local client = client_of(which)
@@ -172,7 +172,7 @@ local function attachment(client)
   return names, where
 end
 
---- Whether a server is attached to an address (for its subject, or any).
+--- True if a server is attached to an address (for its subject, or for any subject).
 function M.attaches(which, address, subject)
   local client = client_of(which)
   if not client then return false end
@@ -261,9 +261,9 @@ end
 
 local function ready(client) return client.status == "running" or client.status == "ready" or client.status == "failed" and client.transport == "oneshot" end
 
---- Bring every server up to date now: open what it is attached to, send what
---- changed, close what it no longer is. Requests call this first, so that
---- they are about what is there.
+--- Update each server now. Open the documents that it is attached to, send
+--- the changes, and close the documents that it is not attached to now.
+--- Requests call this first, so they are about the current state.
 function M.sync()
   if M.timer then
     paw.cancel(M.timer)
@@ -301,8 +301,8 @@ local function schedule()
   end, M.debounce_ms)
 end
 
---- Have a server keep a subject of an address open whether or not it would
---- be sent otherwise (`keep` false lets it go). A clip id names its clip.
+--- Make a server keep a subject of an address open, when paw would send it
+--- and when it would not (`keep` false releases it). A clip id names its clip.
 function M.attach(which, address, keep, subject)
   local client = client_of(which)
   if not client then return false end
@@ -795,9 +795,9 @@ function M.clients()
   return out
 end
 
---- Wait in a script until every server has started and answered what it
---- was sent, and every one-shot run has finished (or `ms` have passed,
---- 10 s by default). Returns whether they did.
+--- Wait in a script until each server started and answered all requests,
+--- and each one-shot run is complete. Stop after `ms` (10 s by default).
+--- Returns true if all of this happened.
 function M.settle(ms)
   local deadline = api.now() + (ms or 10000)
   M.sync()
@@ -830,8 +830,8 @@ local function holders(location, feature)
   return out
 end
 
---- Ask every server that hovers, and holds the location, what it says
---- there; `cb(sections)` gets `{ { client, lines } }` once all have answered.
+--- Ask each server that hovers, and contains the location, for its text
+--- there. `cb(sections)` gets `{ { client, lines } }` when all servers answer.
 function M.hover_at(location, cb)
   M.sync()
   local asked, sections = 1, {}
@@ -858,8 +858,8 @@ function M.hover_at(location, cb)
   finish()
 end
 
---- Ask every server that offers actions, and holds the location, what can
---- be done there; `cb(actions)` gets `{ { title, source, edit | run } }`.
+--- Ask each server that gives actions, and contains the location, for the
+--- actions there. `cb(actions)` gets `{ { title, source, edit | run } }`.
 function M.actions_at(location, cb)
   M.sync()
   local asked, out = 1, {}
@@ -990,11 +990,11 @@ end
 
 -- Completion -------------------------------------------------------------------
 
---- A completion source over every running server that suggests, in the
---- shape `paw.complete.register` takes: `ctx` names the `clip` and where
---- the suggestion starts (`at`, beats from the clip's start), with an
---- optional `selection` (a note set of the clip) and `controller`.
---- `done(items)` is called once.
+--- A completion source over each server that runs and suggests, in the
+--- shape that `paw.complete.register` takes. `ctx` names the `clip` and the
+--- start of the suggestion (`at`, beats from the start of the clip), with
+--- an optional `selection` (a note set of the clip) and `controller`. paw
+--- calls `done(items)` one time.
 function M.complete(ctx, done)
   local id = ctx.clip and (type(ctx.clip) == "table" and ctx.clip.id or ctx.clip)
   if not id then return done(nil) end

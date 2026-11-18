@@ -74,8 +74,9 @@ end
 
 -- Constructors ---------------------------------------------------------------
 
---- The address of the project, the tempo map, a track, a clip, a note, a
---- lane, a marker, a rendered file and a send, as `parse` reads them.
+--- The addresses of the project, the tempo map, a track, a clip and a note.
+--- Also the addresses of a lane, a marker, a rendered file and a send, as
+--- `parse` reads them.
 function M.project() return "paw://project" end
 --- The tempo map's address.
 function M.tempo() return "paw://tempo" end
@@ -106,8 +107,8 @@ function M.param(device, key) return M.device(device) .. "/param/" .. encode(key
 --- A location: an address and, optionally, a part of it.
 function M.location(uri, selector) return { uri = uri, selector = selector } end
 
---- The address of an object of the scripting interface (`paw.track(3)`,
---- `paw.clip(7)`, a device) or of a table `paw.api` gave (with its fields).
+--- The address of an object of the Lua interface (`paw.track(3)`,
+--- `paw.clip(7)`, a device), or of a table from `paw.api` (with its fields).
 function M.of(object)
   if type(object) == "string" and M.parse(object) then return object end
   if type(object) ~= "table" then return nil end
@@ -239,8 +240,8 @@ function M.children(uri)
   return out
 end
 
---- Whether `uri` is `ancestor` or lies inside it (a note inside its clip,
---- a parameter inside its device and track). Everything is inside the project.
+--- True if `uri` is `ancestor` or is inside it (a note inside its clip, a
+--- parameter inside its device and track). All addresses are inside the project.
 function M.within(uri, ancestor)
   if ancestor == M.project() then return true end
   local at = uri
@@ -263,14 +264,14 @@ function M.track_of(uri)
   end
 end
 
---- Add a kind of address: `paw://<name>/...`, for what an extension keeps
---- (the vocal editor's phrases, a score's measures). `spec.resolve(uri,
---- parts)` gives the thing or nil; optional `of(object)`, `children(uri,
---- parts)`, `parent(uri, parts)`, `go(location, parts)` and `where(location,
---- parts)` for the quickfix list (going there, and naming it in a few words),
---- and `edit(change, parts)` to apply a
---- workspace edit's change to it (which must make its edits through
---- `paw.api`, so that they join the undo step).
+--- Add a kind of address, `paw://<name>/...`, for the data of an extension
+--- (the phrases of the vocal editor, the measures of a score).
+--- `spec.resolve(uri, parts)` gives the item or nil. The optional fields are
+--- `of(object)`, `children(uri, parts)` and `parent(uri, parts)`. For the
+--- quickfix list, `go(location, parts)` goes to an item and
+--- `where(location, parts)` names it in a few words. `edit(change, parts)`
+--- applies the change of a workspace edit to it. It must make its edits
+--- through `paw.api`, so the edits join the undo step.
 function M.scheme(name, spec)
   assert(type(spec) == "table" and spec.resolve, "usage: paw.address.scheme(name, { resolve = fn, ... })")
   M.schemes[name] = spec
@@ -333,9 +334,9 @@ local function plan(change)
   return p
 end
 
---- Carry out a workspace edit: every change is checked first, and nothing
---- is done unless all can be; then all are made as one undo step labelled
---- `label`. Returns true, or nil and why not.
+--- Do a workspace edit. paw checks each change first, and does nothing
+--- unless it can do all changes. Then it makes all of them as one undo step
+--- with the label `label`. Returns true, or nil and the reason.
 ---   paw.address.edit({ { uri = "paw://track/3", set = { volume = -6 } },
 ---                      { uri = "paw://clip/7/note/41", set = { pitch = 62 } } }, "Lower the bass")
 function M.edit(changes, label)
@@ -472,7 +473,7 @@ paw.on("changed", function()
   tell()
 end)
 
---- Whether an address matches a pattern: `paw://track/*` (one level),
+--- True if an address matches a pattern: `paw://track/*` (one level),
 --- `paw://track/**` (any depth), or an exact address.
 function M.matches(pattern, uri)
   if pattern == uri then return true end

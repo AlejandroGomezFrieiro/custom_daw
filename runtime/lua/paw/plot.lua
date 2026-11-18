@@ -24,15 +24,16 @@ local floor, max, min = math.floor, math.max, math.min
 
 local function palette() return require("paw.theme").palette end
 
---- A colour `#rrggbb` at `alpha` (0 to 1), as `#rrggbbaa`.
+--- A color `#rrggbb` at `alpha` (0 to 1), as `#rrggbbaa`.
 function M.alpha(colour, alpha)
   return colour:sub(1, 7) .. string.format("%02x", max(0, min(255, floor(alpha * 255 + 0.5))))
 end
 
---- The bar and beat lines of a plot `w` pixels wide from the beat `from`
---- at `ppb` pixels a beat: `{ beat, x, bar }` each (`bar` the bar's number
---- for a bar), `x` in pixels from the left, and where the drawing may be
---- cut for each bar, `cut`, the nearest edge of a cell of `cell_w` pixels.
+--- The bar and beat lines of a plot `w` pixels wide from the beat `from`,
+--- at `ppb` pixels for each beat. Each is `{ beat, x, bar }`: `bar` is the
+--- number of the bar for a bar line, and `x` is in pixels from the left.
+--- `cut` is where paw can cut the drawing for each bar: the nearest edge of
+--- a cell of `cell_w` pixels.
 function M.lines(w, from, ppb, cell_w)
   local out = {}
   if ppb <= 0 then return out end
@@ -144,11 +145,11 @@ function M.curve(g, px, opts)
   return X, Y
 end
 
---- The stretch of a strip worth drawing, in pixels from its left: what
---- shows of it (`px.view`, all of it when it all shows) and a piece's width
---- either side, in whole stretches of `step` pixels from the strip's left
---- edge, so that a stretch drawn is the same however far the strip is
---- scrolled. Returns the first and last pixel.
+--- The part of a strip to draw, in pixels from its left. This is the part
+--- that shows (`px.view`, all of it when all of it shows) and the width of
+--- a piece on each side. It is in whole pieces of `step` pixels from the
+--- left edge of the strip. So a piece is the same at each scroll
+--- position. Returns the first and the last pixel.
 function M.span(px, step)
   local v = px.view or { x = 0, w = px.w }
   local margin = 24 * (px.cell and px.cell.w or 8)
@@ -158,10 +159,11 @@ function M.span(px, step)
 end
 
 --- Bars over time in a strip, one for each of `opts.items`, `{ beat,
---- value, color, bright }` (`value` from 0 at the bottom to 1 at the top,
---- `bright` for one that is chosen), each `opts.width` pixels wide (3)
---- from the bottom, with a head. `from` and `pixels_per_beat` as for
---- `M.curve`; `color` for the bars that have none of their own.
+--- value, color, bright }`. `value` goes from 0 at the bottom to 1 at the
+--- top, and `bright` is for a selected item. Each bar is `opts.width`
+--- pixels wide (3), from the bottom, with a head. `from` and
+--- `pixels_per_beat` are as for `M.curve`. `color` is for the bars that
+--- have no color.
 function M.bars(g, px, opts)
   local P = palette()
   local H = px.h
@@ -180,16 +182,16 @@ function M.bars(g, px, opts)
   end
 end
 
---- A waveform in a strip: for each pixel across, the lowest to the highest
---- sample around the middle, its RMS as a brighter band inside that, and
---- a column that reaches full scale in the clip colour. `opts`:
+--- A waveform in a strip. For each pixel across, it shows the lowest to the
+--- highest sample around the middle, with its RMS as a brighter band in it.
+--- A column that reaches full scale is in the clip color. `opts`:
 ---   peaks       `peaks(n)`: `n` `{ min, max, rms }` (-1 to 1) across the
 ---               whole strip, as `api.clip_peaks` gives them; `n` is the
 ---               strip's width in pixels, at most 65536
 ---   color       the wave's colour (the theme's `dim`)
 ---   rms         the RMS band's colour (the wave's, brighter); false for none
 ---   clipped     the colour of a column at full scale (the theme's `red`)
---- Heights follow `paw.opt.wave_scale`, as the cells do.
+--- Heights obey `paw.opt.wave_scale`, as the cells do.
 function M.wave(g, px, opts)
   local P = palette()
   local W, H = px.w, px.h

@@ -22,7 +22,7 @@ function M.once(pattern, fn)
   return M.on(pattern, fn, { once = true })
 end
 
---- Stop listening: `id` is what `paw.on` or `paw.once` returned.
+--- Stop a listener: `id` is the value that `paw.on` or `paw.once` returned.
 function M.off(id)
   for _, list in pairs(handlers) do
     for i = #list, 1, -1 do
@@ -40,8 +40,8 @@ function M.handlers()
   return out
 end
 
---- Whether anything listens for `name` by its name or its family (`*`
---- aside): for events that cost something to work out.
+--- True if a handler listens for `name` by its name or its family (not
+--- `*`). Use it for events that are expensive to make.
 function M.listened(name)
   local family = name:match("^(.-)%.[^.]*$")
   return (handlers[name] and #handlers[name] > 0) or (family and handlers[family .. ".*"] and #handlers[family .. ".*"] > 0) or false
@@ -60,10 +60,10 @@ local function run(list, name, payload)
   end
 end
 
---- Call every handler for `name`. A failing handler is reported and skipped.
---- Returns true, or false and the reason when a handler returned `false,
---- reason`: how a handler refuses what an event asks about (`edit.before`,
---- `project.saving`, `key.pre`).
+--- Call each handler for `name`. paw reports a handler that fails, and goes
+--- to the next. Returns true, or false and the reason when a handler
+--- returned `false, reason`. So a handler refuses the request of an event
+--- (`edit.before`, `project.saving`, `key.pre`).
 function M.emit(name, payload)
   payload = payload or {}
   local outer, outer_reason = refused, reason

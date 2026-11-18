@@ -729,10 +729,10 @@ function M.entries(nodes)
   return out
 end
 
---- Choose what a query finds, where it can be chosen: its clips in the
---- arrange view, its notes in the piano roll (those of each clip); and put
---- everything found in the quickfix list (the window's location list with
---- `opts.loc`). Returns the nodes.
+--- Select the items that a query finds, where paw can select them. These
+--- are its clips in the arrange view, and its notes in the piano roll (the
+--- notes of each clip). Put all found items in the quickfix list (the location list
+--- of the window with `opts.loc`). Returns the nodes.
 function M.select(q, opts)
   opts = opts or {}
   local nodes = M.run(q)

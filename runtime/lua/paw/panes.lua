@@ -74,10 +74,10 @@ local function title_of(win)
   return buf and L.title(buf) or win.view
 end
 
---- The main area's size in pixels, from the frontend: once at the start
---- and whenever it changes. The first time a seat's window says it, the
---- device panel is shown: a window has the selected track's devices beside
---- the timeline unless they are closed.
+--- The size of the main area in pixels, from the frontend: at the start
+--- and each time that it changes. The first time that the window of a seat
+--- gives it, paw shows the device panel. A window shows the devices of the
+--- selected track next to the timeline unless the user closes them.
 function M.area(width, height)
   local started = area.started
   area = { w = math.max(0, math.floor(width)), h = math.max(0, math.floor(height)), started = started or width > 0 }
@@ -96,13 +96,14 @@ function M.cells()
   return { w = math.floor(area.w / cell.w), h = math.floor(area.h / cell.h) + bars }
 end
 
---- Where everything goes in the main area, for a frontend's state: `panes`,
---- each `{ win, view, kind ("native", "paint", "cells"), title, x, y, w, h,
---- focused }`; `borders`, each `{ dir ("h": a rule between panes side by
---- side, "v": one between panes one above another), x, y, length }`, by
---- their place in the list; `tabs`, each `{ title }`, and `tab`, the
---- current one; `top`, where the panes start under the row of tabs. Nil
---- until the frontend has said how big its area is.
+--- The positions of all items in the main area, for the state of a
+--- frontend. `panes` is a list of `{ win, view, kind ("native", "paint",
+--- "cells"), title, x, y, w, h, focused }`. `borders` is a list of
+--- `{ dir, x, y, length }`. For `dir`, "h" is a rule between panes side by
+--- side, and "v" is a rule between panes one above the other. `tabs` is a list of
+--- `{ title }`, and `tab` is the current tab. `top` is where the panes
+--- start, below the row of tabs. Nil until the frontend gives the size of
+--- its area.
 function M.state()
   if area.w <= 0 or area.h <= 0 then return nil end
   local u = paw.ui
@@ -148,9 +149,9 @@ function M.focus(id)
 end
 
 --- A pointer event in a pane, in pixels from its corner (as
---- `paw.canvas.pointer` takes them): a press gives it the keyboard first.
---- `drawn`, for a pane drawn in cells, says how: its `cell` and its size in
---- them, `cols` and `rows`; it keeps the button held in a drag.
+--- `paw.canvas.pointer` takes them). A press gives it the keyboard first.
+--- For a pane drawn in cells, `drawn` tells how: its `cell`, and its size
+--- in cells, `cols` and `rows`. It keeps the button held in a drag.
 function M.pointer(id, event, drawn)
   local win = window(id)
   if not win then return end

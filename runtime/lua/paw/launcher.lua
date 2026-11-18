@@ -53,8 +53,8 @@ function M.clip(track, row)
   end
 end
 
---- What each track plays and has queued, by track id: see `paw.api.launcher`.
---- A track with nothing launched is missing.
+--- What each track plays and has in its queue, by track id: see
+--- `paw.api.launcher`. A track with no launched clip is not in the table.
 function M.state()
   local out = {}
   for _, s in ipairs(api.launcher()) do
@@ -63,15 +63,15 @@ function M.state()
   return out
 end
 
---- What one track plays: "arrangement", "stopped" or a row; and what it
---- has queued, if anything.
+--- What one track plays: "arrangement", "stopped" or a row. The second
+--- value is what it has in its queue, if anything.
 function M.playing(track)
   local s = M.state()[track]
   if not s then return "arrangement" end
   return s.slot or (s.stopped and "stopped" or "arrangement"), s.queued
 end
 
---- The names of the scenes, by row from 1; rows without one are nil.
+--- The names of the scenes, by row from 1. Rows without a name are nil.
 function M.scenes()
   local scenes = api.project_get().meta.scenes
   return type(scenes) == "table" and scenes or {}
@@ -115,8 +115,8 @@ local function send(list, start)
   api.ui_redraw()
 end
 
---- Launch the clip in a slot on its next boundary; an empty slot stops the
---- track. `opts.quantize` and `opts.legato` stand in for the slot's.
+--- Launch the clip in a slot on its next boundary. An empty slot stops the
+--- track. `opts.quantize` and `opts.legato` replace the values of the slot.
 function M.launch(track, row, opts)
   opts = opts or {}
   send({ { track = track, slot = row, quantize = opts.quantize, legato = opts.legato } }, true)
@@ -138,8 +138,9 @@ function M.release(track, row)
   if clip and clip.mode == "gate" and (now == row or queued == row) then M.stop(track) end
 end
 
---- Stop a track's clip on the next boundary; with no track, every track's.
---- A stopped track is silent until it is launched again or sent back.
+--- Stop the clip of a track on the next boundary. With no track, stop the
+--- clips of all tracks. A stopped track makes no sound until you launch it
+--- again or send it back to its timeline.
 function M.stop(track)
   local list = {}
   if track then
@@ -152,7 +153,8 @@ function M.stop(track)
   send(list)
 end
 
---- Send a track back to its timeline; with no track, every track that left it.
+--- Send a track back to its timeline. With no track, send back each track
+--- that left its timeline.
 function M.back(track)
   local list = {}
   if track then
@@ -288,9 +290,9 @@ local function finish_recording()
 end
 
 --- Record `bars` bars (1) into an empty slot of a track, from the next
---- boundary of the project's quantize. The track is armed if it is not,
---- and stops what it plays at that boundary. Starts the song if it is
---- stopped; stopping it early keeps what was recorded.
+--- boundary of the quantize of the project. paw arms the track if it is not
+--- armed. The track stops what it plays at that boundary. If the song is
+--- stopped, it starts. If you stop the song early, paw keeps the recording.
 function M.record(track, row, bars)
   if M.clip(track, row) then error("the slot holds a clip already", 2) end
   if M.recording then error("a slot is being recorded already", 2) end
@@ -384,8 +386,8 @@ local function write(position)
   return wrote
 end
 
---- Start or stop capturing. Stopping while the song plays writes what has
---- been captured so far.
+--- Start or stop the capture. If you stop it while the song plays, paw
+--- writes the captured notes.
 function M.capture(on)
   if on == nil then on = not M.capturing end
   if on == M.capturing then return end
@@ -404,8 +406,8 @@ function M.capture(on)
   api.ui_redraw()
 end
 
---- Write what has been captured and not written yet, up to `position`
---- where it is still under way, as one undo step.
+--- Write the captured notes that paw did not write yet, as one undo step,
+--- up to `position` where the capture continues.
 function M.write_captured(position)
   if #log == 0 then return end
   local wrote = write(position)

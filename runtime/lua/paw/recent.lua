@@ -20,8 +20,8 @@ M.max = 20
 M.file = env.state_dir .. "/recent.json"
 local recording = not env.clean and not env.scripted
 
---- Keep the list in `file` and remember projects whatever the program was
---- started with, for tests; `use()` puts things back as they were.
+--- Keep the list in `file`, and remember projects for all start options,
+--- for tests. `use()` sets all back to the old values.
 function M.use(file)
   if file then
     M.file, recording = file, true
@@ -89,8 +89,8 @@ end
 paw.on("project.loaded", function(e) remember(e.path) end)
 paw.on("project.saved", function(e) remember(e.path) end)
 
---- Open a project from the list, by its place in it or its path; says so
---- when it will not open. Returns whether it did.
+--- Open a project from the list, by its place in the list or its path. If
+--- it does not open, paw tells you. Returns true if it opened.
 function M.open(which)
   local path = which
   if type(which) == "number" then

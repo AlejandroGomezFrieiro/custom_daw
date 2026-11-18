@@ -18,7 +18,7 @@ function M.name(pitch)
   return names[pitch % 12 + 1] .. (math.floor(pitch / 12) - 1)
 end
 
---- Whether a MIDI pitch is a black key.
+--- True if a MIDI pitch is a black key.
 function M.is_black(pitch)
   return #names[pitch % 12 + 1] == 2
 end

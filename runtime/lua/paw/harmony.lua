@@ -133,7 +133,7 @@ local function member(key, pitch)
   end
 end
 
---- Whether a pitch (or pitch class) belongs to a key.
+--- True if a pitch (or pitch class) is in a key.
 function M.in_key(key, pitch)
   return member(M.parse_key(key), pitch) ~= nil
 end
@@ -228,9 +228,8 @@ function M.chord_name(chord, key)
   return name
 end
 
---- A chord's Roman numeral in `key`, counted from the tonic as in the major
---- scale ("bVII", "vi", "V7", "ii°"); an inversion as "V7/B" is left to
---- the name.
+--- The Roman numeral of a chord in `key`, counted from the tonic as in the
+--- major scale ("bVII", "vi", "V7", "ii°"). The name shows an inversion as "V7/B".
 function M.chord_roman(chord, key)
   key = M.parse_key(key)
   local q = read.by_quality[chord.quality] or {}
@@ -296,9 +295,10 @@ M.ranges = {
 }
 M.default_range = { low = 48, high = 84 }   -- C3 to C6
 
---- The range a part for a track is written in, `{ low, high, name }`: the
---- track's own (`track.meta.range = { low, high }`), else guessed from the
---- words of its name and its devices' names, else C3 to C6.
+--- The range of a part for a track, `{ low, high, name }`. This is the
+--- range of the track (`track.meta.range = { low, high }`). If not, paw
+--- guesses it from the words of its name and the names of its devices. If
+--- not, it is C3 to C6.
 function M.range(track)
   local t = type(track) == "table" and track.get and track:get() or type(track) == "number" and api.track_get(track) or track
   if not t then return M.default_range end
@@ -319,7 +319,7 @@ function M.range(track)
   return M.default_range
 end
 
---- Whether a track is left out of the harmony: a drum track (a drum map in
+--- True if the harmony does not use a track: a drum track (a drum map in
 --- its meta, as the drums extension keeps it, or a drum device or name).
 function M.is_drums(track)
   local t = type(track) == "number" and api.track_get(track) or track
@@ -338,12 +338,12 @@ end
 -- The song's notes and the reading ----------------------------------------------------
 
 local notes_cache = {}
---- Every note of the pitched tracks, in project beats, each with `track`
---- and `clip`. Muted clips and tracks are left out; so are notes hidden by
---- a trim of the clip's edges. Kept until the project changes: this is
---- what sounds, for the reading and for snippets alike. (The piano roll's
---- context notes, `paw.roll_clips.context`, are what it shows, in its own
---- beats and only of the tracks chosen to show.)
+--- Each note of the pitched tracks, in project beats, each with `track` and
+--- `clip`. The list does not contain muted clips and tracks, or notes that a
+--- trim of the edges of the clip hides. paw keeps the list until the project
+--- changes. This is what sounds, for the reading and for snippets. The
+--- context notes of the piano roll, `paw.roll_clips.context`, are what the
+--- roll shows, in its own beats, and only of the tracks selected to show.
 function M.notes()
   local edits = api.project_get().edits
   if notes_cache.edits == edits then return notes_cache.notes end
@@ -393,11 +393,12 @@ local providers = { { name = "builtin", fn = M.builtin, priority = 0 } }
 local cache = { stamp = nil }
 local last_text   -- the last reading in words, to tell when it changes
 
---- Add a provider: `fn(from, to)` returns chords and keys (lists in the
---- shapes `chords` and `key` give; `root`, `quality`, `at`, `length` are
---- enough for a chord, `at`, `length`, `tonic`, `mode` for a key), or nil
---- to leave it to the next. The highest `priority` (default 50) asks first.
---- Providing again under a name replaces it; `fn` nil removes it.
+--- Add a provider. `fn(from, to)` returns chords and keys, or nil to let
+--- the next provider answer. The lists have the shapes that `chords` and
+--- `key` give. `root`, `quality`, `at` and `length` are enough for a chord.
+--- `at`, `length`, `tonic` and `mode` are enough for a key. The highest
+--- `priority` (default 50) answers first. A new provider with the same
+--- name replaces the old one. `fn` nil removes it.
 function M.provide(name, fn, priority)
   for i = #providers, 1, -1 do
     if providers[i].name == name then table.remove(providers, i) end
@@ -426,9 +427,9 @@ local function signature()
   return table.concat(parts, "|")
 end
 
---- Whether the reading is up to date with the project, so that `key` and
---- `chords` answer at once: a view drawn on every key asks this first, as
---- reading a long song again takes a while.
+--- True if the reading agrees with the project, so `key` and `chords` answer
+--- immediately. A view that paw draws on each key asks this first, because
+--- to read a long song again takes some time.
 function M.fresh() return cache.stamp == signature() end
 
 --- The whole song's reading: `{ chords, keys, provider }`.
@@ -524,8 +525,8 @@ function M.key(beat)
   return M.parse_key("C major")
 end
 
---- The keys read over the song, `{ at, length, tonic, mode, name }` each;
---- the project's own key, when one is set, over all of it.
+--- The keys read over the song, `{ at, length, tonic, mode, name }` each.
+--- When the project has its own key, that key is over all of the song.
 function M.keys()
   local r = reading()
   if r.set then
@@ -546,7 +547,7 @@ function M.chords(from, to)
   return out
 end
 
---- The chord sounding at `beat`, or nil.
+--- The chord that sounds at `beat`, or nil.
 function M.at(beat)
   for _, c in ipairs(reading().chords) do
     if c.at <= beat + 1e-9 and beat < c.at + c.length - 1e-9 then return c end
@@ -584,11 +585,12 @@ function M.label(chord, how)
   return chord.name
 end
 
---- Draw the chords on a row of cells: `buf` one row high, showing `span`
---- beats from `scroll` at `zoom` columns a beat, beats counted from
---- `origin` (a clip's start; 0 for the song). Each symbol starts on the
---- left edge of the cell where its chord starts, and is cut short where
---- the next one starts. Labels as `paw.opt.chords` (or `how`) asks.
+--- Draw the chords on a row of cells. `buf` is one row high, and shows
+--- `span` beats from `scroll` at `zoom` columns for each beat. Beats count
+--- from `origin` (the start of a clip, or 0 for the song). Each symbol
+--- starts on the left edge of the cell where its chord starts. It stops
+--- where the next symbol starts. The labels are as `paw.opt.chords` (or
+--- `how`) tells.
 function M.draw(buf, scroll, span, zoom, origin, how)
   how = how or paw.opt.chords
   if not how then return end
@@ -612,8 +614,8 @@ function M.draw(buf, scroll, span, zoom, origin, how)
 end
 
 local pending
---- A while after the project changes the reading is made again, so that
---- `harmony.changed` is heard even when nothing asks.
+--- Some time after the project changes, paw makes the reading again. So
+--- `harmony.changed` comes even when nothing asks.
 function M.schedule()
   if pending then return end
   pending = paw.defer(function()

@@ -128,9 +128,9 @@ local function changed(ns, doc)
   api.ui_redraw()
 end
 
---- Publish what `namespace` says about a document (a clip, or any string:
---- a server's document URI), replacing what it said of it before. An empty
---- list clears it.
+--- Publish the diagnostics of `namespace` about a document (a clip, or a
+--- string: the document URI of a server). They replace its old diagnostics
+--- of that document. An empty list clears them.
 function M.set(namespace, doc, list)
   assert(type(namespace) == "string", "usage: paw.diagnostic.set(namespace, document, { diagnostic, ... })")
   doc = document_of(doc)
@@ -141,9 +141,10 @@ function M.set(namespace, doc, list)
   changed(namespace, doc)
 end
 
---- Forget what `namespace` said, about one document (or, given a clip id,
---- everything it said about that clip) or all; with no namespace, everything
---- anyone said about that, or everything.
+--- Forget the diagnostics of `namespace` about one document, or all of
+--- them. With a clip id, forget all its diagnostics about that clip. With
+--- no namespace, forget the diagnostics of all namespaces about that
+--- document, or all diagnostics.
 function M.reset(namespace, doc)
   doc = doc and document_of(doc)
   for ns, docs in pairs(store) do
@@ -165,7 +166,7 @@ function M.reset(namespace, doc)
   changed(namespace, doc)
 end
 
---- The namespaces that have published anything.
+--- The namespaces that published diagnostics.
 function M.namespaces()
   local out = {}
   for ns, docs in pairs(store) do
@@ -175,8 +176,8 @@ function M.namespaces()
   return out
 end
 
---- The places the notes of a diagnostic have now (from 1); a note that has
---- gone is left out.
+--- The current places of the notes of a diagnostic (from 1). The list does
+--- not contain a note that does not exist now.
 function M.places(d)
   local out = {}
   local sel = d.location and d.location.selector
@@ -204,8 +205,8 @@ function M.notes_of(d)
   return out
 end
 
---- The kind of thing a diagnostic is about, for grouping: clip, track,
---- device, time, project, render, or an extension's kind.
+--- The kind of item that a diagnostic is about, to make groups: clip,
+--- track, device, time, project, render, or the kind of an extension.
 function M.kind(d)
   local p = A.parse(d.location.uri)
   if not p then return "other" end
@@ -218,8 +219,8 @@ function M.kind(d)
   return p.kind
 end
 
---- Whether a diagnostic is about an address or something it holds: a note
---- counts when a diagnostic of its clip names it among its notes.
+--- True if a diagnostic is about an address or an item in it. A note
+--- counts when a diagnostic of its clip names the note in its notes.
 function M.about(d, uri)
   if A.within(d.location.uri, uri) then return true end
   local p = A.parse(uri)
@@ -326,7 +327,7 @@ function M.worst(uri, filter)
   return worst
 end
 
---- Change how diagnostics are shown; returns the options in force.
+--- Change how paw shows diagnostics. Returns the options in use.
 ---   paw.diagnostic.config({ virtual_text = false })
 function M.config(opts)
   for k, v in pairs(opts or {}) do options[k] = v end
@@ -336,7 +337,7 @@ end
 
 -- Fixes ----------------------------------------------------------------------
 
---- Carry out a fix of a diagnostic as one undo step. Returns whether it did.
+--- Do a fix of a diagnostic as one undo step. Returns true if it did the fix.
 function M.apply(d, fix)
   fix = fix or d.fixes[1]
   if not fix then return false end
@@ -418,9 +419,9 @@ function M.show(d)
   paw.notify(M.format(d), d.severity == 1 and "error" or d.severity == 2 and "warn" or "info")
 end
 
---- The next (`dir` 1) or previous (-1) diagnostic the focused view can place,
---- from its cursor, `count` times, round the ends; the cursor goes there.
---- Returns it, or nil when the view has none.
+--- The next (`dir` 1) or previous (-1) diagnostic that the focused view can
+--- show, from its cursor, `count` times, round the ends. The cursor goes
+--- there. Returns the diagnostic, or nil when the view has none.
 function M.jump(dir, count)
   local view = paw.ui.focused
   local loc = paw.ui.locators[view]
@@ -498,9 +499,10 @@ function M.setloclist(opts) return paw.qf.diagnostics(paw.util.merge(opts or {},
 
 local g = function() return paw.draw.g end
 
---- Mark the diagnostics of every clip the piano roll edits, as one of its
---- layers: each note underlined in its severity's colour, the message after
---- the last note while there is room, and a mark on the ruler where it starts.
+--- Mark the diagnostics of each clip that the piano roll edits, as one of
+--- its layers. Each note has a line below it in the color of its severity.
+--- The message comes after the last note while there is space, and a mark
+--- on the ruler shows where it starts.
 function M.paint_roll(p)
   for _, part in ipairs(p.parts or { { id = p.clip.id, offset = 0 } }) do
     M.paint_part(p, part.id, part.offset or 0)
@@ -628,9 +630,9 @@ function M.status()
   return pieces
 end
 
---- What the window marks in its piano roll for a clip: each note a
---- diagnostic is about, by place from 0, with its worst severity, the
---- messages about it and the titles of the fixes for it.
+--- The marks of the window in its piano roll for a clip. These are the
+--- notes that diagnostics are about, by place from 0. Each has its worst
+--- severity, the messages about it and the titles of its fixes.
 function M.roll_marks(id)
   local out, by_place = {}, {}
   local list = M.get(id)
@@ -656,9 +658,9 @@ function M.roll_marks(id)
   return out
 end
 
---- What the window marks elsewhere: each track (by id) with the worst said
---- of it, its devices or sends, and the first message; and the stretches of
---- time.
+--- The marks of the window in other views. Each track (by id) has the worst
+--- severity about it, its devices or its sends, and the first message.
+--- The ranges of time are also marks.
 function M.marks()
   local tracks, times = {}, {}
   for _, d in ipairs(M.get()) do

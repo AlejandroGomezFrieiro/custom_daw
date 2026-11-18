@@ -43,9 +43,9 @@ end
 
 -- Trials -----------------------------------------------------------------------
 
---- Make the edits `fn` makes as a trial, in place of the last one: they are
---- heard and seen, and `revert` takes them back without a trace. Returns
---- what `fn` returns; an error takes the edits back and is raised.
+--- Make the edits of `fn` as a trial, in place of the last trial. You hear
+--- and see them, and `revert` removes them with no trace. Returns the
+--- results of `fn`. If `fn` fails, paw removes the edits and raises the error.
 function M.try(fn)
   M.revert()
   api.trial_begin()
@@ -110,13 +110,14 @@ local function pass()
   end, ms_between(at, at + p.length, tempo))
 end
 
---- Play `notes` (`{ pitch, start, length, velocity }`, `start` in beats from
---- the phrase's start; a note's own `track` over the phrase's) through a
---- track, again every `opts.length` beats (or once with `loop = false`).
---- `opts.label` says what it is; a phrase with the same `opts.key` as the
---- one playing goes on without starting again, so that what changes is
---- only the sound. `opts.tempo` is its own tempo, else the project's at
---- `opts.at` (the cursor's). Nothing is played while the transport runs.
+--- Play `notes` through a track, again each `opts.length` beats (or one
+--- time with `loop = false`). The notes are `{ pitch, start, length,
+--- velocity }`, with `start` in beats from the start of the phrase. The
+--- `track` of a note wins over the `track` of the phrase. `opts.label` tells
+--- what the phrase is. A phrase with the same `opts.key` as the phrase that
+--- plays continues and does not start again. So only the sound changes.
+--- `opts.tempo` is its tempo. If not given, it is the tempo of the project
+--- at `opts.at` (the cursor). paw plays nothing while the transport runs.
 function M.phrase(track, notes, opts)
   M.asked = M.asked + 1
   opts = opts or {}
@@ -144,9 +145,10 @@ local DRUMS = {
   { 36, 2, 110 }, { 42, 2, 80 }, { 36, 2.5, 90 }, { 42, 2.5, 70 }, { 38, 3, 105 }, { 42, 3, 80 }, { 42, 3.5, 70 },
 }
 
---- A phrase for a track with nothing to play: a bar of a beat for a drum
---- track; else the key's tonic chord held, then arpeggiated up and back,
---- in the track's range. `{ notes, length, label }`.
+--- A phrase for a track with nothing to play. For a drum track, it is a bar
+--- of a beat. For other tracks, it is the tonic chord of the key, held,
+--- then as an arpeggio up and down, in the range of the track.
+--- `{ notes, length, label }`.
 function M.builtin(track, at)
   at = at or paw.cursor.beat or 0
   local notes = {}
@@ -169,10 +171,10 @@ function M.builtin(track, at)
   return { notes = notes, length = 4, label = "a built-in phrase in " .. paw.harmony.key_name(key) }
 end
 
---- What a track plays around the cursor, as a phrase: the bar of its MIDI
---- clip at the cursor, else the last bar before the cursor that has notes,
---- else the first that has any; `builtin` when it has none.
---- `{ notes, length, label, at }`.
+--- What a track plays around the cursor, as a phrase. This is the bar of
+--- its MIDI clip at the cursor. If not, it is the last bar with notes before
+--- the cursor. If not, it is the first bar with notes. It is `builtin` when
+--- the track has no notes. `{ notes, length, label, at }`.
 function M.track_phrase(track)
   local cursor = paw.cursor.beat or 0
   local bars = {}
@@ -213,7 +215,7 @@ function M.track_phrase(track)
   return { notes = notes, length = length, at = chosen, label = "loop bar " .. paw.time.bar_of(chosen) }
 end
 
---- Whether a track has an instrument to play notes with.
+--- True if a track has an instrument to play notes.
 function M.has_instrument(track)
   local category = {}
   for _, info in ipairs(paw.device_types()) do category[info.kind] = info.category end
@@ -224,10 +226,10 @@ function M.has_instrument(track)
   return false
 end
 
---- Play what a track plays around the cursor through it, over and over
---- (`track_phrase`), so that a sound tried on it is heard with its own
---- notes; the loop goes on while only the sound changes. Returns what is
---- heard, in words.
+--- Play what a track plays around the cursor, through the track, again and
+--- again (`track_phrase`). So you hear a sound that you try on the track
+--- with its own notes. The loop continues while only the sound changes.
+--- Returns what you hear, in words.
 function M.through(track)
   M.asked = M.asked + 1
   if api.transport_get().playing then
@@ -303,7 +305,7 @@ end)
 
 -- Stopping ---------------------------------------------------------------------
 
---- Stop what is heard (phrase and file), leaving a trial as it is.
+--- Stop the sound of the audition (phrase and file). A trial does not change.
 function M.quiet()
   silence()
   phrase = nil
@@ -316,9 +318,9 @@ function M.stop()
   M.revert()
 end
 
---- What is heard now: `{ kind = "phrase", label, track, notes, length,
+--- What you hear now: `{ kind = "phrase", label, track, notes, length,
 --- silent }`, `{ kind = "file", file, state, position, length, outline }`
---- or nil; `trial` is true while a trial's edits stand.
+--- or nil. `trial` is true while the edits of a trial stay.
 function M.state()
   local file = api.preview_get()
   local out
@@ -335,9 +337,9 @@ end
 
 local BARS = { " ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█" }
 
---- A sound file's outline as `rows` lines `width` columns wide, the loudest
---- part of each column drawn up from the bottom, and the column the file
---- has got to, if `position` (seconds of `length`) is given.
+--- The outline of a sound file as `rows` lines `width` columns wide. The
+--- loudest part of each column goes up from the bottom. If `position`
+--- (seconds of `length`) is given, the column of that position is marked.
 function M.outline_lines(outline, width, rows, position, length)
   local out = {}
   if not outline or #outline == 0 or width < 1 then return out end

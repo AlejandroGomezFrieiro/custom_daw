@@ -40,7 +40,7 @@ paw.on("midi.returned", function(e)
   paw.notify(string.format("The MIDI input %s is back%s", e.port, tracks(e.tracks)))
 end)
 
---- Try to open the device that went away again. Returns whether it is open.
+--- Try to open again the device that went away. Returns true if it is open.
 function M.reconnect()
   local lost = api.engine_get().lost
   if not lost then

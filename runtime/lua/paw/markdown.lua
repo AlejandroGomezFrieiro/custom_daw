@@ -468,10 +468,10 @@ local function runs_width(runs)
 end
 
 --- The blocks as lines `opts.width` wide (78 by default). `opts.heading_tag(block)`
---- gives the tag shown at the right of a heading (as Vim's help shows
---- `*tag*`). Returns `{ lines, anchors }`; an anchor is `{ row, kind =
---- "heading" | "tags" | "code" | "lead", ... }` ("lead": the bold words a
---- paragraph starts with).
+--- gives the tag that shows at the right of a heading (as the help of Vim
+--- shows `*tag*`). Returns `{ lines, anchors }`. An anchor is `{ row, kind =
+--- "heading" | "tags" | "code" | "lead", ... }` ("lead": the bold words at
+--- the start of a paragraph).
 function M.render(blocks, opts)
   opts = opts or {}
   local W = opts.width or 78

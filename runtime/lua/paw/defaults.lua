@@ -803,7 +803,7 @@ end, { desc = "Add an audio or MIDI file at the cursor: `clip.import take.wav`, 
 -- Sound files this program reads.
 local audio_extensions = { "wav", "wave", "aif", "aiff", "flac", "mp3", "ogg", "oga" }
 
---- Whether a path names a sound file, by its ending.
+--- True if a path names a sound file, from its file ending.
 function paw.is_audio_file(path)
   local ext = (tostring(path):match("%.([^./]+)$") or ""):lower()
   for _, known in ipairs(audio_extensions) do

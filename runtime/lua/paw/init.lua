@@ -10,8 +10,8 @@ package.loaded["paw"] = paw
 paw.util = require("paw.util")
 paw.inspect = paw.util.inspect
 
---- Call a function, reporting an error as a message instead of raising it.
---- Returns true and the function's results, or false and the error.
+--- Call a function. If it fails, show the error as a message and do not
+--- raise it. Returns true and the results of the function, or false and the error.
 function paw.try(fn, ...)
   local result = { xpcall(fn, debug.traceback, ...) }
   if not result[1] then paw.notify(result[2], "error") end
@@ -110,26 +110,26 @@ paw.audio = require("paw.audio")
 -- Plugins an extension ships, and what plugins call their keys (paw/plugins.lua).
 paw.plugins = require("paw.plugins")
 
---- Descriptions of every kind of device that can be added to a track; one
---- an extension added (`paw.plugins.add_dir`) says which, as `from`.
+--- Descriptions of each kind of device that you can add to a track. A kind
+--- that an extension added (`paw.plugins.add_dir`) has its extension in `from`.
 function paw.device_types()
   local list = api.device_types()
   for _, info in ipairs(list) do info.from = paw.plugins.from[info.kind] end
   return list
 end
 
---- Render the project to a file, and render stems: see `paw/render.lua`
---- for the options. `paw.render_status()` and `paw.render_cancel()` look
---- after a render running in the background; `paw.render_ranges` holds the
---- named ranges a render can take.
+--- Render the project to a file, and render stems. See `paw/render.lua`
+--- for the options. `paw.render_status()` and `paw.render_cancel()` control
+--- a render that runs in the background. `paw.render_ranges` contains the
+--- named ranges that a render can use.
 function paw.render(path, opts) return require("paw.render").render(path, opts) end
 --- Render each track to a file of its own in `dir` (see `paw/render.lua` for `opts`).
 function paw.render_stems(dir, opts) return require("paw.render").stems(dir, opts) end
 --- The tags of the project's rendered files: `paw.render_tags()`, `paw.render_tags({ artist = "Me" })`.
 function paw.render_tags(set) return require("paw.render").tags(set) end
---- The render running in the background (`{ path, fraction, seconds }`), or nil.
+--- The render that runs in the background (`{ path, fraction, seconds }`), or nil.
 function paw.render_status() return require("paw.render").status() end
---- Stop the render running in the background.
+--- Stop the render that runs in the background.
 function paw.render_cancel() return require("paw.render").cancel() end
 paw.render_ranges = setmetatable({}, {
   __index = function(_, k) return require("paw.render").ranges[k] end,
@@ -137,11 +137,12 @@ paw.render_ranges = setmetatable({}, {
 })
 
 --- Render a track with its devices to audio, as one clip on a new track
---- right below it that feeds where it fed, and mute the original. Goes
---- through `paw.render`, so `render.before` is heard. `opts.name` names the
---- new track ("<name> (bounced)" by default), `opts.tail` is the seconds
---- rendered after its last clip (2). Returns the new track, or nil when the
---- track has no clips.
+--- immediately below it, and mute the original. The new track sends its
+--- sound where the original sent it. It uses `paw.render`, so
+--- `render.before` runs. `opts.name` is the name of the new track
+--- ("<name> (bounced)" by default). `opts.tail` is the seconds rendered
+--- after its last clip (2). Returns the new track, or nil when the track
+--- has no clips.
 function paw.bounce(track, opts)
   opts = opts or {}
   track = type(track) == "table" and track or paw.track(track)
@@ -313,8 +314,8 @@ function K.resize(width, height)
   paw.emit("ui.resized", { width = width, height = height })
 end
 
---- Deliver the change events for edits made so far. The kernel does this at
---- the end of every turn; call `paw.flush()` to have handlers run sooner.
+--- Send the change events for the edits made until now. The kernel does
+--- this at the end of each turn. Call `paw.flush()` to make handlers run sooner.
 local function settle()
   -- Handlers may edit the project and cause more events, so go round until
   -- it is quiet, with a limit in case two handlers keep triggering each other.

@@ -161,8 +161,8 @@ function M.command(ctx, opts)
   M.confirm(plan, dir, opts)
 end
 
---- Whether `:render <word>` names a group to render on its own, rather than
---- a file: a group's name, with no extension.
+--- True if `:render <word>` names a group to render alone, and not a file:
+--- the name of a group, with no file ending.
 function M.names_group(word)
   return type(word) == "string" and not word:find("[./]") and paw.scope.find(word) ~= nil
 end

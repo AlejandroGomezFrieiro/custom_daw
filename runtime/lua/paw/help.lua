@@ -51,8 +51,7 @@ local function exists(path)
   return f ~= nil
 end
 
---- A path with `.` and `..` taken out, made absolute from the working
---- directory.
+--- A path without `.` and `..`, made absolute from the current directory.
 local function normalize(path)
   if not path:match("^/") then path = (os.getenv("PWD") or ".") .. "/" .. path end
   local parts = {}
@@ -69,10 +68,10 @@ M.normalize = normalize
 
 local function dir_of(path) return path:match("^(.*)/[^/]*$") or "." end
 
---- The directories that may be a copy of the source tree, the manual and
---- the bundled extensions in it: `$PAW_HOME` (where an installed program
---- keeps them), the runtime's parent (`--runtime`), the tree a loaded
---- extension is in, and the working directory.
+--- The directories that can be a copy of the source tree, with the manual
+--- and the bundled extensions in it. These are `$PAW_HOME` (where an
+--- installed program keeps them), the parent of the runtime (`--runtime`),
+--- the tree of a loaded extension, and the current directory.
 function M.roots()
   local out, seen = {}, {}
   local function add(dir)
@@ -154,14 +153,15 @@ local function sort_key(rel)
   end))
 end
 
---- The manual's pages: every Markdown file under docs/. The kind of a page
---- is its folder's (docs/reference/...), else the section of docs/README.md
---- that lists it or its folder's README. A page is named by its base name
---- (`help://terminal.md`, tags `terminal`) or, when two kinds have pages of
---- the same name, with its kind before it (`how-to/x.md`, `how-to-x`). A
---- page in a folder of its own is named by its path in its kind
---- (`course/05-grammar.md`), its tags after the folder: `course` for the
---- folder's README, `course-5` and `course-grammar` for a numbered page.
+--- The pages of the manual: each Markdown file under docs/. The kind of a
+--- page is the kind of its folder (docs/reference/...). If not, it is the
+--- section of docs/README.md that lists it, or the README of its folder.
+--- The name of a page is its base name (`help://terminal.md`, tags
+--- `terminal`). When two kinds have pages with the same name, the kind
+--- comes before the name (`how-to/x.md`, `how-to-x`). A page in a separate
+--- folder has its path in its kind as name (`course/05-grammar.md`). Its
+--- tags come after the folder: `course` for the README of the folder, and
+--- `course-5` and `course-grammar` for a numbered page.
 local function manual_sources(docs)
   local kind_of, rank = readme_order(docs)
   local is_kind = {}
@@ -237,13 +237,13 @@ local function manual_sources(docs)
 end
 M.manual_sources = manual_sources
 
---- Every page of help, in order: the contents, the manual (reference,
---- how-to guides, explanation, tutorials), the extensions (each with
---- whether it is loaded) and what was added. A page is `{ path, name,
---- aliases, prefix, group, ext? }`: `name` is its buffer's (`help://name`),
---- `aliases` its tags (the first is shown on its title), `prefix` what its
---- headings' tags start with, `group` the manual's kind of page or
---- `extensions` or `added`.
+--- Each page of help, in order: the contents, the manual (reference, how-to
+--- guides, explanation, tutorials), the extensions (each with a flag that
+--- tells if it is loaded) and the added pages. A page is `{ path, name,
+--- aliases, prefix, group, ext? }`. `name` is the name of its buffer
+--- (`help://name`). `aliases` is its tags (its title shows the first).
+--- `prefix` is the start of the tags of its headings. `group` is the kind
+--- of page in the manual, or `extensions` or `added`.
 function M.sources()
   local out = { { name = "index", aliases = { "help", "index", "contents" }, prefix = "help", index = true } }
   local roots = M.roots()
@@ -296,11 +296,12 @@ function M.sources()
   return out
 end
 
---- Add a page of help: a Markdown file anywhere. `opts.tag` is its tag and
---- what its headings' tags start with (the file's name by default);
---- `opts.ext` the extension it is about and `opts.dir` where that is, for
---- the note shown while it is not loaded. An extension's README.md and
---- doc/*.md need no adding.
+--- Add a page of help: a Markdown file in any folder. `opts.tag` is its tag
+--- and the start of the tags of its headings (the name of the file by
+--- default). `opts.ext` is the extension that it is about, and `opts.dir`
+--- is the folder of that extension. The page shows a note while the
+--- extension is not loaded. You do not add the README.md and doc/*.md of
+--- an extension.
 ---   paw.help.add("/path/to/mine/notes.md", { tag = "mine-notes" })
 function M.add(path, opts)
   opts = opts or {}
@@ -362,10 +363,11 @@ local function option_known(name)
   return known_options[name] == true
 end
 
---- The tags a piece of code names: a command line its command, `:set x`
---- the option too, a Lua name and the modules it is in, an address, an
---- option, a command's name, a key. `first`: it is where something is
---- described (a table's first column), so any short word in it is a tag.
+--- The tags that a piece of code names. A command line names its command,
+--- and `:set x` also names the option. A Lua name names itself and its
+--- modules. An address, an option, the name of a command and a key name
+--- themselves. With `first`, the code is where an item is described (the
+--- first column of a table), so each short word in it is a tag.
 local function tags_of_code(text, first)
   local out = {}
   if #text > 48 then return out end
@@ -668,10 +670,10 @@ local function score(name, q)
   return 4 + gaps / 100 + #name / 100000
 end
 
---- The tags a topic finds, best first, as Vim's `:help` ranks them: the
---- tag itself, then those that start with it, those that hold it, and
---- those that hold its letters in order. Keys may be written either way:
---- `<C-w>o` finds `Ctrl-w o`.
+--- The tags that a topic finds, best first, in the order of the `:help` of
+--- Vim. First the tag itself, then the tags that start with it, the tags
+--- that contain it, and the tags that contain its letters in order. You can
+--- write keys in the two ways: `<C-w>o` finds `Ctrl-w o`.
 function M.find(topic, limit)
   local index = build()
   topic = (topic or ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -751,7 +753,7 @@ function M.lookup(topic) return M.find(topic, 1)[1] end
 
 -- The buffers -------------------------------------------------------------------------
 
---- Whether a buffer is a page of help.
+--- True if a buffer is a page of help.
 local function is_help(buf) return buf and buf.type == "textbuf" and buf.state and buf.state.kind and buf.state.kind.name == "help" end
 M.is_help = is_help
 
@@ -783,9 +785,10 @@ end
 local stack = {}
 paw.seats.keep("help.tagstack", function() return stack end, function(s) stack = s end, function() return {} end)
 
---- Show a page at a row: in the help window, else one split off this one
---- (as Vim's `:help` splits), in a graphical frontend as a docked pane
---- (`gw` pops it out). Returns the window.
+--- Show a page at a row. It shows in the help window, or in a window split
+--- from the current window (as the `:help` of Vim splits). In a graphical
+--- frontend, it shows as a docked pane (`gw` moves it to a separate window).
+--- Returns the window.
 function M.show(source, row, col)
   local name = "help://" .. source.name
   local buf = layout.buf_create("textbuf", name)
@@ -905,8 +908,7 @@ local function under_cursor()
   return { word = word_at(t:line(s.row), s.col), source = source }
 end
 
---- `Ctrl-]`: follow the link under the cursor, or look up the code or the
---- word there.
+--- `Ctrl-]`: follow the link under the cursor, or find the code or the word there.
 function M.follow()
   local here = under_cursor()
   if not here then return paw.notify("Ctrl-] follows links in help: `:help` opens it", "warn") end
@@ -926,7 +928,7 @@ function M.follow()
   return M.jump(tag)
 end
 
---- `K`: look up the word under the cursor, in help or any text.
+--- `K`: find the word under the cursor in help. It works in a page of help and in other text.
 function M.keyword()
   local win, buf, t, s = paw.textbuf.here()
   if not win then return end
@@ -1087,8 +1089,8 @@ local function wrapped(text, width)
 end
 
 --- The section of help that `for_map` would go to, as at most `rows` lines
---- `{ text, style }` wrapped to `width`, for a pane beside a list of keys.
---- The page's name comes first; nil when there is no help for the key.
+--- `{ text, style }` wrapped to `width`. It is for a pane next to a list of keys.
+--- The name of the page comes first. Nil when there is no help for the key.
 function M.excerpt_for_map(map, width, rows)
   local place = place_for((names_of(map)))
   if not place then return nil end
@@ -1137,7 +1139,7 @@ function M.complete(rest)
 end
 
 --- The topic of help for a view, for the key line: its `help` field, a
---- section of the manual, or the page of the extension it is from.
+--- section of the manual, or the page of its extension.
 function M.topic_of(view)
   if view == "textbuf" and is_help(paw.textbuf.buf()) then return "help" end
   local v = paw.ui.views[view]

@@ -157,9 +157,9 @@ function M.describe(attr)
   return { tag = string.format("a%02X", p.type), name = text, text = text }
 end
 
---- The milliseconds a note with `attr` (nil for none) on `track` plays early
---- (below 0) or late by the track's `attr_map`, so that a library slow to
---- speak still sounds on the beat; 0 without a map.
+--- The milliseconds that a note with `attr` (nil for none) on `track` plays
+--- early (below 0) or late, from the `attr_map` of the track. So a library
+--- that speaks slowly still sounds on the beat. 0 without a map.
 function M.delay_of(track, attr)
   return paw.api.track_attr_delay(type(track) == "table" and track.id or track, attr)
 end

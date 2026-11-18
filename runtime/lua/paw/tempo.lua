@@ -21,8 +21,8 @@ local M = {}
 --- The tempo at a beat (the start if left out).
 function M.at(beat) return api.tempo_at(beat or 0) end
 
---- Set the tempo from `beat` on. `opts.ramp`: ramp from here to the next
---- point's tempo instead of holding; left out, a point keeps what it had.
+--- Set the tempo from `beat`. With `opts.ramp`, ramp from here to the tempo
+--- of the next point, and do not hold. Without it, a point keeps its value.
 function M.set(beat, bpm, opts)
   api.tempo_set(beat, bpm, opts and opts.ramp)
 end
@@ -58,7 +58,7 @@ M.seconds_to_beats = api.tempo_beat
 --- Seconds from beat `from` to beat `to`.
 function M.seconds_between(from, to) return api.tempo_seconds(to) - api.tempo_seconds(from) end
 
---- The bar a beat is in, counting from 1.
+--- The bar that contains a beat, counted from 1.
 function M.bar_of(beat) return api.tempo_bar_of(beat) + 1 end
 
 --- Where bar `n` (counting from 1) starts, in beats.
@@ -97,7 +97,7 @@ end
 -- Commands ------------------------------------------------------------------
 
 --- A place given to a command: a bar (`17`), a bar and beat (`17.3`), or
---- `cursor` / `here`; the cursor's beat when nothing is given.
+--- `cursor` / `here`. The beat of the cursor when nothing is given.
 function M.place(text)
   if text == nil or text == "cursor" or text == "here" then return paw.cursor.beat end
   local bar, beat = tostring(text):match("^(%d+)%.?(%d*)$")
@@ -122,7 +122,7 @@ local function where(beat)
   return paw.time.format(beat)
 end
 
---- "120 bpm 4/4 at bar 1; 90 bpm from bar 3, ramping; ..." for the whole map.
+--- The whole map as text, for example "120 bpm 4/4 at bar 1, 90 bpm from bar 3 with a ramp, ...".
 function M.describe()
   local parts = {}
   for _, p in ipairs(M.points()) do

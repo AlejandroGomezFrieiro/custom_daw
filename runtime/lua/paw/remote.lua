@@ -80,8 +80,8 @@ end
 
 local SECTION_KEYS = { "project", "tracks", "clips", "devices", "routing", "kinds", "selected", "cursor", "slots" }
 
---- Send a connection what has changed of the frontend's state since it was
---- last sent anything: nothing at all when nothing has.
+--- Send to a connection the changes of the state of the frontend after the
+--- last send. Send nothing when nothing changed.
 function M.push(client)
   local w = watchers[client]
   if not w then return end
@@ -155,7 +155,7 @@ function M.closed(client)
   end
 end
 
---- Who is listening: { client = { patterns = {...}, watching = bool }, ... }.
+--- The listeners: `{ client = { patterns = {...}, watching = bool }, ... }`.
 function M.listeners()
   local out = {}
   for _, client in ipairs(api.rpc_clients()) do

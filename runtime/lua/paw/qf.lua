@@ -32,7 +32,7 @@ M.PROBLEMS = "Problems"
 local LEVELS = { "error", "warning", "info", "hint" }
 local by_word = { error = 1, e = 1, warning = 2, warn = 2, w = 2, info = 3, information = 3, i = 3, hint = 4, h = 4 }
 
---- A severity from 1 (error) to 4 (hint) from a number or a word; nil for none.
+--- A severity from 1 (error) to 4 (hint) from a number or a word. Nil for none.
 local function severity_of(level)
   if level == nil or level == false then return nil end
   if type(level) == "number" then return math.max(1, math.min(4, math.floor(level))) end
@@ -49,9 +49,9 @@ local locations = {}   -- window number -> stack
 --- The quickfix lists.
 function M.stack() return quickfix end
 
---- A window's location lists (the current window's without `win`), made
---- when asked for with `make`. A window showing a location list uses the
---- one it shows, as in Neovim.
+--- The location lists of a window (of the current window without `win`),
+--- made when you ask with `make`. A window that shows a location list uses
+--- the list that it shows, as in Neovim.
 function M.loc_stack(win, make)
   if not win then
     local cur = paw.layout.current()
@@ -129,11 +129,11 @@ function M.current(stack)
   return stack.lists[stack.at]
 end
 
---- Put a list of entries in the quickfix lists (a window's location lists
---- with `opts.win`, the current window's with `opts.win = true`), titled
---- `opts.title`, and make it current. A list of the same title already in
---- the history is replaced where it is, with the entry it was on kept;
---- `opts.current = false` leaves another list current. Returns the list.
+--- Put a list of entries in the quickfix lists (the location lists of a
+--- window with `opts.win`, of the current window with `opts.win = true`),
+--- with the title `opts.title`, and make it current. A list with the same
+--- title in the history is replaced at its place. Its current entry stays.
+--- `opts.current = false` keeps a different list current. Returns the list.
 ---   paw.qf.set({ { address = "paw://track/3", text = "too quiet", level = "warning" } }, { title = "Levels" })
 function M.set(entries, opts)
   opts = opts or {}
@@ -203,8 +203,9 @@ local function store_problems()
   paw.emit("qf.changed", { title = M.PROBLEMS })
 end
 
---- What a source says now, in the Problems list: its entries there are
---- replaced by these (none takes them out). Any extension may feed it.
+--- The current entries of a source, in the Problems list. These entries
+--- replace the old entries of the source (none removes them). Each
+--- extension can feed it.
 ---   paw.qf.feed("tuning", { { address = "paw://clip/4", text = "out of tune", level = "warning" } })
 function M.feed(source, entries)
   local list = {}
@@ -213,16 +214,16 @@ function M.feed(source, entries)
   store_problems()
 end
 
---- A source asked for its entries when they may have changed: `fn()`
---- returns them, and is called again after `paw.qf.changed(source)`, once,
---- when the list is next looked at.
+--- A source that paw asks for its entries when they can change. `fn()`
+--- returns them. paw calls it again after `paw.qf.changed(source)`, one
+--- time, when a user next looks at the list.
 function M.source(source, fn)
   pulls[source] = fn
   dirty[source] = true
   api.ui_redraw()
 end
 
---- Say that a source's entries may have changed.
+--- Tell paw that the entries of a source can be different now.
 function M.changed(source)
   if pulls[source] then
     dirty[source] = true
@@ -266,8 +267,8 @@ end
 
 -- Where an entry is, in words ------------------------------------------------------
 
---- Where an entry is about, in a few words: `Bass 3.1.00`, `Lead › Synth`,
---- `mix.wav`; empty without an address.
+--- The subject of an entry, in a few words: `Bass 3.1.00`, `Lead › Synth`,
+--- `mix.wav`. Empty without an address.
 function M.where(e)
   local loc = e.location
   if not loc then return "" end
@@ -301,10 +302,10 @@ end
 
 local GONE = { clip = true, note = true, control = true, track = true, device = true, param = true, send = true, lane = true }
 
---- Put the cursor on an entry's address, in the view that shows it best
---- (focused): a note in the piano roll, a device or parameter in the device
---- panel, a clip, track, lane or stretch of time in the arrange view.
---- Returns whether there was somewhere to go.
+--- Put the cursor on the address of an entry, in the view that shows it
+--- best, and focus that view. A note goes to the piano roll, and a device
+--- or a parameter to the device panel. A clip, a track, a lane or a range
+--- of time goes to the arrange view. Returns true if there was a place to go.
 function M.go(e)
   local loc = e.location
   if not loc then return false end
@@ -364,8 +365,8 @@ function M.jump(n, stack)
   return e
 end
 
---- Go `count` entries on (back, when negative) from the current one; the
---- first `]q` goes to the first entry. Stops at the ends, as Neovim does.
+--- Go `count` entries forward (back, when negative) from the current entry.
+--- The first `]q` goes to the first entry. It stops at the ends, as Neovim does.
 function M.step(count, stack)
   local list = M.current(stack)
   if not list or #list.entries == 0 then return paw.notify("no entries" .. (list and " in " .. list.title or ""), "warn") end
@@ -414,8 +415,9 @@ function M.count(list)
   return out
 end
 
---- The status line's piece while the quickfix list has entries: `qf 2/7
---- E2 W5`, the position once one has been gone to. Nil when it is empty.
+--- The part of the status line while the quickfix list has entries:
+--- `qf 2/7 E2 W5`, with the position after you go to an entry. Nil when the
+--- list is empty.
 function M.status()
   local list = M.current()
   if not list or #list.entries == 0 then return nil end
@@ -435,11 +437,11 @@ end
 
 -- Doing things over the entries ------------------------------------------------------------
 
---- Run a command line on each entry of a stack's current list (`:cdo`),
---- the cursor put on the entry first and its address passed as
---- `ctx.target` (and the whole location as `ctx.location`), all as one undo
---- step. With `per_track`, once for each track the entries are on (`:cfdo`).
---- Returns how many times it ran.
+--- Run a command line on each entry of the current list of a stack (`:cdo`),
+--- all as one undo step. For each entry, the cursor goes to the entry
+--- first. The command gets the address as `ctx.target`, and the whole
+--- location as `ctx.location`. With `per_track`, it runs one time for each
+--- track of the entries (`:cfdo`). Returns how many times it ran.
 function M.cdo(line, opts)
   opts = opts or {}
   line = tostring(line or ""):match("^%s*:?(.-)%s*$")
@@ -471,8 +473,8 @@ function M.cdo(line, opts)
   return done
 end
 
---- Carry out the fixes of entries (every one of a stack's current list
---- that has one, or those given) as one undo step. Returns how many.
+--- Do the fixes of entries as one undo step: each entry with a fix in the
+--- current list of a stack, or the given entries. Returns how many.
 function M.fix(entries, opts)
   opts = opts or {}
   if not entries then
@@ -735,11 +737,11 @@ end)
 
 -- The window ------------------------------------------------------------------------------
 
---- Open the list's window and give it the keyboard: the quickfix list's
---- along the bottom of the tab, the whole width (`opts.height` rows, or
---- `paw.opt.qf_height`); a location list's below its window (`opts.loc`,
---- with `opts.win` the window, the current one by default). A window of
---- the tab that shows it already is gone to. Returns the window.
+--- Open the window of the list and give it the keyboard. The quickfix list
+--- opens along the bottom of the tab, the whole width (`opts.height` rows,
+--- or `paw.opt.qf_height`). A location list opens below its window
+--- (`opts.loc`, with `opts.win` the window, the current one by default). If
+--- a window of the tab shows the list already, paw goes to it. Returns the window.
 function M.open(opts)
   opts = opts or {}
   local L = paw.layout
@@ -775,7 +777,7 @@ function M.open(opts)
 end
 
 --- Close the windows of the tab that show the quickfix list (`loc`: the
---- current window's location list). Returns whether one closed.
+--- location list of the current window). Returns true if one closed.
 function M.close(loc)
   local L = paw.layout
   local target = "quickfix"

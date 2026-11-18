@@ -16,11 +16,13 @@ local M = {}
 --- names of the `output` and `input` that are open.
 M.devices = api.audio_devices
 
---- Open other devices: `output` and `input` by name or part of one
---- (`"default"` for the system's), `buffer` in frames (0 for the device's
---- own), `rate` in Hz (0 for the device's own), `backend` the sound system
---- (`"auto"`, `"pipewire"`, `"alsa"`, `"jack"`). What is left out stays. The choice belongs to this machine and is
---- remembered for the next run; a name that matches nothing is an error.
+--- Open other devices. `output` and `input` are a name or a part of a name
+--- (`"default"` for the default of the system). `buffer` is in frames (0
+--- for the value of the device). `rate` is in Hz (0 for the value of the
+--- device). `backend` is the sound system (`"auto"`, `"pipewire"`, `"alsa"`,
+--- `"jack"`). The values that you do not give do not change. The choice is
+--- for this computer, and paw keeps it for the next run. A name that
+--- matches nothing is an error.
 function M.use(opts)
   api.audio_use(opts or {})
 end
@@ -31,8 +33,9 @@ M.levels = api.input_levels
 --- Block sizes offered where the device is chosen.
 M.blocks = { 32, 64, 128, 256, 512, 1024, 2048 }
 
---- A device's name made short enough for a track header: the maker's name
---- goes when a model number follows it, and so does a trailing number.
+--- The name of a device, made short enough for a track header. The name of
+--- the maker goes when a model number follows it, and a number at the end
+--- also goes.
 ---   "Steinberg UR22mkII 0" → "UR22mkII", "Bose NC 700 HP" → "Bose NC 700 HP"
 function M.short(name)
   if not name or name == "" or name == "none" then return nil end
@@ -68,8 +71,9 @@ function M.label(t)
   return nil
 end
 
---- The level of what arrives at a track's audio input, 0 to 1, whether or
---- not the track is armed or monitored; 0 for a track without one.
+--- The level of the sound at the audio input of a track, 0 to 1. The track
+--- does not have to be armed or monitored. 0 for a track without
+--- an audio input.
 function M.level(t, levels)
   if not t.input then return 0 end
   levels = levels or M.levels()
@@ -84,13 +88,13 @@ end
 -- value last given out.
 local load = { average = nil, at = nil, shown = 0 }
 
---- How busy the engine is, 0 to 1, as the status line and every frontend
---- show it: the load of its blocks averaged over about a second, given in
---- steps of 2.5% and moved only when the average has left the step shown.
---- A block's own load wavers all the time, the more so on a busy machine,
---- and each change of it would be drawn again in the terminal and sent to
---- every window, which then drew a frame for it. `cpu`: the load just read
---- (`api.engine_get().cpu`), when the caller has it.
+--- How busy the engine is, 0 to 1, as the status line and all frontends
+--- show it. It is the load of its blocks, averaged over about one second,
+--- in steps of 2.5%. It changes only when the average leaves the step that
+--- shows. The load of one block changes all the time, more on a busy
+--- computer. If paw showed each change, the terminal would draw it again,
+--- and each window would draw a frame for it. `cpu` is the load that the
+--- caller read (`api.engine_get().cpu`), if the caller has it.
 function M.load(cpu)
   cpu = cpu or api.engine_get().cpu or 0
   local now = api.now()
@@ -104,12 +108,12 @@ function M.load(cpu)
   return load.shown
 end
 
---- Everything a track's input can be, in order, under three headings
---- (`group`): "audio" (none, each channel of the input device, each pair of
---- neighbouring channels), "midi" (every port, or one) and "channel" (every
---- MIDI channel, or one). Each is `{ group, label, checked, value }`; give it
---- to `M.choose`. A choice that is saved but not there now is listed too,
---- marked as missing, so that it can be seen and changed.
+--- All the possible inputs of a track, in order, under three headings
+--- (`group`). "audio" is none, each channel of the input device, and each
+--- pair of adjacent channels. "midi" is all ports, or one. "channel" is
+--- all MIDI channels, or one. Each is `{ group, label, checked, value }`.
+--- Give it to `M.choose`. A saved choice that is not available now is also
+--- in the list, marked as not found. So you can see it and change it.
 function M.choices(track)
   local t = type(track) == "table" and track.id and api.track_get(track.id) or api.track_get(track)
   local out = {}
@@ -171,8 +175,8 @@ function M.choices(track)
   return out
 end
 
---- Take a choice from `M.choices`. A MIDI port or channel is only heard on
---- a track without audio input, so choosing one takes the audio input away.
+--- Use a choice from `M.choices`. A track hears a MIDI port or channel only
+--- when it has no audio input. So a MIDI choice removes the audio input.
 function M.choose(track, choice)
   local id = type(track) == "table" and track.id or track
   local value = choice.value or choice
@@ -223,10 +227,10 @@ function M.timing()
   return table.concat(parts, " · ")
 end
 
---- What can be chosen where the devices are: under the headings (`group`)
---- "output", "input", "block", "rate" and "backend" (the sound system),
---- each `{ group, label, checked, value }`
---- for `M.choose_engine`, and `info` lines that cannot be chosen.
+--- The choices of the devices, under the headings (`group`) "output",
+--- "input", "block", "rate" and "backend" (the sound system). Each is
+--- `{ group, label, checked, value }` for `M.choose_engine`. The `info`
+--- lines are data that you cannot select.
 function M.engine_choices()
   local list = M.devices()
   local out = {}

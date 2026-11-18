@@ -29,7 +29,7 @@ local function set_meta(id, key, value)
   api.track_set(id, "meta", m)
 end
 
---- Whether a track is a group.
+--- True if a track is a group.
 function M.is_group(track)
   return meta(id_of(track)).group_head == true
 end
@@ -59,14 +59,14 @@ function M.depth(track)
   return depth
 end
 
---- Whether a group's tracks are folded out of sight.
+--- True if the tracks of a group are folded and hidden.
 function M.folded(group)
   return meta(id_of(group)).group_folded == true
 end
 
---- Whether a track is out of sight: inside a group that is folded. Seen
---- from inside group `top` (a narrowed tab's), only the groups inside it
---- count: `top` itself is open there.
+--- True if a track is hidden: inside a folded group. Inside group `top`
+--- (the group of a narrowed tab), only the groups inside it count. `top`
+--- itself is open there.
 function M.hidden(track, top)
   if top and id_of(track) == top then return false end
   local at, steps = M.of(track), 0
@@ -145,9 +145,9 @@ function M.add(track, group)
   gather(group)
 end
 
---- Take a track out of its group, up a level: it sounds where the group
---- sounds, and belongs to the group that one is in, if any. It moves out of
---- the group's block of rows, unless `stay`.
+--- Remove a track from its group, up one level. It sounds where the group
+--- sounds, and it is in the parent group of the group, if any. It moves out
+--- of the rows of the group, unless `stay`.
 function M.remove(track, stay)
   track = id_of(track)
   local group = M.of(track)
@@ -161,8 +161,8 @@ function M.remove(track, stay)
   return true
 end
 
---- A new group holding `tracks` (ids or tracks), above the first of them.
---- Returns the group's track.
+--- A new group that contains `tracks` (ids or tracks), above the first of
+--- them. Returns the track of the group.
 function M.make(tracks, name)
   local ids = {}
   for i, track in ipairs(tracks or {}) do ids[i] = id_of(track) end
@@ -219,8 +219,9 @@ local function note(group)
   for _, id in ipairs(M.members(group)) do volumes[id] = api.track_get(id).volume end
 end
 
---- Whether the faders of a group's members are linked: moving one moves the
---- others by as many dB. This is apart from routing, which a group has too.
+--- True if the faders of the members of a group are linked. When one moves,
+--- the others move by the same number of dB. This is separate from the
+--- routing, which a group also has.
 function M.linked(group)
   return meta(id_of(group)).group_link == true
 end

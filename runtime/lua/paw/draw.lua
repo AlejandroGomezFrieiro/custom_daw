@@ -15,7 +15,7 @@ local function rgb(hex)
   return tonumber(hex:sub(2, 3), 16), tonumber(hex:sub(4, 5), 16), tonumber(hex:sub(6, 7), 16)
 end
 
---- A colour between two: `t` 0 gives `a`, 1 gives `b`.
+--- A color between two colors: `t` 0 gives `a`, 1 gives `b`.
 function M.mix(a, b, t)
   local r1, g1, b1 = rgb(a)
   local r2, g2, b2 = rgb(b)
@@ -35,9 +35,9 @@ local function nearest_level(v)
   return at - 1
 end
 
---- The nearest of the 256 colours to `#rrggbb`, from the 6x6x6 cube (16 to
---- 231) or the greys (232 to 255), a grey for any colour with little hue:
---- its index and the colour it stands for.
+--- The nearest of the 256 colors to `#rrggbb`, from the 6x6x6 cube (16 to
+--- 231) or the grays (232 to 255). A color with little hue gets a gray.
+--- Returns its index and the color that the index shows.
 function M.nearest256(hex)
   local r, g, b = rgb(hex)
   local ri, gi, bi = nearest_level(r), nearest_level(g), nearest_level(b)
@@ -77,9 +77,9 @@ function M.nearest256(hex)
   return index, string.format("#%02x%02x%02x", cr, cg, cb)
 end
 
---- Whether the terminal shows 24-bit colour: `paw.opt.termcolors` "true" or
---- "256", or with "auto" (the default) what the environment says: COLORTERM
---- of truecolor or 24bit, or a TERM that ends in -direct.
+--- True if the terminal shows 24-bit color. `paw.opt.termcolors` is "true"
+--- or "256". With "auto" (the default), the environment tells: COLORTERM of
+--- truecolor or 24bit, or a TERM that ends in -direct.
 function M.truecolor()
   local want = tostring(paw.opt.termcolors or "auto")
   if want == "true" or want == "truecolor" or want == "24bit" then return true end
@@ -89,8 +89,8 @@ function M.truecolor()
   return (os.getenv("TERM") or ""):match("%-direct$") ~= nil
 end
 
---- A highlight definition as this terminal can show it: on one without
---- 24-bit colour, each `#rrggbb` becomes the nearest of the 256.
+--- A highlight definition as this terminal can show it. On a terminal
+--- without 24-bit color, each `#rrggbb` becomes the nearest of the 256.
 function M.term_def(def, truecolor)
   if truecolor or type(def) ~= "table" then return def end
   local out = {}
@@ -151,8 +151,8 @@ end
 local hues = {}
 local stereo_groups = {}
 
---- Highlight groups in the shades of one colour (`#rrggbb`), made the first
---- time the colour is asked for:
+--- Highlight groups in the shades of one color (`#rrggbb`), made the first
+--- time that a caller asks for the color:
 ---   fg                  the colour itself, on whatever is behind it
 ---   title, body         a clip's name row and the rows under it
 ---   title_cur, body_cur the same for the clip under the cursor (or chosen)
@@ -192,14 +192,14 @@ function M.hue(colour)
   return names
 end
 
---- Forget the shades made so far: after the palette has changed.
+--- Forget the shades made until now. Call it after the palette changes.
 function M.reset()
   hues = {}
   stereo_groups = {}
 end
 
---- The colour of a track: its own if it has one, else one of the theme's
---- by its place in the track list.
+--- The color of a track: its own color if it has one. If not, a color of
+--- the theme, by the place of the track in the track list.
 function M.track_colour(track, index)
   if track.color and track.color:match("^#%x%x%x%x%x%x$") then return track.color end
   if track.master then return theme.palette.dim end
@@ -210,7 +210,7 @@ function M.track_colour(track, index)
   return theme.hues[((track.index or index or 1) - 1) % #theme.hues + 1]
 end
 
---- The hue of a track's colour, from 0 to 360.
+--- The hue of the color of a track, from 0 to 360.
 function M.track_hue(track, index)
   return M.hue(M.track_colour(track, index))
 end
@@ -285,8 +285,8 @@ function M.vmeter(buf, x, y, height, peak, hold)
   end
 end
 
---- Both sides of a stereo level in one row `width` cells wide: the left in
---- the upper half of each cell, the right in the lower.
+--- The two sides of a stereo level in one row that is `width` cells wide.
+--- The left side is in the upper half of each cell, the right in the lower.
 function M.stereo_meter(buf, x, y, width, left, right)
   local g = M.g
   if paw.opt.ascii then
@@ -310,8 +310,8 @@ function M.stereo_meter(buf, x, y, width, left, right)
 end
 
 local held = {}
---- Peaks held for a while, by key: `hold(key, peak)` gives the loudest of
---- the last two seconds, which falls back once that time has passed.
+--- Peaks held for some time, by key. `hold(key, peak)` gives the loudest
+--- peak of the last two seconds, which falls after that time.
 function M.hold(key, peak)
   local now = api.now()
   local h = held[key]
@@ -328,9 +328,10 @@ end
 local clipped = {}
 paw.on("transport.play", function() clipped = {} end)
 
---- A track's meter as the mixer shows it, in a terminal and in a window
---- (`scene.live`): both sides, the loudest of late and whether it has
---- reached full scale since `clear_peak` was last called for it.
+--- The meter of a track as the mixer shows it, in a terminal and in a
+--- window (`scene.live`). It gives the two sides and the loudest recent
+--- peak. It also tells if the track reached full scale after the last
+--- `clear_peak` for it.
 function M.track_peak(id)
   local left, right = api.track_meter(id)
   local loudest = math.max(left, right)
@@ -353,8 +354,9 @@ function M.slider(buf, x, y, width, fraction, on, off)
   if at < width - 1 then buf:text(x + at + 1, y, string.rep(g.slider_off, width - 1 - at), off or "ParamBarOff") end
 end
 
---- A pan from -1 to 1 as a bar `width` cells wide (odd is best): a rail
---- with a mark where the sound sits, `───┃───` in the middle.
+--- A pan from -1 to 1 as a bar that is `width` cells wide (an odd number
+--- is best). It is a rail with a mark at the position of the sound,
+--- `───┃───` in the middle.
 function M.pan(buf, x, y, width, pan, style)
   local g = M.g
   local at = math.floor((paw.util.clamp(pan, -1, 1) + 1) / 2 * (width - 1) + 0.5)
@@ -389,10 +391,9 @@ end
 
 -- Pictures inside clips -------------------------------------------------------
 
---- Notes as a small piano roll of `rows` text rows, each `width` columns:
---- two pitches' worth of height to a row, drawn with half blocks. `notes`
---- have `start`, `length` and `pitch`; a column covers `1 / zoom` beats from
---- `from`.
+--- Notes as a small piano roll of `rows` text rows, each `width` columns.
+--- A row holds two pitches, drawn with half blocks. `notes` have `start`,
+--- `length` and `pitch`. A column covers `1 / zoom` beats from `from`.
 function M.miniroll(notes, width, rows, zoom, from)
   from = from or 0
   local g = M.g
@@ -433,9 +434,10 @@ function M.miniroll(notes, width, rows, zoom, from)
   return out
 end
 
---- How far a sample of size `a` (0 to 1) reaches up a waveform, 0 to 1:
---- as it is (`paw.opt.wave_scale` "linear", which shows a kick over a hat) or
---- on a decibel scale from -48 (`"db"`, which shows quiet material).
+--- How far a sample of size `a` (0 to 1) goes up a waveform, 0 to 1. With
+--- `paw.opt.wave_scale` "linear", the size does not change, and a kick shows
+--- over a hat. With `"db"`, the scale is in decibels from -48, and quiet
+--- sounds show.
 function M.wave_reach(a)
   a = math.min(math.abs(a), 1)
   if paw.opt.wave_scale ~= "db" then return a end
@@ -443,15 +445,15 @@ function M.wave_reach(a)
 end
 local wave_reach = M.wave_reach
 
---- Peaks (`{ min, max }` pairs from -1 to 1, one per column) as a waveform
---- of `rows` text rows, each column drawn from its lowest to its highest
---- sample around the middle of the rows, in eighths of a row. Returns the
---- rows as text and, for each row, its runs `{ column, text, mark }` of
---- cells that share a mark, the column counted from 0 (the text of a run
---- is drawn with the mark's style, `nil` for none): "flip" is for cells
---- whose upper part is the wave, an eighth block drawn in reverse video
---- because blocks only grow from the bottom, "clip" for a column that
---- reaches full scale, "clipflip" for both.
+--- Peaks (`{ min, max }` pairs from -1 to 1, one for each column) as a
+--- waveform of `rows` text rows. Each column goes from its lowest to its
+--- highest sample around the middle of the rows, in eighths of a row.
+--- Returns the rows as text. It also returns, for each row, its runs
+--- `{ column, text, mark }` of cells with the same mark. The column counts
+--- from 0. The text of a run has the style of the mark, `nil` for none.
+--- "flip" is for cells whose upper part is the wave. Such a cell is an
+--- eighth block in reverse video, because blocks only grow from the bottom.
+--- "clip" is for a column that reaches full scale, and "clipflip" for both.
 function M.waveform(peaks, rows)
   local g = M.g
   local plain = paw.opt.ascii
@@ -518,9 +520,9 @@ end
 local dots = { { 0x01, 0x02, 0x04, 0x40 }, { 0x08, 0x10, 0x20, 0x80 } }
 local lines3 = { unicode = { "▁", "─", "▔" }, ascii = { "_", "-", "'" } }
 
---- How curves are drawn in cells: "sextant", "braille" or "line", by
---- `paw.opt.curve_glyphs`; `paw.opt.braille = false` and `paw.opt.ascii`
---- both mean "line" (ascii wins over all, and uses ASCII characters).
+--- How paw draws curves in cells: "sextant", "braille" or "line", from
+--- `paw.opt.curve_glyphs`. `paw.opt.braille = false` and `paw.opt.ascii`
+--- both mean "line". `paw.opt.ascii` wins over all, and uses ASCII characters.
 function M.curve_glyphs()
   if paw.opt.ascii or paw.opt.braille == false then return "line" end
   local kind = paw.opt.curve_glyphs
@@ -547,12 +549,13 @@ end
 --- A braille character from its eight dots: bit k is dot k + 1.
 function M.braille(bits) return utf8(0x2800 + bits) end
 
---- A connected line over a grid of cells, for a curve: `y(sx)` gives the
---- row of the line, from the top, in `sub` rows a cell (3 for sextants, 4
---- for braille), at the `sx`th of two samples a cell, from 0, or nil for
---- none; `samples` of them. A jump is filled from the last row to this one,
---- so that the line is unbroken. Returns `{ [row * width + col] = bits }`,
---- the bits as `M.sextant` or `M.braille` take them.
+--- A connected line over a grid of cells, for a curve. `y(sx)` gives the
+--- row of the line from the top, in `sub` rows for each cell (3 for
+--- sextants, 4 for braille). `sx` counts from 0, with two samples for each
+--- cell. `y(sx)` gives nil for no line, and there are `samples` of them.
+--- The function fills a jump from the last row to this row, to keep the
+--- line connected. Returns `{ [row * width + col] = bits }`, the bits as
+--- `M.sextant` or `M.braille` take them.
 function M.trace(width, samples, y, sub, kind)
   local cells, last = {}, nil
   for sx = 0, samples - 1 do
@@ -579,10 +582,10 @@ function M.trace(width, samples, y, sub, kind)
 end
 
 --- Draw a curve as a thin line over `rows` rows of a buffer, from row `y`
---- down: `value(i)` gives the height, from 0 at the bottom to 1 at the top,
---- at the `i`th of two points per column. Only the cells the line passes
---- through are touched. Sextants (a connected line), braille dots or lines
---- at three heights a row, as `M.curve_glyphs()` says.
+--- down. `value(i)` gives the height, from 0 at the bottom to 1 at the top,
+--- at the `i`th of two points for each column. The function changes only
+--- the cells on the line. It uses sextants (a connected line), braille dots
+--- or lines at three heights a row, as `M.curve_glyphs()` tells.
 function M.curve(buf, y, rows, value, style)
   local kind = M.curve_glyphs()
   if kind == "line" then
@@ -612,8 +615,8 @@ end
 -- Piano rolls -----------------------------------------------------------------
 
 --- One row of a keyboard on its side, `width` cells wide, for the left edge
---- of a piano roll: black keys are short, the Cs are named, and so is the
---- pitch the cursor is on.
+--- of a piano roll. Black keys are short. The Cs have their names, and the
+--- pitch of the cursor has its name too.
 function M.piano_key(buf, row, pitch, cursor, width, name)
   local music = paw.music
   local step = pitch % 12
@@ -631,9 +634,9 @@ function M.piano_key(buf, row, pitch, cursor, width, name)
 end
 
 --- The bars and beats from `from` for `span` beats, as the project counts
---- them: `{ beat = b, bar = n }` for a bar line (n from 1) and `{ beat = b }`
---- for a beat inside a bar. Bar lines come from `paw.time.bar_start`, so a
---- change of time signature moves them.
+--- them. `{ beat = b, bar = n }` is a bar line (n from 1), and
+--- `{ beat = b }` is a beat inside a bar. Bar lines come from
+--- `paw.time.bar_start`, so a change of time signature moves them.
 function M.bar_lines(from, span)
   -- From the tempo map: bars, and the beats of the signature in each.
   local out = {}
@@ -643,10 +646,11 @@ function M.bar_lines(from, span)
   return out
 end
 
---- Number a ruler above a roll that shows `span` beats from `scroll` at
---- `zoom` columns a beat: bars as the project counts them (`origin` is the
---- project beat of the roll's beat 0), beats in between as ticks. Returns
---- where the lines go, as `{ x, bar }`, for the rows underneath.
+--- Write the numbers of a ruler above a roll that shows `span` beats from
+--- `scroll`, at `zoom` columns for each beat. Bars have the numbers of the
+--- project (`origin` is the project beat of the beat 0 of the roll). Beats
+--- between them are ticks. Returns the positions of the lines, as
+--- `{ x, bar }`, for the rows below.
 function M.beats(ruler, scroll, span, zoom, origin)
   local g = M.g
   local lines = {}
@@ -664,9 +668,9 @@ function M.beats(ruler, scroll, span, zoom, origin)
   return lines
 end
 
---- A row of keys and what they do, for a line of hints: `{ { "o", "new track" }, ... }`,
---- joined by a faint dot. `? keys` always comes last when it is in the list.
---- Returns the columns used; entries that do not fit are left out.
+--- A row of keys and their actions, for a line of hints: `{ { "o", "new track" }, ... }`,
+--- with a faint dot between them. `? keys` is always the last when it is in
+--- the list. Returns the columns used. The entries that do not fit are not shown.
 function M.keys(buf, x, y, entries, width, groups)
   local g = M.g
   local key, text, sep_style = "KeyBarKey", "KeyBarText", "KeyBarSep"

@@ -93,8 +93,8 @@ function M.enter(id)
   return id
 end
 
---- Run `fn` in seat `id` (the instance's, if that one has closed) and come
---- back to the seat that was current.
+--- Run `fn` in seat `id` (in the seat of the instance, if that seat closed),
+--- then return to the current seat.
 function M.within(id, fn, ...)
   local before = M.current
   M.enter(id)
@@ -104,8 +104,8 @@ function M.within(id, fn, ...)
   return unpack(result, 2, result.n)
 end
 
---- A copy of a value, tables all the way down, for a new seat to start
---- from what seat 0 has without sharing it.
+--- A deep copy of a value. A new seat starts from the values of seat 0 with
+--- it, and does not share them.
 function M.copy(value)
   if type(value) ~= "table" then return value end
   local out = {}
@@ -113,7 +113,7 @@ function M.copy(value)
   return out
 end
 
---- Whether `id` has a seat of its own.
+--- True if `id` has its own seat.
 function M.has(id)
   return id ~= 0 and seats[id] ~= nil
 end
@@ -126,8 +126,8 @@ function M.list()
   return out
 end
 
---- Give connection `id` a seat of its own, for a reason (`terminal`,
---- `window`); it stays while any reason does.
+--- Give connection `id` its own seat, for a reason (`terminal`, `window`).
+--- The seat stays while a reason stays.
 function M.open(id, why)
   if id == 0 then return end
   local seat = seats[id]

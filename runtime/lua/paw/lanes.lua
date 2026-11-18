@@ -35,7 +35,7 @@ end
 
 local function id_of(track) return type(track) == "table" and track.id or track end
 
---- Whether a track's lanes are shown as rows.
+--- True if the lanes of a track show as rows.
 function M.is_open(track)
   return open[id_of(track)] == true
 end
@@ -47,13 +47,13 @@ function M.open(track, on)
   save()
 end
 
---- Show a track's automation lanes, or hide them; returns whether they show.
+--- Show the automation lanes of a track, or hide them. Returns true if they show.
 function M.toggle(track)
   M.open(track, not M.is_open(track))
   return M.is_open(track)
 end
 
---- Whether any track has its lanes open.
+--- True if a track has its lanes open.
 function M.any_open()
   return next(open) ~= nil
 end

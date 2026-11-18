@@ -41,9 +41,9 @@ local function unstretched(warp, x, back)
   return warp[n][to] + x - warp[n][from]
 end
 
---- The moment of an audio clip's file that plays `by` beats after its
---- start, through its stretch, its warp markers and its bend along the
---- tempo (`clip.bent`, when it follows a tempo that changes inside it).
+--- The time in the file of an audio clip that plays `by` beats after its
+--- start. It obeys the stretch, the warp markers and the bend of the clip
+--- along the tempo (`clip.bent`, when it follows a tempo that changes in it).
 function M.file_at(c, by)
   local warp = c.warp or {}
   if #warp == 0 and not c.bent then
@@ -64,8 +64,9 @@ function M.file_seconds(c, beats, at)
   return M.file_at(c, from + beats) - M.file_at(c, from)
 end
 
---- Seconds an audio clip would play of its file before its start, were
---- it longer that way: what is played of the file's first `offset` seconds.
+--- The seconds of its file that an audio clip would play before its start,
+--- if it were longer at the start. This is the part of the first `offset`
+--- seconds of the file that plays.
 function M.lead(c)
   local warp = c.warp or {}
   local u = #warp > 0 and unstretched(warp, c.offset) - unstretched(warp, 0) or c.offset
@@ -77,10 +78,10 @@ function M.lead(c)
 end
 
 
---- What a clip plays from, once its start has moved `by` beats later
---- (earlier below 0) while what it plays stays where it is: `offset` for
---- sound; for a looped clip `loop_start` too, kept within one repeat, and
---- `shift`, how far its notes move (counted from the new start).
+--- The play position of a clip after its start moves `by` beats later
+--- (earlier below 0), while its sound stays at the same time. For sound,
+--- it is `offset`. For a looped clip, it is also `loop_start`, kept in one
+--- repeat. `shift` is how far its notes move (counted from the new start).
 function M.moved(c, by)
   local out = { shift = -by }
   local turns = 0
@@ -117,9 +118,10 @@ function M.move_content(id, by)
   if m.loop_start then api.clip_set(id, "loop_start", m.loop_start) end
 end
 
---- Give `snap`, the snapshot of a piece of clip `c` that begins `by`
---- beats into it, what `c` plays with: its stretch, shift and timebase,
---- and its loop from where the piece begins. Returns `M.moved(c, by)`.
+--- Give `snap` the playback values of `c`. `snap` is the snapshot of a
+--- piece of clip `c` that starts `by` beats into it. The values are its
+--- stretch, shift and timebase, and its loop from the start of the piece.
+--- Returns `M.moved(c, by)`.
 function M.carry(c, snap, by)
   local m = M.moved(c, by)
   if c.kind == "audio" then
@@ -152,15 +154,15 @@ local function scale(c, k, set)
   end
 end
 
---- Stretch an audio clip to play its file `ratio` times as long, keeping
---- what it plays: it grows or shrinks from its start by as much.
+--- Stretch an audio clip to play its file `ratio` times as long, with the
+--- same sound. It becomes longer or shorter from its start by the same ratio.
 function M.set(id, ratio)
   local c = api.clip_get(id)
   need_audio(c)
   if math.abs(ratio - c.stretch) > EPS then scale(c, ratio / c.stretch, true) end
 end
 
---- Stretch an audio clip so that what it plays now lasts `beats` beats.
+--- Stretch an audio clip. Its current sound then lasts `beats` beats.
 function M.to(id, beats)
   local c = api.clip_get(id)
   need_audio(c)
@@ -169,8 +171,8 @@ function M.to(id, beats)
   scale(c, k, true)
 end
 
---- Stretch an audio clip over beats `from` to `to`: it starts at `from`
---- and lasts until `to`, playing what it plays now.
+--- Stretch an audio clip over beats `from` to `to`. It starts at `from`,
+--- continues until `to`, and plays its current sound.
 function M.fit(id, from, to)
   api.clip_set(id, "start", math.max(0, from))
   M.to(id, to - from)
@@ -192,17 +194,17 @@ function M.markers(c)
   return out
 end
 
---- Put a warp marker on an audio clip at `beat`, pinning the moment of its
+--- Put a warp marker on an audio clip at `beat`. It pins the time of its
 --- file that plays there (nothing moves). Returns its index.
 function M.warp_add(id, beat)
   need_audio(api.clip_get(id))
   return api.clip_warp_add(id, beat)
 end
 
---- Move warp marker `index` of a clip to play at `beat`: the sound between
---- it and its neighbours stretches, the clip's start and end staying where
---- they are. It goes no further than a stretch of 0.25 to 4 on either
---- side allows. Returns its index, which may have changed.
+--- Move warp marker `index` of a clip to play at `beat`. The sound between
+--- it and the markers next to it stretches, and the start and the end of
+--- the clip do not move. The stretch on each side stays between 0.25 and 4.
+--- Returns its index, which can be different.
 function M.warp_move(id, index, beat)
   return api.clip_warp_move(id, index, beat)
 end
@@ -243,10 +245,10 @@ function M.pitch(id, semitones)
   api.clip_set(id, "pitch", semitones)
 end
 
---- Make an audio clip follow the tempo, its sound being at `bpm` (the tempo
---- at its start, for the clip as it is stretched now, when left out); with
---- `bpm` false it keeps its time again. Its length changes as its stretch
---- does, so that it plays what it played.
+--- Make an audio clip follow the tempo, with its sound at `bpm`. If `bpm`
+--- is not given, it is the tempo at the start of the clip, for its current
+--- stretch. With `bpm` false, the clip keeps its time again. Its length
+--- changes with its stretch, so it plays the same sound.
 function M.follow(id, bpm)
   local c = api.clip_get(id)
   need_audio(c)
@@ -259,8 +261,8 @@ function M.follow(id, bpm)
   end
 end
 
---- Loop a clip (`on` true), or stop it looping (false); `beats`, when
---- given, is how much of it repeats.
+--- Loop a clip (`on` true), or stop its loop (false). `beats`, when given,
+--- is the length of the part that repeats.
 function M.loop(id, on, beats)
   if beats then api.clip_set(id, "loop_length", beats) end
   api.clip_set(id, "loop", on)
@@ -280,9 +282,9 @@ function M.repeats(c, limit)
   return out
 end
 
---- A MIDI clip's `notes` as they sound, counted from its start: for a
---- looped clip those of its repeated stretch over and over, each cut at the
---- end of its repeat; at most `limit` of them.
+--- The `notes` of a MIDI clip as they sound, counted from its start. For a
+--- looped clip, these are the notes of its repeated range again and again,
+--- each cut at the end of its repeat. At most `limit` of them.
 function M.sounding(c, notes, limit)
   if not (c.loop and c.loop_length and c.loop_length > EPS) then return notes end
   local out, period, from = {}, c.loop_length, c.loop_start or 0
@@ -304,9 +306,9 @@ function M.sounding(c, notes, limit)
   return out
 end
 
---- A clip's stretch, shift and loop in a few characters, for its label:
---- "×1.5 +3st ⟳", and "stretching…" while its sound is being made; nil
---- for a plain clip.
+--- The stretch, shift and loop of a clip in a few characters, for its
+--- label: "×1.5 +3st ⟳". `stretching…` shows while paw makes its sound. Nil
+--- for a clip with none of these.
 function M.badge(c)
   local ascii = paw.opt.ascii
   local parts = {}

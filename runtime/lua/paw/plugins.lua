@@ -21,13 +21,13 @@ M.dirs = {}
 --- milliseconds: an instrument may load another sound and name its keys anew.
 M.names_ttl = 2000
 
---- Look for CLAP and VST3 plugins in `dir` as well as where plugins are
---- installed, for the rest of the session, and register those in it now;
---- devices of theirs that a project already holds and that were missing are
---- made. They are listed as coming from `name` (by default the extension
---- whose directory `dir` is in, else `dir`). Works with `--no-plugins` too.
---- Returns `{ kinds, notes }`: the device kinds found and what could not be
---- used; nil where plugins cannot be looked for.
+--- Find CLAP and VST3 plugins in `dir` and in the usual plugin folders, for
+--- the rest of the session. Register the plugins in `dir` now. paw makes
+--- the devices of these plugins that a project contains and that paw could
+--- not make before. The list shows them as from `name` (by default the extension
+--- whose directory contains `dir`, or `dir`). It also works with
+--- `--no-plugins`. Returns `{ kinds, notes }`: the device kinds found and
+--- the files that paw cannot use. Returns nil where paw cannot find plugins.
 ---   paw.plugins.add_dir(here .. "/result/lib/clap")   -- `here`: the extension's directory
 function M.add_dir(dir, name)
   dir = tostring(dir)
@@ -52,8 +52,8 @@ function M.add_dir(dir, name)
   return found
 end
 
---- Look in `dir` no more, and offer the devices found there no more;
---- those made go on.
+--- Stop to find plugins in `dir`, and stop to offer the devices found
+--- there. The devices that exist continue to work.
 function M.remove_dir(dir)
   local known = M.dirs[tostring(dir)]
   if not known then return end
@@ -76,8 +76,8 @@ function M.note_names(device)
   return names[device].names
 end
 
---- The key names of a track's devices together; where two name a key, the
---- first in the chain wins.
+--- The key names of all the devices of a track. When two devices name a
+--- key, the first in the chain wins.
 function M.key_names(track)
   local ok, t = pcall(api.track_get, track)
   local out = {}
