@@ -13,6 +13,10 @@ each extension (`:help notation`).
 ## How-to guides
 
 - [Run paw](running.md): install paw, build it from the source, its options, audio devices, other computers
+- [How to record an audio take](how-to/record-an-audio-take.md)
+- [How to record takes over a loop and comp them](how-to/record-takes-and-comp.md)
+- [How to punch in over a part](how-to/punch-in-over-a-part.md)
+- [How to set the recording offset](how-to/set-the-recording-offset.md)
 - [How to record a performance from the session view](how-to/record-a-performance-from-the-session-view.md)
 - [How to map a MIDI controller](how-to/map-a-midi-controller.md)
 - [How to write a language server](how-to/write-a-language-server.md)
@@ -28,7 +32,10 @@ each extension (`:help notation`).
 - [The terminal interface](terminal.md): keys, Ex, windows, text buffers, files, the quickfix list, the mouse, help, pickers, queries
 - [The graphical frontend](window.md): each gesture of the graphical window
 - [Configuration](configuration.md): `init.lua`, options, colors, the status line
-- [Input and recordings](recording.md): inputs, input monitors, takes
+- [Audio devices](reference/audio-devices.md): the input and output devices, PipeWire, latency, a lost device, test backends
+- [Recording](reference/recording.md): track inputs, monitoring, count-in, punch, pre-roll, files, import
+- [Takes](reference/takes.md): takes, comping, take lanes
+- [MIDI](reference/midi.md): controller moves, the event list, MIDI input and output, MPE, MIDI files
 - [Edit, mix and render](mixing.md): routes, automation, tempo, stretched clips, markers, MIDI controllers, export
 - [Devices](reference/devices.md): the built-in devices, wet/dry and output gain, presets
 - [Plugins](reference/plugins.md): formats, scan, editors, processes, status, offline devices
@@ -52,4 +59,5 @@ each extension (`:help notation`).
 - [About the session view](explanation/about-the-session-view.md): why the engine times a launch, and why a render needs a capture
 - [About language servers](explanation/about-language-servers.md): the four layers, addresses with ids, subjects, LSP
 - [About the harmony reading](explanation/about-the-harmony-reading.md): how paw finds chords and keys, and why providers can replace it
+- [About MIDI 2.0 in paw](explanation/about-midi-2.md): fractions, controllers for each note, ports, MPE
 - [About the plugin sandbox](explanation/about-the-plugin-sandbox.md): one process for each plugin, and what it costs
