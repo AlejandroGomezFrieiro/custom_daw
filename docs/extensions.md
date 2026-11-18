@@ -234,17 +234,22 @@ crates/paw-core/src/remote.rs). To draw them as the terminal does:
   another place, is not made again.
 
 The window (crates/paw-gui, on egui) does not get the grid: a view it
-shows in a pane or in a window of its own as the terminal draws it comes
-as one drawing from `paw.canvas.paint_cells`, which the window makes into
-an image with the same rasterizer (`panes::raster`, through
-`paw_raster::Drawing::paint_scaled`) and shows as a texture. That drawing
-already holds the strips: while the view is drawn for the window,
+shows in a pane or in a window of its own comes as a scene
+(crates/paw-scene; "Scenes" in [the protocol](protocol.md)), built by
+`paw.ui.render_scene(name, w, h, cell, win)` from what the view writes
+(each `buf:text` a run, each `buf:fill` a fill, kept by where they are) and
+pushed as what changed of it. While the view is drawn for a scene,
 `buf:strip` keeps each strip under the text (`paw.ui.pictures`) and
-answers true, and `paint_cells` puts the cells' backgrounds first, then
-each strip's `draw(g, px)` at the window's cell size (a painter clipped to
-the strip, from the whole strip's corner, `px.view` what shows), then the
-cells' text. So the curve editor and the vocal editor show their curves
-in pixels in the window with nothing in crates/paw-gui knowing of strips.
+answers true, and the strip's `draw(g, px)`, at the window's cell size
+(`px.view` what shows), is a picture of the scene, cut to the part that
+shows. The window draws the cells' backgrounds first, then the pictures
+under the text, then the text, in its own font; a view that paints is one
+picture of the whole. So the curve editor and the vocal editor show their
+curves in pixels in the window with nothing in crates/paw-gui knowing of
+strips. Since the scene is made of the view's writes, a view must draw
+only through the buffer it is given (`tests/scene_parity.lua` checks every
+view's, the extensions' included, and that its scene lowered to cells is
+its drawing).
 A view the window draws natively (the arrange view, the piano roll, the
 mixer) draws its own curves and waveforms with egui's painter and has no
 strips; were one to move to cells, it would get them the same way.

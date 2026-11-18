@@ -184,7 +184,11 @@ that paints (the notation, the drum grid, the vocal editor, the undo tree)
 as a picture, any other (a curve `paw://lane/3`, the quickfix list, a text
 buffer `paw://tracks`, an empty window) cell by cell in the monospace font
 as the terminal draws it, the title row the terminal gives it hidden under
-the window's title. So `:vs paw://lane/3`,
+the window's title. The kernel sends each such pane, and each view in a
+window of its own, as a scene and then as what changed of it, pushed after
+the turn that changed it (see "Scenes" in [the protocol](protocol.md)): the
+window asks for nothing, draws the text crisp at any size, and an idle
+window with such panes open does no work. So `:vs paw://lane/3`,
 `Enter` on a lane row, `:copen`, `:sp quickfix`, `:e paw://tracks`,
 `Ctrl-w` and its keys, `:q`, `:only`, `:tabnew mixer`, `gt` and `:layout
 edit` do in the window what they do in the terminal. A ring of the
@@ -196,9 +200,10 @@ them runs along the top, and a click on one goes to it. Every window
 attached has tabs and windows of its own, and the first time a window
 shows its main area the device panel is put beside the arrange view. The
 kernel says where each pane goes in `paw.panes.state()`, told the main
-area's size with `paw.panes.area(width, height)`; it paints a pane with
-`paw.panes.paint(win, width, height)`, and takes the pointer in one with
-`paw.panes.pointer(win, event)`, a press with `paw.panes.focus(win)`, a
+area's size with `paw.panes.area(width, height)`; it sends a pane's scene
+once told its size in cells (`scene.area`), and takes the pointer in one
+in cells too (`scene.input`, which `paw.panes.pointer(win, event)`
+answers), a press with `paw.panes.focus(win)`, a
 border dragged with `paw.panes.border(i, x, y)` and a tab clicked with
 `paw.panes.tab(i)` (runtime/lua/paw/panes.lua, tested in the suite).
 A tab narrowed to a group (`:narrow Strings`, `zn`; see

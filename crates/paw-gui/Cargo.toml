@@ -10,8 +10,10 @@ anyhow.workspace = true
 paw-proto.workspace = true
 paw-listen.workspace = true
 paw-raster.workspace = true
+paw-scene.workspace = true
 serde_json.workspace = true
 libc = "0.2"
+unicode-width = "0.2"
 # OpenGL through glow: it runs on any driver, Mesa's llvmpipe too, so the
 # window needs no graphics card. X11 and Wayland, and the clipboard. Not
 # egui's own fonts (one is under the Ubuntu font licence): the window

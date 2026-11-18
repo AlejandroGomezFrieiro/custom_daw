@@ -217,6 +217,17 @@
   velocity strip, the tempo lane and the meters are still cells. In Konsole
   a scrolled strip sends again the pieces at its edges, whose painted
   backgrounds changed.
+- Scenes (the window's panes and windows of views the kernel draws; see
+  "Scenes" in [the protocol](protocol.md)): only at the level of cells so
+  far. A scene is runs, fills and pictures as a view writes them; there are
+  no roles (`buf:mark`), hit regions (`buf:hit`), planes or gestures by hit
+  yet, so the pointer goes to a view's `on_mouse` in cells as before, and
+  `scene.live` values move nothing in the window. The arrange view, the
+  piano roll, the mixer, the device panel and the session view are still
+  the window's own drawings, fed by `frontend.watch`. Pictures are made
+  into images by paw-raster when their drawing changes, not drawn as egui
+  shapes. Nodes are named by where they are written, so a view that scrolls
+  sends what scrolled again.
 - A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
   each ramping to the next (the curve editor writes a smooth stretch of it
   as ramps a sixteenth of a beat long).

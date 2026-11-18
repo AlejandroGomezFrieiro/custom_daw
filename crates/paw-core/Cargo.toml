@@ -10,6 +10,7 @@ paw-engine.workspace = true
 paw-luadev.workspace = true
 paw-proto.workspace = true
 paw-raster.workspace = true
+paw-scene.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -88,6 +88,8 @@ pub struct Shared {
     pub detach: RefCell<Vec<u64>>,
     /// Interrupts Lua that has run past its time limit.
     pub watchdog: Watchdog,
+    /// The scenes graphical frontends are sent (`crate::scene`).
+    pub scenes: RefCell<crate::scene::Scenes>,
     pub env: Env,
 }
 
@@ -373,11 +375,14 @@ pub fn render(lua: &Lua, shared: &Shared) -> mlua::Result<()> {
     kernel.get::<Function>("render")?.call((width, height))
 }
 
-/// Draw one view by itself on a grid of its own, as a window shows it, and
-/// return it as rows of runs of one style (see [`Grid::runs`]) with the
-/// colours of the theme in 24 bits, whatever the terminal shows. The screen,
-/// its cursor and whether it needs drawing are left as they were.
-fn view_snapshot(lua: &Lua, sh: &Shared, name: &str, width: u16, height: u16) -> mlua::Result<Value> {
+/// One view drawn by itself, as a window shows it: its grid, where it put
+/// the cursor, and the theme's text and background colours.
+pub(crate) type Drawn = (Grid, Option<(u16, u16)>, (u8, u8, u8), (u8, u8, u8));
+
+/// Draw one view by itself on a grid of its own, as a window shows it, with
+/// the colours of the theme in 24 bits, whatever the terminal shows. The
+/// screen, its cursor and whether it needs drawing are left as they were.
+pub(crate) fn draw_view(lua: &Lua, sh: &Shared, name: &str, width: u16, height: u16) -> mlua::Result<Drawn> {
     let screen = sh.grid.replace(Grid::new(width, height));
     let (cursor, dirty, redraws) = (sh.cursor.replace(None), sh.dirty.get(), sh.redraws.get());
     sh.highlights.borrow_mut().full_colour = true;
@@ -395,12 +400,17 @@ fn view_snapshot(lua: &Lua, sh: &Shared, name: &str, width: u16, height: u16) ->
     drawn?;
     let fg = grid::rgb(normal.fg.unwrap_or(Color::Default), (0xd8, 0xd9, 0xdc));
     let bg = grid::rgb(normal.bg.unwrap_or(Color::Default), (0x18, 0x19, 0x1c));
-    let colour = |(r, g, b): (u8, u8, u8)| format!("#{r:02x}{g:02x}{b:02x}");
+    Ok((grid, at, fg, bg))
+}
+
+/// [`draw_view`] as rows of runs of one style (see [`Grid::runs`]).
+fn view_snapshot(lua: &Lua, sh: &Shared, name: &str, width: u16, height: u16) -> mlua::Result<Value> {
+    let (grid, at, fg, bg) = draw_view(lua, sh, name, width, height)?;
     Ok(serde_json::json!({
         "width": width,
         "height": height,
-        "fg": colour(fg),
-        "bg": colour(bg),
+        "fg": grid::hex(fg),
+        "bg": grid::hex(bg),
         "rows": grid.runs(fg, bg),
         "cursor": at.map(|(x, y)| serde_json::json!({ "x": x, "y": y })),
     }))
@@ -1422,7 +1432,10 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn grid_text(_, sh, (x, y, text, style, cx, cy, cw, ch) => (f64, f64, LuaString, LuaValue, f64, f64, f64, f64)) {
             let style = style_of(&sh, &style)?;
             let clip = Rect { x: cell(cx), y: cell(cy), w: cell(cw), h: cell(ch) };
-            Ok(sh.grid.borrow_mut().text(clip, cell(x), cell(y), &text.to_str()?, style))
+            let text = text.to_str()?;
+            // Kept as a node too while a view is drawn for a scene.
+            sh.scenes.borrow_mut().text(clip, cell(x), cell(y), &text, style);
+            Ok(sh.grid.borrow_mut().text(clip, cell(x), cell(y), &text, style))
         }
         // Restyle the area (x, y, w, h), clipped to (cx, cy, cw, ch), and
         // overwrite its characters when `fill` is given.
@@ -1434,6 +1447,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             };
             let clip = Rect { x: cell(cx), y: cell(cy), w: cell(cw), h: cell(ch) };
             let area = Rect { x: cell(x), y: cell(y), w: cell(w), h: cell(h) };
+            sh.scenes.borrow_mut().fill(clip, area, fill, style);
             sh.grid.borrow_mut().fill(clip, area, fill, style);
             Ok(())
         }
@@ -1668,6 +1682,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
     crate::tempo_api::install(lua, &api, shared)?;
     crate::luadev_api::install(lua, &api, shared)?;
     crate::fs_api::install(lua, &api)?;
+    crate::scene::install(lua, &api, shared)?;
 
     let loaded: Table = lua.globals().get::<Table>("package")?.get("loaded")?;
     loaded.set("paw.api", api)

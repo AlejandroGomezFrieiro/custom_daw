@@ -209,6 +209,8 @@ function K.startup()
   paw.recent = require("paw.recent")
   paw.learn = require("paw.learn")
   paw.remote = require("paw.remote")
+  -- What graphical frontends are sent of the views they show (paw/scene.lua).
+  paw.scene = require("paw.scene")
   paw.autosave = require("paw.autosave")
   paw.loading = require("paw.loading")
   paw.reconnect = require("paw.reconnect")
@@ -298,6 +300,7 @@ paw.flush = settle
 --- handlers it runs.
 function K.settle()
   paw.limit.guard("an event handler", settle)
+  if paw.scene then paw.limit.guard("sending scenes", paw.scene.turn) end
 end
 
 function K.timer(fn)
@@ -340,6 +343,7 @@ end
 --- A connection on the control socket closed.
 function K.rpc_closed(client)
   if paw.remote then paw.remote.closed(client) end
+  if paw.scene then paw.scene.closed(client) end
   paw.seats.close(client)
 end
 

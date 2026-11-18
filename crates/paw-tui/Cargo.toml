@@ -20,3 +20,6 @@ anyhow.workspace = true
 serde_json.workspace = true
 crossterm = "0.29"
 libc = "0.2"
+
+[dev-dependencies]
+paw-scene.workspace = true

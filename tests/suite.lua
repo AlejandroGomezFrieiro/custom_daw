@@ -10,6 +10,9 @@ os.execute("mkdir -p '" .. scratch .. "'")
 
 local tests, failed = {}, 0
 local function test(name, fn) tests[#tests + 1] = { name = name, fn = fn } end
+-- Tests that run after all the others: those that load every extension.
+local lasts = {}
+local function last(name, fn) lasts[#lasts + 1] = { name = name, fn = fn } end
 
 local function eq(got, want, what)
   if got ~= want then
@@ -2821,7 +2824,7 @@ local cleanups = {}
 local function after(fn) cleanups[#cleanups + 1] = fn end
 
 local T = {
-  test = test, after = after, eq = eq, near = near, fails = fails, fresh = fresh, render = render, tone = tone,
+  test = test, last = last, after = after, eq = eq, near = near, fails = fails, fresh = fresh, render = render, tone = tone,
   scratch = scratch, read_file = read_file, write_file = write_file, frequency = frequency,
   channel_peaks = channel_peaks, three_clips = three_clips, layout = layout, melody = melody, keys = keys,
 }
@@ -2836,6 +2839,7 @@ for _, entry in ipairs(api.read_dir("extensions")) do
   if entry.is_dir and io.open(path) then files[#files + 1] = path end
 end
 for _, path in ipairs(files) do assert(loadfile(path))(T) end
+for _, t in ipairs(lasts) do tests[#tests + 1] = t end
 
 -- Run ------------------------------------------------------------------------
 

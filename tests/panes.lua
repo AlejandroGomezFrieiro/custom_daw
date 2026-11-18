@@ -39,13 +39,21 @@ local function panes()
   return by, focused
 end
 
---- The text a pane drawn in cells shows, run after run.
+--- The text a pane shows, as its scene sends it to a window: run after
+--- run, and the text its pictures draw.
 local function painted(pane)
-  local drawing = P.paint(pane.win, pane.w, pane.h, { fresh = true })
+  local cell = paw.canvas.cell
+  api.scene_forget(0)
+  paw.ui.render_scene(pane.view, pane.w / cell.w, pane.h / cell.h, cell, L.find_id(paw.ui.layout, pane.win))
+  local patch = api.json_decode(api.scene_end(0, "panes"))
   local out = {}
-  for _, op in ipairs(drawing and drawing.ops or {}) do
-    if op[1] == "m" or op[1] == "t" then out[#out + 1] = op[1] == "m" and op[6] or op[4] end
+  for _, node in ipairs(patch.set or {}) do
+    if node.t == "run" then out[#out + 1] = node.text end
+    for _, op in ipairs(node.ops or (node.blob and api.scene_blob(0, node.blob)) or {}) do
+      if op[1] == "m" or op[1] == "t" then out[#out + 1] = op[1] == "m" and op[6] or op[4] end
+    end
   end
+  api.scene_forget(0)
   return table.concat(out, " ")
 end
 

@@ -23,6 +23,8 @@ pub struct Client {
     fresh_kinds: bool,
     /// The kernel's sound, played here (`:listen`, the engine menu).
     pub player: Option<paw_listen::Player>,
+    /// The scenes' patches pushed and not yet taken (`scene.patch`).
+    pub patches: Vec<Value>,
 }
 
 impl Client {
@@ -54,6 +56,7 @@ impl Client {
             fresh: false,
             fresh_kinds: false,
             player: None,
+            patches: Vec::new(),
         };
         let seat = if shared { "instance" } else { "own" };
         client.call("frontend.watch", json!([{ "seat": seat }]))?;
@@ -63,7 +66,8 @@ impl Client {
     /// Have `wake` called whenever the kernel sends something, so that the
     /// window draws again then and at no other time: what arrives goes
     /// through a thread that waits for it. What only moves with the song
-    /// (the playhead, the meters) is drawn 25 times a second at most.
+    /// (the playhead, the meters) and the panes the kernel draws are drawn
+    /// 25 times a second at most; the first change after a pause at once.
     pub fn wake_on_events(&mut self, wake: impl Fn() + Send + 'static) {
         let (sender, receiver) = mpsc::channel();
         let from = std::mem::replace(&mut self.connection.events, receiver);
@@ -105,6 +109,9 @@ impl Client {
                         }
                         news.then_some(song)
                     }
+                    // A pane the kernel draws changes as often as the song
+                    // moves while it plays: drawn at the same pace.
+                    (name, _) if name == "scene.patch" => Some(true),
                     (name, _) => (name != "audio.frame").then_some(false),
                 };
                 if sender.send(event).is_err() {
@@ -172,6 +179,7 @@ impl Client {
                     self.tick = payload;
                     any = true;
                 }
+                Ok((name, payload)) if name == "scene.patch" => self.patches.push(payload),
                 Ok((name, payload)) if name == "audio.frame" => {
                     if let Some(player) = &self.player {
                         let _ = player.push(&payload);

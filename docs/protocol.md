@@ -71,6 +71,11 @@ are answered in order. A request with `"id": null` is answered with
 | `unsubscribe` | patterns, or nothing for all | stops them |
 | `frontend.watch` | `{ "interval": ms, "seat": "own" or "instance" }` (33, `own`) | `frontend.state` events from now on, seen from a seat of the connection's own or the instance's |
 | `frontend.unwatch` | | stops them |
+| `scene.watch` | `{ "cell": { "w", "h" }, "live": bool }` | `scene.patch` events from now on (and `scene.live` with `live`), for the windows given an area; see "Scenes" |
+| `scene.area` | window, width, height in cell units | how big a window is shown; 0 by 0 for one no longer shown |
+| `scene.input` | window, a pointer event in cell units | the pointer over a window |
+| `scene.blob` | a content key | a drawing sent by its key |
+| `scene.unwatch` | | stops the patches |
 | `ui.attach` | width, height in cells | this connection becomes a terminal: `ui.grid` events from now on |
 | `ui.input` | one input event | typing and pointing in that terminal |
 | `ui.detach` | | stops being a terminal |
@@ -149,7 +154,7 @@ it would draw has changed, at most once every `interval` milliseconds:
 ```json
 {"event": "frontend.state", "payload": {
   "revision": 41, "playing": true, "position": 12.5, "time": "4.1.50",
-  "levels": [0.31, 0.3, 0, 0], "cpu": 0.07, "modal": { "mode": "n" },
+  "levels": [0.31, 0.3, 0, 0], "cpu": 0.075, "modal": { "mode": "n" },
   "sections": { "tracks": [ … ], "clips": [ … ] }
 }}
 ```
@@ -169,6 +174,60 @@ that differ from what this connection was last sent, each whole:
 | `kinds` | the kinds of device there are; sent once |
 
 An idle program sends nothing at all.
+
+## Scenes
+
+A graphical frontend shows the views it has no drawing of its own for (a
+pane of its main area, a view in a window of its own) from their scenes
+(crates/paw-scene): what a view draws, as nodes in **cell units** that
+are kept by name, so that after the first time only what changed is sent.
+The window draws them in its own font at its own resolution, and the
+same scene lowered to cells is cell for cell what a terminal shows.
+
+`scene.watch` starts it, with the size of the frontend's cell in pixels
+(pictures are drawn for it, and its main area is laid out on it). A
+window is named by a string: a window of the layout by its number
+(`"3"`, as `paw.panes.state()` lists it), a view in a window of its own as
+`"view:<name>"` (`paw.canvas.windows()`). Nothing is sent of a window
+until `scene.area` says how big it is shown, in units, fractions allowed;
+then its whole scene, and after every turn that changed it (and while
+playing, at most thirty times a second) what changed:
+
+```json
+{"event": "scene.patch", "payload": {
+  "win": "3", "rev": 12, "full": false, "cursor": [4, 2],
+  "set": [{"k": "t0,1", "t": "run", "text": "count 1", "r": [0, 1, 7, 1], "s": {"fg": "#c9ced8"}}],
+  "drop": ["t9,1"]
+}}
+```
+
+`full` says to forget what was had of the window first. `size`, `root`
+(the keys of the top nodes, in drawing order), `colors` (`[fg, bg]`, what
+`default` stands for) and `cursor` (`[]` for none) come only when they
+change. A node has its key `k`, its kind `t`, its rectangle `r` (x, y,
+width, height in units of its parent), and as the kind needs: `text`
+(`run`), `ch` (`fill`: the character it overwrites with; restyled only
+without), `s` its style (`fg`, `bg` as `"#rrggbb"`, `"default"` or one of
+256; `on` and `off`, the attributes it sets and clears: 1 bold, 2 dim, 4
+italic, 8 underline, 16 reverse, 32 strike), `clip` (what it is cut to),
+`kids`. Runs and fills are written in order onto cells, as the terminal
+does; reverse and dim are resolved with the cells. A `picture` has
+`ops` (see `paw.canvas.paint`, music glyphs as glyphs), drawn for `px`
+pixels and scaled to its rectangle, under the cells' text with `under`
+(their backgrounds under it); a drawing too big to send each time comes
+as `blob`, a content key to ask `scene.blob` for once.
+
+`scene.input` takes a pointer event as `paw.canvas.pointer` does (`kind`
+down, up, move, hover, double or wheel, `button`, `ctrl`, `shift`,
+`alt`, `dx`, `dy`), with `x` and `y` in units from the window's corner.
+
+With `"live": true` the connection is also sent, while they change, the
+values a frontend moves things by without a new scene:
+
+```json
+{"event": "scene.live", "payload": {"position": 12.5, "playing": true, "recording": false,
+  "clock": "0:07.0", "cpu": 0.075, "meters": {"4": [0.31, 0.3]}, "inputs": {"4": 0}}}
+```
 
 ## A terminal somewhere else
 

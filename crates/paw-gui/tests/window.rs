@@ -167,7 +167,8 @@ fn repo() -> PathBuf {
 static SLOTS: (Mutex<usize>, Condvar) = (Mutex::new(0), Condvar::new());
 const MAX_SCENES: usize = 3;
 
-struct Slot;
+/// The slots a scene holds.
+struct Slot(usize);
 
 impl Slot {
     fn take() -> Slot {
@@ -177,14 +178,26 @@ impl Slot {
             count = free.wait(count).unwrap();
         }
         *count += 1;
-        Slot
+        Slot(1)
+    }
+
+    /// Every slot, once the scenes running have ended: for a scene that
+    /// measures the window's own load, which scenes beside it disturb.
+    fn take_all() -> Slot {
+        let (count, free) = &SLOTS;
+        let mut count = count.lock().unwrap();
+        while *count > 0 {
+            count = free.wait(count).unwrap();
+        }
+        *count = MAX_SCENES;
+        Slot(MAX_SCENES)
     }
 }
 
 impl Drop for Slot {
     fn drop(&mut self) {
-        *SLOTS.0.lock().unwrap() -= 1;
-        SLOTS.1.notify_one();
+        *SLOTS.0.lock().unwrap() -= self.0;
+        SLOTS.1.notify_all();
     }
 }
 
@@ -288,16 +301,21 @@ impl Scene {
     /// Start the window with `setup` run in its kernel; None, after saying
     /// so, when the tools for it are not installed.
     fn start(name: &str, setup: &str) -> Option<Scene> {
-        Scene::launch(name, setup, false)
+        Scene::launch(name, setup, false, Slot::take)
     }
 
     /// The same, but the window is a client of a kernel started beside it,
     /// reached over TCP with a token (`--connect`).
     fn start_remote(name: &str, setup: &str) -> Option<Scene> {
-        Scene::launch(name, setup, true)
+        Scene::launch(name, setup, true, Slot::take)
     }
 
-    fn launch(name: &str, setup: &str, remote: bool) -> Option<Scene> {
+    /// The same, with no other scene running beside it while it lasts.
+    fn start_alone(name: &str, setup: &str) -> Option<Scene> {
+        Scene::launch(name, setup, false, Slot::take_all)
+    }
+
+    fn launch(name: &str, setup: &str, remote: bool, take: fn() -> Slot) -> Option<Scene> {
         let tools = match tools() {
             Ok(tools) => tools,
             Err(missing) => {
@@ -305,7 +323,7 @@ impl Scene {
                 return None;
             }
         };
-        let slot = Slot::take();
+        let slot = take();
         let paw = kernel_binary();
         let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
             .join("window")
@@ -972,6 +990,12 @@ macro_rules! scene {
             None => return,
         }
     };
+    ($name:expr, $setup:expr, alone) => {
+        match Scene::start_alone($name, $setup) {
+            Some(scene) => scene,
+            None => return,
+        }
+    };
 }
 
 // ---------------------------------------------------------------- scenarios
@@ -1309,13 +1333,33 @@ fn files_dir(name: &str) -> PathBuf {
     dir
 }
 
+// The window's own processor time is measured with no other scene running,
+// whose X servers and windows would take the machine from it.
 #[test]
 fn an_idle_window_uses_little_of_a_processor() {
-    let mut w = scene!("idle", DEMO);
+    let mut w = scene!("idle", DEMO, alone);
     w.pause(3.0);
     let idle = w.cpu_percent(5.0);
     assert!(idle < 5.0, "the idle window uses {idle:.1}% of a core");
     w.assert_alive("while idle");
+}
+
+#[test]
+fn an_idle_window_with_kernel_panes_and_a_window_of_a_view_asks_for_nothing() {
+    let mut w = scene!("idle-panes", &format!("{LANE_SONG}\npaw.qf.set({{ {{ address = paw.address.project(), text = 'zebra crossing' }} }})"), alone);
+    // The curve in a pane (cells and a strip under them), the list in a
+    // window of its own.
+    w.key("Return");
+    w.expect("the curve in a pane", "paw.ui.focused == 'curve'");
+    w.type_text(":qf.window");
+    w.key("Return");
+    w.expect("the list in a window of its own", "#paw.canvas.windows() == 1");
+    w.expect("both sent as scenes", "#paw.scene.watchers()[1].windows == 2");
+    w.find_text("dB", 0);
+    w.pause(3.0);
+    let idle = w.cpu_percent(5.0);
+    assert!(idle < 5.0, "the idle window uses {idle:.1}% of a core");
+    w.assert_alive("while idle with panes");
 }
 
 #[test]

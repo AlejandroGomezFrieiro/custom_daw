@@ -17,7 +17,7 @@ use crate::client::Client;
 use crate::model::{self, Clip, Line, PeakHold, Track, flag, int, number, rows, text};
 use crate::pictures::Pictures;
 use crate::theme::th;
-use crate::{arrange, canvas, devices, dialogs, keys, menu, mixer, panes, portal, roll, session};
+use crate::{arrange, canvas, devices, dialogs, keys, menu, mixer, panes, portal, roll, scene, session};
 
 /// What the window asks of a kernel: calls answered, and the state pushed.
 /// A client of a real kernel in the program; a stand-in in the tests.
@@ -28,6 +28,10 @@ pub trait Kernel {
     fn state(&mut self) -> Result<Option<Value>>;
     fn send_file(&mut self, path: &Path) -> Result<String>;
     fn listening(&self) -> bool;
+    /// The scenes' patches pushed since the last time (`scene.patch`).
+    fn patches(&mut self) -> Vec<Value> {
+        Vec::new()
+    }
 }
 
 impl Kernel for Client {
@@ -42,6 +46,9 @@ impl Kernel for Client {
     }
     fn listening(&self) -> bool {
         self.player.is_some()
+    }
+    fn patches(&mut self) -> Vec<Value> {
+        std::mem::take(&mut self.patches)
     }
 }
 
@@ -144,6 +151,7 @@ pub struct View {
     pub session: session::Session,
     pub panes: panes::Panes,
     pub canvases: canvas::Canvases,
+    pub scenes: scene::Scenes,
     pub menu: Option<menu::Menu>,
     pub dialogs: dialogs::Dialogs,
     /// The floating page the kernel draws (help, a list, a picker).
@@ -193,6 +201,7 @@ impl View {
             session: session::Session::default(),
             panes: panes::Panes::default(),
             canvases: canvas::Canvases::default(),
+            scenes: scene::Scenes::default(),
             menu: None,
             dialogs: dialogs::Dialogs::default(),
             float: None,
@@ -222,6 +231,11 @@ impl View {
         let mut params = vec![json!(code)];
         params.extend(args.as_array().cloned().unwrap_or_default());
         self.acts.borrow_mut().push(("eval".into(), Value::Array(params)));
+    }
+
+    /// Call a method of the kernel's, at the end of the frame.
+    pub fn call_later(&self, method: &str, params: Value) {
+        self.acts.borrow_mut().push((method.into(), params));
     }
 
     /// Run a command line, as typed after `:` in the terminal.
@@ -280,6 +294,8 @@ impl View {
     /// Take in what the kernel has sent since the last frame.
     pub fn poll(&mut self) {
         let polled = self.k.borrow_mut().state();
+        // The scenes' patches came in with the state.
+        self.scene_patches();
         let state = match polled {
             Ok(Some(state)) => state,
             Ok(None) => return,
@@ -406,6 +422,7 @@ impl View {
             self.ctx = Some(ctx.clone());
         }
         self.again = None;
+        self.scenes_watch(&ctx);
         self.poll();
         self.answers();
         self.listening = self.k.borrow().listening();
@@ -445,6 +462,7 @@ impl View {
         self.keyboard(ui);
         self.files_dropped(ui);
         self.close_requested(ui);
+        self.scenes_done();
         self.flush();
         self.focus_after(&ctx);
         self.layout_keep(&ctx);
