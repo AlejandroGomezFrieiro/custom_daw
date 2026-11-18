@@ -72,6 +72,32 @@ test("[ and ] act at once in the mixer and on velocity, also pressed fast, and ]
   eq(c:notes()[1].velocity, 110, "each press is one undo step")
 end)
 
+test("? and ,fk search the whole description of a key, not the part that 80 columns show", function()
+  start()
+  local size = api.ui_size
+  api.ui_size = function() return 80, 24 end
+  T.after(function()
+    api.ui_size = size
+    while paw.ui.float do paw.ui.close() end
+  end)
+  for _, lhs in ipairs({ "?", ",fk" }) do
+    paw.keymap.feed(lhs)
+    local shown = paw.pick.state().matches
+    local cut
+    for _, line in ipairs(shown) do
+      if line:match("^gm ") then cut = line end
+    end
+    eq(cut ~= nil and cut:find("metronome", 1, true) == nil, true, lhs .. ": the line of gm is cut before the word: " .. tostring(cut))
+    paw.keymap.feed("metronome")
+    local found = false
+    for _, line in ipairs(paw.pick.state().matches) do
+      if line:match("^gm ") then found = true end
+    end
+    eq(found, true, lhs .. ": metronome finds gm")
+    paw.keymap.feed("<Esc>")
+  end
+end)
+
 test("a count before Alt-j and Alt-k moves the track that many places, and before & makes that many copies", function()
   start()
   for _, name in ipairs({ "A", "B", "C", "D", "E" }) do paw.add_track({ name = name }) end

@@ -9,7 +9,8 @@ runs or opens the line that you select.
 
 1. Press `?`. The list shows each key of the view that has the keyboard,
    with what it does.
-2. Type words of what you want, for example `playhead`.
+2. Type words of what you want, for example `playhead`. The search looks
+   at the full description, also at the part that a narrow screen cuts.
 3. Select the line and press `Enter`. paw does what the key does.
    Or press `Esc`, and use the key from now on.
 

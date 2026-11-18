@@ -18,7 +18,8 @@
 -- for the key line), `empty` (what to say
 -- when there is nothing to choose from), and `primary(item)`: the part of
 -- the line that counts first, so that lines matching there rank above
--- lines matching only elsewhere.
+-- lines matching only elsewhere. `search(item)` is the whole text that
+-- a query matches, where the line shows only a part of it.
 --
 -- `boost(item)` returns a number added to the score of an item that
 -- matches (up to 120): what is used often, or belongs to the focused view.
@@ -313,7 +314,9 @@ end
 
 --- Entries for a list of items: { item, text, low, index }, and `primary`
 --- (lowered) when the picker says which part of a line counts first.
-local function entries_of(items, format, primary)
+--- `search(item)` gives the whole text that a query matches, when the line
+--- shows a part of it (a description cut to the width).
+local function entries_of(items, format, primary, search)
   local out = {}
   for i, item in ipairs(items) do
     local text
@@ -325,6 +328,10 @@ local function entries_of(items, format, primary)
     text = tostring(text == nil and item or text):gsub("[\r\n\t]", " ")
     out[i] = { item = item, text = text, low = lower(text), index = i }
     if primary then out[i].primary = tostring(primary(item) or "") end
+    if search then
+      local hay = tostring(search(item) or text):gsub("[\r\n\t]", " ")
+      out[i].hay, out[i].hay_low = hay, lower(hay)
+    end
   end
   return out
 end
@@ -379,7 +386,7 @@ local function filter_entries(query, entries, mode)
   for _, e in ipairs(entries) do
     local total, finish = 0, nil
     for _, term in ipairs(terms) do
-      local s, at = score_term(term, e.text, e.low)
+      local s, at = score_term(term, e.hay or e.text, e.hay_low or e.low)
       if not s then
         total = nil
         break
@@ -409,7 +416,7 @@ local function filter_entries(query, entries, mode)
     if total and not plain and not (e.primary and total >= PRIMARY_BONUS) then
       local words = true
       for _, term in ipairs(terms) do
-        if not term.negate and not starts_word(term.exact and e.text or e.low, term.text) then
+        if not term.negate and not starts_word(term.exact and (e.hay or e.text) or (e.hay_low or e.low), term.text) then
           words = false
           break
         end
@@ -766,7 +773,7 @@ end
 local function reload(p)
   local items = p.spec.items
   if type(items) == "function" then items = items() end
-  p.entries = entries_of(items or {}, p.spec.format, p.spec.primary)
+  p.entries = entries_of(items or {}, p.spec.format, p.spec.primary, p.spec.search)
   p.marked, p.last_query = {}, ""
   refilter(p)
 end
@@ -1131,7 +1138,7 @@ function M.open(spec, extra)
   end
   local p = {
     spec = spec, source = source_name, prompt = spec.prompt or "> ", query = chars_of(spec.query or ""),
-    entries = entries_of(items or {}, spec.format, spec.primary), selected = 1, top = 1,
+    entries = entries_of(items or {}, spec.format, spec.primary, spec.search), selected = 1, top = 1,
     multi = spec.multi ~= false, marked = {}, last_query = "",
   }
   -- The mode chosen last in this picker, else the picker's own.
