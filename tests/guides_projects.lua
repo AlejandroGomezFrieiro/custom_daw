@@ -62,6 +62,11 @@ test("guide: save, back up and open projects", function()
   eq(paw.project.path, d .. "/song.json", ":e refuses to drop work that is not saved")
   keys(":edit! " .. d .. "/second.json<CR>")
   eq(paw.project.path, d .. "/second.json", ":edit! drops it and opens the other project")
+  -- A name alone saves into the folder where paw started.
+  keys(":w guide-save-test.json<CR>")
+  eq(exists("guide-save-test.json"), true, ":w name.json saves into the folder where paw started")
+  os.remove("guide-save-test.json")
+  os.remove("guide-save-test.json.bak")
   keys(":set autosave 30<CR>")
   eq(paw.opt.autosave, 30, ":set autosave 30 makes a safety copy every 30 seconds")
   paw.opt.autosave = 0

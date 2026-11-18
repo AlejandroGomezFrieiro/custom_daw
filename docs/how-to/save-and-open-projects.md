@@ -8,6 +8,8 @@ and [Files that paw keeps](../reference/state-files.md).
 
 1. The first time, give the project a name and a place:
    `:w /home/ana/songs/demo/demo.json`. Use one folder for each song.
+   Give the full path. A name alone, for example `:w demo.json`, saves
+   into the folder where you started paw.
 2. After that, type `:w` to save. The status line shows the name of the
    project, and a mark when there is work that is not saved.
 3. To save and quit, press `ZZ`.
