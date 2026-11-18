@@ -1,4 +1,5 @@
 # Keys, by idea
+<!-- tags: course-keys -->
 
 One page to keep beside the keyboard. Keys are written as Vim writes them:
 `<C-r>` is Ctrl and r, `<A-j>` Alt and j, `<CR>` Enter, `<Esc>` Escape, `,` is

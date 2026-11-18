@@ -303,7 +303,7 @@ Packets, so a MIDI 2.0 device arrives whole and a MIDI 1.0 device arrives as
 the same events with less detail. That needs a kernel built with
 `CONFIG_SND_SEQ_UMP`; without it the ports are MIDI 1.0, and what arrives is
 widened by the specification's rules so that both read the same. There is no
-MIDI-CI (see What is missing).
+MIDI-CI (see [Limits](reference/limits.md)).
 
 **MIDI output to hardware.** A track sends what it plays (its clips' notes
 and controllers, and MIDI input passing through it, before its devices) to

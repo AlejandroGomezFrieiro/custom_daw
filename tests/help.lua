@@ -115,7 +115,7 @@ test("tags are found for keys, commands, options, Lua modules, sections and page
     local tag = H.lookup(topic)
     return tag and tag.source.name .. " " .. tag.name or "none"
   end
-  eq(where("gU"), "course/keys.md gU", "a key: its row in the key table")
+  eq(where("gU"), "keys.md gU", "a key: its row in the key table")
   eq(where(":s"), "terminal.md :s", "a command")
   eq(where("'timebind'"), "terminal.md 'timebind'", "an option")
   eq(where("paw.qf"), "scripting.md paw.qf", "a Lua module")
@@ -126,11 +126,57 @@ test("tags are found for keys, commands, options, Lua modules, sections and page
   eq(where("notation"), "notation/README.md notation", "an extension")
   eq(where("notation-keys"), "notation/README.md notation-keys", "an extension's heading")
   eq(where("notation-popovers"), "notation/README.md notation-popovers", "another")
-  eq(where("ic"), "course/keys.md ic", "a text object: its row in the key table")
+  eq(where("ic"), "keys.md ic", "a text object: its row in the key table")
   eq(where("<C-w>o"), where("Ctrl-w o"), "a key written either way")
   -- Each lands on the line that names it.
   local tag = H.lookup("gU")
   eq(tag.source.doc.lines[tag.row].text:find("gU", 1, true) ~= nil, true, "the tag's line names it")
+end)
+
+test("the manual's pages are found by kind: their folder's, else the section of docs/README.md that lists them", function()
+  start()
+  local docs = T.scratch .. "/helpkinds/docs"
+  for _, dir in ipairs({ "tutorials/course", "how-to", "reference", "explanation" }) do os.execute("mkdir -p '" .. docs .. "/" .. dir .. "'") end
+  T.write_file(docs .. "/README.md", table.concat({
+    "# Manual", "", "## Tutorials", "", "- [Course](tutorials/course/README.md)", "",
+    "## Reference", "", "- [Zeta](reference/zeta.md)", "- [Old](old.md)", "- [Alpha](reference/alpha.md)", "",
+    "## Explanation", "", "- [Why](why.md)",
+  }, "\n"))
+  local files = {
+    "tutorials/course/README.md", "tutorials/course/02-two.md", "tutorials/course/01-one.md",
+    "how-to/record.md", "reference/record.md", "reference/alpha.md", "reference/zeta.md", "reference/keys.md",
+    "explanation/about-x.md", "old.md", "why.md", "loose.md",
+  }
+  for _, rel in ipairs(files) do T.write_file(docs .. "/" .. rel, "# " .. rel .. "\n") end
+  local got = {}
+  for _, s in ipairs(H.manual_sources(H.normalize(docs))) do
+    got[#got + 1] = s.group .. ":" .. s.name .. "=" .. s.aliases[1]
+  end
+  eq(table.concat(got, " "), table.concat({
+    -- Reference first, as docs/README.md orders it, then the rest by name.
+    "reference:zeta.md=zeta", "reference:old.md=old", "reference:alpha.md=alpha", "reference:keys.md=keys",
+    "reference:loose.md=loose", "reference:reference/record.md=reference-record",
+    "how-to:how-to/record.md=how-to-record",
+    "explanation:why.md=why", "explanation:about-x.md=about-x",
+    "tutorials:course/README.md=course", "tutorials:course/01-one.md=course-1", "tutorials:course/02-two.md=course-2",
+  }, " "), "kinds, names and order")
+  -- The contents show them under the four headings, in Diátaxis' order.
+  local text = {}
+  for _, line in ipairs(H.index().sources[1].doc.lines) do text[#text + 1] = line.text end
+  text = table.concat(text, "\n")
+  local at = {}
+  for _, heading in ipairs({ "Tutorials", "How-to guides", "Reference", "Explanation", "Extensions" }) do
+    at[#at + 1] = text:find("\n" .. heading .. " ", 1, true) or text:find("\n" .. heading .. "\n", 1, true) or 0
+  end
+  eq(at[1] > 0 and at[1] < at[2] and at[2] < at[3] and at[3] < at[4] and at[4] < at[5], true, "the kinds in order: " .. table.concat(at, " "))
+end)
+
+test("a link to the manual's contents page goes to help's contents", function()
+  start()
+  local index = H.index()
+  local readme = index.sources[1].readme
+  eq(readme ~= nil and readme:match("/docs/README%.md$") ~= nil, true, "the contents stand for docs/README.md")
+  eq(index.by_path[readme], index.sources[1], "found by its path")
 end)
 
 test("a topic finds the tag itself first, then those that start with it, then those that hold its letters", function()
@@ -269,7 +315,7 @@ test("Ctrl-] in the keys picker opens the help of the key chosen", function()
   paw.pick("keys", { query = "Ctrl-w o" })
   paw.keymap.feed("<C-]>")
   local name, line = here()
-  eq(name, "help://course/keys.md", "the key table: " .. message())
+  eq(name, "help://keys.md", "the key table: " .. message())
   eq(line:find("<C-w>o", 1, true) ~= nil, true, "at the key: " .. tostring(line))
   -- And in the commands picker, the command's.
   paw.pick("commands", { query = "helpgrep" })

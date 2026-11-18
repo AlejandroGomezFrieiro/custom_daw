@@ -179,7 +179,7 @@ test("help: a key's entry is its row in the key table, and the help split takes 
   end)
   paw.help.open("gU")
   local _, buf, t, s = paw.textbuf.here()
-  eq(buf.name, "help://course/keys.md", "the key table's page")
+  eq(buf.name, "help://keys.md", "the key table's page")
   eq(t:line(s.row):match("^%s*|") ~= nil or t:line(s.row):match("gU") ~= nil, true, "on a line that names the key")
   eq(#t:line(s.row) < 120, true, "a one-line entry, not a paragraph")
   local _, height = paw.ui.size()

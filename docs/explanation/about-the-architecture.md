@@ -1,4 +1,13 @@
-# How it is put together
+# About the architecture
+
+<!-- tags: architecture -->
+
+paw has a small kernel in Rust and a runtime in Lua. The kernel holds the
+project, the audio engine and the plugin hosts. The Lua runtime holds the
+views, the keys and the commands. The frontends (the terminal and the
+graphical window) show what Lua draws and send the input to the kernel. This
+page tells how these parts connect and why. The diagram shows the two
+threads and the data that moves between them.
 
 ```
             ┌────────────── main thread ──────────────┐        ┌─ audio thread ─┐
@@ -21,24 +30,25 @@
 | `paw-gui` | The graphical frontend, written with egui. A client of the control socket and nothing more. |
 | `runtime/lua/paw` | Everything else. Compiled into the binary; `--runtime <dir>` loads it from disk instead. |
 
-The rules the design rests on:
+The design obeys these rules:
 
-- **The project is plain data.** Tracks, devices and clips sit behind `Arc`, and
-  edits copy on write. Undo is a tree of snapshots that share everything
-  unchanged: undoing and then changing something starts a branch, and loses
-  nothing.
-- **One path to the engine.** `sync` diffs two snapshots and emits engine
-  messages and change events. Edits, undo, loading and offline rendering all go
-  through it, so the engine cannot disagree with the model.
-- **The audio thread never allocates.** What it uses is built on the main
-  thread and sent over a lock-free queue; what it is done with is sent back to
-  be freed.
-- **Several threads, one sound.** Tracks that do not feed each other are
-  processed side by side on worker threads; what they send on is then added
-  up on one thread in a fixed order. A render is the same file, byte for
-  byte, on one thread or sixteen.
-- **The screen is a grid of cells.** Lua draws into it and a frontend shows it.
-  A frontend only needs to display cells and report input. A graphical one
-  is sent the same drawing as scenes, which lowered to cells are that grid.
-- **`paw.api` passes plain data only**, so it can be served over the socket as
-  it is, and reloading Lua cannot leave anything dangling.
+- **The project is plain data.** Tracks, devices and clips are behind `Arc`,
+  and an edit makes a copy of only what it changes. Undo is a tree of
+  snapshots that share all the unchanged parts. If you undo and then make a
+  change, paw starts a new branch and keeps the old one.
+- **One path to the engine.** `sync` compares two snapshots and sends engine
+  messages and change events. Edits, undo, project loads and offline renders
+  all go through `sync`. So the engine always agrees with the model.
+- **The audio thread never allocates.** The main thread builds all that the
+  audio thread uses and sends it through a lock-free queue. The audio thread
+  sends back what it does not use, and the main thread frees it.
+- **Many threads, one sound.** Worker threads process the tracks that do not
+  feed each other at the same time. Then one thread adds their outputs in a
+  fixed order. So a rendered file has the same bytes on one thread or on
+  sixteen threads.
+- **The screen is a grid of cells.** Lua draws into the grid and a frontend
+  shows it. A frontend must only show cells and send the input. The
+  graphical window gets the same drawing as scenes. A scene that is lowered
+  to cells is the same grid.
+- **`paw.api` passes plain data only.** So the socket can send the data
+  as it is. When Lua loads again, no reference to old Lua data stays.

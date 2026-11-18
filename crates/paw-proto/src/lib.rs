@@ -1,5 +1,5 @@
 //! The client's side of the kernel's control protocol: one JSON object per
-//! line over a Unix socket, or over TCP inside TLS. docs/protocol.md
+//! line over a Unix socket, or over TCP inside TLS. docs/reference/protocol.md
 //! describes it; the server's side is `paw_core::rpc`. Kept apart from the
 //! kernel so that a program that only talks to one (the window, a remote
 //! terminal) need not be built with it.

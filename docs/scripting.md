@@ -892,7 +892,7 @@ paw ctl eval 'paw.api.ui_snapshot(100, 30)'   # the screen as text
 One JSON object per line: `{"id":1,"method":"eval","params":["..."]}`.
 A connection can also be sent things: events it subscribed to, the state
 a frontend draws (pushed when it changes, in parts), and the terminal
-UI's screen. [docs/protocol.md](protocol.md) is the whole protocol.
+UI's screen. [docs/reference/protocol.md](reference/protocol.md) is the whole protocol.
 
 **Driving paw from an agent.** An agent with a shell (Claude Code, pi, a
 script of your own) has the best tools already: `paw ctl --json` and Lua.

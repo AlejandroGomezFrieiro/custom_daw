@@ -369,22 +369,22 @@ end)
 
 -- The course as text -------------------------------------------------------------------
 
-test("tutor: docs/course is made from the lessons and agrees with them", function()
+test("tutor: docs/tutorials/course is made from the lessons and agrees with them", function()
   local tutor = ext()
   local files = require("tutor.docs").files(tutor.lessons)
   for name, text in pairs(files) do
-    local on_disk = T.read_file("docs/course/" .. name)
+    local on_disk = T.read_file("docs/tutorials/course/" .. name)
     if on_disk ~= text then
-      error("docs/course/" .. name .. " differs from the lessons: run `paw --clean --no-plugins -l extensions/tutor/make-docs.lua`", 0)
+      error("docs/tutorials/course/" .. name .. " differs from the lessons: run `paw --clean --no-plugins -l extensions/tutor/make-docs.lua`", 0)
     end
   end
-  for _, entry in ipairs(api.read_dir("docs/course")) do
+  for _, entry in ipairs(api.read_dir("docs/tutorials/course")) do
     local name = entry.name
-    eq(files[name] ~= nil or name == "keys.md", true, "docs/course/" .. name .. " belongs to a lesson")
+    eq(files[name] ~= nil, true, "docs/tutorials/course/" .. name .. " belongs to a lesson")
   end
 end)
 
-test("tutor: every key in docs/course/keys.md is a key paw has", function()
+test("tutor: every key in docs/reference/keys.md is a key paw has", function()
   ext()
   local keymap = paw.keymap
   local known, operators, chars = {}, {}, {}
@@ -433,7 +433,7 @@ test("tutor: every key in docs/course/keys.md is a key paw has", function()
     end
     return false
   end
-  local text = T.read_file("docs/course/keys.md")
+  local text = T.read_file("docs/reference/keys.md")
   local checked = 0
   for line in text:gmatch("[^\n]+") do
     local first = line:gsub("\\|", "\1"):match("^| ([^|]*) |")

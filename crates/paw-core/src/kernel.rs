@@ -608,7 +608,7 @@ fn install_loader(lua: &Lua, env: &Env) -> mlua::Result<()> {
 }
 
 /// What went wrong in a call on the control socket, as its caller is told
-/// it (docs/protocol.md): the message alone, without the way it came
+/// it (docs/reference/protocol.md): the message alone, without the way it came
 /// through Lua and Rust.
 fn told(err: &mlua::Error) -> String {
     let whole = match err {

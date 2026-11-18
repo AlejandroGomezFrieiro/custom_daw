@@ -30,7 +30,7 @@ paw lives in the [terminal](docs/terminal.md), modal and keyboard first,
 with pictures where the terminal can show them (kitty graphics). The same
 views also open in a [window](crates/paw-gui/README.md) for the mouse, drawn
 from the same Lua, and everything can be driven from
-[Lua scripts](docs/scripting.md), over a [socket](docs/protocol.md)
+[Lua scripts](docs/scripting.md), over a [socket](docs/reference/protocol.md)
 (`paw ctl`), or by an [AI agent](#for-agents).
 
 > [!NOTE]
@@ -39,7 +39,7 @@ from the same Lua, and everything can be driven from
 > plays, edits, records and renders MIDI and audio through built-in devices
 > and CLAP, LV2 and VST3 plugins, but much of it has been tested against
 > stand-ins rather than real hardware, and things change without notice. See
-> [what is missing](docs/missing.md).
+> [what paw does not do yet](docs/reference/limits.md).
 
 [Try it](#try-it) · [Is paw for you?](#is-paw-for-you) ·
 [What it does](#what-it-does) · [A tour](#a-tour) ·
@@ -151,7 +151,7 @@ in oil.nvim; `:w` shows the plan and applies it as one undo step:
 
 </details>
 
-The whole keyboard is on one page in [docs/course/keys.md](docs/course/keys.md).
+The whole keyboard is on one page in [docs/reference/keys.md](docs/reference/keys.md).
 The status line is yours to compose, as lualine is (`paw.statusline.setup`).
 
 **The window.** `paw-gui` shows the same views as panes for the mouse, drawn
@@ -167,7 +167,7 @@ it needs, built by Nix: [utau](extensions/utau) brings its own singing
 engine and [sampler](extensions/sampler) its own sample player, and the core
 knows nothing about either. Write one view and it works in the terminal and
 the window alike. See [extensions](docs/extensions.md) and the
-[API reference](docs/api.md); LuaLS completes `paw.*` from
+[API reference](docs/reference/api.md); LuaLS completes `paw.*` from
 [runtime/types](runtime/types). With Claude Code, the
 [`paw-extension` skill](.claude/skills/paw-extension/SKILL.md) knows how.
 
@@ -206,17 +206,21 @@ batch an agent makes is one named undo step. See
 
 ## Documentation
 
-| Page | About |
-| --- | --- |
-| [Running it](docs/running.md) | installing, options, audio devices, other machines |
-| [The terminal](docs/terminal.md) | every key and picker, Ex, text buffers, quickfix, `:help` |
-| [The window](crates/paw-gui/README.md) | the mouse frontend, and [every gesture](docs/window.md) |
-| [Recording](docs/recording.md) and [mixing](docs/mixing.md) | inputs, takes, routing, automation, tempo, export |
-| [Devices](docs/devices.md) | plugins, the sandbox, built-in devices, devices in Lua |
-| [Configuration](docs/configuration.md) and [scripting](docs/scripting.md) | options, the look, the `paw` module, `paw ctl` |
-| [Extensions](docs/extensions.md) and the [API](docs/api.md) | what belongs in the core, what an extension can own, every function |
-| [Architecture](docs/architecture.md) and [protocol](docs/protocol.md) | the crates, the threads, the socket |
-| [What is missing](docs/missing.md) | what it does not do yet |
+[The manual](docs/README.md) has four kinds of page. In paw, `:help` shows
+the same pages.
+
+- Tutorials: [the course](docs/tutorials/course/README.md), seventeen short
+  lessons that you also find inside paw as `:tutor`.
+- How-to guides: [run paw](docs/running.md), with its options, audio devices
+  and other computers.
+- Reference: [all the keys](docs/reference/keys.md),
+  [the terminal](docs/terminal.md), [the graphical window](docs/window.md),
+  [the Lua API](docs/reference/api.md) and [the limits](docs/reference/limits.md).
+  The manual has more reference pages.
+- Explanation: [about the architecture](docs/explanation/about-the-architecture.md).
+
+The graphical window has [its own page](crates/paw-gui/README.md), and each
+extension has a README.
 
 ## Inspiration
 

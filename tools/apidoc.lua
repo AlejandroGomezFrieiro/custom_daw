@@ -8,14 +8,14 @@
 --
 -- It writes runtime/types/paw.lua, a LuaLS meta file (point `workspace.library`
 -- at runtime/types, and editors complete `paw.*` in a configuration or an
--- extension), and docs/api.md, the reference `:help` shows (`:help
+-- extension), and docs/reference/api.md, the reference `:help` shows (`:help
 -- paw.commands.define`). tests/apidoc.lua checks both are up to date and
 -- that every public function says what it does.
 local api = paw.api
 local M = {}
 
 M.META = "runtime/types/paw.lua"
-M.PAGE = "docs/api.md"
+M.PAGE = "docs/reference/api.md"
 
 local function read(path)
   local f = io.open(path, "r")
@@ -269,8 +269,8 @@ end
 function M.page()
   local out = { "# Lua API reference", "", "<!-- " .. HEADER .. " -->", "",
     "Every public function of the `paw` modules, with what its comment in the",
-    "source says, module by module; [Scripting](scripting.md) and",
-    "[Extensions](extensions.md) say how they fit together. The kernel's own",
+    "source says, module by module; [Scripting](../scripting.md) and",
+    "[Extensions](../extensions.md) say how they fit together. The kernel's own",
     "functions (`paw.api`, plain data in and out) are listed at the end.",
     "`runtime/types/paw.lua` holds the same for editors (LuaLS).", "" }
   local function add(line) out[#out + 1] = line end

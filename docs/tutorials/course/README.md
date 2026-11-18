@@ -8,7 +8,7 @@ A course for the first days with paw, by doing. Each lesson takes about ten minu
 paw.ext.load("extensions/tutor")   -- in ~/.config/paw/init.lua, or link the directory into ~/.config/paw/extensions
 ```
 
-then `:tutor` in paw. These pages are made from the tutor's own lessons, so the two say the same. [keys.md](keys.md) is a page of keys to keep beside the keyboard.
+then `:tutor` in paw. These pages are made from the tutor's own lessons, so the two say the same. [keys.md](../../reference/keys.md) is a page of keys to keep beside the keyboard.
 
 | | Lesson | What it teaches |
 | --- | --- | --- |

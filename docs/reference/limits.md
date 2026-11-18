@@ -1,4 +1,10 @@
-# What is missing
+# Limits: what paw does not do yet
+
+<!-- tags: missing -->
+
+This page lists what paw does not do, and the known limits of what it does.
+Each item is a fact about the current version. An item goes away when paw
+gets the function.
 
 - Undo shares a clip's notes between steps in runs of a few hundred, but
   not its controller moves: a step that changes a clip keeps a whole copy

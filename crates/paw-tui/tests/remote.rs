@@ -518,7 +518,7 @@ fn lua_that_runs_away_over_the_socket_is_stopped_and_errors_are_plain() {
         }
         assert_eq!(c.call("eval", json!(["return 2 + 2"])).unwrap(), json!(4), "after {method}");
     }
-    // Errors are their message, as docs/protocol.md shows them.
+    // Errors are their message, as docs/reference/protocol.md shows them.
     let mut error = |method: &str, params: Value| c.call(method, params).unwrap_err().to_string();
     let told = [
         (error("no_such_method", json!([])), "no method `no_such_method`"),

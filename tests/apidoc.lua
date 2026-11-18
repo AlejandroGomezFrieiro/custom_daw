@@ -1,5 +1,5 @@
 -- The Lua API's reference: every public function says what it does, and
--- what tools/apidoc.lua makes of it (runtime/types/paw.lua, docs/api.md) is
+-- what tools/apidoc.lua makes of it (runtime/types/paw.lua, docs/reference/api.md) is
 -- up to date. Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq = T.test, T.eq
@@ -36,7 +36,7 @@ end)
 
 test("apidoc: the reference is a page of help, and its names are tags", function()
   local apidoc = assert(loadfile("tools/apidoc.lua"))("module")
-  local page = T.read_file("docs/api.md")
+  local page = T.read_file("docs/reference/api.md")
   eq(page:find("- `paw.commands.define(name, run, opts)`: Define or replace a command.", 1, true) ~= nil, true, "a function with its comment")
   eq(page:find("- `paw.api.undo_discard()`", 1, true) ~= nil, true, "the kernel's functions too")
   local meta = T.read_file("runtime/types/paw.lua")

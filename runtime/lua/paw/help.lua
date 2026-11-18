@@ -6,9 +6,10 @@
 --   :help 'timebind'     an option    :help paw.qf       a Lua module
 --   :help key-rule       a section    :helpgrep stretch  every line that says it
 --
--- The pages are the Markdown of docs/*.md, docs/course/*.md, every
--- extension's README.md and doc/*.md (bundled beside the program or in the
--- configuration, loaded or not), and what `paw.help.add` names, made into
+-- The pages are the Markdown under docs/ (the manual, by kind: tutorials,
+-- how-to guides, reference and explanation, as docs/README.md lists them),
+-- every extension's README.md and doc/*.md (bundled beside the program or in
+-- the configuration, loaded or not), and what `paw.help.add` names, made into
 -- text by paw/markdown.lua and shown in text buffers (`help://terminal.md`)
 -- that cannot be changed. Their keys are the text buffers' own (motions,
 -- `v`, `y`, `/`), with `Ctrl-]` (or `Enter`, or a double click) to follow
@@ -93,9 +94,13 @@ function M.roots()
   return out
 end
 
-local DOC_ORDER = {
-  "terminal", "window", "running", "configuration", "recording", "mixing", "devices", "live", "harmony", "lsp",
-  "scripting", "extensions", "architecture", "protocol", "missing",
+-- The manual's four kinds of page, each in its folder of docs/ and under its
+-- heading in docs/README.md and in the contents, in the order shown there.
+M.kinds = {
+  { name = "tutorials", title = "Tutorials" },
+  { name = "how-to", title = "How-to guides" },
+  { name = "reference", title = "Reference" },
+  { name = "explanation", title = "Explanation" },
 }
 
 local function ext_loaded(name)
@@ -103,56 +108,153 @@ local function ext_loaded(name)
   return entry ~= nil and entry.ok ~= false
 end
 
---- Every page of help, in order: the contents, the manual, the course, the
---- extensions (each with whether it is loaded) and what was added. A page
---- is `{ path, name, aliases, prefix, ext? }`: `name` is its buffer's
---- (`help://name`), `aliases` its tags (the first is shown on its title),
---- `prefix` what its headings' tags start with.
+--- What docs/README.md says of the pages it links: the kind of the section
+--- each is listed under, and the order they are listed in. Paths are
+--- absolute.
+local function readme_order(docs)
+  local kind_of, rank = {}, {}
+  local by_title = {}
+  for _, kind in ipairs(M.kinds) do by_title[kind.title:lower()] = kind.name end
+  local kind, n = nil, 0
+  for line in (read_file(docs .. "/README.md") or ""):gmatch("[^\n]*") do
+    local heading = line:match("^##%s+(.-)%s*$")
+    if heading then kind = by_title[heading:lower()] end
+    for target in line:gmatch("%]%(([^)#%s]+%.md)[^)]*%)") do
+      if kind and not target:match("^%a+:") then
+        local path = normalize(docs .. "/" .. target)
+        if not rank[path] then
+          n = n + 1
+          kind_of[path], rank[path] = kind, n
+        end
+      end
+    end
+  end
+  return kind_of, rank
+end
+
+--- Every Markdown file under `dir`, as paths relative to it; `images` is skipped.
+local function markdown_files(dir, rel, out)
+  out = out or {}
+  for _, item in ipairs(list_dir(dir .. (rel and "/" .. rel or ""))) do
+    local path = rel and rel .. "/" .. item.name or item.name
+    if item.is_dir then
+      if path ~= "images" then markdown_files(dir, path, out) end
+    elseif item.name:match("%.md$") then
+      out[#out + 1] = path
+    end
+  end
+  return out
+end
+
+--- A file name as it sorts in its folder: the folder's README first, numbered
+--- pages (lessons) by number, the rest by name after them.
+local function sort_key(rel)
+  return (rel:gsub("[^/]+$", function(file)
+    return file == "README.md" and "" or file:match("^%d") and file or "~" .. file
+  end))
+end
+
+--- The manual's pages: every Markdown file under docs/. The kind of a page
+--- is its folder's (docs/reference/...), else the section of docs/README.md
+--- that lists it or its folder's README. A page is named by its base name
+--- (`help://terminal.md`, tags `terminal`) or, when two kinds have pages of
+--- the same name, with its kind before it (`how-to/x.md`, `how-to-x`). A
+--- page in a folder of its own is named by its path in its kind
+--- (`course/05-grammar.md`), its tags after the folder: `course` for the
+--- folder's README, `course-5` and `course-grammar` for a numbered page.
+local function manual_sources(docs)
+  local kind_of, rank = readme_order(docs)
+  local is_kind = {}
+  for _, kind in ipairs(M.kinds) do is_kind[kind.name] = true end
+  local pages, bases = {}, {}
+  for _, rel in ipairs(markdown_files(docs)) do
+    if rel ~= "README.md" then
+      local path = docs .. "/" .. rel
+      local top, rest = rel:match("^([^/]+)/(.+)$")
+      local kind, inner
+      if top and is_kind[top] then
+        kind, inner = top, rest
+      else
+        inner = rel
+        kind = kind_of[path] or (top and kind_of[docs .. "/" .. top .. "/README.md"]) or "reference"
+      end
+      local page = { path = path, kind = kind, inner = inner, rank = rank[path] or (top and rank[docs .. "/" .. top .. "/README.md"]) }
+      pages[#pages + 1] = page
+      if not inner:find("/") then
+        local base = inner:gsub("%.md$", "")
+        bases[base] = (bases[base] or 0) + 1
+      end
+    end
+  end
+  local out = {}
+  for _, page in ipairs(pages) do
+    local inner, kind = page.inner, page.kind
+    local folder, file = inner:match("^(.+)/([^/]+)$")
+    local name, aliases, prefix
+    if folder then
+      local tag = folder:gsub("/", "-")
+      local n, rest = file:match("^(%d+)%-(.+)%.md$")
+      name = inner
+      if n then
+        aliases, prefix = { tag .. "-" .. tonumber(n), tag .. "-" .. rest }, tag .. "-" .. tonumber(n)
+        page.lesson = tonumber(n)
+      elseif file == "README.md" then
+        aliases, prefix = { tag }, tag
+        -- The course was found as the tutor's too.
+        if tag == "course" then aliases[2] = "tutor-course" end
+      else
+        local base = file:gsub("%.md$", "")
+        aliases, prefix = { tag .. "-" .. base }, tag .. "-" .. base
+      end
+    else
+      local base = inner:gsub("%.md$", "")
+      if bases[base] > 1 then
+        name, aliases = kind .. "/" .. inner, { kind .. "-" .. base, kind .. "/" .. inner }
+      else
+        name, aliases = inner, { base, inner }
+      end
+      -- The key table's sections are named as the pages that describe
+      -- the same keys at length: those keep the plain tags.
+      prefix = inner == "keys.md" and "keys" or ""
+    end
+    out[#out + 1] = {
+      path = page.path, name = name, aliases = aliases, prefix = prefix, group = kind, manual = true,
+      lesson = page.lesson, rank = page.rank, key = sort_key(inner),
+      -- The key table is where every key is described in one line.
+      keytable = inner:match("[^/]+$") == "keys.md",
+    }
+  end
+  -- Pages that describe come before those that teach, so that where two
+  -- name a thing alike, the reference's is found first.
+  local weight = { reference = 1, ["how-to"] = 2, explanation = 3, tutorials = 4 }
+  table.sort(out, function(a, b)
+    if a.group ~= b.group then return (weight[a.group] or 5) < (weight[b.group] or 5) end
+    local ra, rb = a.rank or math.huge, b.rank or math.huge
+    if ra ~= rb then return ra < rb end
+    return a.key < b.key
+  end)
+  return out
+end
+M.manual_sources = manual_sources
+
+--- Every page of help, in order: the contents, the manual (reference,
+--- how-to guides, explanation, tutorials), the extensions (each with
+--- whether it is loaded) and what was added. A page is `{ path, name,
+--- aliases, prefix, group, ext? }`: `name` is its buffer's (`help://name`),
+--- `aliases` its tags (the first is shown on its title), `prefix` what its
+--- headings' tags start with, `group` the manual's kind of page or
+--- `extensions` or `added`.
 function M.sources()
   local out = { { name = "index", aliases = { "help", "index", "contents" }, prefix = "help", index = true } }
   local roots = M.roots()
   local docs
   for _, root in ipairs(roots) do
-    if not docs and exists(root .. "/docs/terminal.md") then docs = root .. "/docs" end
+    if not docs and exists(root .. "/docs/README.md") then docs = root .. "/docs" end
   end
   if docs then
-    local rank = {}
-    for i, name in ipairs(DOC_ORDER) do rank[name] = i end
-    local pages = {}
-    for _, item in ipairs(list_dir(docs)) do
-      local base = item.name:match("^(.+)%.md$")
-      if base and not item.is_dir then pages[#pages + 1] = base end
-    end
-    table.sort(pages, function(a, b)
-      local ra, rb = rank[a] or 99, rank[b] or 99
-      if ra ~= rb then return ra < rb end
-      return a < b
-    end)
-    for _, base in ipairs(pages) do
-      out[#out + 1] = { path = docs .. "/" .. base .. ".md", name = base .. ".md", aliases = { base, base .. ".md" }, prefix = "", group = "manual" }
-    end
-    local lessons = {}
-    for _, item in ipairs(list_dir(docs .. "/course")) do
-      if item.name:match("%.md$") then lessons[#lessons + 1] = item.name end
-    end
-    table.sort(lessons, function(a, b)
-      -- The course's own page first, the lessons by number, the keys last.
-      local function order(n) return n == "README.md" and "" or n:match("^%d") and n or "~" .. n end
-      return order(a) < order(b)
-    end)
-    for _, file in ipairs(lessons) do
-      local n, rest = file:match("^(%d+)%-(.+)%.md$")
-      local aliases, prefix
-      if n then
-        aliases, prefix = { "course-" .. tonumber(n), "course-" .. rest }, "course-" .. tonumber(n)
-      elseif file == "README.md" then
-        aliases, prefix = { "course", "tutor-course" }, "course"
-      else
-        local base = file:gsub("%.md$", "")
-        aliases, prefix = { "course-" .. base }, "course-" .. base
-      end
-      out[#out + 1] = { path = docs .. "/course/" .. file, name = "course/" .. file, aliases = aliases, prefix = prefix, group = "course", lesson = n and tonumber(n) }
-    end
+    -- A link to the manual's contents page goes to help's.
+    out[1].readme = docs .. "/README.md"
+    for _, source in ipairs(manual_sources(docs)) do out[#out + 1] = source end
   end
   -- Extensions: a loaded one where it was loaded from, then those in the
   -- configuration, then those bundled in the source tree.
@@ -342,14 +444,15 @@ local function index_text(sources)
       .. "the view you are in, `:q` closes this window, `-` comes back here.",
   }
   local has_manual = false
-  for _, source in ipairs(sources) do has_manual = has_manual or source.group == "manual" end
+  for _, source in ipairs(sources) do has_manual = has_manual or source.manual == true end
   if not has_manual then
     out[#out + 1] = ""
     out[#out + 1] = "The manual (`docs/`) was not found: run the program from its source tree, or set `PAW_HOME` to a copy of it."
   end
-  local groups = {
-    { "manual", "The manual" }, { "course", "The course" }, { "extensions", "Extensions" }, { "added", "Added" },
-  }
+  local groups = {}
+  for _, kind in ipairs(M.kinds) do groups[#groups + 1] = { kind.name, kind.title } end
+  groups[#groups + 1] = { "extensions", "Extensions" }
+  groups[#groups + 1] = { "added", "Added" }
   for _, group in ipairs(groups) do
     local any = false
     for _, source in ipairs(sources) do
@@ -438,6 +541,8 @@ local function build()
   local sources = M.sources()
   local signature = {}
   for _, source in ipairs(sources) do
+    -- docs/README.md orders the contents.
+    if source.readme then signature[#signature + 1] = read_file(source.readme) or "" end
     if not source.index then
       local text = read_file(source.path) or ""
       local cached = parsed[source.path]
@@ -485,6 +590,7 @@ local function build()
     source.order = i
     by_name[source.name] = source
     if source.path then by_path[source.path] = source end
+    if source.readme then by_path[source.readme] = source end
     local blocks = source.blocks
     if source.ext and not source.loaded and source.dir then
       blocks = util.merge({}, blocks)
@@ -513,15 +619,15 @@ local function build()
         local base = slug(a.text)
         add(source.prefix ~= "" and source.prefix .. "-" .. base or base, source, a.row, 0, 3)
       elseif a.kind == "code" then
-        -- Where the manual names a thing comes before where the course
-        -- or an extension's page does.
-        local after = source.group == "manual" and 0 or 3
+        -- Where the manual describes or uses a thing comes before where a
+        -- tutorial or an extension's page does.
+        local after = source.manual and source.group ~= "tutorials" and 0 or 3
         -- A row of the key table is a one-line entry for its keys: it beats
         -- every mention in prose, and a key's own heading.
         local prio = (a.first and 2 or 4) + after
-        if a.first and source.name == "course/keys.md" then prio = 1 end
-        -- The generated reference (docs/api.md) lists every Lua name: it is
-        -- where a name goes that the manual does not mention.
+        if a.first and source.keytable then prio = 1 end
+        -- The generated reference (docs/reference/api.md) lists every Lua
+        -- name: it is where a name goes that the manual does not mention.
         if source.name == "api.md" then prio = 5 end
         for _, name in ipairs(tags_of_code(a.text, a.first)) do add(name, source, a.row, a.col, prio) end
       end

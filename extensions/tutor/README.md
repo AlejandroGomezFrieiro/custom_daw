@@ -1,14 +1,14 @@
 # tutor
 
 A course for first-time users, inside paw, in the way `vimtutor` teaches
-Vim: sixteen lessons of about ten minutes, each in a practice project of its
+Vim: seventeen lessons of about ten minutes, each in a practice project of its
 own. A panel along the bottom says what to do next in a sentence or two with
 the exact keys, notices when it is done, says so, and goes on. Every lesson
 ends with something you made or changed and can hear.
 
 The same lessons, as text for reading away from the program, are in
-[docs/course](../../docs/course/README.md), with a page of keys to keep beside
-the keyboard, [keys.md](../../docs/course/keys.md).
+[docs/tutorials/course](../../docs/tutorials/course/README.md), with a page of keys to keep beside
+the keyboard, [keys.md](../../docs/reference/keys.md).
 
 ## Start it
 
@@ -176,8 +176,8 @@ lesson list. A new lesson is tested by adding it; nothing else to write.
 paw --clean --no-plugins -l extensions/tutor/make-docs.lua
 ```
 
-from the top of the repository to write `docs/course/`; the tests fail while
-the files and the lessons disagree. `docs/course/keys.md` is written by hand,
+from the top of the repository to write `docs/tutorials/course/`; the tests fail while
+the files and the lessons disagree. `docs/reference/keys.md` is written by hand,
 and the tests check that every key in its first column is a key paw has.
 
 ## Steps the tests cannot perform

@@ -147,11 +147,11 @@ that can follow are listed, with the name of a group of keys where it has one
 (`+automation`). Keys that lead nowhere stop with `,kn is not mapped`: the
 rest of what you typed is dropped, not run as new commands.
 
-New to it? There is a course of sixteen short lessons that runs inside the
+New to it? There is a course of seventeen short lessons that runs inside the
 program, in the manner of `vimtutor`: load `extensions/tutor` (see
 [Extensions](extensions.md#extensions)) and type `:tutor`. The same lessons are in
-[docs/course](course/README.md) for reading, with a one-page
-[key reference](course/keys.md).
+[docs/tutorials/course](tutorials/course/README.md) for reading, with a one-page
+[key reference](reference/keys.md).
 
 ## On another machine
 

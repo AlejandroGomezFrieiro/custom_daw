@@ -3357,6 +3357,17 @@ function paw.help.keyword() end
 ---@param topic any
 function paw.help.lookup(topic) end
 
+--- The manual's pages: every Markdown file under docs/. The kind of a page
+--- is its folder's (docs/reference/...), else the section of docs/README.md
+--- that lists it or its folder's README. A page is named by its base name
+--- (`help://terminal.md`, tags `terminal`) or, when two kinds have pages of
+--- the same name, with its kind before it (`how-to/x.md`, `how-to-x`). A
+--- page in a folder of its own is named by its path in its kind
+--- (`course/05-grammar.md`), its tags after the folder: `course` for the
+--- folder's README, `course-5` and `course-grammar` for a numbered page.
+---@param docs any
+function paw.help.manual_sources(docs) end
+
 --- A path with `.` and `..` taken out, made absolute from the working
 --- directory.
 ---@param path any
@@ -3397,11 +3408,13 @@ function paw.help.show(source, row, col) end
 ---@param text any
 function paw.help.slug(text) end
 
---- Every page of help, in order: the contents, the manual, the course, the
---- extensions (each with whether it is loaded) and what was added. A page
---- is `{ path, name, aliases, prefix, ext? }`: `name` is its buffer's
---- (`help://name`), `aliases` its tags (the first is shown on its title),
---- `prefix` what its headings' tags start with.
+--- Every page of help, in order: the contents, the manual (reference,
+--- how-to guides, explanation, tutorials), the extensions (each with
+--- whether it is loaded) and what was added. A page is `{ path, name,
+--- aliases, prefix, group, ext? }`: `name` is its buffer's (`help://name`),
+--- `aliases` its tags (the first is shown on its title), `prefix` what its
+--- headings' tags start with, `group` the manual's kind of page or
+--- `extensions` or `added`.
 function paw.help.sources() end
 
 --- The tags a piece of code names: a command line its command, `:set x`
