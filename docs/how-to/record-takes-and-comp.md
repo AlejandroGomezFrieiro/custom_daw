@@ -2,14 +2,16 @@
 
 This guide shows you how to record many takes of one part, and make one
 part from the best pieces. It assumes that the track has an input (see
-[How to record an audio take](record-an-audio-take.md)). For each key and
+[How to record a guitar or a bass](record-a-guitar-or-a-bass.md)). For each key and
 command, see [Takes](../reference/takes.md).
 
 ## Record the takes
 
-1. Select the bars of the part and set the loop over them.
+1. Select the bars of the part in visual mode, and press `gl` to loop
+   them.
 2. Arm the track with `r`.
-3. Put the cursor at the loop start, or before it, and press `R`.
+3. Put the cursor at the loop start, or before it. Press `gp` to move
+   the playhead to the cursor, then press `R`.
 4. Play the part again on each time round the loop.
 5. Press `<Space>` to stop. The clip shows the number of takes, for
    example `take 3 ‹3/3›`. The last take plays.
