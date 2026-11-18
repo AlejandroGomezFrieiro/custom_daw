@@ -18,6 +18,15 @@ local function song()
   return a, b, clip
 end
 
+test("the window is told how many frames a second to draw while the song plays", function()
+  eq(paw.frontend.state(-1).window_fps, "auto", "auto at first: the window knows its renderer")
+  paw.commands.exec("set window_fps=10")
+  eq(paw.frontend.state(-1).window_fps, 10, ":set window_fps=10")
+  eq(pcall(function() paw.opt.window_fps = 0 end), false, "not 0")
+  eq(pcall(function() paw.opt.window_fps = "fast" end), false, "a number or auto")
+  paw.opt.window_fps = "auto"
+end)
+
 test("the frontend is told colours, chains, both meter sides and when notes change", function()
   local a, b, clip = song()
   local state = paw.frontend.state(-1)

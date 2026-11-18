@@ -5,7 +5,8 @@
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -27,6 +28,9 @@ pub struct Client {
     pub patches: Vec<Value>,
     /// The live values last pushed and not yet taken (`scene.live`).
     pub live: Option<Value>,
+    /// The time between two frames drawn for the song alone, in
+    /// microseconds (`paw.opt.window_fps`).
+    pub pace: Arc<AtomicU64>,
 }
 
 impl Client {
@@ -58,6 +62,7 @@ impl Client {
             fresh: false,
             fresh_kinds: false,
             player: None,
+            pace: Arc::new(AtomicU64::new(1_000_000 / 30)),
             patches: Vec::new(),
             live: None,
         };
@@ -70,12 +75,13 @@ impl Client {
     /// window draws again then and at no other time: what arrives goes
     /// through a thread that waits for it. What only moves with the song
     /// (the playhead, the meters) and the panes the kernel draws are drawn
-    /// 25 times a second at most; the first change after a pause at once.
+    /// at the pace set (`pace`: 30 or 15 times a second); the first change
+    /// after a pause, and any other, at once.
     pub fn wake_on_events(&mut self, wake: impl Fn() + Send + 'static) {
         let (sender, receiver) = mpsc::channel();
         let from = std::mem::replace(&mut self.connection.events, receiver);
+        let pace = self.pace.clone();
         std::thread::spawn(move || {
-            const SONG_FRAME: Duration = Duration::from_millis(40);
             // The engine's load wavers all the time: a frame is drawn for it
             // only when it has moved by 4%, as the bar that shows it can.
             let mut drawn: (Value, f64) = (Value::Null, 0.0);
@@ -83,6 +89,7 @@ impl Client {
             let mut woken = Instant::now();
             let mut waiting: Option<Instant> = None;
             loop {
+                let song_frame = Duration::from_micros(pace.load(Ordering::Relaxed));
                 let event = match waiting {
                     Some(at) => match from.recv_timeout(at.saturating_duration_since(Instant::now())) {
                         Ok(event) => event,
@@ -122,8 +129,8 @@ impl Client {
                     break;
                 }
                 match news {
-                    Some(true) if woken.elapsed() < SONG_FRAME => {
-                        waiting.get_or_insert(woken + SONG_FRAME);
+                    Some(true) if woken.elapsed() < song_frame => {
+                        waiting.get_or_insert(woken + song_frame);
                     }
                     Some(_) => {
                         waiting = None;

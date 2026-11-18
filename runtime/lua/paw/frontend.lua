@@ -464,6 +464,8 @@ function M.state(known)
     record_dropped = e.record_dropped, devices_stopped = e.devices_stopped,
     -- What each drawn track plays from its slots: `M.launch_state`.
     launch = M.launch_state(ids),
+    -- How often the window draws while the song plays (`paw.opt.window_fps`).
+    window_fps = paw.opt.window_fps,
   }
   if known == M.revision then return out end
 
@@ -631,6 +633,10 @@ function M.save_as(after)
 end
 
 paw.option.define("native_dialogs", true) -- the window opens the desktop's file dialogs, not the kernel's list
+-- Frames a second the window draws while the song plays (the playhead, the
+-- meters): "auto" is 30 on a graphics card and 15 on the processor. Keys,
+-- the pointer and edits are drawn at once all the same.
+paw.option.define("window_fps", "auto", { type = { "number", "string" }, min = 1, max = 60, values = { "auto" } })
 
 --- What the graphical window said of the OpenGL that draws it when it
 --- started: `{ renderer, version, software, cause }`, or nil before a
@@ -645,7 +651,8 @@ M.software_advice = {
   libgl = "LIBGL_ALWAYS_SOFTWARE is set: unset it",
   driver = "the OpenGL driver of the graphics card is missing (on NixOS, set hardware.graphics.enable = true; elsewhere install Mesa's drivers), "
     .. "or the X server gives no DRI3 (over SSH, VNC or Xvfb): start the window on the computer's own screen",
-  ["no-card"] = "no graphics card was found (/dev/dri has no render node): on this computer the window can only draw on the processor",
+  ["no-card"] = "no graphics card was found (/dev/dri has no render node): on this computer the window can only draw on the processor; "
+    .. "a lower paw.opt.window_fps costs less",
 }
 
 --- The window tells which OpenGL renderer draws it (see

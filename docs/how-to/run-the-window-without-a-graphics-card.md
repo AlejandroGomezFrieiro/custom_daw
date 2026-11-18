@@ -24,7 +24,10 @@ at all. Then use the terminal (`paw song.json`), which has the same views.
 
 At rest, the window uses no processor time. While the song plays, expect
 about one core for llvmpipe. See [Graphics](../reference/window.md#graphics)
-for the measured values.
+for the measured values. On the processor, the window draws 15 frames a
+second while the song plays. To use less of the processor, type
+`:set window_fps=10` and press `Enter`. The playhead then moves in larger
+steps.
 
 ## Make the window use the graphics card again
 

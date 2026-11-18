@@ -97,8 +97,11 @@ renderer and the advice for all the usual causes:
 | The computer has no graphics card (no render node in `/dev/dri`) | The window can draw only on the processor. |
 
 The window draws a frame only when something changes. At rest, it draws
-nothing. While the song plays, it draws at most 25 frames a second for the
-playhead, the clock and the meters. The piano roll and the timeline get
+nothing. While the song plays, it draws the playhead, the clock and the
+meters at most `paw.opt.window_fps` times a second. The value `"auto"`
+(the default) is 30 on a graphics card and 15 on the processor, where
+each frame costs much more. A key, the pointer and an edit show in the
+next frame all the same. The piano roll and the timeline get
 only the notes, lines and points near the visible area. So a clip of
 thousands of notes opens and scrolls as fast as a short clip.
 

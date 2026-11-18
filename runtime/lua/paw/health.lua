@@ -187,6 +187,9 @@ M.register("window", function(h)
   else
     h.ok("the window draws on the graphics card: " .. tostring(r.renderer))
   end
+  local fps = paw.opt.window_fps
+  if fps == "auto" then fps = r.software and 15 or 30 end
+  h.info("while the song plays, the window draws " .. tostring(fps) .. " frames a second (paw.opt.window_fps)")
 end, { desc = "the graphical window and the OpenGL that draws it" })
 
 M.register("fonts", function(h)

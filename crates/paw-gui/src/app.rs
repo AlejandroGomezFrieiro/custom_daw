@@ -34,6 +34,8 @@ pub trait Kernel {
     fn live(&mut self) -> Option<Value> {
         None
     }
+    /// Draw the song's moves (the playhead, the meters) `fps` times a second.
+    fn set_pace(&mut self, _fps: f64) {}
 }
 
 impl Kernel for Client {
@@ -55,6 +57,9 @@ impl Kernel for Client {
     fn live(&mut self) -> Option<Value> {
         self.live.take()
     }
+    fn set_pace(&mut self, fps: f64) {
+        self.pace.store((1e6 / fps.max(1.0)) as u64, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 /// Taller or shorter tracks in the arrange view, by `...` rows, from the
@@ -69,6 +74,17 @@ const MESSAGE_TIME: Duration = Duration::from_secs(5);
 /// The transport bar along the top, and the status line along the bottom.
 pub const TRANSPORT_H: f32 = 40.0;
 pub const STATUS_H: f32 = 22.0;
+
+/// The frames a second the window draws while the song plays, by
+/// `paw.opt.window_fps`: a number from 1 to 60, or `auto`: 30 on a
+/// graphics card, 15 on the processor, where each frame costs much more.
+pub fn frame_rate(option: &Value, software: bool) -> f64 {
+    match option.as_f64() {
+        Some(fps) => fps.clamp(1.0, 60.0),
+        None if software => 15.0,
+        None => 30.0,
+    }
+}
 
 /// What the kernel last said, read.
 #[derive(Default)]
@@ -151,6 +167,8 @@ pub struct View {
     pub ctx: Option<egui::Context>,
     /// OpenGL draws the window on the processor (llvmpipe).
     pub software: bool,
+    /// The frames a second while the song plays, as last set.
+    pub fps: f64,
     /// The window's title as last set.
     title: String,
 }
@@ -189,6 +207,7 @@ impl View {
             listening: false,
             ctx: None,
             software: false,
+            fps: 0.0,
             title: String::new(),
         }
     }
@@ -285,6 +304,11 @@ impl View {
 
     /// Take in a state as `paw.frontend.state` gives it.
     pub fn take(&mut self, state: Value) {
+        let fps = frame_rate(&state["window_fps"], self.software);
+        if self.fps != fps {
+            self.fps = fps;
+            self.k.borrow_mut().set_pace(fps);
+        }
         self.s.playing = flag(&state["playing"]);
         self.s.recording = flag(&state["recording"]);
         if state.get("project").is_some_and(Value::is_object) {
@@ -726,5 +750,49 @@ impl View {
     /// Where the pointer is, if it is over `rect`.
     pub fn pointer_in(ui: &Ui, rect: Rect) -> Option<Pos2> {
         ui.input(|i| i.pointer.hover_pos()).filter(|p| rect.contains(*p))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::rc::Rc;
+
+    /// A kernel that keeps the pace it is set to.
+    struct Paced(Rc<RefCell<Vec<f64>>>);
+
+    impl Kernel for Paced {
+        fn call(&mut self, _method: &str, _params: Value) -> Result<Value> {
+            Ok(Value::Null)
+        }
+        fn state(&mut self) -> Result<Option<Value>> {
+            Ok(None)
+        }
+        fn send_file(&mut self, path: &Path) -> Result<String> {
+            Ok(path.to_string_lossy().into())
+        }
+        fn listening(&self) -> bool {
+            false
+        }
+        fn set_pace(&mut self, fps: f64) {
+            self.0.borrow_mut().push(fps);
+        }
+    }
+
+    #[test]
+    fn the_song_is_drawn_at_the_pace_of_window_fps_slower_on_the_processor() {
+        assert_eq!(frame_rate(&json!("auto"), false), 30.0);
+        assert_eq!(frame_rate(&json!("auto"), true), 15.0);
+        assert_eq!(frame_rate(&Value::Null, true), 15.0, "a kernel without the option");
+        assert_eq!(frame_rate(&json!(10), true), 10.0);
+        assert_eq!(frame_rate(&json!(500), false), 60.0);
+        let paces = Rc::new(RefCell::new(Vec::new()));
+        let mut view = View::new(Box::new(Paced(paces.clone())), true);
+        view.software = true;
+        view.take(json!({ "window_fps": "auto" }));
+        view.take(json!({ "window_fps": "auto" }));
+        assert_eq!(*paces.borrow(), vec![15.0], "set once, when it changes");
+        view.take(json!({ "window_fps": 24 }));
+        assert_eq!(*paces.borrow(), vec![15.0, 24.0]);
     }
 }

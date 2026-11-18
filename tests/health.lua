@@ -64,7 +64,8 @@ test("checkhealth: the window says whether it draws on a graphics card, and why 
   eq(levels(r), "info", "no window yet")
   paw.frontend.window_renderer_set({ renderer = "AMD Radeon 890M (radeonsi)", version = "4.6", software = false })
   r = paw.health.run("window")
-  eq(levels(r), "ok", "on the card")
+  eq(levels(r), "ok info", "on the card, and the frames a second")
+  eq(r.items[2].text:find("draws 30 frames a second", 1, true) ~= nil, true, r.items[2].text)
   eq(r.items[1].text:find("AMD Radeon 890M", 1, true) ~= nil, true, "it names the renderer")
   -- On the processor: said once when the window starts, with what to do.
   local before = #paw.ui.messages
@@ -75,7 +76,8 @@ test("checkhealth: the window says whether it draws on a graphics card, and why 
   eq(said.text:find("draws on the processor (llvmpipe)", 1, true) ~= nil, true, "in words: " .. said.text)
   eq(said.text:find("PAW_GUI_RENDERER", 1, true) ~= nil, true, "with the fix for its cause")
   r = paw.health.run("window")
-  eq(levels(r), "warn", "a warning in :checkhealth")
+  eq(levels(r), "warn info", "a warning in :checkhealth")
+  eq(r.items[2].text:find("draws 15 frames a second", 1, true) ~= nil, true, "fewer on the processor")
   eq(r.items[1].advice[1]:find("PAW_GUI_RENDERER", 1, true) ~= nil, true, "the likely cause first")
   eq(#r.items[1].advice, 4, "and the other usual causes")
   paw.frontend.window_renderer_set({ renderer = "llvmpipe (LLVM 19.1.7, 256 bits)", version = "4.5", software = true, cause = "driver" })

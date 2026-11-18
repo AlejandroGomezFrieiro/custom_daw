@@ -147,6 +147,9 @@ test("guide: run the window without a graphics card, then on the card again", fu
   -- The window started on the processor because PAW_GUI_RENDERER asked.
   local before = mark()
   paw.frontend.window_renderer_set({ renderer = "llvmpipe (LLVM 19.1.7, 256 bits)", version = "4.5", software = true, cause = "asked" })
+  keys(":set window_fps=10<CR>")
+  eq(paw.frontend.state(-1).window_fps, 10, "fewer frames a second")
+  paw.opt.window_fps = "auto"
   eq(said(before):find("The window draws on the processor", 1, true) ~= nil, true, "a warning when it starts: " .. said(before))
   keys(":checkhealth window<CR>")
   eq(page():find("- WARN the window draws on the processor", 1, true) ~= nil, true, ":checkhealth window: " .. page())

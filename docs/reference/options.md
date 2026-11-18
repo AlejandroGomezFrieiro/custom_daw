@@ -117,6 +117,7 @@ clip. `:set undo_steps=200` removes the oldest steps at once.
 | `paw.opt.roll_context` | `"all"` | The tracks whose notes show behind the clip in the piano roll: `"all"`, `"group"`, `"none"`, or a list of track ids. Drum tracks are not in `"all"` and `"group"`. |
 | `paw.opt.roll_context_max` | `4000` | The maximum number of notes that show behind the clip. |
 | `paw.opt.native_dialogs` | `true` | The graphical window opens the file dialogs of the desktop, not the list of the kernel. |
+| `paw.opt.window_fps` | `"auto"` | The frames a second that the graphical window draws while the song plays, from 1 to 60. `"auto"` is 30 on a graphics card and 15 on the processor. Keys, the pointer and edits show at once. |
 
 For `termcolors = "auto"`, paw uses 24-bit color when `COLORTERM` is
 `truecolor` or `24bit`, or when `TERM` ends in `-direct`. Else it uses the
