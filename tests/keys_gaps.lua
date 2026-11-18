@@ -98,6 +98,29 @@ test("? and ,fk search the whole description of a key, not the part that 80 colu
   end
 end)
 
+test("the device panel's cursor starts on the first device of another track, so w goes to a device", function()
+  start()
+  local a = paw.add_track({ name = "A" })
+  a:add_device("synth")
+  a:add_device("delay")
+  local b = paw.add_track({ name = "B" })
+  b:add_device("synth")
+  b:add_device("delay")
+  paw.cursor.set_track(a)
+  paw.ui.focus("devices")
+  T.after(function() paw.ui.hide("devices") paw.ui.focus("arrange") end)
+  local panel = paw.ui.views.devices
+  paw.keymap.feed("G")
+  eq(panel.row > 1, true, "G goes down the chain of A")
+  paw.cursor.set_track(b)
+  local _, row = panel:selected()
+  eq(panel.row, 1, "on B the cursor is on the first row")
+  eq(row.param, nil, "a device's own row")
+  paw.keymap.feed("w")
+  _, row = panel:selected()
+  eq(row.param == nil and row.device.kind, "delay", "w goes to the next device")
+end)
+
 test("a count before Alt-j and Alt-k moves the track that many places, and before & makes that many copies", function()
   start()
   for _, name in ipairs({ "A", "B", "C", "D", "E" }) do paw.add_track({ name = name }) end
