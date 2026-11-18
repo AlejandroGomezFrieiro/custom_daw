@@ -13,12 +13,16 @@ each extension (`:help notation`).
 ## How-to guides
 
 - [Run paw](running.md): install paw, build it from the source, its options, audio devices, other computers
+- [How to run the graphical window against a kernel on another machine](how-to/run-the-window-against-a-remote-kernel.md)
+- [How to run the graphical window without a graphics card](how-to/run-the-window-without-a-graphics-card.md)
+- [How to give an extension an editor in the graphical window](how-to/add-an-editor-to-the-window.md)
 
 ## Reference
 
 - [Keys, by idea](reference/keys.md): all the keys on one page, to keep near the keyboard
 - [The terminal interface](terminal.md): keys, Ex, windows, text buffers, files, the quickfix list, the mouse, help, pickers, queries
-- [The graphical frontend](window.md): each gesture of the graphical window
+- [The graphical window](reference/window.md): its command line, each gesture, the panes and the views in windows of their own
+- [The graphical window in Lua](reference/window-lua.md): `paw.frontend.act`, menus, bands, panes, views that paint
 - [Configuration](configuration.md): `init.lua`, options, colors, the status line
 - [Input and recordings](recording.md): inputs, input monitors, takes
 - [Edit, mix and render](mixing.md): routes, automation, tempo, stretched clips, markers, MIDI controllers, export
@@ -29,9 +33,10 @@ each extension (`:help notation`).
 - [Scripts](scripting.md): the `paw` module, `paw ctl`, scripts and other programs
 - [Extensions](extensions.md): what is in the core, what an extension can add
 - [Lua API reference](reference/api.md): each function, made from the code
-- [The control protocol](reference/protocol.md): the messages of the socket
+- [The control protocol](reference/protocol.md): the messages of the socket, scenes, seats, files and sound
 - [Limits: what paw does not do yet](reference/limits.md): what paw does not do, and the known limits of what it does
 
 ## Explanation
 
 - [About the architecture](explanation/about-the-architecture.md): the crates, the threads, the kernel and its frontends
+- [About scenes: one view, two frontends](explanation/about-scenes.md): why the graphical window has no views of its own
