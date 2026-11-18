@@ -1,7 +1,7 @@
 -- What connections on the control socket can ask to be sent, on top of
 -- calling into the kernel: events as they happen, and the state a graphical
 -- frontend draws, pushed when it changes instead of asked for thirty times
--- a second. docs/protocol.md describes the whole protocol; the transport
+-- a second. docs/reference/protocol.md describes the whole protocol; the transport
 -- (the socket, TCP, the token) is in crates/paw-core/src/rpc.rs.
 --
 --   subscribe "transport.*" "project.saved"   -- events are pushed as they happen

@@ -4,7 +4,7 @@
 -- then as what changed of it, pushed as it changes. The frontend says how
 -- big each window is in cell units (`scene.area`), sends the pointer back in
 -- the same units (`scene.input`), and asks once for each drawing sent by its
--- content key (`scene.blob`). docs/protocol.md has the whole protocol.
+-- content key (`scene.blob`). docs/reference/protocol.md has the whole protocol.
 --
 --   scene.watch { cell = { w, h }, live = true }   scenes from now on
 --   scene.area  win w h                            a window's size in units

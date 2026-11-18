@@ -235,7 +235,7 @@ pixels and scaled to its rectangle, under the cells' text with `under`
 as `blob`, a content key to ask `scene.blob` for once.
 
 A `role` is a named element a view marked over its rectangle (`buf:mark`,
-see [Roles](scripting.md#roles)): `role` its name and `props` what it
+see [Roles](../scripting.md#roles)): `role` its name and `props` what it
 shows, such as `{"role": "fader", "props": {"at": 0.81, "zero": 0.79,
 "value": -2}}`. Its kids are its cells, which a frontend that does not
 know the role draws; a frontend that said it paints the role is sent it

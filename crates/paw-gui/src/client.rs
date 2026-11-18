@@ -1,6 +1,6 @@
 //! The connection to a kernel's control socket: calls are answered, and the
 //! state to draw is pushed by the kernel when it changes (`frontend.watch`:
-//! see docs/protocol.md), in parts, and put together again here.
+//! see docs/reference/protocol.md), in parts, and put together again here.
 
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};

@@ -7,7 +7,7 @@
 //! since it last did as a [`Patch`]; the frontend applies the patch to its
 //! copy and draws that. Both sides find what is under the pointer with
 //! [`Scene::hit`], and [`Scene::to_cells`] lowers a scene to the cells a
-//! terminal shows. See docs/protocol.md, "Scenes".
+//! terminal shows. See docs/reference/protocol.md, "Scenes".
 //!
 //! Nodes:
 //!

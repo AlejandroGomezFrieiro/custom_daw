@@ -938,7 +938,9 @@ manual in four groups, in the order of `docs/README.md`: tutorials, how-to
 guides, reference and explanation. A page has the name of its file
 (`terminal`). If two groups have a page with the same name, the name of the
 group is at the start (`how-to-recording`). The course is in
-`docs/tutorials/course`. Help shows the extensions in your configuration and
+`docs/tutorials/course`.
+
+Help shows the extensions in your configuration and
 the extensions that come with paw, also when they are not loaded. The page
 of an extension that is not loaded tells you how to load it. Help reads the
 pages from the source tree that paw runs from, or from the source tree that

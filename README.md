@@ -30,7 +30,7 @@ paw lives in the [terminal](docs/terminal.md), modal and keyboard first,
 with pictures where the terminal can show them (kitty graphics). The same
 views also open in a [window](crates/paw-gui/README.md) for the mouse, drawn
 from the same Lua, and everything can be driven from
-[Lua scripts](docs/scripting.md), over a [socket](docs/protocol.md)
+[Lua scripts](docs/scripting.md), over a [socket](docs/reference/protocol.md)
 (`paw ctl`), or by an [AI agent](#for-agents).
 
 > [!NOTE]
@@ -215,7 +215,7 @@ batch an agent makes is one named undo step. See
 | [Devices](docs/devices.md) | plugins, the sandbox, built-in devices, devices in Lua |
 | [Configuration](docs/configuration.md) and [scripting](docs/scripting.md) | options, the look, the `paw` module, `paw ctl` |
 | [Extensions](docs/extensions.md) and the [API](docs/reference/api.md) | what belongs in the core, what an extension can own, every function |
-| [Architecture](docs/architecture.md) and [protocol](docs/protocol.md) | the crates, the threads, the socket |
+| [About the architecture](docs/explanation/about-the-architecture.md) and [protocol](docs/reference/protocol.md) | the crates, the threads, the socket |
 | [Limits](docs/reference/limits.md) | what it does not do yet |
 
 ## Inspiration

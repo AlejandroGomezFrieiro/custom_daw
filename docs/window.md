@@ -14,7 +14,7 @@ paw-gui --connect studio:7700 --token-file studio.token   # one on another machi
 
 The window is sent what it draws when that changes, instead of asking for
 it: an idle project costs nothing on the wire, and a change sends only the
-part that changed (see [docs/protocol.md](protocol.md)).
+part that changed (see [docs/reference/protocol.md](reference/protocol.md)).
 
 The window remembers how it was left, for the machine, in
 `~/.local/state/paw/window.json`: its size and, on X11, its position on the
@@ -193,7 +193,7 @@ the window's title. The mixer and the drum grid are such views: the window paint
 the controls they mark (faders, meters, switches, buttons) as widgets, and
 the pointer works them through the same hit regions as in the terminal. The kernel sends each such pane, and each view in a
 window of its own, as a scene and then as what changed of it, pushed after
-the turn that changed it (see "Scenes" in [the protocol](protocol.md)): the
+the turn that changed it (see "Scenes" in [the protocol](reference/protocol.md)): the
 window asks for nothing, draws the text crisp at any size, and an idle
 window with such panes open does no work. So `:vs paw://lane/3`,
 `Enter` on a lane row, `:copen`, `:sp quickfix`, `:e paw://tracks`,

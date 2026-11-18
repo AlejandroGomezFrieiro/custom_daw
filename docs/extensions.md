@@ -337,7 +337,7 @@ crates/paw-core/src/remote.rs). To draw them as the terminal does:
 
 The window (crates/paw-gui, on egui) does not get the grid: a view it
 shows in a pane or in a window of its own comes as a scene
-(crates/paw-scene; "Scenes" in [the protocol](protocol.md)), built by
+(crates/paw-scene; "Scenes" in [the protocol](reference/protocol.md)), built by
 `paw.ui.render_scene(name, w, h, cell, win)` from what the view writes
 (each `buf:text` a run, each `buf:fill` a fill, kept by where they are) and
 pushed as what changed of it. While the view is drawn for a scene,

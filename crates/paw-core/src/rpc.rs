@@ -6,7 +6,7 @@
 //! Pushed: `{"event": "transport.play", "payload": {"position": 0}}`
 //!
 //! A connection only hears what it asked for (`subscribe`, `frontend.watch`,
-//! `ui.attach`: see docs/protocol.md). Replies and events go out through one
+//! `ui.attach`: see docs/reference/protocol.md). Replies and events go out through one
 //! queue per connection, in the order they were made.
 //!
 //! Two ways in: a Unix socket, which whoever may open the file may use, and

@@ -21,7 +21,7 @@ The window does not have views of its own to keep in step with the
 terminal's. A view is written once, in Lua, and the kernel keeps a **scene**
 of it for each window — what to draw, in cell units, with pictures and
 roles — and sends the window only what changed (see "Scenes" in
-[docs/protocol.md](../../docs/protocol.md)). The terminal draws the same
+[docs/reference/protocol.md](../../docs/reference/protocol.md)). The terminal draws the same
 scene in cells (and kitty pixels); the window draws it with crisp text and
 vector pictures. An extension's view therefore works in both with no code
 for the window, and a test checks that the two agree for every view
