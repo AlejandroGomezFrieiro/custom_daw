@@ -1,0 +1,136 @@
+---
+name: paw-extension
+description: Create, extend or debug an extension for paw (the personal audio workstation in this repository): a directory of Lua that adds commands, keys, views, buffer types, kinds of track, Lua devices, picker sources, query fields, status line components, hooks, health checks, and optionally native parts built by Nix. Use whenever a task adds a feature to paw that is not core (see docs/extensions.md "Core and plugins"), writes or changes anything under extensions/ or ~/.config/paw/extensions, or asks "how do I make paw do X" where the answer is Lua — even if it only says "add a command", "a new view", "a tracker", "a plugin for paw".
+---
+
+# Creating a paw extension
+
+paw is built like Neovim: a small Rust kernel, and everything you touch is Lua
+over one API, `paw`. An extension is ordinary Lua that calls that API — there
+is no separate plugin interface. Read these before writing anything (they are
+the source of truth; this page is the map):
+
+- `docs/extensions.md` — what belongs in the core vs an extension, layout,
+  manifests and versions, what an extension owns and `:ext.unload`, health
+  checks, pictures in the terminal (strips), everything an extension can own
+  (devices, track kinds, native engines, Nix packaging).
+- `docs/scripting.md` — the API by area, with **Events** (every hook, one
+  table) and buffer types / text buffer kinds.
+- `docs/api.md` (`:help paw.<name>`) — every public function, generated.
+  `runtime/types/paw.lua` is the LuaLS meta file: point LuaLS's
+  `workspace.library` at `runtime/types` to get completion while writing.
+- `docs/terminal.md` and `docs/course/keys.md` — the keys a user expects;
+  `runtime/lua/paw/keyrule.lua` — the key rule your keys must follow.
+- A bundled extension close to what you want, as a model (below).
+
+## Rules that are not optional
+
+1. **MIDI and the project are the truth.** An extension never owns clip data.
+   Keep extension data in `meta` (note/clip/track/project) or files; the
+   project must open, play and edit without the extension (notation and
+   articulations are the models: notation is a *view* over MIDI).
+2. **The key rule.** `h j k l w b e 0 ^ $ gg G` only move; `+ -` and
+   `Ctrl-a`/`Ctrl-x` change the main value, `[ ]` the second; `< >` are time;
+   `K` describes; `Esc` cancels and stays. A view's own keys go on
+   `<localleader>` (backslash), **never** `<leader>` for one view's keys.
+   Motions are declared `motion = true` so operators and visual mode work.
+   `tests/keys_constitution.lua` and `paw.keyrule.broken()` check it.
+3. **Terminal first, both frontends from one code path.** Draw views in
+   cells with `buf:text`/`buf:fill`; the window renders the same scene (see
+   docs/extensions.md "One interface, both frontends"). For pixels, use
+   strips (`buf:strip`, `paw.plot.*`) under the cells, with the cell drawing
+   as the fallback. Never write a second window-only UI.
+4. **Everything undoable, everything said.** Edits go through the API so they
+   are undo steps (one per user action); every action gives feedback
+   (`paw.notify`) and every failure a clear message, never a stack trace.
+5. **Fast keys.** A key handler stays well under 100 ms on large projects;
+   Lua that runs away is stopped after 2 s (`paw.opt.lua_limit`).
+
+## Layout
+
+```
+extensions/<name>/
+  manifest.lua      return { name, version, description, requires = { paw = "^1.0" } }
+  init.lua          runs at load: require your modules, register things
+  lua/<name>/…      your modules (on the require path)
+  devices/*.lua     Lua devices (JSFX-style DSP), optional
+  README.md         the user's page: keys, commands, options — `:help` reads it
+  tests.lua         tests, run by tests/tools/suite.sh
+  images/           pictures for the README (scenes in images/make/)
+  nix/default.nix   only if it ships native parts (an engine, a plugin)
+```
+
+A user's own extension lives in `~/.config/paw/extensions/<name>` the same
+way; `paw.ext.load(path)` in `init.lua` or `:ext.load <name>` loads one.
+
+## What you register (each is recorded as owned by your extension)
+
+```lua
+paw.command("euclid.fill", function(ctx) --[[ ctx.args, ctx.count, ctx.range ]] end,
+  { desc = "Fill the clip with a Euclidean rhythm: `euclid.fill 5 8`", range = true })
+paw.keymap.set("<localleader>e", "euclid.fill 3 8", { view = "pianoroll", desc = "Euclid 3 in 8" })
+paw.keymap.set("]e", fn, { view = "pianoroll", motion = true, desc = "Next onset" })
+paw.ui.view("euclid", { render = function(self, buf, ctx) end, on_key = …, title = "Euclid" })
+paw.buftype("tally", { … })                    -- a buffer type with its own keys/motions/K/status
+paw.textbuf.kind("clips", { … })               -- a listing edited as text, :w shows a plan
+paw.track_kinds.define("euclid", { … })        -- a kind of track (create, editor, describe)
+paw.on("edit.after", function(payload) end)    -- hooks: see docs/scripting.md "Events"
+paw.statusline.component("euclid", { fn = function(ctx) return { { "E", "StatusOn" } } end })
+paw.query.field("note", "onset", function(note) end)  -- :select / :query fields
+paw.grep.source("euclid", function(add) end)           -- :vimgrep text
+paw.health.register("euclid", function(h) h.ok("ready") end, { desc = "Euclid" })
+paw.option.define("euclid_density", 0.5, { min = 0, max = 1 })  -- typed, bounded
+```
+
+Check exact signatures in docs/scripting.md / `:help` before using one; the
+lines above are a map, not the contract. For devices see docs/devices.md
+"Writing a device in Lua" (`dsp.device{…}`; `dev.call` receives
+`paw.api.device_call`; large data via `dsp.map`). For an extension that ships
+an engine or a plugin, follow `extensions/utau` and `extensions/sampler`
+(`nix/default.nix`, `paw.plugins.add_dir`, `paw.withExtensions`).
+
+## Models to copy
+
+| You want | Read |
+| --- | --- |
+| commands + keys + text objects on the timeline | `extensions/sections` |
+| a view in its own window, cells + pixels | `extensions/undotree`, `extensions/mixdiag` |
+| a whole editor over MIDI with its own grammar | `extensions/notation` |
+| a kind of track with its own editor | `extensions/drums`, `extensions/utau` |
+| per-note data, roll layers, popovers | `extensions/articulations` |
+| a native engine / CLAP plugin built by Nix | `extensions/sampler`, `extensions/utau` |
+| a buffer type (e.g. a tracker, time top→down) | docs/scripting.md `paw.buftype` example ("tally") |
+
+## Tests and checks (do these before calling it done)
+
+`extensions/<name>/tests.lua` receives the suite's helpers:
+
+```lua
+local T = ...
+T.test("euclid fills 3 in 8", function()
+  T.fresh()                                   -- a clean project
+  paw.ext.load("extensions/euclid")
+  -- drive real keys where it is UX: T.keys("…") / paw.keymap.feed("…")
+  T.eq(#clip:notes(), 3, "three onsets")
+end)
+```
+
+```sh
+nix develop -c cargo build --release -j 8      # the runtime Lua is embedded: rebuild first
+nix develop -c tests/tools/suite.sh            # all tests (output in target/test-scratch/suite.out)
+nix develop -c tests/tools/suite.sh only euclid  # only the tests whose name holds "euclid"
+nix develop -c target/release/paw --clean --no-plugins -l tools/apidoc.lua check  # API docs current
+```
+
+Also, inside paw: `:checkhealth`, `:extensions`, `:ext.unload <name>` then
+`:ext.load <name>` (must work cleanly), `:help <your command>` and
+`:help <your key>` (must land in your README), and `paw.keyrule.broken()`
+empty. Test with `--audio null` and a scratch `XDG_CONFIG_HOME`; never touch
+the user's real config, devices or display from tests.
+
+## Documentation
+
+Your README is the user's page and `:help` reads it: a short intro, a keys
+table, commands, options, and what is not done. Mention every command and key
+you register (a test walks them). Add pictures with a scene script under
+`images/make/` (see docs/images/make for the rig) so they can be made again.
