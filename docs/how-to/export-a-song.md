@@ -1,0 +1,58 @@
+# How to export a song as WAV, FLAC or MP3
+
+This guide shows you how to render the song to a sound file. The file can
+be a WAV master or an MP3 to share. In paw, export is `:render`. For each
+option, see [Render](../reference/render.md).
+
+## Export the song
+
+1. Save the project with `:w`.
+2. Type `:render`. paw renders the song to a WAV file with the name of the
+   project, next to the project file: `song.wav` for `song.json`.
+3. Wait for the message that gives the length and the peak of the file.
+   The status line shows the progress. To stop the render, press `Esc`.
+
+The render starts at the start of the song. It ends one second after the
+last clip, for the tail of reverbs and delays.
+
+## Choose the format and the place
+
+Give the file name after `:render`. Its extension sets the format:
+
+- `:render /home/ana/Music/song.wav` for a WAV file, at 24 bits.
+- `:render /home/ana/Music/song.flac` for a FLAC file.
+- `:render /home/ana/Music/song.mp3 quality=best` for an MP3 file at 320 kbit/s.
+
+Give the full path of the file. If you give a name without a folder, for
+example `:render mix.flac`, the file goes into the folder where you
+started paw. `:render` does not read `~` as your home folder.
+
+`:render` with no name always writes next to the project.
+
+If `:render song.mp3` fails because there is no `ffmpeg`, install
+`ffmpeg`. WAV and FLAC need no other program.
+
+## Add the tags
+
+1. Type the tags of the project one time:
+
+   ```
+   :render.tags artist=Ana album="First one" track=3/12 year=2026 cover=cover.png
+   ```
+
+2. Render as above. paw writes the tags into each file: FLAC, MP3, Ogg
+   and Opus get the cover too.
+
+## Common options
+
+- For a CD, add `rate=44100 bits=16 dither=true`.
+- If the reverb continues after the end, add `tail=4` for four seconds.
+- For a loudness target, add `loudness=-14`. To also keep the peaks below
+  a level, add `normalize=-1`.
+
+To export one part of the song, see
+[How to export part of the song or a loop](export-part-of-the-song.md).
+To export each track, see [How to render stems](render-stems.md).
+
+In the graphical window, choose File → Render…. Choose the format and the
+options, type the tags under Tags, and start the render.

@@ -1,0 +1,198 @@
+-- The how-to guides of the user guide about recording, each driven with the
+-- keys that it gives (docs/how-to/record-*.md, use-the-metronome.md).
+-- Loaded by tests/suite.lua with its helpers.
+local T = ...
+local test, eq, fresh = T.test, T.eq, T.fresh
+local api = paw.api
+
+--- The keys of a guide, as one turn each.
+local function keys(text)
+  paw.keymap.feed(text)
+  api.undo_checkpoint()
+end
+
+--- A fresh project in a saved file, with the test input of the null backend:
+--- input channel 1 has a sine at 440 Hz, channel 2 at 880 Hz, and a MIDI
+--- port `Keys A`.
+local function studio(name)
+  fresh()
+  api.engine_restart({ backend = "null", test_input = { frequency = 440, level = -12, channels = 2 }, test_midi = { "Keys A" } })
+  T.after(function() api.engine_restart({ backend = "null" }) end)
+  paw.keymap.feed("<Esc><Esc>")
+  while paw.ui.float do paw.ui.close() end
+  paw.ui.focus("arrange")
+  T.after(function()
+    paw.opt.count_in = 0
+    paw.transport.metronome = false
+  end)
+  paw.project.tempo = 120
+  paw.project.save(T.scratch .. "/" .. name .. ".json")
+end
+
+local function wait_for(what, limit, fn)
+  local deadline = api.now() + limit
+  while not fn() do
+    if api.now() > deadline then error("waited " .. limit .. " ms for " .. what, 2) end
+    api.sleep(10)
+  end
+end
+
+--- The bottom lines of the terminal screen.
+local function status()
+  local lines = api.ui_snapshot(120, 30)
+  return lines[#lines - 1] .. "\n" .. lines[#lines]
+end
+
+local function file_exists(path)
+  local f = io.open(path, "rb")
+  if f then f:close() end
+  return f ~= nil
+end
+
+test("guide: record a guitar or a bass through an audio interface", function()
+  studio("guitar")
+  keys("o")
+  keys("grnGuitar<CR>")
+  local gtr = paw.tracks()[1]
+  eq(gtr.name, "Guitar", "grn names the track")
+  keys("Isignal 1<CR>")
+  eq(gtr.input, "1", "I chooses one input channel, for a guitar")
+  keys("r")
+  eq(gtr.armed, true, "r arms the track")
+  wait_for("the input level on the header", 3000, function() return paw.audio.levels()[1] > 0.1 end)
+  keys(":tuner<CR>")
+  local tuner = gtr:device("tuner")
+  eq(tuner ~= nil, true, ":tuner adds a tuner to the track")
+  wait_for("the tuner to hear the A", 3000, function()
+    local p = paw.params.read(tuner, "pitch")
+    return p and p.note == "A4"
+  end)
+  keys(",d")
+  eq(paw.ui.focused, "arrange", ",d hides the device panel again")
+  keys(":audio.buffer 128<CR>")
+  keys("R")
+  wait_for("the recording", 3000, function() return paw.transport.recording and paw.transport.playing end)
+  api.sleep(1000)
+  keys("<Space>")
+  paw.flush()
+  local clips = gtr:clips()
+  eq(#clips, 1, "the take is a clip on the track")
+  eq(clips[1].kind, "audio", "of audio")
+  eq(file_exists(clips[1]:get().file), true, "in a file")
+  eq(clips[1]:get().file:find(T.scratch .. "/media/", 1, true) == 1, true, "in media next to the project")
+end)
+
+test("guide: record vocals with a count-in and a click", function()
+  studio("vocals")
+  keys("o")
+  keys("grnVocal<CR>")
+  local vox = paw.tracks()[1]
+  keys("Isignal 1<CR>")
+  keys("r")
+  keys("gm")
+  eq(paw.transport.metronome, true, "gm starts the metronome")
+  eq(status():find("click", 1, true) ~= nil, true, "the status line shows the click")
+  keys(":countin 1<CR>")
+  eq(paw.opt.count_in, 1, ":countin 1 counts one bar")
+  keys("2|gp")
+  keys("R")
+  wait_for("the count", 2000, function() return paw.transport.counting > 0 end)
+  eq(status():find("count", 1, true) ~= nil, true, "the status line shows the count")
+  eq(paw.transport.position, 4, "the playhead waits for the count")
+  wait_for("the take after the count", 4000, function() return paw.transport.counting == 0 and paw.transport.position > 4 end)
+  api.sleep(800)
+  keys("<Space>")
+  paw.flush()
+  eq(#vox:clips(), 1, "the take is a clip")
+  eq(vox:clips()[1].start, 4, "that starts at the playhead, after the count")
+end)
+
+test("guide: use the metronome", function()
+  studio("metronome")
+  keys("gm")
+  eq(paw.transport.metronome, true, "gm starts the metronome")
+  eq(status():find("click", 1, true) ~= nil, true, "the status line shows the click")
+  local tone = T.tone("tone", 4)
+  tone.mute = true
+  eq(T.render({ tail = 0 }).peak, 0, "a rendered file has no click")
+  keys("grt90<CR>")
+  eq(paw.project.tempo, 90, "grt types the tempo")
+  keys("gm")
+  eq(paw.transport.metronome, false, "gm again stops it")
+  keys("gM")
+  eq(paw.opt.count_in, 1, "gM counts one bar in")
+  eq(status():find("count 1", 1, true) ~= nil, true, "the status line shows the count-in")
+  keys(":countin 2<CR>")
+  eq(paw.opt.count_in, 2, ":countin 2 counts two bars")
+  keys("gM")
+  eq(paw.opt.count_in, 0, "gM again stops the count-in")
+  keys(":countin 1<CR>")
+  keys(":countin off<CR>")
+  eq(paw.opt.count_in, 0, ":countin off stops it too")
+
+  -- Esc cancels a count.
+  keys("gM")
+  keys("R")
+  wait_for("the count", 2000, function() return paw.transport.counting > 0 end)
+  keys("<Esc>")
+  wait_for("the count to stop", 2000, function() return paw.transport.counting == 0 and not paw.transport.playing end)
+  eq(paw.transport.recording, false, "Esc cancels the count and the recording")
+end)
+
+test("guide: record MIDI from a keyboard", function()
+  studio("keys")
+  keys("o")
+  keys("aSynth<CR>")
+  local t = paw.tracks()[1]
+  eq(t:devices()[1].kind, "synth", "a adds an instrument")
+  keys("IKeys A<CR>")
+  eq(paw.audio.label(t:get()), "MIDI · Keys A", "I chooses the port of the keyboard")
+  keys("r")
+  local function play(pitch, after)
+    keys("R")
+    wait_for("the recording", 3000, function() return paw.transport.recording and paw.transport.playing end)
+    api.sleep(after)
+    paw.midi.inject({ type = "note_on", pitch = pitch, velocity = 100, port = "Keys A", channel = 1 })
+    api.sleep(300)
+    paw.midi.inject({ type = "note_off", pitch = pitch, port = "Keys A", channel = 1 })
+    api.sleep(200)
+    keys("<Space>")
+    paw.flush()
+  end
+  keys("3|gp")
+  play(60, 100)
+  eq(#t:clips(), 1, "the take is a clip")
+  eq(t:clips()[1].start, 8, "where the cursor was")
+  eq(#t:clips()[1]:notes(), 1, "with the note played")
+
+  -- A second take over the first, merged into it.
+  keys("3|gp")
+  play(64, 400)
+  eq(#t:clips(), 2, "a new take is a new clip, over the first")
+  keys(":j<CR>")
+  eq(#t:clips(), 1, ":j merges the clips of the bar")
+  eq(#t:clips()[1]:notes(), 2, "with the notes of both")
+
+  -- Over a loop: every time round is a take.
+  paw.project.tempo = 240
+  keys("5|gp")
+  keys("gl1W")
+  eq(paw.transport.loop_enabled, true, "gl1W loops a bar")
+  eq(paw.transport.loop_start .. "-" .. paw.transport.loop_end, "16-20", "the bar of the cursor")
+  keys("R")
+  wait_for("the recording", 3000, function() return paw.transport.recording and paw.transport.playing end)
+  for _, pitch in ipairs({ 67, 69 }) do
+    api.sleep(200)
+    paw.midi.inject({ type = "note_on", pitch = pitch, velocity = 100, port = "Keys A", channel = 1 })
+    api.sleep(200)
+    paw.midi.inject({ type = "note_off", pitch = pitch, port = "Keys A", channel = 1 })
+    api.sleep(600)
+  end
+  api.sleep(200)
+  keys("<Space>")
+  paw.flush()
+  local looped = t:clip_at(16)
+  eq(looped.start .. "+" .. looped.length, "16+4", "one clip over the loop")
+  eq(paw.takes.count(looped.id) >= 2, true, "with a take for each time round")
+  eq(looped:notes()[1].pitch, 69, "the last take plays")
+end)

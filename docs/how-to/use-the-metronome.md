@@ -1,0 +1,33 @@
+# How to use the metronome
+
+This guide shows you how to play with a click, and how to get a count-in
+before a take. For each rule, see
+[Recording](../reference/recording.md#count-in) and
+[Tempo and time signatures](../reference/tempo.md).
+
+## Hear the click
+
+1. Press `gm`. The status line shows `click`. The metronome plays when
+   the song plays.
+2. Press `gm` again to stop the metronome.
+
+The metronome plays a higher click on the first beat of each bar. It
+plays one click on each beat of the time signature: six clicks in a bar of
+6/8. When the tempo changes, the click follows the tempo map.
+
+To change the tempo, press `grt`, type the tempo and press `Enter`.
+
+The metronome plays through the main output with the song. paw does not
+put the click in a rendered file.
+
+## Count in before a take
+
+1. Press `gM`. The status line shows `count 1`. A take that starts from a
+   stop now begins after one bar of clicks.
+2. To count two bars, type `:countin 2`.
+3. To stop the count-in, press `gM` again, or type `:countin off`.
+
+The count-in clicks also when the metronome is off. To cancel a count,
+press `Esc` or `<Space>`.
+
+In the graphical window, the transport bar has a button for the metronome.
