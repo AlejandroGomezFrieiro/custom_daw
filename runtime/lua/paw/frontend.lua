@@ -466,6 +466,7 @@ function M.state(known)
     launch = M.launch_state(ids),
     -- How often the window draws while the song plays (`paw.opt.window_fps`).
     window_fps = paw.opt.window_fps,
+    window_cache = paw.opt.window_cache,
   }
   if known == M.revision then return out end
 
@@ -637,6 +638,9 @@ paw.option.define("native_dialogs", true) -- the window opens the desktop's file
 -- meters): "auto" is 30 on a graphics card and 15 on the processor. Keys,
 -- the pointer and edits are drawn at once all the same.
 paw.option.define("window_fps", "auto", { type = { "number", "string" }, min = 1, max = 60, values = { "auto" } })
+-- The window keeps what does not move in a pane as textures, and paints a
+-- part again only when it changes: true, false, or "auto", on the processor only.
+paw.option.define("window_cache", "auto", { type = { "boolean", "string" }, values = { "auto", true, false } })
 
 --- What the graphical window said of the OpenGL that draws it when it
 --- started: `{ renderer, version, software, cause }`, or nil before a

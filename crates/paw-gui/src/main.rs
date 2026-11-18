@@ -18,6 +18,7 @@ mod client;
 mod dialogs;
 mod icons;
 mod keys;
+mod layer;
 mod menu;
 mod model;
 mod panes;
@@ -322,6 +323,7 @@ fn run() -> Result<()> {
             client.wake_on_events(move || ctx.request_repaint_after(std::time::Duration::from_millis(1)));
             let mut view = app::View::new(Box::new(client), ours);
             view.software = software;
+            view.layer = cc.gl.is_some().then(layer::Layer::default);
             Ok(Box::new(Window { view, child }))
         }),
     )

@@ -86,6 +86,13 @@ pub fn frame_rate(option: &Value, software: bool) -> f64 {
     }
 }
 
+/// Whether the still part of the panes is kept as textures, by
+/// `paw.opt.window_cache`: true, false, or `auto`: on the processor only,
+/// where it saves the most.
+pub fn cache_on(option: &Value, software: bool) -> bool {
+    option.as_bool().unwrap_or(software)
+}
+
 /// What the kernel last said, read.
 #[derive(Default)]
 pub struct State {
@@ -169,6 +176,14 @@ pub struct View {
     pub software: bool,
     /// The frames a second while the song plays, as last set.
     pub fps: f64,
+    /// The textures that keep what does not move in the panes drawn from
+    /// scenes (with OpenGL only), and whether they are used
+    /// (`paw.opt.window_cache`).
+    pub layer: Option<crate::layer::Layer>,
+    pub cache: bool,
+    /// With `PAW_GUI_STATS` set: frames drawn since the last report, and
+    /// when that was. Every 10 s the window prints what it drew.
+    stats: Option<(u64, Instant)>,
     /// The window's title as last set.
     title: String,
 }
@@ -208,6 +223,9 @@ impl View {
             ctx: None,
             software: false,
             fps: 0.0,
+            layer: None,
+            cache: false,
+            stats: std::env::var_os("PAW_GUI_STATS").map(|_| (0, Instant::now())),
             title: String::new(),
         }
     }
@@ -309,6 +327,7 @@ impl View {
             self.fps = fps;
             self.k.borrow_mut().set_pace(fps);
         }
+        self.cache = cache_on(&state["window_cache"], self.software);
         self.s.playing = flag(&state["playing"]);
         self.s.recording = flag(&state["recording"]);
         if state.get("project").is_some_and(Value::is_object) {
@@ -424,6 +443,27 @@ impl View {
         if self.gone && self.ours {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        self.stats();
+    }
+
+    /// With `PAW_GUI_STATS`: a line every 10 s of the frames drawn, and of
+    /// the squares and pixels of the panes' texture painted again.
+    fn stats(&mut self) {
+        let Some((frames, since)) = &mut self.stats else { return };
+        *frames += 1;
+        let seconds = since.elapsed().as_secs_f64();
+        if seconds < 10.0 {
+            return;
+        }
+        let (squares, pixels) = self.layer.as_mut().map_or((0, 0), |l| (std::mem::take(&mut l.painted), std::mem::take(&mut l.pixels)));
+        eprintln!(
+            "paw-gui: stats: {frames} frames in {seconds:.1} s ({:.1}/s), texture {}, {squares} squares painted ({:.2} a frame), {:.0} pixels painted a frame",
+            *frames as f64 / seconds,
+            if self.cache { "on" } else { "off" },
+            squares as f64 / *frames as f64,
+            pixels as f64 / *frames as f64,
+        );
+        self.stats = Some((0, Instant::now()));
     }
 
     /// The panes of the main area: those the window draws itself, and those

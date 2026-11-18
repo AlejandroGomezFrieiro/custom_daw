@@ -1082,6 +1082,63 @@ fn demo_song_shows_and_answers_the_pointer() {
     w.assert_alive("after rendering");
 }
 
+/// The window's pixels with the still part of its panes kept as textures
+/// (`paw.opt.window_cache`) or drawn straight, after a frame or two.
+fn look(w: &Scene, cache: bool) -> Vec<[u8; 3]> {
+    w.ctl(&format!("paw.opt.window_cache = {cache}"));
+    w.pause(1.0);
+    w.pixels((0, 0), (1400, 860))
+}
+
+/// How many pixels differ, and how many of them by more than 2 in a
+/// colour.
+fn differ(a: &[[u8; 3]], b: &[[u8; 3]]) -> (usize, usize) {
+    assert_eq!(a.len(), b.len());
+    let (mut count, mut big) = (0, 0);
+    for (p, q) in a.iter().zip(b) {
+        let d = (0..3).map(|i| p[i].abs_diff(q[i])).max().unwrap();
+        count += (d > 0) as usize;
+        big += (d > 2) as usize;
+    }
+    (count, big)
+}
+
+// Panes kept as textures, as they are on the processor (this X server has
+// no graphics card), show what panes drawn straight show: the arrange view
+// with the pointer over a button, the mixer and the devices, the piano
+// roll, the arrange view zoomed. The texture has the screen's pixels;
+// llvmpipe cuts a square's shapes to the square, which may round a smoothed
+// edge by 1 and move by a pixel where a stretched picture changes from one
+// of its pixels to the next: a few hundred pixels at most, of more than a
+// million.
+#[test]
+fn panes_kept_as_textures_look_as_panes_drawn_straight() {
+    let mut w = scene!("cache-look", DEMO);
+    w.pause(3.0);
+    w.mouse_to(arrange_point(&w, "v.flags.mute + 0.5", "row('track', 2) + 0.5"));
+    let keys = w.number("return paw.api.clip_list(paw.api.track_list()[3])[1].id") as i32;
+    let views = [
+        ("arrange", String::new()),
+        ("mixer", "paw.commands.exec('view.toggle mixer')".to_string()),
+        ("roll", format!("paw.commands.exec('view.toggle mixer') return paw.frontend.act.open_clip({keys})")),
+        ("zoomed", "paw.ui.focus('arrange') paw.commands.exec('zoom by=1.4142')".to_string()),
+    ];
+    for (what, setup) in views {
+        w.ctl(&setup);
+        let straight = look(&w, false);
+        let kept = look(&w, true);
+        let (count, big) = differ(&straight, &kept);
+        eprintln!("{what}: {count} pixels differ, {big} by more than 2");
+        if count > 600 || big > 200 {
+            w.shot(&format!("{what}-kept.png"));
+            look(&w, false);
+            w.shot(&format!("{what}-straight.png"));
+            panic!("{what}: {count} pixels differ, {big} by more than 2");
+        }
+    }
+    w.assert_alive("at the end");
+}
+
 /// Wait for a file of at least `size` bytes.
 fn wait_for_file(path: &Path, size: u64) {
     let deadline = Instant::now() + Duration::from_secs(60);
