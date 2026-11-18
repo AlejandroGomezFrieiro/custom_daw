@@ -6,4 +6,4 @@ scope: heading
 tokens:
   - '^\w+ing\b'
 exceptions:
-  - (?i)recording|recordings|setting|settings|heading|headings|binding|bindings|mapping|mappings|warning|warnings|timing|routing|rendering|string|strings|nothing|something|everything
+  - (?i)bring|brings|thing|things|string|strings|spring|ring|king|recording|recordings|setting|settings|heading|headings|binding|bindings|mapping|mappings|warning|warnings|timing|routing|rendering|string|strings|nothing|something|everything
