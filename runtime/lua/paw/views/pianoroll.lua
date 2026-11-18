@@ -263,7 +263,9 @@ end)
 --   view.band(name, order, spec)  a row of its own above the ruler while
 --                            `spec.active(clip)`: `spec.title` on the
 --                            keyboard edge, `spec.paint(buf, L)` in it
---   view.describer(name, fn) fn(note, part) -> lines `K` adds for a note
+--   view.describer(name, fn) fn(note, part) -> lines `K` adds for a note;
+--                            with `articulation = true` in the table they
+--                            say the note's articulation for the roll
 --   view.entering(name, fn)  fn(note, clip) changes a note the roll is
 --                            about to enter (keys, insert mode, the mouse)
 -- The first provider with something to say about a row wins. nil removes one.
@@ -776,16 +778,21 @@ function view:describe()
     { text = "Note  " .. music.name(note.pitch), style = "Title" },
     string.format("  from beat %g, %g beats long, velocity %d", note.start, note.length, note.velocity),
   }
-  local said = note.attr and paw.attr.describe(note.attr)
-  if said then lines[#lines + 1] = "  articulation: " .. said.text end
-  local key = paw.plugins.key_names(part.track)[note.pitch]
-  if key then lines[#lines + 1] = "  the instrument calls this key " .. key end
+  -- A describer that says the articulation (an articulation map's name for
+  -- it) says it instead of the attribute's plain words.
+  local more, said = {}, false
   for _, d in ipairs(view.describers) do
-    local ok, more = pcall(d.fn, note, part)
-    if ok and type(more) == "table" then
-      for _, line in ipairs(more) do lines[#lines + 1] = line end
+    local ok, got = pcall(d.fn, note, part)
+    if ok and type(got) == "table" then
+      said = said or got.articulation == true
+      for _, line in ipairs(got) do more[#more + 1] = line end
     end
   end
+  local attr = not said and note.attr and paw.attr.describe(note.attr)
+  if attr then lines[#lines + 1] = "  articulation: " .. attr.text end
+  local key = paw.plugins.key_names(part.track)[note.pitch]
+  if key then lines[#lines + 1] = "  the instrument calls this key " .. key end
+  for _, line in ipairs(more) do lines[#lines + 1] = line end
   lines[#lines + 1] = ""
   return lines
 end

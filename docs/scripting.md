@@ -627,6 +627,7 @@ roll.band("mine", 10, {                         -- a row of its own above the ru
   paint = function(buf, b) buf:text(b.x(0), 0, "│sus") end,   -- b.x(beat), b.from, b.to, b.width, b.clip
 })
 roll.describer("mine", function(note, part) return { "  played as  sustain" } end)   -- lines K adds for a note
+-- with `articulation = true` in the table, the lines say the note's articulation and K leaves out its own
 roll.entering("mine", function(note, clip) note.velocity = 90 end)   -- a note the keys, insert mode or a click enter
 ```
 

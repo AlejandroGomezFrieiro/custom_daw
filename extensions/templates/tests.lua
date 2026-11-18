@@ -133,3 +133,15 @@ test("templates: saving over a template asks first, an empty name says nothing w
   eq(paw.ui.message.text:find("“Bass_Sub” saved", 1, true) ~= nil and paw.ui.message.text:find("cannot hold", 1, true) ~= nil, true,
     "the name kept is told: " .. paw.ui.message.text)
 end)
+
+test("templates: the path a template is saved to is said from ~ when it is under the home directory", function()
+  fresh()
+  load()
+  local track = paw.add_track({ name = "Pad" })
+  paw.cursor.set_track(track)
+  paw.ui.focus("arrange")
+  T.keys(":template.save Home path<CR>")
+  local path, home = templates.path("track", "Home path"), os.getenv("HOME") or ""
+  local said = home ~= "" and path:sub(1, #home + 1) == home .. "/" and "~" .. path:sub(#home + 1) or path
+  eq(paw.ui.message.text, "track “Home path” saved as a template (" .. said .. ")", "the message")
+end)
