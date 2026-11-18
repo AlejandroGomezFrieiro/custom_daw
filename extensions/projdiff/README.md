@@ -139,8 +139,8 @@ words of `:Pdiff` into one.
 
 ## Notes
 
-The project file is written the same every time (see "The file is the same
-every time" in docs/mixing.md), so a diff of a file saved again is empty and
+The project file is written the same every time (see "The same file each time" in
+[Project files](../../docs/reference/project-files.md)), so a diff of a file saved again is empty and
 one change is a small diff. The project's name is taken from the file's name
 the first time it is saved, so a copy saved under another name differs in
 that one line.

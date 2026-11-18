@@ -17,6 +17,17 @@ each extension (`:help notation`).
 - [How to record takes over a loop and comp them](how-to/record-takes-and-comp.md)
 - [How to punch in over a part](how-to/punch-in-over-a-part.md)
 - [How to set the recording offset](how-to/set-the-recording-offset.md)
+- [How to render a song](how-to/render-a-song.md)
+- [How to render stems](how-to/render-stems.md)
+- [How to freeze a heavy track](how-to/freeze-a-heavy-track.md)
+- [How to work on one group of a large project](how-to/work-on-one-group.md)
+- [How to duck a track under the kick](how-to/duck-a-track-under-the-kick.md)
+- [How to route the outputs of a drum plugin](how-to/route-the-outputs-of-a-drum-plugin.md)
+- [How to write automation with the faders](how-to/write-automation-with-the-faders.md)
+- [How to fit audio to the tempo](how-to/fit-audio-to-the-tempo.md)
+- [How to play a hardware synth from a track](how-to/play-a-hardware-synth.md)
+- [How to relink missing media](how-to/relink-missing-media.md)
+- [How to recover lost work](how-to/recover-lost-work.md)
 - [How to record a performance from the session view](how-to/record-a-performance-from-the-session-view.md)
 - [How to map a MIDI controller](how-to/map-a-midi-controller.md)
 - [How to write a language server](how-to/write-a-language-server.md)
@@ -36,7 +47,17 @@ each extension (`:help notation`).
 - [Recording](reference/recording.md): track inputs, monitoring, count-in, punch, pre-roll, files, import
 - [Takes](reference/takes.md): takes, comping, take lanes
 - [MIDI](reference/midi.md): controller moves, the event list, MIDI input and output, MPE, MIDI files
-- [Edit, mix and render](mixing.md): routes, automation, tempo, stretched clips, markers, MIDI controllers, export
+- [The audio engine](reference/engine.md): threads, the state of the engine, delay compensation, failed devices
+- [Tempo and time signatures](reference/tempo.md): the tempo map, its commands, the timebase of audio clips
+- [Routing: groups, VCAs, sends and side-chains](reference/routing.md): groups, linked faders, VCAs, outputs, sends, side-chains, output pairs
+- [Narrowing to a group](reference/narrowing.md): a tab of one group, the rest of the song
+- [Freezing](reference/freezing.md): frozen and held tracks
+- [Automation](reference/automation.md): automation modes, writing with the controls
+- [Stretched and looped clips](reference/stretch.md): stretch, pitch, warp markers, tempo, loops
+- [Markers and regions](reference/markers.md): markers, regions, their keys and commands
+- [Render](reference/render.md): `:render`, formats, tags, stems, bounce
+- [Media files and audio clips](reference/media.md): paths, relink, sample rates, long files, fades, clip operations
+- [Project files](reference/project-files.md): saves, the same file each time, safety copies, `:recover`
 - [Devices](reference/devices.md): the built-in devices, wet/dry and output gain, presets
 - [Plugins](reference/plugins.md): formats, scan, editors, processes, status, offline devices
 - [Lua devices](reference/lua-devices.md): the fields of a device in Lua, the block, MIDI, helpers, reload
@@ -56,6 +77,11 @@ each extension (`:help notation`).
 ## Explanation
 
 - [About the architecture](explanation/about-the-architecture.md): the crates, the threads, the kernel and its frontends
+- [About the audio engine](explanation/about-the-audio-engine.md): many cores and one result, delay compensation, failed devices, long files
+- [About time and tempo](explanation/about-time-and-tempo.md): the tempo map, and which clock each thing keeps
+- [About groups and VCAs](explanation/about-groups-and-vcas.md): why groups and VCAs are usual tracks, narrowing, freezing
+- [About stretching](explanation/about-stretching.md): the two methods, formants, why paw stretches a file one time
+- [About project files](explanation/about-project-files.md): saves, the same bytes, relative paths, safety copies
 - [About the session view](explanation/about-the-session-view.md): why the engine times a launch, and why a render needs a capture
 - [About language servers](explanation/about-language-servers.md): the four layers, addresses with ids, subjects, LSP
 - [About the harmony reading](explanation/about-the-harmony-reading.md): how paw finds chords and keys, and why providers can replace it
