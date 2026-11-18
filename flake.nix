@@ -243,6 +243,39 @@
       '';
 
       # paw that sings: the program with extensions/utau and its engine.
+      # The style packages Vale checks the docs with (tools/vale.sh joins
+      # them with the project's own in .vale/styles; see .vale.ini). AiTells
+      # (patterns of machine-written prose) is not in nixpkgs: its release is
+      # pinned here.
+      valeStyles = pkgs: let
+        packaged = pkgs.vale.withStyles (s: [ s.readability s.write-good s.alex ]);
+        aitells = pkgs.fetchzip {
+          url = "https://github.com/krishnasunkam/vale-ai-tells/releases/download/v1.0.0/AiTells.zip";
+          sha256 = "12gm0fmg61wf0zp2bprbs68f16b0ca5s30k42fzp6xjxcnq9xm7w";
+        };
+      in pkgs.runCommand "paw-vale-styles" { } ''
+        mkdir -p $out
+        for d in ${packaged}/share/vale/styles/*; do ln -s "$d" $out/; done
+        ln -s ${aitells} $out/AiTells
+      '';
+
+      # Vale on README.md and every page: a check that fails on an error
+      # (warnings are reported, not failed on).
+      docsCheck = pkgs: pkgs.runCommand "paw-docs-vale" {
+        src = nixpkgs.lib.fileset.toSource {
+          root = ./.;
+          fileset = nixpkgs.lib.fileset.unions ([ ./.vale.ini ./.vale ./README.md ./docs ./extensions ./crates ]);
+        };
+        nativeBuildInputs = [ pkgs.vale ];
+      } ''
+        mkdir styles
+        for d in ${valeStyles pkgs}/* $src/.vale/styles/*; do ln -s "$d" styles/; done
+        export VALE_STYLES_PATH=$PWD/styles
+        cd $src
+        vale --config .vale.ini --minAlertLevel=error README.md docs crates/*/README.md extensions/*/README.md
+        touch $out
+      '';
+
       pawUtau = pkgs: (paw pkgs).withExtensions (exts: [ exts.utau ]);
     in {
       packages = forAll (pkgs: {
@@ -257,8 +290,8 @@
       });
 
       # `nix flake check`: clippy, rustfmt, the Rust tests a sandbox can run,
-      # and the program itself.
-      checks = forAll (pkgs: (rust pkgs).checks // { paw = paw pkgs; });
+      # the program itself, and Vale on the docs.
+      checks = forAll (pkgs: (rust pkgs).checks // { paw = paw pkgs; docs = docsCheck pkgs; });
 
       apps = forAll (pkgs:
         nixpkgs.lib.genAttrs [ "paw" "paw-gui" "paw-mcp" ] (name: {
@@ -314,19 +347,7 @@
           packages = with pkgs; [ xvfb openbox xdotool imagemagick tesseract vale ];
           # The style packages Vale checks the docs with (tools/vale.sh joins
           # them with the project's own in .vale/styles; see .vale.ini).
-          # AiTells (patterns of machine-written prose) is not in nixpkgs: its
-          # release is pinned here.
-          PAW_VALE_STYLES = let
-            packaged = pkgs.vale.withStyles (s: [ s.readability s.write-good s.alex ]);
-            aitells = pkgs.fetchzip {
-              url = "https://github.com/krishnasunkam/vale-ai-tells/releases/download/v1.0.0/AiTells.zip";
-              sha256 = "12gm0fmg61wf0zp2bprbs68f16b0ca5s30k42fzp6xjxcnq9xm7w";
-            };
-          in "${pkgs.runCommand "paw-vale-styles" { } ''
-            mkdir -p $out
-            for d in ${packaged}/share/vale/styles/*; do ln -s "$d" $out/; done
-            ln -s ${aitells} $out/AiTells
-          ''}";
+          PAW_VALE_STYLES = "${valeStyles pkgs}";
           buildInputs = with pkgs; [ alsa-lib pipewire lilv lv2 serd sord sratom fontconfig ];
           # The graphical frontend's libraries are on the path here;
           # `PAW_GUI_LIBS` is where its build script finds them, to write
