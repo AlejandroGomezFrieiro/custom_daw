@@ -37,7 +37,7 @@ local default = {
   sections = {
     a = { "mode" },
     b = {},
-    c = { "macro", "transport", "clock", "tempo", "flags", "render", "diagnostics", "qf", "pointer", "grid", "selection" },
+    c = { "macro", "transport", "clock", "tempo", "flags", "render", "diagnostics", "qf", "pointer", "grid", "selection", "view" },
     x = { "keys", "scope", "project", "engine", "cpu" },
     y = {},
     z = {},
@@ -80,6 +80,7 @@ function M.reset()
   api.ui_redraw()
 end
 
+--- The status line's configuration as `setup` made it.
 function M.config()
   config = config or fresh()
   return config
@@ -255,6 +256,13 @@ spec("selection", { min = 110, rank = 10, fn = function(ctx)
       or string.format("%g beats", beats))
   end
   return { { "sel " .. text, "StatusLine" } }
+end })
+
+-- What the view with the keys says of itself (`status(ctx)`): a buffer
+-- type's or a text buffer kind's own part of the line.
+spec("view", { min = 90, rank = 5, fn = function(ctx)
+  local view = paw.ui.views[paw.ui.focused]
+  if view and view.status then return view:status(ctx) end
 end })
 
 -- Keys typed so far, or the register chosen.
@@ -581,7 +589,7 @@ end
 --- Whether `setup` has changed the line from the one that comes with the program.
 function M.customized() return M.set_up == true end
 
--- What the window is told: the line as pieces, for the width it has.
+--- What the window is told: the line as pieces, for the width it has.
 function M.frontend(width)
   local line = M.line(width or 120)
   return { left = line.left, right = line.right }

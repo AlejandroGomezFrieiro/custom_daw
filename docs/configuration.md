@@ -137,8 +137,9 @@ The components that come with the program: `mode` (with the view that has
 the keys), `macro`, `transport`, `clock`, `tempo` (and the metre where the
 playhead is), `flags` (loop, click, punch, count-in, rec, write), `take`,
 `render`, `diagnostics`, `qf`, `pointer` (what is under the mouse), `grid`,
-`selection`, `cursor` (the track and clip under the cursor), `buffer` (the
-text buffer with the keys), `keys` (what is typed so far), `project` (an
+`selection`, `view` (what the view, buffer type or kind of text buffer
+with the keys says of itself, its `status`), `cursor` (the track and clip
+under the cursor), `buffer` (the text buffer with the keys), `keys` (what is typed so far), `project` (an
 amber dot when it has unsaved changes), `engine`, `cpu` (and dropouts) and
 `midi` (lit for a moment after MIDI comes in). A component is one of:
 

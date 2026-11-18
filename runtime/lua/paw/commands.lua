@@ -41,8 +41,15 @@ function M.alias(alias, target)
   registry[alias] = { name = alias, run = spec.run, desc = spec.desc, raw = spec.raw, complete = spec.complete, label = spec.label, range = spec.range, alias_of = target, ext = spec.ext }
 end
 
+--- The command of a name: `{ name, run, desc, ... }` as `paw.command` made it, or nil.
 function M.get(name)
   return registry[name]
+end
+
+--- Put a command back as `spec` (one `get` or `list` gave), or remove it
+--- with nil: what unloading an extension does with the commands it made.
+function M.put(name, spec)
+  registry[name] = spec
 end
 
 --- Count a use of a command that was chosen by name (typed, or picked), so

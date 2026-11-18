@@ -20,10 +20,14 @@ end
 
 local events = require("paw.events")
 paw.on, paw.once, paw.off, paw.emit = events.on, events.once, events.off, events.emit
+paw.events = events
 
 local options = require("paw.options")
 paw.opt, paw.option = options.opt, options
 paw.limit = require("paw.limit")
+-- Edits, undo, saving and keys heard of (paw/hooks.lua): before anything
+-- keeps the kernel's undo and save functions of its own.
+paw.hooks = require("paw.hooks")
 -- Before anything that keeps state of its own for each terminal and window.
 paw.seats = require("paw.seats")
 
@@ -98,10 +102,13 @@ end
 --- after a render running in the background; `paw.render_ranges` holds the
 --- named ranges a render can take.
 function paw.render(path, opts) return require("paw.render").render(path, opts) end
+--- Render each track to a file of its own in `dir` (see `paw/render.lua` for `opts`).
 function paw.render_stems(dir, opts) return require("paw.render").stems(dir, opts) end
 --- The tags of the project's rendered files: `paw.render_tags()`, `paw.render_tags({ artist = "Me" })`.
 function paw.render_tags(set) return require("paw.render").tags(set) end
+--- The render running in the background (`{ path, fraction, seconds }`), or nil.
 function paw.render_status() return require("paw.render").status() end
+--- Stop the render running in the background.
 function paw.render_cancel() return require("paw.render").cancel() end
 paw.render_ranges = setmetatable({}, {
   __index = function(_, k) return require("paw.render").ranges[k] end,
@@ -237,6 +244,8 @@ function K.startup()
   paw.ui.start_ticker()
 
   paw.luadev = require("paw.luadev")
+  -- `:checkhealth`, and the checks extensions add (paw/health.lua).
+  paw.health = require("paw.health")
   local env = api.env()
   -- Extensions the program was built with (`paw.withExtensions` in the
   -- flake): part of the program, so loaded with `--clean` too.
@@ -263,6 +272,7 @@ function K.exit()
 end
 
 function K.key(key)
+  if not paw.hooks.key(key) then return end
   -- The keys of a finished command (`dd`, `3>ic`) label the undo step it makes.
   -- Keys typed into a prompt are text, not commands.
   local typed = not paw.ui.grabber and paw.keymap.pending() .. key
@@ -298,6 +308,7 @@ local function settle()
         -- What starting a take has to say (a punch range already passed).
         warn()
       end
+      paw.hooks.note(event.name, event.payload)
       paw.emit(event.name, event.payload)
     end
   end
@@ -310,6 +321,9 @@ paw.flush = settle
 --- handlers it runs.
 function K.settle()
   paw.limit.guard("an event handler", settle)
+  -- Hooks first: `edit.before` may take the turn back, and the scenes
+  -- sent after it must show what stayed.
+  paw.limit.guard("the end of a turn", paw.hooks.turn)
   if paw.scene then paw.limit.guard("sending scenes", paw.scene.turn) end
 end
 

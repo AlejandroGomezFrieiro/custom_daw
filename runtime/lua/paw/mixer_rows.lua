@@ -274,6 +274,7 @@ function M.to_kind(dir, n)
   M.to(i)
 end
 
+--- Move the mixer's cursor to the last row of its kind (or `n` kinds on).
 function M.to_kind_end(n)
   local row, _, i = M.current()
   if not row then return end

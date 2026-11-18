@@ -144,6 +144,8 @@ end
 --- `completionProvider`) are taken too.
 local LSP_NAMES = { hoverProvider = "hover", completionProvider = "completion", codeActionProvider = "actions",
   diagnosticProvider = "diagnostics", analysisProvider = "analysis" }
+--- Whether a running server (a client or its name) offers a feature:
+--- "hover", "completion", "actions", "diagnostics", "analysis".
 function M.has(which, feature, lane)
   local client = client_of(which)
   feature = LSP_NAMES[feature] or feature
@@ -1115,6 +1117,7 @@ function M.command(ctx)
   end
 end
 
+--- What `:Lsp` completes to: its words and the configured servers.
 function M.command_complete()
   local out = { "info", "log", "start", "stop", "restart" }
   for name in pairs(M.configs) do out[#out + 1] = name end

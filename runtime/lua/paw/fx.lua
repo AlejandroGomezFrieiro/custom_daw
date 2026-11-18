@@ -62,8 +62,10 @@ M.host_params = { fx_wet = true, fx_gain = true }
 
 local function id_of(device) return type(device) == "number" and device or device.id end
 
+--- How much of a device's effect is heard, in percent.
 function M.set_wet(device, percent) api.device_set_param(id_of(device), "fx_wet", percent) end
 
+--- A device's own gain after its effect, in dB.
 function M.set_gain(device, db) api.device_set_param(id_of(device), "fx_gain", db) end
 
 -- Parameters of large plugins -----------------------------------------------------------
@@ -110,6 +112,7 @@ function M.show_param(device, key)
   api.device_set(d.id, "meta", meta)
 end
 
+--- Take a parameter off the device's card in the window.
 function M.hide_param(device, key)
   local d = api.device_get(id_of(device))
   local meta = type(d.meta) == "table" and d.meta or {}
@@ -187,6 +190,7 @@ end
 M.factory = require("paw.device_presets") -- the built-in devices' presets, by kind
 M.menu_size = 16 -- presets in the window's menu around the one loaded
 
+--- Where presets are kept: `paw.opt.presets_dir`, or `presets` in the data directory.
 function M.presets_dir()
   local dir = paw.opt.presets_dir
   if dir and dir ~= "" then return dir end
@@ -290,6 +294,7 @@ function M.save(device, name)
   return path
 end
 
+--- Delete a preset of a kind of device, by name.
 function M.delete(kind, name)
   local path = kind_dir(kind) .. "/" .. safe(preset_name(name)) .. ".json"
   local ok, err = os.remove(path)
@@ -387,6 +392,7 @@ local library
 
 local function library_path() return api.env().state_dir .. "/devices.json" end
 
+--- What is kept about kinds of device across sessions (`favourites`), read once.
 function M.library()
   if not library then
     local data = read_json(library_path())
@@ -403,8 +409,10 @@ local function save_library() write_json(library_path(), M.library()) end
 --- Forget what was read, for tests that change the file underneath.
 function M.reload_library() library = nil end
 
+--- Whether a kind of device is a favourite.
 function M.is_favourite(kind) return M.library().favourites[kind] == true end
 
+--- Make a kind of device a favourite, or not; returns whether it is now.
 function M.toggle_favourite(kind)
   local fav = M.library().favourites
   fav[kind] = not fav[kind] or nil
@@ -610,6 +618,7 @@ function M.pick(device)
   })
 end
 
+--- Define the commands for devices. The runtime calls this once at start.
 function M.setup()
   local command = paw.command
   local function with_device(fn) return function(ctx)

@@ -267,8 +267,7 @@ view.grid = { get = function() return row, beat end, set = function(row, beat) e
 -- Optional: where the thing under the cursor ends (a note), so that a selection takes it in.
 view.grid.extent = function(row, beat) return beat + 1 end
 
-paw.on("track.added", function(event) end)    -- also track.changed, track.removed, track.moved,
-                                              -- device.*, clip.*, lane.*, project.*, transport.*
+paw.on("track.added", function(event) end)    -- every event is in the table under Events below
 paw.on("clip.*", fn)   paw.on("*", fn)   paw.emit("my.event", { any = "data" })
 
 paw.opt.grid = 0.5                            -- see runtime/lua/paw/options.lua
@@ -346,7 +345,42 @@ paw.buftype("notes", {
 paw.keymap.set("x", function() end, { view = "notes" })   -- keys of its windows
 ```
 
-`:vs notes://verse` then shows buffer `notes://verse`. `paw.buf`: `list()`,
+`:vs notes://verse` then shows buffer `notes://verse`.
+
+A buffer type can do everything a view does, said where it is made, for
+each window: a cursor the keymap moves (so counts, visual mode, operators,
+marks and `.` work), keys, motions, text objects and operators of its own,
+what `K` says and its part of the status line.
+
+```lua
+paw.buftype("tally", {
+  create = function(target) return { marks = {} } end,
+  render = function(win, canvas, ctx) canvas:text(0, 0, #ctx.buf.state.marks .. " marks") end,
+  grid = function(win)                       -- this window's cursor, as a view's `grid`
+    return { get = function() return 0, win.state.col or 0 end,
+             set = function(_, col) win.state.col = math.max(0, col) end,
+             step = function() return 1 end }
+  end,
+  keymaps = { ["<localleader>m"] = { function(ctx) table.insert(ctx.buf.state.marks, ctx.win.state.col) end, desc = "Mark" } },
+  motions = { ["]t"] = function(ctx) ctx.win.state.col = (ctx.win.state.col or 0) + 4 end },
+  textobjects = { it = function(ctx) return { kind = "char", r0 = 0, r1 = 0, c0 = ctx.win.state.col, c1 = ctx.win.state.col + 2 } end },
+  operators = { ["g!"] = function(region, ctx) end },
+  describe = function(win) return { only = true, title = "Tally", "at " .. (win.state.col or 0) } end,  -- K
+  status = function(win, ctx) return "tally@" .. (win.state.col or 0) end,  -- the status line's `view` component
+  paint = function(win, g, ctx) end, pointer = function(win, e) end,          -- pixels, in a window
+})
+```
+
+Each of `keymaps`, `motions`, `textobjects` and `operators` maps keys to a
+function, a command line, or `{ fn, desc = ..., mode = ... }` with the
+options of `paw.keymap.set`; their functions get `ctx.win` and `ctx.buf`.
+`paw.layout.powers(scope, def)` maps them for any key scope. A kind of text
+buffer takes the same four, with `describe(ctx)` and `status(ctx, line)`
+(Text buffers below); its keys are in the scope `textbuf.<kind>`, before
+the text's own. A view says its part of the status line with
+`status(self, line)` too.
+
+`paw.buf`: `list()`,
 `get(name)`, `create(type, target)`, `delete(name)`, `current()`, `of(win)`.
 `paw.win`: `current()`, `list()` (the tab's windows on screen, each with
 `id`, `view`, `opts`, `state`), `split({ vertical, view })`, `close(win)`,
@@ -446,6 +480,11 @@ sight on GitHub. Any other Markdown file is added with
 `help` field names its topic for the bottom line. `paw.markdown.parse(text)`
 and `paw.markdown.render(blocks, { width })` make Markdown into lines of
 text with their styles, links and code.
+
+A kind may also have keys of its own, `K` and a part of the status line,
+as a buffer type does: `keymaps`, `motions`, `textobjects`, `operators`
+(their `ctx` has `buf`, `kind`, `args` and `target`), `describe(ctx)` and
+`status(ctx, line)`. `keys` is the key line's list, as before.
 
 A text buffer's kind may also set `readonly` (what to say when a change is
 tried: the text then cannot be changed, as help's), `gutter = false` (no
@@ -697,6 +736,94 @@ extension keeps in files of its own.
 Underneath, `paw.api` is a flat set of functions over plain data
 (`paw.api.track_set(id, "volume", -6)`). The objects above are a thin Lua layer
 over it in [objects.lua](../runtime/lua/paw/objects.lua).
+
+### Events
+
+Every event there is, with what its handler gets. `paw.on(name, fn)`
+listens (`fn(payload, name)`); `paw.on("family.*", fn)` hears a family and
+`paw.on("*", fn)` everything; `paw.emit(name, payload)` sends one of your
+own. Change events (from the kernel) are delivered when the current
+command or callback returns, or at `paw.flush()`; the others as they
+happen. Events from undo, redo, the undo tree or opening a project carry
+`restored = true`.
+
+Some events ask: a handler that returns `false, "why"` refuses what is
+about to happen (`edit.before`, `project.saving`, `key.pre`), and `paw.emit`
+returns `false, "why"` to the code that asked. `edit.before`,
+`edit.after`, `selection.changed`, `view.opened` and `view.closed` are
+worked out at the end of each turn, `key.pre`, `undo` and `redo` as they
+happen, and all of them only while something listens for them by name or
+family (`paw.on("*")` alone does not hear them).
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `changed` | `{}` | anything in the project changed this turn; the screen is drawn again |
+| `project.changed` | `{}` | the project's own fields (tempo, signature, name, meta) |
+| `project.loaded` | `{ path }` | a project was opened or made new |
+| `project.saving` | `{ path }` | a project is about to be written; may refuse |
+| `project.saved` | `{ path }` | after it was written |
+| `track.added`, `track.changed`, `track.removed` | `{ id }` | a track, by its id |
+| `track.moved` | `{ order }` | the tracks' order changed |
+| `track.frozen`, `track.thawed` | `{ id, file }` | a track rendered to a file and played from it, and back |
+| `device.added`, `device.changed`, `device.removed` | `{ id, track }` | a device in the project |
+| `device.added_by_hand` | `{ id, kind }` | a device the user added (not a script) |
+| `device.ready`, `device.stopped`, `device.invalid` | `{ id, track, name, ... }` | a plugin made, stopped (crashed or was taken offline), or found unusable |
+| `preset.loaded` | `{ id, name }` | a preset was loaded into a device |
+| `param.touched` | `{ device, param, from }` | a parameter moved in the plugin's own editor |
+| `clip.added`, `clip.changed`, `clip.removed` | `{ id, track }` | a clip |
+| `lane.added`, `lane.changed`, `lane.removed` | `{ id, track }` | an automation lane |
+| `lanes.changed` | `{}` | which lanes are shown changed |
+| `slot.changed` | `{ track }` | a clip launcher slot |
+| `edit.before` | `{ changes }` | a turn edited the project and the edit is about to become an undo step; `changes` is a list of `{ name, payload }` (the events above that make it). May refuse: the project is put back as the turn found it. Edits a handler makes join the step |
+| `edit.after` | `{ changes, state }` | the step was made; `state` is its id in the undo tree. Edits made here are an edit of their own |
+| `undo`, `redo` | `{ from, to, how, label }` | a move in the undo tree, `from` and `to` its states, `label` the step undone or redone; `how` is `undo`, `redo`, `goto`, `step` or `travel` (a jump to an older state is an `undo`) |
+| `transport.play`, `transport.stop` | `{ position, count_in }` | the transport started (after the count-in) or stopped |
+| `transport.seek` | `{ position }` | the playhead was moved |
+| `transport.record` | `{ ... }` | recording started or a take began |
+| `transport.changed` | `{}` | loop, punch, metronome or the like changed |
+| `midi.in` | `{ port, ... }` | a MIDI message came in |
+| `midi.lost`, `midi.returned` | `{ port, tracks }` | a MIDI port went away, and came back |
+| `audio.lost`, `audio.restored` | `{ device, ... }` | the audio device went away, and came back |
+| `engine.started` | engine info | the audio engine started or restarted |
+| `media.missing` | `{ files, found }` | a project's sound files are not where it says |
+| `proc.output` | `{ id }` | a helper process wrote something (Helper programs below) |
+| `render.before` | `{ path, opts }` | a render is about to start |
+| `render.progress` | `{ path, fraction, ... }` | a render running in the background moved on |
+| `render.done`, `render.failed`, `render.cancelled` | `{ path, ... }` | a background render ended |
+| `render.finished` | render info | `paw.render` returned |
+| `mode.changed` | `{ mode, old }` | the keymap's mode |
+| `key.pre` | `{ key, mode, view }` | a key, before the keymap has it; may refuse, which takes the key |
+| `escape` | `{}` | Escape had nothing to cancel |
+| `cursor.changed` | `{ track, beat, lane }` | the cursor moved |
+| `selection.changed` | `{ view, kind, region, clips, notes }` | what is selected: `kind` is `region` (visual mode; `region` as an operator gets it), `clips` (chosen with the pointer, ids), `notes` (chosen notes of the clips the piano roll edits, `{ clip, place }`) or nil |
+| `command.pre`, `command.post` | `{ name, command, args }` | around running a command |
+| `option.changed` | `{ name, value, old }` | an option was set to another value |
+| `view.focused` | `{ view, old }` | another view has the keys |
+| `view.opened`, `view.closed` | `{ name }` | a view came on the screen, or went off it |
+| `pianoroll.opened` | `{ clip }` | the piano roll opened a clip |
+| `roll_clips.changed` | `{ active, count }` | the clips the piano roll edits |
+| `win.enter`, `win.leave` | `{ win }` | the keyboard went into a window, or left it |
+| `win.resized` | `{ win }` | a window changed size |
+| `win.option` | `{ win, name, value }` | a window option was set |
+| `buf.enter`, `buf.leave` | `{ buf, name }` | a window shows another buffer |
+| `tab.enter` | `{ tab }` | another tab |
+| `ui.resized` | `{ width, height }` | the screen changed size |
+| `scope.changed` | `{ scope }` | the tab was narrowed to a group, or widened |
+| `seat.opened`, `seat.closing` | `{ seat }` | a terminal or window attached, or is going |
+| `address.changed` | `{ uris, revision }` | things with addresses changed (paw/address.lua) |
+| `annotation.changed`, `diagnostic.changed` | `{ namespace, document, ... }` | annotations or diagnostics were set |
+| `qf.changed` | `{ title, win }` | the quickfix or a location list |
+| `lsp.status` | `{ client, status, document }` | a language server started, failed or finished |
+| `lsp.analysis` | `{ clip, client }` | a language server's analysis of a clip came |
+| `harmony.changed` | `{ provider }` | the chords heard changed |
+| `complete.changed` | `{ shown }` | suggestions shown or gone |
+| `snippet.expanded`, `snippet.finished` | `{ name, clip }` | a snippet |
+| `plugins.scanned` | `{ notes, ... }` | plugins were looked for again |
+| `luadev.checked` | what was found | Lua devices were looked at again |
+| `ext.loaded` | `{ name, ok }` | an extension loaded (or failed to) |
+| `ext.unloading`, `ext.unloaded` | `{ name }` | an extension is taken away, and was |
+| `startup` | `{}` | the runtime, extensions and configuration are loaded |
+| `exit` | `{}` | the program is about to end |
 
 ## Scripts and other programs
 

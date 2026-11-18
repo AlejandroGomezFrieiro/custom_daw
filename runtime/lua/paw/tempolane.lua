@@ -34,6 +34,7 @@ function M.show(on)
   changed()
 end
 
+--- Show the tempo lane, or hide it; returns whether it shows.
 function M.toggle()
   M.show(not shown)
   return shown
@@ -166,6 +167,7 @@ function M.draw(points, step)
   api.tempo_set_points(out, map.signatures)
 end
 
+--- Define the tempo lane's commands with `command`.
 function M.commands(command)
   command("tempo.lane", function(ctx)
     local word = ctx.args[1]

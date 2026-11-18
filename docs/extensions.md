@@ -58,10 +58,11 @@ how far that goes: singing synthesis is an extension, engine included.
 An extension is a directory or a single file in `~/.config/paw/extensions`:
 
 ```
-extensions/euclid/init.lua     run at startup
-extensions/euclid/lua/         on the require path
-extensions/euclid/devices/     devices written in Lua (see Writing a device in Lua, in devices.md)
-extensions/clock.lua           a one-file extension
+extensions/euclid/init.lua      run at startup
+extensions/euclid/manifest.lua  what it is and what it needs (optional)
+extensions/euclid/lua/          on the require path
+extensions/euclid/devices/      devices written in Lua (see Writing a device in Lua, in devices.md)
+extensions/clock.lua            a one-file extension
 ```
 
 The ones that come with the source are loaded the same way: link or copy one
@@ -73,11 +74,13 @@ paw.ext.load("/path/to/paw/extensions/sections")
 
 There is no separate plugin interface. An extension is Lua that calls
 `paw.command`, `paw.keymap.set`, `paw.on` and `paw.ui.view` like any
-configuration does. `:extensions` lists what loaded, with the error for
-anything that failed. `:ext.load notation` loads a bundled extension now
-(Tab completes their names); `paw.ext.load` in `init.lua` keeps it. A
-command of one that is not loaded says so instead of "no command". Files in `~/.config/paw/lua/` shadow the built-in modules
-of the same name, so any part of the runtime can be replaced.
+configuration does. `:extensions` lists what loaded, with its version,
+what it registered and the error for anything that failed. `:ext.load
+notation` loads a bundled extension now (Tab completes their names);
+`paw.ext.load` in `init.lua` keeps it. `:ext.unload notation` takes it
+away again. A command of one that is not loaded says so instead of "no
+command". Files in `~/.config/paw/lua/` shadow the built-in modules of the
+same name, so any part of the runtime can be replaced.
 
 **One interface, both frontends.** A view an extension registers with
 `paw.ui.view` and draws in cells is usable from the graphical frontend with
@@ -119,6 +122,91 @@ notice inside compiled loops (`LUAJIT_ENABLE_CHECKHOOK`, asked for in
 `paw.api.limit_async` and falls back to a count hook, with code that is not
 the runtime's own kept in LuaJIT's interpreter. `:lua` typed by hand
 gets a minute, and scripts run with `-l` have no limit.
+
+### Manifests and versions
+
+An extension may say what it is in a `manifest.lua` beside its `init.lua`,
+which returns a table; every bundled extension has one.
+
+```lua
+return {
+  name = "euclid", version = "1.2.0",
+  description = "Euclidean rhythms as clips",
+  requires = { paw = "^1.0", sections = ">=0.1" },   -- the API, and other extensions
+  provides = { "rhythms" },                         -- names others may require it by
+}
+```
+
+`paw.api.version` is the version of the scripting interface (`1.0.0`): its
+minor number goes up when something is added, its major one when something
+is taken away or changed. `requires` names the versions an extension works
+with: `paw` for the API, any other name for an extension (or a name one
+`provides`). A requirement is `>=1.2`, `>1`, `<=2`, `<2.0`, `=1.2.3`, `^1.2`
+(the same first number, at least 1.2), `~1.2` (the same first two), a bare
+version (as `^`), `*` for any, or several separated by commas. Before an
+extension runs, what it requires is loaded (from beside it, then from the
+bundled ones) and every version checked; an extension whose requirements
+are not met is not run, and `:extensions` and `:checkhealth extensions`
+say why. `paw.ext.satisfies(version, want)` checks a version for scripts,
+and `paw.ext.manifest(path, name)` reads one.
+
+### What an extension owns
+
+Whatever an extension registers while it loads is recorded as its own:
+commands, keys and key groups, views, buffer types, kinds of text buffer,
+kinds of track, picker sources, query fields, fields and views of `:s` and
+`:g`, completers, status line components, grep sources, curve providers,
+address schemes, completion sources, layers, health checks, hooks
+(`paw.on`) and options. `:extensions` lists it, `paw.ext.provides(name)`
+returns it, and a command or a key says whose it is (`spec.ext`,
+`map.ext`), which `:help` uses.
+
+`paw.ext.unload(name)` (`:ext.unload`) removes exactly that: each thing it
+registered goes, and what it replaced (a key of the core it remapped, a
+command it redefined) comes back. Its modules are forgotten, so loading it
+again runs it afresh, and `ext.unloading` and `ext.unloaded` are emitted.
+An extension that another loaded one requires is not unloaded. Two things
+stay: options keep their defaults (a value set for one stays meaningful),
+and the Lua devices and plugins it ships stay among the devices for the
+session. `:reload` starts the whole runtime again and needs none of this.
+
+### Health checks
+
+`:checkhealth` runs the checks of the program and of the extensions and
+shows what is well (OK), what may not be (WARN) and what is wrong (ERROR),
+with advice under each, as Neovim's does; `:checkhealth audio ffmpeg` runs
+those named. The core checks the program and its Lua (`paw`), the audio
+engine and MIDI (`audio`), plugin hosting (`plugins`), `ffmpeg` for
+compressed renders, pictures in the terminal (`terminal`), the fonts the
+window falls back on (`fonts`) and the extensions with their versions and
+requirements (`extensions`); utau checks its engine, and sampler its
+plugin. An extension adds its own:
+
+```lua
+paw.health.register("euclid", function(h)
+  h.ok("patterns loaded")
+  if not paw.ext.loaded.sections then h.warn("no sections", { ":ext.load sections names them" }) end
+end, { desc = "Euclidean rhythms" })
+```
+
+`h.ok`, `h.info`, `h.warn(text, advice)` and `h.error(text, advice)`
+report; advice is a line or a list of them. A check that fails is shown as
+an error of its own. `paw.health.run(name)` and `paw.health.check(names)`
+return the results as data. `:doctor` (extensions/doctor) is the guided
+check of the hardware that a person takes part in.
+
+### API reference
+
+[The Lua API reference](api.md) lists every public function of the `paw`
+modules and of `paw.api` with what its comment in the source says, and is a
+page of `:help` (`:help paw.ext.unload`). It is made by `tools/apidoc.lua`
+(`paw --clean --no-plugins -l tools/apidoc.lua`), which also writes
+`runtime/types/paw.lua`, a LuaLS meta file: point LuaLS's
+`workspace.library` at `runtime/types` and editors complete `paw.*` in a
+configuration or an extension, with the comments as documentation. A test
+fails when a public function has no `---` comment over it or when either
+file is out of date. [Scripting](scripting.md) has every event in one
+table, under Events.
 
 ## Pictures in the terminal
 

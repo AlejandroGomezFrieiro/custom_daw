@@ -832,6 +832,7 @@ function M.gen_step(by)
   gen_write(false)
 end
 
+--- Choose the next shape (`by` 1) or the one before (-1) while generating.
 function M.gen_next(by)
   if not gen then return end
   gen.choice = (gen.choice - 1 + by) % #CHOICES + 1
@@ -856,6 +857,7 @@ M.wave_menu = wave_menu
 
 -- Zoom and grid --------------------------------------------------------------------------
 
+--- Zoom the editor's window in or out by `factor`.
 function M.zoom(factor)
   local win, _, s = here()
   if not win then return end
@@ -863,6 +865,7 @@ function M.zoom(factor)
   api.ui_redraw()
 end
 
+--- Make the editor's grid `factor` times as fine or as coarse.
 function M.grid(factor)
   local win, _, s = here()
   if not win then return end

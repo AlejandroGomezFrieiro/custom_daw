@@ -47,6 +47,7 @@ function M.open(track, on)
   save()
 end
 
+--- Show a track's automation lanes, or hide them; returns whether they show.
 function M.toggle(track)
   M.open(track, not M.is_open(track))
   return M.is_open(track)
@@ -99,6 +100,7 @@ M.mode_text = {
   off = "the lanes are kept but do not play",
 }
 
+--- What a lane is called: Volume, Pan, or its device and parameter.
 function M.name(lane)
   if type(lane) == "number" then lane = api.lane_get(lane) end
   if lane.target == "volume" then return "Volume" end

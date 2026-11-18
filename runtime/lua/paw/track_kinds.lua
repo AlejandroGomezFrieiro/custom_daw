@@ -47,6 +47,19 @@ function M.define(name, spec)
   return spec
 end
 
+--- Forget a kind: no longer offered, nor in the menus. Tracks that keep
+--- it are ordinary tracks again until something defines it.
+function M.remove(name)
+  M.kinds[name] = nil
+  for i = #M.order, 1, -1 do
+    if M.order[i] == name then table.remove(M.order, i) end
+  end
+  local menu = paw.frontend.menus.timeline
+  for i = #menu, 1, -1 do
+    if menu[i].track_kind == name then table.remove(menu, i) end
+  end
+end
+
 --- The defined kinds, in the order they were defined.
 function M.list()
   local out = {}

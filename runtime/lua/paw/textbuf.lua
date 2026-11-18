@@ -38,6 +38,7 @@ local function chars(s)
   return out
 end
 
+--- How many characters a string has (UTF-8).
 local function width(s)
   local n = 0
   for _ in s:gmatch(CHAR) do n = n + 1 end
@@ -93,6 +94,7 @@ end
 local Text = {}
 Text.__index = Text
 
+--- A copy of lines (`{ text, id }`).
 local function copy_lines(lines)
   local out = {}
   for i, l in ipairs(lines) do out[i] = { text = l.text, id = l.id } end
@@ -100,6 +102,7 @@ local function copy_lines(lines)
 end
 M.copy_lines = copy_lines
 
+--- A text of lines (`{ text, id }`) that keeps its own undo, as a buffer's `state.text`.
 function M.text(lines)
   local t = setmetatable({ lines = copy_lines(lines or {}), undos = {}, redos = {} }, Text)
   t.base = copy_lines(t.lines)
@@ -259,10 +262,23 @@ end
 --- changes; `paint(canvas, x, y, text, kind, width, row, buf)` draws a line
 --- in place of the plain colouring.
 ---   paw.textbuf.kind("clips", { pattern = "^paw://clips$", read = ..., format = ..., parse = ..., plan = ... })
+--- A kind has what a buffer type has beside the text: `keymaps`, `motions`,
+--- `textobjects`, `operators` (see `paw.layout.powers`; their `ctx` has
+--- `buf`, `kind`, `args`, `target`), `describe(ctx)` for `K` and
+--- `status(ctx, line)` for the status line's `view` component; its keys are
+--- in key scope `textbuf.<name>`, before the text's own.
 function M.kind(name, spec)
   spec.name = name
   spec.pattern = spec.pattern or ("^paw://" .. name:gsub("%p", "%%%0") .. "$")
   M.kinds[name] = spec
+  layout.powers("textbuf." .. name, spec, function(fn)
+    return function(ctx, ...)
+      local buf = M.buf()
+      ctx = ctx or {}
+      if buf then ctx.buf, ctx.kind, ctx.args, ctx.target = buf, buf.state.kind, buf.state.args, buf.target end
+      return fn(ctx, ...)
+    end
+  end)
   return spec
 end
 
@@ -349,6 +365,7 @@ function M.quote(name)
   return name
 end
 
+--- A cell's text without the quotes `quote` put round it.
 function M.unquote(cell)
   local inner = cell:match('^"(.*)"$')
   if inner then return (inner:gsub('\\"', '"')) end
@@ -1128,6 +1145,7 @@ function M.add_number(text, col, n, limit)
   return table.concat(cs, "", 1, s - 1) .. out .. table.concat(cs, "", e + 1), s - 1 + width(out) - 1
 end
 
+--- Add `n` to the number at or after the cursor (`Ctrl-a`, `Ctrl-x`).
 function M.increment(n)
   local win, buf, t, s = here()
   if not win then return end
@@ -1158,6 +1176,7 @@ end
 
 -- Putting ---------------------------------------------------------------------------
 
+--- Put a register's text after the cursor, or before it (`p`, `P`).
 function M.put(before, register, count)
   local win, buf, t, s = here()
   if not win then return end
@@ -1227,6 +1246,7 @@ local function small(fn)
   end
 end
 
+--- Replace the characters under the cursor with the one typed (`r`).
 M.replace = small(function(t, s, n, ctx)
   local ch = ctx.char
   if not ch or ch:match("^<.+>$") then return end
@@ -1236,6 +1256,7 @@ M.replace = small(function(t, s, n, ctx)
   s.col = s.col + n - 1
 end)
 
+--- Join lines (`J`).
 M.join = small(function(t, s, n)
   for _ = 1, math.max(1, n - 1) do
     if s.row >= t:count() then break end
@@ -1248,6 +1269,7 @@ M.join = small(function(t, s, n)
   end
 end)
 
+--- Swap the case of the characters under the cursor (`~`).
 M.tilde = small(function(t, s, n)
   local stop = math.min(t:len(s.row), s.col + n)
   if stop <= s.col then return end
@@ -1257,6 +1279,7 @@ M.tilde = small(function(t, s, n)
   s.col = math.min(stop, t:len(s.row) - 1)
 end)
 
+--- Undo `n` changes of the text, or redo them.
 function M.undo(redo, n)
   local win, buf, t, s = here()
   if not win then return end
@@ -1873,6 +1896,28 @@ local def = layout.buftype("textbuf", {
 })
 local view = paw.ui.views.textbuf
 view.title = "Text"
+
+-- What a kind adds: its keys first, then `K` and its part of the status line.
+local function kind_here()
+  local _, buf = here()
+  local kind = buf and buf.state.kind
+  return kind, buf
+end
+
+function view.subscope()
+  local kind = kind_here()
+  return kind and "textbuf." .. kind.name
+end
+
+function view.describe()
+  local kind, buf = kind_here()
+  if kind and kind.describe then return kind.describe(ctx_of(buf)) end
+end
+
+function view.status(_, line)
+  local kind, buf = kind_here()
+  if kind and kind.status then return kind.status(ctx_of(buf), line) end
+end
 
 view.grid = {
   get = function()

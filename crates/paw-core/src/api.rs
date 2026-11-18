@@ -608,10 +608,16 @@ macro_rules! define {
     };
 }
 
+/// The version of the scripting interface, `paw.api.version`: the minor
+/// number goes up with additions, the major with anything taken away or
+/// changed, so that an extension can say which it needs (`requires`).
+pub const API_VERSION: &str = "1.0.0";
+
 /// Build the `paw.api` table and make it available as `require("paw.api")`.
 pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
     let api = lua.create_table()?;
     api.set("limit_async", watchdog::ASYNC)?;
+    api.set("version", API_VERSION)?;
 
     define! { lua, api, shared;
         // --- project ---
@@ -1222,6 +1228,10 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().checkpoint();
             Ok(())
         }
+        // Whether this turn's edits will close as a step, and putting back
+        // what they changed instead (`edit.before`, paw/hooks.lua).
+        fn undo_pending(_, sh, () => ()) { Ok(sh.session.borrow().undo_pending()) }
+        fn undo_discard(_, sh, () => ()) { Ok(sh.session.borrow_mut().undo_discard()) }
         // Make the project as it is now the start of its undo history, and
         // unchanged: a MIDI file opened as a project (paw/midifile.lua).
         fn undo_reset(_, sh, () => ()) {

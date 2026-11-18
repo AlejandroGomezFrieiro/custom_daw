@@ -564,6 +564,7 @@ function M.show_lanes(track, on)
   save_lanes()
 end
 
+--- Show a track's take lanes, or hide them; returns whether they show.
 function M.toggle_lanes(track)
   M.show_lanes(track, not M.lanes_shown(track))
   return M.lanes_shown(track)

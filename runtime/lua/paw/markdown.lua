@@ -13,6 +13,7 @@ local M = {}
 
 local CHAR = "[%z\1-\127\194-\244][\128-\191]*"
 
+--- How many cells a string takes.
 local function width(s)
   if not s:find("[\128-\255]") then return #s end
   local _, n = s:gsub("[^\128-\191]", "")
@@ -196,6 +197,8 @@ end
 
 local function is_rule_row(line) return line:match("^%s*|?%s*:?%-%-+:?%s*|") ~= nil or line:match("^%s*|%s*:?%-+") ~= nil end
 
+--- Markdown as a list of blocks (headings, paragraphs, lists, code, tables)
+--- for `render`.
 function M.parse(text)
   local lines = {}
   for line in (text:gsub("\r", "") .. "\n"):gmatch("([^\n]*)\n") do lines[#lines + 1] = (line:gsub("\t", "    ")) end

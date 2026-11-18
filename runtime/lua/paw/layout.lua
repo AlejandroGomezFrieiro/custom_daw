@@ -108,6 +108,7 @@ function M.windows(root, all)
   return out
 end
 
+--- The split holding `target` in the tree under `node`, and its place there.
 local function parent_of(node, target)
   for i, child in ipairs(node) do
     if child == target then return node, i end
@@ -172,6 +173,7 @@ local function tidy(node)
   end
 end
 
+--- Merge splits of one child and splits the same way as their parent.
 function M.tidy(root)
   tidy(root)
   to_rows(root)
@@ -442,6 +444,13 @@ paw.on("project.loaded", function() M.drop_dead() end)
 --- (`:vs paw://lane/3`); `window()`, the window to draw when none in the
 --- tabs shows the type (one in a graphical frontend's window of its own).
 --- Key mappings for its windows are mapped with `{ view = name }`.
+---
+--- Everything a view can do, per window: `grid(win)` (the cursor the keymap
+--- moves, as a view's `grid`), `describe(win)` (what `K` says), `status(win,
+--- ctx)` (the status line's `view` component), `subscope(win)`,
+--- `paint(win, g, ctx)` and `pointer(win, e)` (pixels in a graphical
+--- frontend), `help`, and what `paw.layout.powers` maps: `keymaps`, `motions`,
+--- `textobjects`, `operators`, whose functions get `ctx.win` and `ctx.buf`.
 function M.buftype(name, def)
   def.name = name
   M.types[name] = def
@@ -474,13 +483,78 @@ function M.buftype(name, def)
     end,
     time_axis = def.time and function(_, ctx) return def.time.get(win_of(ctx)) end,
     set_time_axis = def.time and function(_, left, zoom, ctx) return def.time.set(win_of(ctx), left, zoom) end,
+    help = def.help,
+    describe = def.describe and function() return def.describe(win_of()) end,
+    status = def.status and function(_, ctx) return def.status(win_of(), ctx) end,
+    subscope = def.subscope and function() return def.subscope(win_of()) end,
+    paint = def.paint and function(_, g, ctx) return def.paint(win_of(ctx), g, ctx) end,
+    pointer = def.pointer and function(_, e) return def.pointer(win_of(), e) end,
   }
+  local view = ui().views[name]
+  if type(def.grid) == "function" then
+    -- The grid of the window with the keys, asked for each time.
+    view.grid = setmetatable({}, { __index = function(_, key)
+      local win = win_of()
+      local g = win and def.grid(win)
+      return g and g[key]
+    end })
+  elseif def.grid then
+    view.grid = def.grid
+  end
+  M.powers(name, def, function(fn)
+    return function(ctx, ...)
+      local win = win_of()
+      ctx = ctx or {}
+      ctx.win, ctx.buf = win, win and M.buf_of(win)
+      return fn(ctx, ...)
+    end
+  end)
   api.ui_redraw()
   return def
 end
 
+--- Map what `def` declares in key scope `scope` (a view's name, or a part
+--- of one: see `paw.keymap.scopes`), so that a buffer type or a kind of
+--- text buffer says its keys where it is made:
+---   keymaps     = { ["<localleader>r"] = fn or "command line" or { fn, desc = "...", mode = ... } }
+---   motions     = { ["]p"] = fn }      -- also after operators and in visual mode
+---   textobjects = { ip = fn }          -- fn(ctx) returns a region
+---   operators   = { gq = fn }          -- fn(region, ctx)
+--- `wrap(fn)`, if given, makes each function what the keymap calls, to add
+--- to its `ctx` (the first argument).
+function M.powers(scope, def, wrap)
+  local keymap = paw.keymap
+  wrap = wrap or function(fn) return fn end
+  local function each(list, how)
+    for lhs, entry in pairs(list or {}) do
+      local rhs, opts = entry, { view = scope }
+      if type(entry) == "table" then
+        rhs = entry[1]
+        for k, v in pairs(entry) do
+          if k ~= 1 then opts[k] = v end
+        end
+      end
+      how(lhs, rhs, opts)
+    end
+  end
+  each(def.keymaps, function(lhs, rhs, opts)
+    keymap.set(lhs, type(rhs) == "function" and wrap(rhs) or rhs, opts)
+  end)
+  each(def.motions, function(lhs, rhs, opts)
+    opts.motion = true
+    keymap.set(lhs, type(rhs) == "function" and wrap(rhs) or rhs, opts)
+  end)
+  each(def.textobjects, function(lhs, fn, opts) keymap.textobject(lhs, wrap(fn), opts) end)
+  -- An operator's function gets the region first, and `ctx` second.
+  each(def.operators, function(lhs, fn, opts)
+    local wrapped = wrap(function(ctx, region) return fn(region, ctx) end)
+    keymap.operator(lhs, function(region, ctx) return wrapped(ctx, region) end, opts)
+  end)
+end
+
 -- Tabs and the current window ---------------------------------------------------
 
+--- The current tab.
 local function tab() local u = ui() return u.tabs[u.tab] end
 M.tab = tab
 
@@ -514,6 +588,7 @@ function M.current()
   return win
 end
 
+--- The window of an id in the tree under `root`.
 function M.find_id(root, id)
   for _, win in ipairs(M.windows(root, true)) do
     if win.id == id then return win end
@@ -1117,6 +1192,7 @@ end
 
 -- Saved layouts -------------------------------------------------------------------
 
+--- A tree of windows as plain data, for `paw.layouts` and saving.
 local function export(node)
   local out = { size = node.size, weight = node.weight, min = node.min }
   if node.view then
@@ -1148,10 +1224,10 @@ function M.capture()
   return { tab = u.tab, tabs = tabs }
 end
 
--- A node as saved, or as a configuration writes it: `"roll"` or
--- `{ view = "roll", size = 20 }` for a window, `{ dir = "h", "arrange",
--- "roll" }` (or with `children`) for a split. Windows of views that are
--- not there (an extension not loaded) are left out.
+--- A node as saved, or as a configuration writes it: `"roll"` or
+--- `{ view = "roll", size = 20 }` for a window, `{ dir = "h", "arrange",
+--- "roll" }` (or with `children`) for a split. Windows of views that are
+--- not there (an extension not loaded) are left out.
 local function import(spec)
   if type(spec) == "string" then spec = { view = spec } end
   if type(spec) ~= "table" then return nil end
