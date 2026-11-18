@@ -171,7 +171,7 @@ mod tests {
     fn the_api_reference_has_the_functions_and_their_comments() {
         let text = api();
         assert!(text.contains("### `clip_notes(id: Id, range: LuaValue)`"), "{text}");
-        assert!(text.contains("A MIDI clip's notes, in the order they start."));
+        assert!(text.contains("The notes of a MIDI clip, in the order of their start."));
         assert!(text.contains("### `undo()`"));
         assert!(text.contains("### `track_meter(id: Id)`"));
         assert!(text.matches("### `").count() > 200);
