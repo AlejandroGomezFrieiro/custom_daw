@@ -107,7 +107,7 @@ not for the size of its feature list.
   place sounds by editing lines), and `:Pdiff` / git drivers that diff and
   merge projects.
 - **Live and remote.** Clips launched on the bar in scenes
-  ([live](docs/live.md)); a terminal or a window attached to an instance on
+  ([the session view](docs/reference/session-view.md)); a terminal or a window attached to an instance on
   another machine over TLS ([running](docs/running.md#on-another-machine)).
 
 ## A tour

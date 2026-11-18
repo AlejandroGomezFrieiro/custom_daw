@@ -343,7 +343,7 @@ one away, and `,vl` links the faders of a group.
 <!-- tags: session-view -->
 `,l` shows the session view, the clip launcher: a column of slots under
 each track and a scene for each row, launched with `<CR>` and `L`; its keys
-are in [Live performance](live.md).
+are in [The session view](reference/session-view.md).
 
 ## Keys: one grammar
 

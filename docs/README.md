@@ -13,6 +13,8 @@ each extension (`:help notation`).
 ## How-to guides
 
 - [Run paw](running.md): install paw, build it from the source, its options, audio devices, other computers
+- [How to record a performance from the session view](how-to/record-a-performance-from-the-session-view.md)
+- [How to map a MIDI controller](how-to/map-a-midi-controller.md)
 
 ## Reference
 
@@ -23,7 +25,8 @@ each extension (`:help notation`).
 - [Input and recordings](recording.md): inputs, input monitors, takes
 - [Edit, mix and render](mixing.md): routes, automation, tempo, stretched clips, markers, MIDI controllers, export
 - [Plugins and built-in devices](devices.md): plugins, the sandbox, built-in devices, devices in Lua
-- [Live performance](live.md): the session view, slots and scenes
+- [The session view](reference/session-view.md): slots, scenes, launch rules, keys and commands
+- [MIDI controllers](reference/learn.md): bind knobs, faders and pads to controls
 - [Harmony, completion and snippets](harmony.md): keys and chords, snippets, completion, many clips in the piano roll
 - [Language servers and diagnostics](lsp.md): language servers, addresses, diagnostics, MIDI LSP
 - [Scripts](scripting.md): the `paw` module, `paw ctl`, scripts and other programs
@@ -35,3 +38,4 @@ each extension (`:help notation`).
 ## Explanation
 
 - [About the architecture](explanation/about-the-architecture.md): the crates, the threads, the kernel and its frontends
+- [About the session view](explanation/about-the-session-view.md): why the engine times a launch, and why a render needs a capture
