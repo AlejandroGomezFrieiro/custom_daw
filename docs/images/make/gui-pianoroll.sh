@@ -20,7 +20,7 @@ drag 925 623 925 611
 pause 0.4
 cap "Draw the velocities in the strip under the notes"
 key Escape; pause 0.2
-stroke 66 770 300 745 520 765 735 735 950 750
+stroke 66 725 300 705 520 720 735 700 950 712
 pause 0.6
 cap "A click on the ruler moves the playhead; Space plays"
 glide 512 380 10; xdotool click 1; pause 0.3

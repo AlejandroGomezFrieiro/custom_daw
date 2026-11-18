@@ -30,5 +30,5 @@ pause 7.0; wait $FEED; key space; pause 0.8
 cap "zt shows the takes as lanes under the clip; the last one plays"
 key z t; pause 1.6
 cap "Comping: select the first half, :take 1 plays the first take there"
-keys 0.12 3 W; keys 0.1 v 7 l; key colon; TYPE_DELAY=110 typ "take 1"; pause 0.4; key Return; pause 2.0
+keys 0.12 3 W; keys 0.1 v 7 l; key colon; TYPE_DELAY=110 typ "take 1"; pause 0.4; key Return; pause 1.4
 rec_stop
