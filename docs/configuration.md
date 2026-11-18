@@ -85,6 +85,14 @@ rows a cell, with steep slopes filled so that it has no gaps), `"braille"`
 default shows pixels (the kitty graphics protocol) where the terminal can show
 them. `:set graphics!` toggles it.
 
+**Undo.** The undo history keeps `paw.opt.undo_steps` steps (1000) and about
+`paw.opt.undo_memory` megabytes (1024) of what they changed; past either, its
+oldest steps are let go, and that is said once. A step costs about what it
+changed: a clip's notes are kept in runs of a few hundred that the steps
+share, so one note changed in a clip of 200,000 keeps a copy of its run
+(some 30 kB), not of the clip. `:set undo_steps=200` lets the oldest steps go
+at once.
+
 Views and extensions draw from the same pieces, in `paw.draw`: `hue(colour)`
 and `track_hue(track)` give highlight groups in the shades of a colour, `g`
 the characters (ASCII ones under `paw.opt.ascii`), `meter`, `vmeter`,

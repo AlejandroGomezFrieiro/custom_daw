@@ -22,7 +22,7 @@ use serde_json::{Map, Value, json};
 
 use crate::history::{self, History};
 use crate::model::{
-    Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, MidiInput, Note, NoteAttr, Project, Segment,
+    Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, MidiInput, Note, NoteAttr, Notes, Project, Segment,
     Send, Shape, StretchMode, Target, Timebase, Track, WarpMarker, parse_input,
 };
 use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
@@ -50,14 +50,18 @@ mod undo;
 mod watch;
 mod write;
 
+/// How many steps the undo history keeps until told otherwise
+/// (`paw.opt.undo_steps`).
 const UNDO_LIMIT: usize = 1000;
-/// And at most about this many bytes of what its steps changed: a step that
-/// changes one note of a clip of 200,000 keeps a copy of that clip.
+/// And at most about this many bytes of what its steps changed
+/// (`paw.opt.undo_memory`): a step that changes one note of a big clip keeps
+/// a copy of the run of notes it changed (`model::Notes`).
 const UNDO_BYTES: usize = 1 << 30;
 
-/// An undo tree for a project, from `project` on.
-fn new_history(project: Project) -> History<Project> {
-    History::new(project, history::now(), UNDO_LIMIT).weigh_with(Project::weight_over, UNDO_BYTES)
+/// An undo tree for a project, from `project` on, keeping at most `limit`
+/// steps and about `bytes` bytes.
+fn new_history(project: Project, (limit, bytes): (usize, usize)) -> History<Project> {
+    History::new(project, history::now(), limit).weigh_with(Project::weight_over, bytes)
 }
 const FILE_VERSION: u32 = 1;
 /// More points than any screen has columns.
@@ -512,7 +516,7 @@ impl Session {
         let mut session = Self {
             synced: project.clone(),
             checkpoint: project.clone(),
-            history: new_history(project.clone()),
+            history: new_history(project.clone(), (UNDO_LIMIT, UNDO_BYTES)),
             project,
             dirty: false,
             touched: false,
@@ -707,8 +711,9 @@ impl Session {
         let state = self.history.push(self.checkpoint.clone(), history::now());
         if self.history.newly_pruned() {
             self.warnings.push(format!(
-                "the undo history keeps {UNDO_LIMIT} steps and {} MB at most: its oldest steps are let go",
-                UNDO_BYTES >> 20
+                "the undo history keeps {} steps and {} MB at most: its oldest steps are let go",
+                self.history.limit(),
+                self.history.byte_limit() >> 20
             ));
         }
         self.last_sweep = moved.map(|key| (key, Instant::now(), state));
@@ -787,10 +792,8 @@ impl Session {
         self.checkpoint();
         self.history.set_current_snapshot(self.checkpoint.clone());
         let fresh = Project::default();
-        let history = std::mem::replace(
-            &mut self.history,
-            new_history(fresh.clone()),
-        );
+        let limits = (self.history.limit(), self.history.byte_limit());
+        let history = std::mem::replace(&mut self.history, new_history(fresh.clone(), limits));
         self.shelf = Some(Shelf {
             project: self.project.clone(),
             history,
@@ -813,7 +816,9 @@ impl Session {
         let Some(shelf) = self.shelf.take() else {
             bail!("no project is put aside");
         };
+        let limits = (self.history.limit(), self.history.byte_limit());
         self.history = shelf.history;
+        self.history.set_limits(limits.0, limits.1);
         self.put_project(shelf.project, shelf.transport, shelf.path, Some(shelf.touched));
         self.seek(shelf.position);
         Ok(())
@@ -2042,7 +2047,7 @@ impl Session {
                 let natural = (end / bar).ceil().max(1.0) * bar;
                 (
                     ClipContent::Midi {
-                        notes: sorted(opts.notes),
+                        notes: sorted(opts.notes).into(),
                         controls: check_controls(opts.controls)?,
                     },
                     natural,
@@ -2275,7 +2280,7 @@ impl Session {
         })
     }
 
-    pub fn clip_notes(&self, id: Id) -> Result<&[Note]> {
+    pub fn clip_notes(&self, id: Id) -> Result<&Notes> {
         match &self
             .project
             .clip(id)
@@ -2327,13 +2332,12 @@ impl Session {
                 .content
             {
                 ClipContent::Midi { notes, .. } => {
-                    let mut all = if append {
-                        std::mem::take(notes)
-                    } else {
-                        Vec::new()
-                    };
+                    let mut all = if append { notes.to_vec() } else { Vec::new() };
                     all.extend(new);
-                    *notes = sorted(all);
+                    // A list sent back whole with a few notes changed shares
+                    // the rest with the clip before it, and with the undo
+                    // history.
+                    notes.assign(sorted(all));
                     Ok(())
                 }
                 ClipContent::Audio { .. } => bail!("clip {id} is an audio clip"),

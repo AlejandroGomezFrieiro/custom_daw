@@ -8073,6 +8073,12 @@ function paw.api.undo_keys(text) end
 ---@param text string?
 function paw.api.undo_label(text) end
 
+--- How many steps the history keeps, and about how many bytes of what
+--- they changed: `paw.opt.undo_steps` and `undo_memory` set these.
+---@param steps integer?
+---@param bytes integer?
+function paw.api.undo_limits(steps, bytes) end
+
 ---@param name string?
 ---@param id integer?
 function paw.api.undo_name(name, id) end

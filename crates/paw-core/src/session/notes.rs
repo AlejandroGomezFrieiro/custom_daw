@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use super::{Session, check_notes};
-use crate::model::{ClipContent, Id, Note, NoteAttr, Project, de_attr};
+use crate::model::{ClipContent, Id, Note, NoteAttr, Notes, Project, de_attr};
 
 /// What to change about a note. Fields left out stay as they are.
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -90,7 +90,7 @@ fn order(a: &Note, b: &Note) -> Ordering {
 /// A cursor on `beat` is on a note from its start up to, not including, its end.
 const EPS: f64 = 1e-9;
 
-fn notes_of(project: &Project, id: Id) -> Result<&[Note]> {
+fn notes_of(project: &Project, id: Id) -> Result<&Notes> {
     match &project
         .clip(id)
         .with_context(|| format!("no clip {id}"))?
@@ -101,7 +101,7 @@ fn notes_of(project: &Project, id: Id) -> Result<&[Note]> {
     }
 }
 
-fn notes_mut(project: &mut Project, id: Id) -> Result<&mut Vec<Note>> {
+fn notes_mut(project: &mut Project, id: Id) -> Result<&mut Notes> {
     match &mut project
         .clip_mut(id)
         .with_context(|| format!("no clip {id}"))?
@@ -117,7 +117,7 @@ fn no_note(id: Id, index: usize, count: usize) -> anyhow::Error {
 }
 
 /// Put a note where it belongs, after any that start with it on its pitch.
-fn insert(notes: &mut Vec<Note>, note: Note) -> usize {
+fn insert(notes: &mut Notes, note: Note) -> usize {
     let at = notes.partition_point(|n| order(n, &note) != Ordering::Greater);
     notes.insert(at, note);
     at

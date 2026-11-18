@@ -26,7 +26,7 @@ use serde_json::{Value, json};
 
 use super::{FILE_VERSION, Session};
 use crate::history::{self, History, StateId};
-use crate::model::{ClipContent, Id, Note, Project, Track};
+use crate::model::{ClipContent, Id, Note, Notes, Project, Track};
 
 /// Readable lines in a diff, at most.
 const DIFF_ITEMS: usize = 200;
@@ -83,7 +83,28 @@ impl Session {
         json!({
             "current": h.current(), "root": h.root(), "saved": h.saved(),
             "limit": h.limit(), "pending": self.touched, "states": states,
+            "bytes": h.bytes(), "byte_limit": h.byte_limit(),
         })
+    }
+
+    /// Keep at most `steps` states and about `bytes` bytes of what they
+    /// changed, letting the oldest go at once if there are more. Either
+    /// left out stays as it is; out of the ranges `paw.opt.undo_steps` and
+    /// `undo_memory` take, neither changes.
+    pub fn undo_limits(&mut self, steps: Option<usize>, bytes: Option<usize>) -> Result<()> {
+        if let Some(steps) = steps
+            && !(10..=1_000_000).contains(&steps)
+        {
+            bail!("the undo history keeps 10 to 1000000 steps, not {steps}");
+        }
+        if let Some(bytes) = bytes
+            && !(16 << 20..=1 << 40).contains(&bytes)
+        {
+            bail!("the undo history keeps 16 MB to 1 TB, not {bytes} bytes");
+        }
+        let h = &mut self.history;
+        h.set_limits(steps.unwrap_or(h.limit()), bytes.unwrap_or(h.byte_limit()));
+        Ok(())
     }
 
     /// The current state's id.
@@ -784,7 +805,7 @@ fn same_note(a: &Note, b: &Note) -> bool {
     a.start == b.start && a.length == b.length && a.pitch == b.pitch && a.velocity == b.velocity && a.meta == b.meta
 }
 
-fn diff_notes(was: &[Note], now: &[Note]) -> Count {
+fn diff_notes(was: &Notes, now: &Notes) -> Count {
     let mut count = Count::default();
     let mut left: HashMap<(u64, u8), Vec<&Note>> = HashMap::new();
     for note in was {
@@ -878,7 +899,7 @@ mod tests {
             length: 4.0,
             muted: false,
             content: ClipContent::Midi {
-                notes: vec![note(0.0, 60), note(1.0, 62), note(2.0, 64)],
+                notes: vec![note(0.0, 60), note(1.0, 62), note(2.0, 64)].into(),
                 controls: Vec::new(),
             },
             fade_in: 0.0,

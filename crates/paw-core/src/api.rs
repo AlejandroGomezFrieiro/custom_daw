@@ -148,7 +148,7 @@ pub fn from_lua<T: DeserializeOwned>(lua: &Lua, value: LuaValue) -> mlua::Result
 
 /// Notes as Lua tables: what `to_lua` makes of them, built directly. Views
 /// ask for a clip's notes every time they draw, so this is on a hot path.
-fn notes_to_lua(lua: &Lua, notes: &[Note]) -> mlua::Result<LuaValue> {
+fn notes_to_lua(lua: &Lua, notes: &crate::model::Notes) -> mlua::Result<LuaValue> {
     let list = lua.create_table_with_capacity(notes.len(), 0)?;
     list.set_metatable(Some(lua.array_metatable()))?;
     for (i, n) in notes.iter().enumerate() {
@@ -1240,6 +1240,11 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         }
         // The undo tree and checkpoints: crate::history, session/undo.rs.
         fn undo_tree(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().undo_tree()) }
+        // How many steps the history keeps, and about how many bytes of what
+        // they changed: `paw.opt.undo_steps` and `undo_memory` set these.
+        fn undo_limits(_, sh, (steps, bytes) => (Option<usize>, Option<usize>)) {
+            sh.session.borrow_mut().undo_limits(steps, bytes).lua()
+        }
         fn undo_current(_, sh, () => ()) { Ok(sh.session.borrow().undo_current()) }
         fn undo_goto(_, sh, id => u64) { Ok(sh.session.borrow_mut().undo_goto(id)) }
         fn undo_step(_, sh, n => i64) { Ok(sh.session.borrow_mut().undo_step(n)) }

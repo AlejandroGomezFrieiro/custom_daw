@@ -69,6 +69,14 @@ api.transport_set("count_in", count_in_bars(paw.opt.count_in))
 paw.on("option.changed", function(e)
   if e.name == "count_in" then api.transport_set("count_in", count_in_bars(e.value)) end
 end)
+-- The undo history's limits are options the kernel is told of.
+local function send_undo_limits()
+  api.undo_limits(paw.opt.undo_steps, math.floor(paw.opt.undo_memory * 1024 * 1024))
+end
+send_undo_limits()
+paw.on("option.changed", function(e)
+  if e.name == "undo_steps" or e.name == "undo_memory" then send_undo_limits() end
+end)
 -- Esc while counting in calls the take off, as stopping does.
 paw.on("escape", function()
   if (api.transport_get().counting or 0) > 0 then transport.stop() end
