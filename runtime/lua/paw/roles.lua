@@ -72,6 +72,7 @@ function M.begin(name, win)
   hits[key_of(name, win)] = drawing
 end
 
+--- The view being drawn is done: what it marks after is no hit region.
 function M.finish()
   drawing = nil
 end

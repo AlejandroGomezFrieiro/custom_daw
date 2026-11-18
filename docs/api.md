@@ -234,6 +234,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.audio.label(t)`: What a track takes in, in a few words: `UR22mkII · 1/2` for audio, `MIDI · Keystation · ch 1` for MIDI from one port. Nil for a track that takes nothing in particular: no audio, and MIDI from everywhere.
 - `paw.audio.level(t, levels)`: The level of what arrives at a track's audio input, 0 to 1, whether or not the track is armed or monitored; 0 for a track without one.
 - `paw.audio.levels`: the same as `paw.api.input_levels`.
+- `paw.audio.load(cpu)`: How busy the engine is, 0 to 1, as the status line and every frontend show it: the load of its blocks averaged over about a second, given in steps of 2.5% and moved only when the average has left the step shown. A block's own load wavers all the time, the more so on a busy machine, and each change of it would be drawn again in the terminal and sent to every window, which then drew a frame for it. `cpu`: the load just read (`api.engine_get().cpu`), when the caller has it.
 - `paw.audio.short(name)`: A device's name made short enough for a track header: the maker's name goes when a model number follows it, and so does a trailing number.
 
   ```lua
@@ -1204,6 +1205,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.mouse.has(event, letter)`: Whether the modifiers of an event hold `letter` ("C", "A" or "S").
 - `paw.mouse.hint(text)`: Say what is under the pointer, or what it would do, on the status line; nil says nothing. A view calls it as the pointer moves over it.
 - `paw.mouse.hint_text()`: What the status line says about the pointer, if anything.
+- `paw.mouse.mark_double(event)`: Whether a press is the second of a double click: the same button on the same cell soon after the first, which was not itself a second. A window's pointer, in fractions of a cell, counts by the cell it is in.
 - `paw.mouse.mode(event)`: How a click with modifiers chooses: "toggle" with Ctrl, "add" with Shift, else "only".
 - `paw.mouse.on_grid(x, scroll, zoom, grid)`: The same, on the grid: the step the column's left edge falls in, which is the one drawn there.
 - `paw.mouse.take(event)`: Called by `paw.ui.mouse` first: true when the event was taken here and goes no further.
@@ -1416,6 +1418,17 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.remote.closed(client)`: A connection closed: nothing more is sent to it.
 - `paw.remote.listeners()`: Who is listening: { client = { patterns = {...}, watching = bool }, ... }.
 - `paw.remote.push(client)`: Send a connection what has changed of the frontend's state since it was last sent anything: nothing at all when nothing has.
+
+## Module paw.roles
+
+- `paw.roles.begin(name, win)`: A view is about to be drawn on the terminal's screen (`win`, the id of its window, if any): its hit regions start afresh.
+- `paw.roles.define(name, spec)`: Define a role: `spec.cells(buf, props, ctx)` draws it in cells (it is required: the terminal comes first); `spec.props` names its props and what they hold, for documentation and `paw.ui.roles`; `spec.bound` the props a frontend takes from the live value instead when the mark is bound to one, which are not sent to it.
+- `paw.roles.finish()`: The view being drawn is done: what it marks after is no hit region.
+- `paw.roles.gesture(view, e)`: An event on a hit region (`e.hit`, `e.rect`) to its view: true when it was taken.
+- `paw.roles.hit(buf, x, y, w, h, action)`: `buf:hit(x, y, w, h, action)`: see the top of this file.
+- `paw.roles.input(client, id, view, win, event, held)`: A pointer event from a frontend that is sent scenes (paw/scene.lua), in units of its window `id`, over the view `view` (its window of the layout `win`, if any): on a hit region of the scene it was sent, to the region's gesture, with `x` and `y` in units; a drag begun there goes on in units (`held`, what the frontend's watcher keeps). True when taken.
+- `paw.roles.mark(buf, role, x, y, w, h, props)`: `buf:mark(role, x, y, w, h, props)`: see the top of this file.
+- `paw.roles.pointer(view, name, event)`: A mouse event in the terminal, in the cells of the view it is over (as its `on_mouse` takes it, with `view_x`, `view_y`, `win`): to the gesture of the hit region under it. True when it was taken.
 
 ## Module paw.roll_clips
 
@@ -1761,6 +1774,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.ui.render_scene(name, w, h, cell, win)`: Draw one view by itself as a scene for a graphical frontend (see crates/paw-scene), `w` by `h` units big (fractions allowed), `cell` the frontend's cell `{ w, h }` in pixels, `win` the window of the layout it shows in, if any. What `render_view` writes in the whole cells is the scene's runs and fills, and the strips the view keeps under them its pictures; a view that paints is one picture of the whole. The scene stays with the kernel for `paw.api.scene_end` to say what changed of it.
 - `paw.ui.render_screen(buf)`: Draw the whole screen into `buf`: the tab's windows, floats, the status and command lines.
 - `paw.ui.render_view(name, buf)`: Draw one view by itself on a buffer of its own, as a window of a graphical frontend shows it (see `paw.canvas.open_view`), or a pane of its main area shows a window of the layout (`M.view_win`, while it is drawn). Braille is drawn there as dots (`paw.canvas`), as the font has none.
+- `paw.ui.role`: the same as `paw.roles.define`.
 - `paw.ui.show(name)`: Show a view: in its window if it has one in this tab, else where it was docked. A view has one window at a time: one on screen in another tab moves here.
 - `paw.ui.size()`: The size of the screen in cells: the terminal's, or for the seat of a graphical frontend that has said how big its main area is, that area's (`paw.panes`), so that a split there is measured on what it shows.
 - `paw.ui.start_ticker()`: Redraw at `paw.opt.fps` while playing or just after activity.
@@ -1784,7 +1798,18 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 
 ## Module paw.ui.Buf
 
+- `paw.ui.Buf.columns(self, widths, gap)`: Buffers side by side across this one, a width each from the left with `gap` columns between (0 by default); a width of "*" takes what the others leave. What does not fit is left out.
+
+  ```lua
+  local name, body = buf:columns({ 12, "*" })
+  ```
 - `paw.ui.Buf.fill(self, x, y, w, h, char, style)`: Fill a `w` by `h` area at `x`, `y` with `char` in `style`, clipped.
+- `paw.ui.Buf.hit(self, x, y, w, h, action)`: Make an area a hit region: a press, a move or the wheel there goes to the view's gesture for `action.kind` (paw/roles.lua), in either frontend.
+- `paw.ui.Buf.mark(self, role, x, y, w, h, props)`: Mark a role (paw/roles.lua) over an area: drawn there with the role's cells in a terminal, painted as what it is by a frontend that knows it. `props.hit` makes it a hit region, `props.bind` ties it to a live value. Returns the buffer of the area.
+
+  ```lua
+  buf:mark("fader", 4, 2, 3, 12, { at = 0.8, hit = { kind = "fader", track = id } })
+  ```
 - `paw.ui.Buf.root(width, height)`: The buffer covering a whole screen of the given size.
 - `paw.ui.Buf.strip(self, x, y, w, h, opts)`: Keep an area for pixels drawn by `opts.draw(g, px)`, where the terminal shows images: `g` a painter of `paw.canvas`, `px` `{ w, h, cell = { w, h }, fg, bg, view }`, the strip's size and the terminal's cell in pixels and its colours, and for a strip partly off its window the part that shows (`view`: x, y, w, h). Called once the screen is drawn. `opts.key` names the strip (images are kept by it: put the window's id in it for a view that can be in two windows; the view and its window by default). With `opts.under`, the cells the view draws there stay, above the picture (its cursor, labels, the playhead); else they are left blank. False where there are no pixels (`paw.opt.graphics` off, a terminal without images, tmux, or one that cannot put text over an image under it), for the view to draw cells there instead:
 
@@ -1995,10 +2020,14 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.api.scene_begin(...)`
 - `paw.api.scene_blob(...)`
 - `paw.api.scene_cells(...)`
+- `paw.api.scene_close(...)`
 - `paw.api.scene_draw(...)`
 - `paw.api.scene_end(...)`
 - `paw.api.scene_forget(...)`
+- `paw.api.scene_hit(...)`
+- `paw.api.scene_open(...)`
 - `paw.api.scene_picture(...)`
+- `paw.api.scene_roles(...)`
 - `paw.api.signature_remove(...)`
 - `paw.api.signature_set(...)`
 - `paw.api.sleep(ms)`
