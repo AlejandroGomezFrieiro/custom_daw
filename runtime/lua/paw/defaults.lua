@@ -673,8 +673,11 @@ command("track.pan", function(ctx)
 end, { desc = "Set the pan from -1 to 1, or nudge it: `track.pan by=0.1`" })
 command("track.move", function(ctx)
   local track = need_track()
-  if track then track:move(cursor.index() + (ctx.args.by or 1)) end
-end, { desc = "Move the track down or up: `track.move by=-1`" })
+  if not track then return end
+  -- A count moves it that many places: `3<A-j>`.
+  local to = cursor.index() + (ctx.args.by or 1) * (ctx.count or 1)
+  track:move(util.clamp(to, 1, #api.track_list()))
+end, { desc = "Move the track down or up, by the count: `track.move by=-1`" })
 -- What each choice of input means, and the lists, are `paw.audio`'s; here
 -- they are a picker and commands.
 local group_names = {
@@ -960,12 +963,14 @@ command("clip.remove", function()
   local clip = need_clip()
   if clip then clip:remove() end
 end, { desc = "Remove the clip under the cursor" })
-command("clip.duplicate", function()
+command("clip.duplicate", function(ctx)
   local clip = need_clip()
   if not clip then return end
-  local copy = clip:duplicate()
+  -- A count makes that many copies, one after the other: `4&`.
+  local copy = clip
+  for _ = 1, math.max(1, ctx.count or 1) do copy = copy:duplicate() end
   cursor.set_beat(copy.start)
-end, { desc = "Repeat the clip right after itself" })
+end, { desc = "Repeat the clip right after itself, as many times as the count" })
 command("clip.mute", function()
   local clip = need_clip()
   if clip then clip.muted = not clip.muted end
@@ -3031,6 +3036,8 @@ for _, name in ipairs({ "arrange", "mixer" }) do
   map("grp", "track.pan.set", { view = name, desc = "Type the pan" })
 end
 map("grt", "tempo.set", { desc = "Type the tempo" })
+-- Tapped again and again in time; each tap sets the tempo from the taps so far.
+map("<leader>t", "tempo.tap", { desc = "Tap the tempo: again and again, in time", repeatable = false })
 -- The device panel's `c` and `=` are in paw/device_rows.lua.
 
 -- Automation lanes as rows (see paw.lanes) ------------------------------------

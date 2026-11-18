@@ -23,7 +23,8 @@ save.
 The status line shows the name of the project, with `[+]` when there are
 changes that are not saved. `:render name.wav` writes the song to a file.
 `tail=2` adds two seconds for the echoes to stop, and `bits=16` makes a
-16-bit file. A relative name starts from the folder where you started paw.]],
+16-bit file. A name without a folder goes next to the project. `:pwd`
+shows that folder, and `:cd` changes it.]],
   vim = [[
 `:w`, `:e`, `:wq`, `:x`, `ZZ` and `ZQ` work as in Vim, but on projects, not
 on files. Only one project is open at a time, and `:e` replaces it. `:w
@@ -44,8 +45,8 @@ such a copy.]],
   end,
   at = function() paw.cursor.set_track(paw.track("Keys")) end,
   test = {
-    -- Rendering writes beside where paw was started; the test tidies up.
-    after = function() os.remove("tutor-song.wav") end,
+    -- Rendering writes beside the practice project; the test tidies up.
+    after = function() os.remove(paw.files.here() .. "/tutor-song.wav") end,
   },
   steps = {
     {
@@ -64,7 +65,7 @@ such a copy.]],
       say = "`:render` plays the song into a WAV file. Type `:render tutor-song.wav tail=2` and `<CR>`.",
       keys = { ":render tutor-song.wav tail=2", "<CR>" },
       check = function(ctx, look) return look.ran(ctx, "render") and look.said(ctx, "tutor-song.wav") end,
-      done = "tutor-song.wav is in the folder where you started paw. The message line shows its length and peak level.",
+      done = "tutor-song.wav is next to the project, in the folder of the tutor. The message line shows its length and peak level.",
       hint = "`tail=2` keeps two more seconds after the last note, so the echo does not stop too early.",
     },
     {

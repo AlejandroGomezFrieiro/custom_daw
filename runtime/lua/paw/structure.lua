@@ -200,8 +200,10 @@ end
 -- Keys ---------------------------------------------------------------------------------
 
 local function amap(lhs, fn, desc, opts) keymap.set(lhs, fn, paw.util.merge({ view = "arrange", desc = desc }, opts)) end
-amap("]]", to_same_clip(1), "The next clip of the same kind on the track", { motion = true, jump = true })
-amap("[[", to_same_clip(-1), "The clip of the same kind before, on the track", { motion = true, jump = true })
+-- `]c` `[c`, not `]]` `[[`: `]` and `[` pan at once, and a second press
+-- is a second step of the pan.
+amap("]c", to_same_clip(1), "The next clip of the same kind on the track", { motion = true, jump = true })
+amap("[c", to_same_clip(-1), "The clip of the same kind before, on the track", { motion = true, jump = true })
 amap("]s", to_sibling(1), "The next track in the same group", { motion = true, linewise = true })
 amap("[s", to_sibling(-1), "The track before in the same group", { motion = true, linewise = true })
 amap("[{", to_parent, "Up to the group the track is in", { motion = true, linewise = true, jump = true })
@@ -211,8 +213,9 @@ amap("]u", to_child, "Down into the group: its first track", { motion = true, li
 keymap.textobject("ig", group_object(false), { view = "arrange", desc = "The tracks of the group" })
 keymap.textobject("ag", group_object(true), { view = "arrange", desc = "The group with its tracks" })
 
-keymap.set("]]", to_same_note(1), { view = "pianoroll", desc = "The next note of the same pitch", motion = true, jump = true })
-keymap.set("[[", to_same_note(-1), { view = "pianoroll", desc = "The note of the same pitch before", motion = true, jump = true })
+-- `]n` `[n`, not `]]` `[[`: `]` and `[` change the velocity at once.
+keymap.set("]n", to_same_note(1), { view = "pianoroll", desc = "The next note of the same pitch", motion = true, jump = true })
+keymap.set("[n", to_same_note(-1), { view = "pianoroll", desc = "The note of the same pitch before", motion = true, jump = true })
 
 -- Commands -------------------------------------------------------------------------------
 

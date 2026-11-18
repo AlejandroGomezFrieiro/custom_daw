@@ -25,6 +25,7 @@ To give the track the color of the theme again, select `none`.
 ## Reorder the tracks
 
 To move the track down, press `<A-j>`. To move it up, press `<A-k>`.
+A count moves it more places: `3<A-j>` moves it down three tracks.
 
 ## Group tracks into a folder
 

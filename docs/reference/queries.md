@@ -82,17 +82,19 @@ These keys obey the key rule.
 
 | Keys | View | Effect |
 | --- | --- | --- |
-| `]]` `[[` | arrange | The next or the previous clip of the same kind on the track: the same name without a number or "copy" at its end (`pizz 2` is a `pizz`), and MIDI or audio as this clip. |
+| `]c` `[c` | arrange | The next or the previous clip of the same kind on the track: the same name without a number or "copy" at its end (`pizz 2` is a `pizz`), and MIDI or audio as this clip. |
 | `]s` `[s` | arrange | The next or the previous track next to this track in its group (or at the top). |
 | `[{` `]}` | arrange | Up to the group of the track (as `[{` of Vim goes to the brace around). The last track of the group (if the cursor is there, the last track of the group around it). |
 | `]u` | arrange | Down into a group, to its first track. `[u` is the same as `[{`. |
 | `ig` `ag` | arrange | The tracks of the group of the cursor. With the group track. |
-| `]]` `[[` | piano roll | The next or the previous note of the same pitch. |
+| `]n` `[n` | piano roll | The next or the previous note of the same pitch. |
 | `]]` `[[` `]s` `[s` `[{` `]}` | notation, in a score | The next or the previous instrument. In its group. The first and the last of the group. See the notation README, "The score". |
 
-They take a count, and they are motions for the operators: `d]]` deletes
-up to the next clip of the kind. `]]`, `[[`, `[{` and `]}` go in the jump
-list. `:g` and `:v` (see [Ex commands](ex.md)) are a different way to act
+They take a count, and they are motions for the operators: `d]c` deletes
+up to the next clip of the kind. `]c`, `[c`, `]n`, `[n`, `]]`, `[[`, `[{`
+and `]}` go in the jump list. In the arrange view and the piano roll, `]`
+and `[` change the pan and the velocity at once, so `]]` there is two
+steps of that value. `:g` and `:v` (see [Ex commands](ex.md)) are a different way to act
 on what a pattern finds.
 
 ## Lua

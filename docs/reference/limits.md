@@ -88,7 +88,7 @@ gets the function.
   - A picker over a hundred thousand notes takes most of a second to open.
   - The live grep of `,fg` searches the text in the project, not the text that a plugin shows. It does not search the text of automation and of device parameters.
   - `:select` chooses notes and clips. The tracks, devices, markers and points that it finds go only to the quickfix list.
-  - `]]` and `[[` stay on the track of the cursor.
+  - `]c` and `[c` stay on the track of the cursor.
   - In a picker, the keys that open a split open only the first marked line. A view shows in one window at a time.
 
 - Help (`:help`):

@@ -47,10 +47,9 @@ test("guide: export a song as WAV, FLAC or MP3", function()
   eq(paw.render_tags().title, nil, "no tags set")
   keys(":render " .. d .. "/mix.flac<CR>")
   rendered(d .. "/mix.flac")
-  -- A name alone goes into the directory where paw started.
+  -- A name alone goes next to the project.
   keys(":render guide-export-test.wav<CR>")
-  rendered("guide-export-test.wav")
-  os.remove("guide-export-test.wav")
+  rendered(d .. "/guide-export-test.wav")
   keys(":render.tags artist=Ana album=\"First one\" year=2026<CR>")
   eq(paw.render_tags().artist .. "/" .. paw.render_tags().album, "Ana/First one", ":render.tags sets the tags")
   local mp3

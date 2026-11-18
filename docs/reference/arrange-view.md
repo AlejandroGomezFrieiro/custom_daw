@@ -31,7 +31,7 @@ color. The track of the cursor has a brighter header and a tinted lane.
 | `D` `C` `Y` | Deletes, changes, copies to the end of the track. |
 | `o` `O` | Adds a track below or above. |
 | `grn` | Renames the track. |
-| `Alt-j` `Alt-k` | Moves the track down or up. |
+| `Alt-j` `Alt-k` | Moves the track down or up. A count gives the places: `3 Alt-j`. |
 | `:track.new` | Adds a track of a kind chosen from a list (a vocal track, a drum track: kinds that extensions define). |
 | `:track.add vocal` | Adds a track of the named kind. |
 | `M` `s` `r` | Mutes, solos, arms the track. |
@@ -42,7 +42,7 @@ color. The track of the cursor has a brighter header and a tinted lane.
 | `I` | Selects the next input (audio, MIDI port and channel). |
 | `Alt-i` | Monitors the input. |
 | `R` | Records, or stops the recording. |
-| `&` `S` `J` `~` | Repeats, splits, joins, mutes the clip. |
+| `&` `S` `J` `~` | Repeats, splits, joins, mutes the clip. A count before `&` gives the copies: `4&`. |
 | `grc` | Renames the clip. |
 | `H` `L` | Moves the clip. |
 | `Alt-h` `Alt-l` | Shortens and lengthens the clip. |
