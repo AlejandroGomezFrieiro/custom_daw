@@ -138,15 +138,40 @@ function view.signature_at(beat)
   return p.sig_num, p.sig_den
 end
 
+-- The bars of the stretches asked for last, and a key for each list made:
+-- a clip's bars are asked for on every look at its score.
+local bars_made, bars_count, bars_keys = {}, 0, setmetatable({}, { __mode = "k" })
+
 --- The bars a stretch of the project covers, `{ start, num, den, number }`
 --- with `start` in beats from `start`, where the signature changes along
---- the song.
+--- the song. To read: the same list is given again while the stretch and
+--- the song's signatures are the same.
 function view.bars(start, length)
   local t = paw.time
   if not (t.signature_at or t.sig_at or t.meter_at) then
     local p = api.project_get()
     return model.even_bars(start, length, p.sig_num, p.sig_den)
   end
+  local sigs = {}
+  for _, p in ipairs(api.tempo_points().signatures or {}) do
+    sigs[#sigs + 1] = table.concat({ p.beat, p.num, p.den }, "/")
+  end
+  -- And what reads them, should something stand in for the song's.
+  local key = table.concat({ start, length, table.concat(sigs, ","), tostring(t.signature_at or t.sig_at or t.meter_at) }, ":")
+  if bars_made[key] then return bars_made[key] end
+  local out = view.count_bars(start, length)
+  if bars_count > 16 then bars_made, bars_count = {}, 0 end
+  bars_made[key], bars_count, bars_keys[out] = out, bars_count + 1, key
+  return out
+end
+
+--- The key `view.bars` knows a list of bars by, if it made it.
+function view.bars_key(bars)
+  return bars_keys[bars]
+end
+
+--- The bars of a stretch, counted one by one from the song's start.
+function view.count_bars(start, length)
   local out, at, n = {}, 0, 1
   local finish = start + math.max(length, EPS)
   while at < finish - EPS and n < 100000 do
@@ -286,10 +311,25 @@ function view:frame()
     dstep = 0, dfifths = 0 }
 end
 
+-- How far the heap may grow past what is live before Lua collects again
+-- (`collectgarbage("setpause")`, in percent), while a score is derived and
+-- laid out: writing a clip of thousands of notes makes some hundred
+-- megabytes of short-lived tables, and collecting them at the usual pace
+-- (200) takes a third of the time.
+local ROOM = 400
+
+--- `fn(...)` with the collector at that pace, and the pace as it was after.
+local function roomy(fn, ...)
+  local pause = collectgarbage("setpause", ROOM)
+  local ok, a = pcall(fn, ...)
+  collectgarbage("setpause", pause)
+  if not ok then error(a, 0) end
+  return a
+end
+
 --- The layout of the open clip, made fresh when the clip or the project
 --- has changed since the last one.
-function view:layout()
-  if not self.clip_id then return nil end
+local function make_layout(self)
   local ok, c = pcall(api.clip_get, self.clip_id)
   if not ok then
     self.clip_id = nil
@@ -326,6 +366,11 @@ function view:layout()
   return layout
 end
 
+function view:layout()
+  if not self.clip_id then return nil end
+  return roomy(make_layout, self)
+end
+
 -- The scores derived last, by clip.
 local derived, derived_count = {}, 0
 
@@ -338,7 +383,7 @@ function view.score_of(c)
   local old = type(c.meta) == "table" and type(c.meta.score) == "table" and c.meta.score or nil
   local opts = view.layout_opts(c, own)
   local key = table.concat({ c.id, tostring(c.stamp), tostring(c.note_count), c.length, c.start, opts.fifths, tostring(opts.tempo),
-    tostring(opts.clef), serial(own), serial(opts.bars), paw.opt.notation_grid, old and tostring(old.rev) or "" }, ":")
+    tostring(opts.clef), serial(own), view.bars_key(opts.bars) or serial(opts.bars), paw.opt.notation_grid, old and tostring(old.rev) or "" }, ":")
   local hit = derived[c.id]
   if hit and hit.key == key then return hit.score end
   local notes = api.clip_notes(c.id)

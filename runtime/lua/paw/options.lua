@@ -54,6 +54,10 @@ local defaults = {
   media_stream = 64,
   media_cache = 16,
   ffmpeg = "ffmpeg",       -- what renders to MP3, Ogg and Opus run: a name on the PATH, or a path
+  -- How many steps the undo history keeps, and about how many megabytes of
+  -- what they changed; past either its oldest steps are let go.
+  undo_steps = 1000,
+  undo_memory = 1024,
 }
 
 -- What an option takes besides its default's type: `type` (a type or a
@@ -84,6 +88,8 @@ local specs = {
   media_stream = { min = 0 },
   media_cache = { min = 0 },
   autosave = { min = 0 },
+  undo_steps = { min = 10, max = 1000000, integer = true },
+  undo_memory = { min = 16, max = 1048576 },
 }
 
 local function has(list, value)

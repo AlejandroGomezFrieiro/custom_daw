@@ -13,6 +13,11 @@ local Q = D.Q
 
 local ARPEGGIO = { up = 1, down = -1 }
 
+local function by_start_voice(a, b)
+  if math.abs(a.start - b.start) > 1e-9 then return a.start < b.start end
+  return a.voice < b.voice
+end
+
 --- How many measures a clip `length` beats long shows: the score's, and
 --- empty ones after them to its end, in the last one's meter. Never fewer
 --- than the score has within the clip.
@@ -160,12 +165,7 @@ function M.layout(score, opts)
         m.overfull = true
       end
     end
-    for s = 1, #staves do
-      table.sort(m.staves[s], function(a, b)
-        if math.abs(a.start - b.start) > 1e-9 then return a.start < b.start end
-        return a.voice < b.voice
-      end)
-    end
+    for s = 1, #staves do table.sort(m.staves[s], by_start_voice) end
   end
   -- The key and the clefs in force, as measures change them.
   local fifths, in_force = opts.fifths or 0, {}
@@ -301,6 +301,17 @@ function M.import(layout, opts)
   return score, st.written
 end
 
+--- An event's id: after its first note's, or its place, `at` saying where
+--- (`i` the measure, `s` the staff, `serial` the staff's events so far).
+--- Made once, not in the loop that uses it: LuaJIT does not compile a loop
+--- that makes a function.
+local function event_id(score, at, ev, prefix, note)
+  if not at.stable then return D.id(score, prefix == "r" and "e" or prefix) end
+  if note then return prefix .. note.id:sub(2) end
+  at.serial = at.serial + 1
+  return prefix .. at.i .. "." .. at.s .. "." .. ev.voice .. "." .. at.serial
+end
+
 --- A note written of played note `n` (a layout's), with `st` as
 --- `M.import_measure` has it.
 local function note_of(n, st, score)
@@ -333,19 +344,12 @@ function M.import_measure(score, i, m, st)
   for s, evs in ipairs(m.staves) do
     local staff = score.staves[s].id
     local tuplets = {}
-    local serial = 0
+    local at = { stable = stable, i = i, s = s, serial = 0 }
     for _, ev in ipairs(evs) do
       local entry = D.voice(sm, staff, ev.voice, true)
-      --- An event's id: after its first note's, or its place.
-      local function event_id(prefix, note)
-        if not stable then return D.id(score, prefix == "r" and "e" or prefix) end
-        if note then return prefix .. note.id:sub(2) end
-        serial = serial + 1
-        return prefix .. i .. "." .. s .. "." .. ev.voice .. "." .. serial
-      end
       for _, g in ipairs(ev.grace or {}) do
         local note = note_of(g, st, score)
-        entry.events[#entry.events + 1] = { id = event_id("g", note), kind = "chord", grace = "acciaccatura", dur = { 1, 8 }, dots = 0, notes = { note } }
+        entry.events[#entry.events + 1] = { id = event_id(score, at, ev, "g", note), kind = "chord", grace = "acciaccatura", dur = { 1, 8 }, dots = 0, notes = { note } }
       end
       if not (ev.whole and ev.voice == 1) then
         -- A stretch no single value can write (shorter than a 32nd, off its
@@ -356,7 +360,7 @@ function M.import_measure(score, i, m, st)
         if ev.tuplet then
           local tp = tuplets[ev.tuplet]
           if not tp then
-            tp = { id = stable and event_id("t") or D.id(score, "t"), actual = ev.tuplet.n, normal = normal_of(ev.tuplet) }
+            tp = { id = stable and event_id(score, at, ev, "t") or D.id(score, "t"), actual = ev.tuplet.n, normal = normal_of(ev.tuplet) }
             tuplets[ev.tuplet] = tp
           end
           sev.tuplet = tp
@@ -369,7 +373,7 @@ function M.import_measure(score, i, m, st)
             local own = n.meta and type(n.meta.notation) == "table" and n.meta.notation
             if own and own.beam == "break" and not n.tied then sev.beam = "break" end
           end
-          sev.id = event_id("e", sev.notes[1])
+          sev.id = event_id(score, at, ev, "e", sev.notes[1])
           local art = {}
           for k, x in pairs(ev.art or {}) do art[k] = x end
           if ev.staccato then art.staccato = true end
@@ -377,7 +381,7 @@ function M.import_measure(score, i, m, st)
           sev.arpeggio = ev.arpeggio == 1 and "up" or ev.arpeggio == -1 and "down" or nil
           sev.lyric = ev.lyric
         else
-          sev.id = event_id("r")
+          sev.id = event_id(score, at, ev, "r")
         end
         entry.events[#entry.events + 1] = sev
       end

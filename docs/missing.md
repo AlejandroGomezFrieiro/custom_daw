@@ -1,10 +1,10 @@
 # What is missing
 
-- Undo keeps a whole copy of each clip a step changed: one note changed in
-  a clip of 200,000 notes costs about 11 MB. The history keeps 1000 steps
-  and about 1 GB at most, letting its oldest steps go past that (and
-  saying so once); a clip's notes are not shared between steps in parts.
-  Neither limit is an option yet.
+- Undo shares a clip's notes between steps in runs of a few hundred, but
+  not its controller moves: a step that changes a clip keeps a whole copy
+  of those. A clip that changed is played again from all its notes: an
+  edit or an undo on a clip of 200,000 notes takes some milliseconds to
+  reach the engine.
 - A MIDI clip's length is its own, as in REAPER: deleting its last notes
   does not shorten it (`:clip.resize`, or dragging its end, does).
 

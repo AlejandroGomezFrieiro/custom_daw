@@ -13,6 +13,9 @@ use paw_engine::{Ctl, EventKind, NoteCtl, SigPoint, TempoMap, TempoPoint};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+mod notes;
+pub use notes::Notes;
+
 pub type Id = u64;
 
 /// The master track's id in every project.
@@ -554,7 +557,7 @@ impl Clip {
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ClipContent {
     Midi {
-        notes: Vec<Note>,
+        notes: Notes,
         /// Controller, pitch wheel and pressure moves, in the order they happen.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         controls: Vec<Control>,
@@ -835,15 +838,19 @@ fn unnamed(id: &u64) -> bool {
 }
 
 impl Clip {
-    /// About how many bytes the clip holds.
-    fn weight(&self) -> usize {
+    /// About how many bytes the clip holds that `before` (the same clip in
+    /// an earlier state) does not share with it: of its notes, the runs it
+    /// does not share (see [`Notes`]).
+    fn weight_over(&self, before: Option<&Clip>) -> usize {
         use std::mem::size_of;
         size_of::<Clip>()
             + match &self.content {
                 ClipContent::Midi { notes, controls } => {
-                    notes.len() * size_of::<Note>()
-                        + notes.iter().map(|n| n.meta.len() * 64).sum::<usize>()
-                        + controls.len() * size_of::<Control>()
+                    let was = match before.map(|c| &c.content) {
+                        Some(ClipContent::Midi { notes, .. }) => Some(notes),
+                        _ => None,
+                    };
+                    notes.weight_over(was) + controls.capacity() * size_of::<Control>()
                 }
                 ClipContent::Audio { .. } => 0,
             }
@@ -854,20 +861,16 @@ impl Clip {
 /// the next free one. Returns whether any changed. The same notes are always
 /// given the same ids, so a state written without them (an older file, a
 /// step of the undo history) comes back with the ids it had.
-pub fn name_notes(notes: &mut [Note]) -> bool {
-    let mut seen = std::collections::HashSet::with_capacity(notes.len());
-    let unnamed = notes.iter().any(|n| n.id == 0 || !seen.insert(n.id));
-    if !unnamed {
+pub fn name_notes(notes: &mut Notes) -> bool {
+    let unnamed = notes.unnamed();
+    if unnamed.is_empty() {
         return false;
     }
+    // Past every id there is, so no id given clashes with one further on.
     let mut next = notes.iter().map(|n| n.id).max().unwrap_or(0) + 1;
-    seen.clear();
-    for note in notes.iter_mut() {
-        if note.id == 0 || !seen.insert(note.id) {
-            note.id = next;
-            seen.insert(next);
-            next += 1;
-        }
+    for i in unnamed {
+        notes[i].id = next;
+        next += 1;
     }
     true
 }
@@ -986,10 +989,7 @@ impl Project {
                 old.map(|o| o.clips.iter().map(|c| (c.id, c)).collect()).unwrap_or_default();
             let needs = |c: &Arc<Clip>| match &c.content {
                 _ if old_clips.get(&c.id).is_some_and(|o| Arc::ptr_eq(o, c)) => false,
-                ClipContent::Midi { notes, .. } => {
-                    let mut seen = std::collections::HashSet::with_capacity(notes.len());
-                    notes.iter().any(|n| n.id == 0 || !seen.insert(n.id))
-                }
+                ClipContent::Midi { notes, .. } => !notes.unnamed().is_empty(),
                 _ => false,
             };
             if !track.clips.iter().any(needs) {
@@ -1021,8 +1021,9 @@ impl Project {
             let clips: std::collections::HashMap<Id, &Arc<Clip>> =
                 was.map(|w| w.clips.iter().map(|c| (c.id, c)).collect()).unwrap_or_default();
             for clip in &track.clips {
-                if !clips.get(&clip.id).is_some_and(|c| Arc::ptr_eq(c, clip)) {
-                    bytes += clip.weight();
+                let was = clips.get(&clip.id);
+                if !was.is_some_and(|c| Arc::ptr_eq(c, clip)) {
+                    bytes += clip.weight_over(was.map(|c| &***c));
                 }
             }
             let devices: std::collections::HashMap<Id, &Arc<DeviceInst>> =
@@ -1636,18 +1637,18 @@ mod note_ids {
 
     #[test]
     fn notes_without_an_id_get_the_next_free_ones_and_the_same_ones_again() {
-        let mut notes = vec![note(60, 0), note(62, 0), note(64, 0)];
+        let mut notes = Notes::from(vec![note(60, 0), note(62, 0), note(64, 0)]);
         assert!(name_notes(&mut notes));
         assert_eq!(notes.iter().map(|n| n.id).collect::<Vec<_>>(), [1, 2, 3]);
         assert!(!name_notes(&mut notes), "named notes are left alone");
-        let mut again = vec![note(60, 0), note(62, 0), note(64, 0)];
+        let mut again = Notes::from(vec![note(60, 0), note(62, 0), note(64, 0)]);
         name_notes(&mut again);
         assert_eq!(again, notes, "the same notes, the same ids");
     }
 
     #[test]
     fn a_copy_next_to_its_original_gets_an_id_of_its_own() {
-        let mut notes = vec![note(60, 7), note(60, 7), note(62, 3), note(65, 0)];
+        let mut notes = Notes::from(vec![note(60, 7), note(60, 7), note(62, 3), note(65, 0)]);
         assert!(name_notes(&mut notes));
         assert_eq!(notes.iter().map(|n| n.id).collect::<Vec<_>>(), [7, 8, 3, 9]);
     }

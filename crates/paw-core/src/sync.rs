@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 
 use crate::freeze::Played;
 use crate::model::{
-    Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, Note, Project, Target, Track,
+    Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, Note, Notes, Project, Target, Track,
 };
 use crate::peaks::{self, Summary};
 
@@ -1237,7 +1237,7 @@ fn update_device(
 /// One MIDI clip's notes and controller moves as engine events, sorted. A
 /// looped clip plays what lies in its repeated stretch over and over, each
 /// note cut at the end of its repeat.
-fn compile_clip(clip: &Clip, notes: &[Note], controls: &[Control]) -> Arc<[MidiEv]> {
+fn compile_clip(clip: &Clip, notes: &Notes, controls: &[Control]) -> Arc<[MidiEv]> {
     let mut set = ClipSet::default();
     let Some((from, beats)) = clip.repeat() else {
         for control in controls
