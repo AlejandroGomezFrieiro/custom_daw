@@ -296,28 +296,18 @@ gets the function.
 - The arrange view of the graphical window is the arrange view of the
   terminal, laid out in cells. Before, the window had its own drawing of
   it. These details of that drawing are not there now:
-  - A track has the height of the others (`paw.opt.track_height`). A drag
-    of the bottom edge of a header does not give one track a height of its
-    own.
-  - The header has no microphone and loudspeaker buttons and no clip
-    light. The input is on the track's menu, and `I` is the monitor.
-  - The pan is a word (`L30`), not a knob. Drag it sideways.
+  - A track's height is a whole number of lines.
   - The timeline has no box of zoom buttons in its corner. `Ctrl -`,
     `Ctrl +`, `Ctrl 0` and the arrows with `Ctrl` do the same.
   - The ruler is one row. A drag along it loops. The lower half of the
     ruler of the old drawing moved the playhead.
   - Automation shows the lanes of the selected track as rows, not one lane
     of each track over its clips.
-  - A take that records does not show as a red box that grows with the
-    playhead.
-  - A take lane shows the name of each take, not its notes or its
-    waveform.
   - The bar numbers, the names on the ruler and the text in the headers
     are in cells. The clips, the bar lines, the curves and the playhead
     are where they are, between cells. At a zoom that is not a whole
     number of columns a beat, a bar's number can be up to half a cell
     from its line.
-  - The pointer has no special shape over the edge of a clip.
 - The mixer of the graphical window is the mixer of the terminal, laid out
   in cells. Its switches are a cell wide. Its devices have rows of their
   own only when the mixer is at least twenty rows tall. At the usual

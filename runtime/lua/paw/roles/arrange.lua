@@ -25,13 +25,15 @@ end
 --- its waveform from `content` (`midi` or not: `paw.frontend.preview`,
 --- `paw.frontend.peaks`, fetched again when the key changes); an audio
 --- clip's fades (`fade_in`, `fade_out`, beats) and `gain` (dB). `ghost`
---- is where a drag will put one.
+--- is where a drag will put one. With `take` it is that take of the clip
+--- in a take lane (`paw.frontend.take_preview`), lit when `active`.
 role("clip", {
   props = {
     id = "clip id", name = "string", label = "string", color = "#rrggbb", midi = "boolean", muted = "boolean",
     current = "boolean", chosen = "boolean", offline = "boolean", length = "beats", per = "columns a beat",
     repeats = "list of beats", warps = "list of beats", fade_in = "beats", fade_out = "beats", gain = "dB",
-    content = "key of what it shows", ghost = "boolean", title_style = "highlight group", body_style = "highlight group",
+    content = "key of what it shows", ghost = "boolean", take = "number", active = "boolean",
+    title_style = "highlight group", body_style = "highlight group",
   },
   cells = function(buf, p)
     local g = draw.g
@@ -111,6 +113,32 @@ role("curve", {
   end,
 })
 
+--- A track's header: its ground in `style`, with a stripe (`stripe`, a
+--- glyph in `stripe_style`) down its left. A window paints a panel, lighter
+--- when `selected`, with a stripe of `color` and a line under it, whose
+--- bottom edge a drag makes taller or shorter.
+role("trackhead", {
+  props = { style = "highlight group", stripe = "glyph", stripe_style = "highlight group", color = "#rrggbb", selected = "boolean" },
+  cells = function(buf, p)
+    buf:fill(0, 0, buf.width, buf.height, " ", p.style)
+    for row = 0, buf.height - 1 do buf:text(0, row, p.stripe, p.stripe_style) end
+  end,
+})
+
+--- A take being recorded on an armed track, from `start` (a beat) to
+--- `at`, the playhead, in `color`; no further than `to` when it is
+--- punched in. `per` is columns a beat. Bound to `position`, a window
+--- makes it grow with the live values, with no new scene.
+role("recording", {
+  props = { start = "beat", at = "beat", to = "beat", per = "columns a beat", color = "#rrggbb" },
+  bound = { "at" },
+  cells = function(buf, p)
+    local stop = math.min(p.at or p.start, p.to or math.huge)
+    local w = math.floor((stop - p.start) * p.per + 0.5)
+    if w > 0 then buf:fill(0, 0, math.min(w, buf.width), buf.height, " ", "Armed") end
+  end,
+})
+
 --- A level across a row, lit from the left (`paw.draw.meter`): `levels`
 --- (linear, both sides), `hold`, the loudest of late, marked. With
 --- `stereo`, both sides in one row of half blocks. With `at` (0 to 1), a
@@ -118,7 +146,7 @@ role("curve", {
 --- drag across the row sets. Bound to a track's meter (`bind =
 --- "meter:<id>"`), a window moves the levels with `scene.live`.
 role("hmeter", {
-  props = { levels = "list of two numbers 0..", hold = "number", stereo = "boolean", at = "number 0..1" },
+  props = { levels = "list of two numbers 0..", hold = "number", stereo = "boolean", at = "number 0..1", clipped = "boolean" },
   bound = { "levels", "hold", "clipped" },
   cells = function(buf, p)
     local l, r = (p.levels or {})[1] or 0, (p.levels or {})[2] or 0

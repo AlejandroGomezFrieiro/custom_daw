@@ -307,7 +307,7 @@ function M.sounding(c, notes, limit)
 end
 
 --- The stretch, shift and loop of a clip in a few characters, for its
---- label: "×1.5 +3st ⟳". `stretching…` shows while paw makes its sound. Nil
+--- label: "×1.5 +3st ↻". `stretching…` shows while paw makes its sound. Nil
 --- for a clip with none of these.
 function M.badge(c)
   local ascii = paw.opt.ascii
@@ -321,7 +321,7 @@ function M.badge(c)
   end
   -- Following the tempo, and looping.
   if c.timebase == "stretch" then parts[#parts + 1] = ascii and "bpm" or "♩" end
-  if c.loop then parts[#parts + 1] = ascii and "loop" or "⟳" end
+  if c.loop then parts[#parts + 1] = ascii and "loop" or "↻" end
   return #parts > 0 and table.concat(parts, " ") or nil
 end
 

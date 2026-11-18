@@ -52,7 +52,7 @@ A stretched clip has a label before its name, in both frontends:
 | `×1.5` | stretched |
 | `+3st` | pitch shifted |
 | `♩` | follows the tempo |
-| `⟳` | loops |
+| `↻` | loops |
 | `stretching…` | paw makes its sound now |
 
 ## Stretch

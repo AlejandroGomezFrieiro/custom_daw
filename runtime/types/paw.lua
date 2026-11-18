@@ -4883,10 +4883,14 @@ function paw.mouse.has(event, letter) end
 
 --- Show on the status line what is under the pointer, or what it would do.
 --- nil shows nothing. A view calls it while the pointer moves over it.
+--- `shape` is the shape a window gives the pointer there: "resize_h" over
+--- an edge dragged sideways, "resize_v" over one dragged up or down.
 ---@param text any
-function paw.mouse.hint(text) end
+---@param shape any
+function paw.mouse.hint(text, shape) end
 
---- What the status line says about the pointer, if anything.
+--- What the status line says about the pointer, if anything; and the
+--- shape of the pointer, if it has one.
 function paw.mouse.hint_text() end
 
 --- True if a press is the second press of a double click. That is the same
@@ -6175,7 +6179,7 @@ function paw.stems.plan(opts) end
 function paw.stems.render(plan, opts) end
 
 --- The stretch, shift and loop of a clip in a few characters, for its
---- label: "×1.5 +3st ⟳". `stretching…` shows while paw makes its sound. Nil
+--- label: "×1.5 +3st ↻". `stretching…` shows while paw makes its sound. Nil
 --- for a clip with none of these.
 ---@param c any
 function paw.stretch.badge(c) end

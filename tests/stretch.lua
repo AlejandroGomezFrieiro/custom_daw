@@ -240,7 +240,7 @@ test("a looped audio clip repeats its sound exactly", function()
   for _, c in ipairs(state.clips) do if c.id == clip.id then shown = c end end
   eq(#shown.notches, 2, "two notches")
   near(shown.notches[1], 2, 1e-9, "at the second repeat")
-  eq(shown.name:find("⟳", 1, true) ~= nil, true, "a mark in its name")
+  eq(shown.name:find("↻", 1, true) ~= nil, true, "a mark in its name")
   -- Its waveform repeats too.
   local peaks = clip:peaks(30)
   eq(peaks[3][2], peaks[13][2], "the waveform repeats")
@@ -395,9 +395,9 @@ test("the terminal marks a stretched, shifted, following or looped clip in its l
   paw.stretch.follow(clip.id)
   paw.stretch.loop(clip.id, true)
   paw.flush()
-  eq(paw.stretch.badge(clip:get()), "stretching… ×1.5 +3st ♩ ⟳", "while it is made")
+  eq(paw.stretch.badge(clip:get()), "stretching… ×1.5 +3st ♩ ↻", "while it is made")
   settled()
-  eq(paw.stretch.badge(clip:get()), "×1.5 +3st ♩ ⟳", "once it is made")
+  eq(paw.stretch.badge(clip:get()), "×1.5 +3st ♩ ↻", "once it is made")
   paw.opt.ascii = true
   eq(paw.stretch.badge(clip:get()), "x1.5 +3st bpm loop", "in plain characters")
   paw.opt.ascii = false

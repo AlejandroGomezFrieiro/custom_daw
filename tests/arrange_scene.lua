@@ -10,7 +10,9 @@ local api = paw.api
 local view = paw.ui.views.arrange
 
 local W, H, CELL = 160, 40, { w = 8, h = 17 }
-local ROLES = { "clip", "beats", "curve", "hmeter", "peak", "switch", "playhead" }
+local ROLES = {
+  "clip", "beats", "curve", "hmeter", "switch", "playhead", "trackhead", "recording", "label", "button", "knob",
+}
 
 -- What the window's watcher keeps of a drag under way.
 local held = {}
@@ -186,6 +188,73 @@ end)
 
 test("the arrange view moves on its own only by its live roles, but for the playhead leaving it", function()
   song()
-  eq(table.concat(view.live_roles, " "), "playhead hmeter peak", "the playhead and the meters")
+  eq(table.concat(view.live_roles, " "), "playhead hmeter recording", "the playhead, the meters and a take being made")
   eq(view:moving(), false, "stopped, it does not move")
+end)
+
+test("a header in a window: its ground and stripe, its name in words, a knob for the pan, the input and the monitor as buttons", function()
+  local a = song()
+  local heads, names, knobs, mics, speakers = 0, {}, 0, 0, 0
+  for _, n in ipairs(nodes_of("trackhead")) do
+    if n.props.color == paw.draw.track_colour(a:get(), 1) then heads = heads + 1 end
+  end
+  for _, n in ipairs(nodes_of("label")) do names[#names + 1] = n.props.text end
+  for _, n in ipairs(nodes_of("knob")) do if n.props.round then knobs = knobs + 1 end end
+  for _, n in ipairs(nodes_of("button")) do if n.props.icon == "mic" then mics = mics + 1 end end
+  for _, n in ipairs(nodes_of("switch")) do if n.props.icon == "speaker" then speakers = speakers + 1 end end
+  eq(heads, 1, "the header's ground, in the track's colour")
+  eq(table.concat(names, " "):find("keys", 1, true) ~= nil, true, "the name, as a label: " .. table.concat(names, " "))
+  eq(knobs >= 2 and mics == 2 and speakers == 2, true, "a pan knob, an input button and a monitor switch a track")
+end)
+
+test("the master is a header like the others, its level on both sides; the timeline beside it is empty", function()
+  song()
+  local master
+  for _, n in ipairs(nodes_of("hmeter")) do
+    if n.bind == "meter:0" then master = n end
+  end
+  eq(master ~= nil and master.props.stereo, true, "the master's level, both sides, bound to its meter")
+  eq(master.r[1] < view.geometry.hw, true, "in the header's column")
+end)
+
+test("a header's bottom edge dragged in a window makes its track taller, the others keeping theirs", function()
+  local a, b, _, _, at = song()
+  local row
+  for _, r in ipairs(view.geometry.layout.rows) do if r.id == a.id then row = r end end
+  local x = 6
+  local y = row.y + row.h - 0.1
+  drag(x, y, x, y + 2)
+  near(a:get().height, (row.h + 2) / view.geometry.th, 0.01, "two lines taller")
+  local rows = {}
+  for _, r in ipairs(view.geometry.layout.rows) do rows[r.id] = r.h end
+  eq(rows[a.id] .. " " .. rows[b.id], (row.h + 2) .. " " .. row.h, "drawn so, the other as it was")
+  paw.mouse.forget()
+  input("down", x, rows[a.id] + row.y - 0.1)
+  input("up", x, rows[a.id] + row.y - 0.1)
+  input("down", x, rows[a.id] + row.y - 0.1)
+  input("up", x, rows[a.id] + row.y - 0.1)
+  eq(a:get().height or 1, 1, "a double click gives it the others' height")
+end)
+
+test("over a clip's edge the pointer says it trims, with a shape for a window to show", function()
+  local _, _, riff, _, at = song()
+  local x, y = at(riff:track(), 4)
+  input("hover", x + 0.2, y)
+  local text, shape = paw.mouse.hint_text()
+  eq(shape, "resize_h", "a shape for an edge dragged sideways: " .. tostring(text))
+  eq(paw.frontend.state(-1).modal.pointer, "resize_h", "told to the window")
+end)
+
+test("a take lane in a window: each take a clip of its own, with the take's key for what it shows", function()
+  local a, _, riff = song()
+  paw.takes.new(riff.id)
+  paw.cursor.set_track(a.id)
+  paw.commands.exec("take.lanes")
+  local takes = {}
+  for _, n in ipairs(nodes_of("clip")) do
+    if n.props.take then takes[#takes + 1] = n.props.take .. (n.props.active and "*" or "") .. ":" .. tostring(n.props.content ~= nil) end
+  end
+  table.sort(takes)
+  eq(table.concat(takes, " "), "1:true 2*:true", "both takes, the second playing, each with its key")
+  paw.commands.exec("take.lanes")
 end)

@@ -92,7 +92,11 @@ graphics card:
 | State | Load |
 | --- | --- |
 | At rest | 0% of a core |
-| While the song plays | about 105% of a core. A frame takes 4 ms of the window's own work. llvmpipe uses the rest to fill pixels on its threads. |
+| While the song plays | about 105% of a core. A frame takes less than 1 ms of the window's own work. llvmpipe uses the rest to fill pixels on its threads. |
+
+llvmpipe uses as many threads as the processor has free. So the load
+that you measure changes with what else runs. To compare two windows, set
+`LP_NUM_THREADS=4` for both.
 
 On a graphics card, the card fills the pixels.
 
@@ -311,20 +315,25 @@ the selection. One clip selected with a click is the clip under the cursor.
 
 ## Track headers
 
-A track header is the terminal's header. It shows, line by line:
+A track header is the terminal's header, with a stripe in the color of
+the track down its left. It shows, line by line:
 
 - the number and the name of the track, the letter of its automation mode
-  (`A`, `T`, `L`, `W`) and the switches `M`, `S`, `R` and `I` (monitor). A
-  switch that is on has its color.
-- the level of the track, with the place of its fader on it, and the
+  (`A`, `T`, `L`, `W`) and the switches `M`, `S`, `R` and the loudspeaker
+  (`I` in the terminal, monitor). A switch that is on has its color.
+- the input button (the microphone, `in` in the terminal), the level of
+  the track with the place of its fader on it and its clip light, and the
   volume in dB
-- the pan, the devices of the track and the track it plays into
+- a knob for the pan, the devices of the track and the track it plays into
 - the sends, and the input with the level that arrives there.
 
-A shorter row shows less. The shortest row shows only the first line.
+A shorter row shows less. The shortest row shows only the first line. The
+master is the last header, with its level on both sides.
 
 The level has these colors: green to −18 dB, then yellow-green, yellow,
 orange, and red from 0 dB. A thin line holds the peak for a short time.
+The clip light comes on when a level reaches 0 dB. It stays on until you
+click the volume in dB.
 
 | Gesture | Effect |
 | --- | --- |
@@ -336,6 +345,10 @@ orange, and red from 0 dB. A thin line holds the peak for a short time.
 | Drag the level sideways | Changes the volume, one dB a cell. Hold `Shift` for small steps. |
 | Double-click the level | Sets the volume to 0 dB. |
 | Drag the pan sideways | Changes the pan. A double-click sets the center. |
+| Click the microphone | Opens a menu of the audio inputs, MIDI ports and MIDI channels of the track. |
+| Click the volume in dB | Puts out the clip light. |
+| Drag the bottom edge (in the terminal, `Alt` and a drag on the header) | Changes the height of the track, in lines. The track keeps its height. |
+| Double-click the bottom edge | Gives the track the height of the other tracks. |
 | Right-click | A menu on release: color, duplicate, bounce to audio, a new track below, delete, the input, the groups, the VCAs, the take lanes, the automation, the templates, and the entries of extensions. |
 
 The menu of a track has three entries for groups. They are `New group
@@ -374,11 +387,12 @@ With the templates extension:
 | --- | --- |
 | Record button | Starts a take on the armed tracks. With no track armed, it arms the selected track and tells so. A second click, or stop, ends the take. |
 | `R` on a track | Arms the track. |
-| The input on the track's menu | A menu of the audio inputs, MIDI ports and MIDI channels of the track. The input (for example `UR22mkII · 1/2`) shows on the last line of the header, with the level that arrives there, armed or not. |
-| `I` on a track | Starts and stops input monitoring. |
+| The microphone on a track, or Input on its menu | A menu of the audio inputs, MIDI ports and MIDI channels of the track. The input (for example `UR22mkII · 1/2`) shows on the last line of the header, with the level that arrives there, armed or not. |
+| The loudspeaker on a track | Starts and stops input monitoring. |
 
-A track without an audio input records MIDI. With punch on, it records
-only in the punch range. With a count-in, the clock shows `count 4`, `count 3` and
+A track without an audio input records MIDI. The take shows in red on
+each armed track and becomes longer while it records. With punch on, it
+records only in the punch range. With a count-in, the clock shows `count 4`, `count 3` and
 other, and the button blinks on the beats until the take starts. The
 timeline menu starts and stops the count-in, and a pre-roll of two bars
 before a punch.

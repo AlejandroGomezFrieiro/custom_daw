@@ -431,6 +431,36 @@ end
 
 -- Headers ------------------------------------------------------------------------------
 
+--- Whether a press or the pointer at line `y` is on the bottom edge of a
+--- header's `row`: a window's pointer within a third of a line of it. A
+--- terminal's cell is too big for an edge: Alt and a press on the header
+--- stands for it.
+local function on_edge(row, y, fine, e)
+  if fine then return y >= row.y + row.h - 0.3 end
+  return e ~= nil and mouse.has(e, "A")
+end
+
+--- The bottom edge of a header dragged: the track taller or shorter, in
+--- whole lines; a double click gives it the height of the others.
+local function press_height(self, e, row)
+  local id, th = row.id, self.geometry.th
+  if e.double then return A.set_track_height(id, 1) end
+  local function lines(d) return util.clamp(math.floor(row.h + d.dy + 0.5), 1, 24) end
+  mouse.grab(e, {
+    arrange = function(_, buf)
+      local d = mouse.gesture().d
+      if d then buf:fill(0, row.y + lines(d) - 1, buf.width, 1, nil, "MouseGhost") end
+    end,
+    drag = function(d)
+      mouse.gesture().d = d
+      mouse.hint(string.format("%d lines", lines(d)), "resize_v")
+    end,
+    up = function(u)
+      if u.moved then A.set_track_height(id, lines(u) / th) end
+    end,
+  })
+end
+
 local function drag_value(e, get, set, per_cell, fine, target, track)
   local start = get()
   A.hold(track, target, 0, "", true)
@@ -455,6 +485,7 @@ local function press_header(self, e, h)
   local hw = self.geometry.hw - 1
   local name_at = hw < 16 and 2 or 4
   local cx, cy = math.floor(e.x), math.floor(e.y)
+  if on_edge(row, e.y, h.fine, e) then return press_height(self, e, row) end
   if cy == row.y then
     for field, x in pairs(self.flags) do
       if cx == x then
@@ -465,6 +496,15 @@ local function press_header(self, e, h)
       end
     end
     if paw.groups.is_group(id) and cx == name_at + paw.groups.depth(id) then return A.fold(id) end
+  end
+  -- The input's button, and the volume, which a click puts the clip light
+  -- out on.
+  if row.h >= 2 and cy == row.y + 1 and hw >= 16 and cx >= 1 and cx < 3 then
+    return paw.ui.menu(require("paw.window_menus").input(id), { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) + 1 })
+  end
+  if row.h >= 2 and cy == row.y + 1 and cx >= hw - 1 - #paw.draw.db_text(t.volume) then
+    paw.draw.clear_peak(id)
+    return api.ui_redraw()
   end
   if row.h >= 2 and cy == row.y + 1 and cx >= name_at then
     if e.double then return A.set_volume(id, 0) end
@@ -783,9 +823,13 @@ local function hover(self, h)
       text = at .. " · " .. hints.empty
     end
   elseif h.area == "track" and h.header then
+    if on_edge(h.row, h.y, h.fine) then
+      return mouse.hint("track height: drag the bottom edge · double click for the others' height", "resize_v")
+    end
     text = api.track_get(h.row.id).name .. " · " .. hints.header
   end
-  mouse.hint(text)
+  local edge = h.area == "track" and h.clip and (h.part == "start" or h.part == "end")
+  mouse.hint(text, edge and "resize_h" or nil)
 end
 
 function view:on_mouse(e)

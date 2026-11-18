@@ -188,6 +188,8 @@ local function modal()
     -- What the pointer is over in a pane drawn from its scene, or what its
     -- drag will do (`paw.mouse.hint`), for the status line.
     hint = paw.mouse.hint_text(),
+    -- The shape of the pointer there, if it has one ("resize_h", "resize_v").
+    pointer = select(2, paw.mouse.hint_text()),
     selection = keymap.selection(),
     -- A render in the background: { path, fraction, seconds, cancelling, stage }.
     render = paw.api.render_status(),

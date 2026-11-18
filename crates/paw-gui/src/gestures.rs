@@ -260,6 +260,34 @@ fn a_headers_level_moves_with_the_live_values() {
 }
 
 #[test]
+fn a_take_being_recorded_grows_with_the_live_position() {
+    use paw_scene::{Kind, Node};
+    let (mut h, _, patches) = window_and_patches(|_| {});
+    let mut patch = arrange_scene();
+    let props = json!({ "start": 2.0, "at": 2.0, "per": 2.0, "color": "#e0a050" });
+    let mut take = Node::new("timeline/rec:1", Kind::Role { role: "recording".into(), props }, [2.0, 5.0, 20.0, 4.0]);
+    take.bind = Some("position".into());
+    patch.set.push(take);
+    for node in &mut patch.set {
+        if node.key == "timeline" {
+            node.kids.push("timeline/rec:1".into());
+        }
+    }
+    patches.borrow_mut().push(serde_json::to_value(patch).unwrap());
+    h.run_steps(2);
+    let red = crate::theme::alpha(crate::theme::th().rec, 0.3);
+    let width = |h: &Harness<View>| h.output().shapes.iter().filter_map(|c| match &c.shape {
+        egui::Shape::Rect(r) if r.fill == red => Some(r.rect.width()),
+        _ => None,
+    }).fold(0.0f32, f32::max);
+    assert_eq!(width(&h), 0.0, "nothing recorded yet");
+    patches.borrow_mut().push(json!({ "scene.live": { "position": 6.0 } }));
+    h.run_steps(2);
+    let cell = h.state().scenes.cell.unwrap();
+    assert!((width(&h) - 8.0 * cell.0).abs() < 4.0, "four beats, eight cells: {}", width(&h));
+}
+
+#[test]
 fn a_clip_painted_asks_once_for_its_notes_by_its_key() {
     let (mut h, calls, patches) = window_and_patches(|_| {});
     let mut patch = arrange_scene();

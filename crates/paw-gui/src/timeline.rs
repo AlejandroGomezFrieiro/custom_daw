@@ -25,7 +25,7 @@ use crate::widgets;
 
 /// What is inside a clip, asked for and not yet fetched.
 struct Want {
-    id: i64,
+    of: (i64, i64),
     key: String,
     midi: bool,
     length: f32,
@@ -37,9 +37,9 @@ struct Want {
 /// those asked for this frame, and the clips painted in it.
 #[derive(Default)]
 struct Pictures {
-    made: HashMap<i64, (String, Option<TextureHandle>)>,
+    made: HashMap<(i64, i64), (String, Option<TextureHandle>)>,
     wanted: Vec<Want>,
-    painted: HashSet<i64>,
+    painted: HashSet<(i64, i64)>,
 }
 
 thread_local! {
@@ -66,6 +66,8 @@ pub fn paint(ui: &Ui, painter: &Painter, node: &Node, role: &str, props: &Value,
         "beats" => ground(painter, props, rect, cell),
         "hmeter" => hmeter(ui, painter, props, node.bind.as_deref(), live, rect),
         "curve" => curve(painter, props, rect, cell),
+        "trackhead" => trackhead(ui, painter, props, rect),
+        "recording" => recording(painter, props, node.bind.as_deref(), live, rect, cell),
         _ => return false,
     }
     true
@@ -92,6 +94,9 @@ fn clip(ui: &Ui, painter: &Painter, props: &Value, rect: Rect, (cw, ch): (f32, f
         painter.text(pos2(x, shape.top() + ch / 2.0), Align2::LEFT_CENTER, shown, font, Color32::WHITE);
         return;
     }
+    if props["take"].is_number() {
+        return take(ui, painter, props, shape, colour, cw);
+    }
     let muted = props["muted"] == true;
     let current = props["current"] == true;
     let midi = props["midi"] == true;
@@ -105,7 +110,7 @@ fn clip(ui: &Ui, painter: &Painter, props: &Value, rect: Rect, (cw, ch): (f32, f
     let x = shape.left().max(seen.left()) + 5.0;
     let name = text(props, "label");
     let shown = widgets::elide(ui, &name, font.clone(), shape.right() - x - 3.0);
-    painter.with_clip_rect(bar.intersect(seen)).text(pos2(x, bar.center().y), Align2::LEFT_CENTER, shown, font, if muted { t.text_3 } else { t.on_hue });
+    painter.text(pos2(x, bar.center().y), Align2::LEFT_CENTER, shown, font, if muted { t.text_3 } else { t.on_hue });
     // Its notes or its waveform, white on clear, tinted.
     let body = Rect::from_min_max(pos2(shape.left(), bar.bottom() + 2.0), pos2(shape.right(), shape.bottom() - 2.0));
     let per = num(props, "per") * cw;
@@ -178,23 +183,82 @@ fn clip(ui: &Ui, painter: &Painter, props: &Value, rect: Rect, (cw, ch): (f32, f
     }
 }
 
-/// The picture inside a clip `width` points wide, by its key: the one made
-/// for it, else asked for (and the last one made shown meanwhile).
+/// A take of a clip in a take lane: its notes or its waveform over the
+/// whole of it, lit in the track's colour where it is the take that plays,
+/// faint where not; its name at its top left.
+fn take(ui: &Ui, painter: &Painter, props: &Value, shape: Rect, colour: Color32, cw: f32) {
+    let t = th();
+    let active = props["active"] == true;
+    let seen = painter.clip_rect();
+    painter.rect_filled(shape, CornerRadius::same(2), if active { mix(colour, t.lane, 0.38) } else { t.lane_alt });
+    let length = num(props, "length");
+    let full = Rect::from_min_size(shape.min, vec2((length * num(props, "per") * cw).max(1.0), shape.height()));
+    if let Some(texture) = picture(props, props["midi"] == true, length, full.width()) {
+        let ink = if active { mix(colour, Color32::WHITE, 0.8) } else { alpha(t.text_3, 0.7) };
+        let shown = full.intersect(shape).intersect(seen);
+        if shown.width() > 0.0 {
+            let (u0, u1) = ((shown.left() - full.left()) / full.width(), (shown.right() - full.left()) / full.width());
+            painter.image(texture.id(), Rect::from_x_y_ranges(shown.x_range(), full.y_range()), Rect::from_min_max(pos2(u0, 0.0), pos2(u1, 1.0)), ink);
+        }
+    }
+    let x = shape.left().max(seen.left()) + 4.0;
+    let font = if active { semi(T_SMALL) } else { crate::theme::sans(T_SMALL) };
+    let shown = widgets::elide(ui, &text(props, "name"), font.clone(), shape.right() - x - 3.0);
+    painter.text(pos2(x, shape.top() + 1.0), Align2::LEFT_TOP, shown, font, if active { t.text } else { t.text_3 });
+    if active {
+        painter.rect_stroke(shape, CornerRadius::same(2), Stroke::new(1.0, alpha(colour, 0.8)), StrokeKind::Inside);
+    }
+}
+
+/// A track's header: the panel, lighter for the cursor's track, a stripe
+/// of the track's colour down its left, a line under it, lit under the
+/// pointer, where a drag makes the track taller or shorter.
+fn trackhead(ui: &Ui, painter: &Painter, props: &Value, rect: Rect) {
+    let t = th();
+    painter.rect_filled(rect, CornerRadius::ZERO, if props["selected"] == true { t.panel_sel } else { t.panel });
+    let colour = props["color"].as_str().and_then(crate::theme::hex).unwrap_or(t.text_3);
+    painter.rect_filled(Rect::from_min_size(rect.min, vec2(4.0, rect.height())), CornerRadius::ZERO, colour);
+    let edge = Rect::from_min_max(pos2(rect.left(), rect.bottom() - 5.0), rect.max);
+    let lit = ui.rect_contains_pointer(edge);
+    painter.hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(if lit { 2.0 } else { 1.0 }, if lit { alpha(t.select, 0.7) } else { t.divider }));
+}
+
+/// A take being recorded: a red box from where it began to the playhead,
+/// as far as the punch-out, growing with the live values.
+fn recording(painter: &Painter, props: &Value, bind: Option<&str>, live: &Value, rect: Rect, (cw, _): (f32, f32)) {
+    let t = th();
+    let start = num(props, "start");
+    let at = match bind {
+        Some("position") => live["position"].as_f64().map_or(num(props, "at"), |v| v as f32),
+        _ => num(props, "at"),
+    };
+    let stop = props["to"].as_f64().map_or(at, |to| at.min(to as f32));
+    if stop <= start {
+        return;
+    }
+    let right = rect.left() + (stop - start) * num(props, "per") * cw;
+    let shape = Rect::from_min_max(rect.min + vec2(0.0, 1.0), pos2(right.max(rect.left() + 2.0), rect.bottom() - 2.0));
+    painter.rect(shape, CornerRadius::same(2), alpha(t.rec, 0.3), Stroke::new(1.0, t.rec), StrokeKind::Inside);
+}
+
+/// The picture inside a clip `width` points wide (or inside one of its
+/// takes, in a take lane), by its key: the one made for it, else asked for
+/// (and the last one made shown meanwhile).
 fn picture(props: &Value, midi: bool, length: f32, width: f32) -> Option<TextureHandle> {
-    let id = props["id"].as_i64()?;
+    let of = (props["id"].as_i64()?, props["take"].as_i64().unwrap_or(0));
     let key = props["content"].as_str()?;
     let points = wave_points(width);
     let key = if midi { key.to_string() } else { format!("{key}@{points}") };
     PICTURES.with(|p| {
         let mut p = p.borrow_mut();
-        p.painted.insert(id);
-        let made = p.made.get(&id).cloned();
+        p.painted.insert(of);
+        let made = p.made.get(&of).cloned();
         if made.as_ref().is_some_and(|(k, _)| *k == key) {
             return made.and_then(|(_, t)| t);
         }
-        if !p.wanted.iter().any(|w| w.id == id) {
+        if !p.wanted.iter().any(|w| w.of == of) {
             let notches = beats(props, "repeats").iter().map(|b| b / length.max(1e-6)).collect();
-            p.wanted.push(Want { id, key, midi, length, points, notches });
+            p.wanted.push(Want { of, key, midi, length, points, notches });
         }
         made.and_then(|(_, t)| t)
     })
@@ -281,8 +345,12 @@ fn hmeter(ui: &Ui, painter: &Painter, props: &Value, bind: Option<&str>, live: &
     let levels = track.map(|id| &live["meters"][id]).filter(|v| v.is_array()).unwrap_or(&props["levels"]);
     let levels: Vec<f32> = rows(levels).iter().map(number).collect();
     let hold = track.and_then(|id| live["peaks"][id].as_f64()).map_or(num(props, "hold"), |v| v as f32);
-    let well = Rect::from_center_size(rect.center(), vec2(rect.width() - 2.0, (rect.height() * 0.45).clamp(4.0, 9.0)));
-    painter.rect_filled(well, CornerRadius::same(2), t.meter_well);
+    let clipped = track.map_or(props["clipped"] == true, |id| live["clips"][id] == true);
+    // The clip light at its right end, lit once a level reached full scale.
+    let light = Rect::from_min_max(pos2(rect.right() - 5.0, rect.center().y - 4.0), pos2(rect.right() - 1.0, rect.center().y + 4.0));
+    painter.rect_filled(light, CornerRadius::same(1), if clipped { t.meter_clip } else { t.meter_well });
+    let well = Rect::from_min_max(pos2(rect.left() + 1.0, rect.center().y - (rect.height() * 0.3).clamp(3.0, 5.5)), pos2(light.left() - 2.0, rect.center().y + (rect.height() * 0.3).clamp(3.0, 5.5)));
+    painter.rect(well, CornerRadius::same(2), t.meter_well, Stroke::new(1.0, t.divider), StrokeKind::Outside);
     let reach = |peak: f32| ((20.0 * peak.max(1e-6).log10() + 60.0) / 60.0).clamp(0.0, 1.0);
     let bands = |part: Rect, peak: f32| {
         let end = part.left() + part.width() * reach(peak);
@@ -332,11 +400,16 @@ impl View {
             return;
         }
         for w in wanted {
-            let call = if w.midi { json!(["return paw.frontend.preview(...)", w.id]) } else { json!(["return paw.frontend.peaks(...)", w.id, w.points]) };
+            let (id, take) = w.of;
+            let call = match (take, w.midi) {
+                (0, true) => json!(["return paw.frontend.preview(...)", id]),
+                (0, false) => json!(["return paw.frontend.peaks(...)", id, w.points]),
+                _ => json!(["return paw.frontend.take_preview(...)", id, take, w.points]),
+            };
             let flat: Vec<f32> = self.k.borrow_mut().call("eval", call).map(|v| rows(&v).iter().map(number).collect()).unwrap_or_default();
             let made = if w.midi { notes_picture(&flat, w.length) } else { wave_picture(&flat) };
-            let texture = made.map(|image| ctx.load_texture(format!("clip-{}", w.id), notched(image, &w.notches), egui::TextureOptions::NEAREST));
-            PICTURES.with(|p| p.borrow_mut().made.insert(w.id, (w.key, texture)));
+            let texture = made.map(|image| ctx.load_texture(format!("clip-{id}-{take}"), notched(image, &w.notches), egui::TextureOptions::NEAREST));
+            PICTURES.with(|p| p.borrow_mut().made.insert(w.of, (w.key, texture)));
         }
         self.repaint = true;
         ctx.request_repaint();

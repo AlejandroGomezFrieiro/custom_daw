@@ -138,7 +138,7 @@ In a selection (`v`) on a lane row, `x` and `d` remove the points in it.
 ## The tempo lane
 
 `zT` (or `:tempo.lane`) puts two rows under the ruler. They show the tempo
-map as a curve: level where a tempo holds, a slope where it ramps (`◢`).
+map as a curve: level where a tempo holds, a slope where it ramps (`↗`).
 `◆` marks a change that holds. The header gives the tempo at the cursor.
 
 | Command | Effect |

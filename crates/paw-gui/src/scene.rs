@@ -64,6 +64,9 @@ struct Shown {
     /// The shapes of the cells' backgrounds and of their text, and where,
     /// on what cell and at what scale they were made.
     shapes: Option<(Vec<Shape>, Vec<Shape>, [f32; 5])>,
+    /// The shapes of what is drawn over the roles, each with what it is
+    /// cut to, made as the cells' are.
+    over_shapes: Option<(Vec<(Rect, Shape)>, [f32; 5])>,
 }
 
 #[derive(Default)]
@@ -166,8 +169,17 @@ impl Shown {
     /// Take in a patch, and what it changes of the cells and the pictures.
     fn take(&mut self, patch: &Patch, blobs: &HashMap<String, Value>) {
         self.scene.apply(patch);
+        self.over = self.scene.over_roles(&|role| roles::KNOWN.contains(&role));
+        // What is drawn over a role is painted over it; in the cells under
+        // the roles it would be painted twice.
         let (fg, bg) = self.scene.colors();
-        self.rows = self.scene.to_cells().runs(fg, bg);
+        let mut under = self.scene.clone();
+        for (node, _, _) in &self.over {
+            if let Some(n) = under.nodes.get_mut(&node.key) {
+                n.kind = Kind::Group;
+            }
+        }
+        self.rows = under.to_cells().runs(fg, bg);
         let mut before: HashMap<String, Picture> = self.pictures.drain(..).map(|p| (p.key.clone(), p)).collect();
         let mut pictures = Vec::new();
         self.scene.walk(&mut |node| {
@@ -191,15 +203,17 @@ impl Shown {
             }
         });
         self.roles = placed;
-        self.over = self.scene.over_roles(&|role| roles::KNOWN.contains(&role));
         self.shapes = None;
+        self.over_shapes = None;
     }
 
-    /// Paint the runs and fills a view drew over the roles painted here,
-    /// over them, as a terminal shows them: text and its background where
-    /// it has one; a fill that only restyles (the selection, the cursor) a
-    /// tint, so that what it covers still shows through.
-    fn paint_over(&self, ctx: &egui::Context, painter: &egui::Painter, at: Pos2, (cw, ch): (f32, f32)) {
+    /// The shapes of the runs and fills a view drew over the roles painted
+    /// here, to paint over them as a terminal shows them, each with what it
+    /// is cut to: text and its background where it has one; a fill that
+    /// only restyles (the selection, the cursor) a tint, so that what it
+    /// covers still shows through.
+    fn over_shapes(&self, ctx: &egui::Context, at: Pos2, (cw, ch): (f32, f32)) -> Vec<(Rect, Shape)> {
+        let mut out = Vec::new();
         let (fg, bg) = self.scene.colors();
         let colour = |c: Option<paw_scene::cells::Color>, or: (u8, u8, u8)| {
             c.map(|c| {
@@ -212,7 +226,7 @@ impl Shown {
                 Rect::from_min_max(pos2(at.x + l.floor() as f32 * cw, at.y + t.floor() as f32 * ch), pos2(at.x + r.floor() as f32 * cw, at.y + b.floor() as f32 * ch))
             };
             let shown = cells(rect[0], rect[1], rect[2], rect[3]);
-            let p = painter.with_clip_rect(cells(cut[0], cut[1], cut[2], cut[3]).intersect(painter.clip_rect()));
+            let cut = cells(cut[0], cut[1], cut[2], cut[3]);
             let back = colour(node.style.bg, bg);
             let ink = colour(node.style.fg, fg).unwrap_or(Color32::from_rgb(fg.0, fg.1, fg.2));
             let font = if node.style.on & BOLD != 0 { mono_medium(MONO_SIZE) } else { mono(MONO_SIZE) };
@@ -221,7 +235,7 @@ impl Shown {
                 Kind::Fill { ch: Some(c) } => Some(c.to_string().repeat(shown.width().div_euclid(cw).max(1.0) as usize)),
                 Kind::Fill { ch: None } => {
                     if let Some(back) = back {
-                        p.rect_filled(shown, CornerRadius::ZERO, back.gamma_multiply(0.45));
+                        out.push((cut, Shape::rect_filled(shown, CornerRadius::ZERO, back.gamma_multiply(0.45))));
                     }
                     None
                 }
@@ -229,16 +243,17 @@ impl Shown {
             };
             let Some(text) = text else { continue };
             if let Some(back) = back {
-                p.rect_filled(shown, CornerRadius::ZERO, back);
+                out.push((cut, Shape::rect_filled(shown, CornerRadius::ZERO, back)));
             }
             if text.trim().is_empty() {
                 continue;
             }
             for row in 0..(shown.height() / ch).round().max(1.0) as usize {
                 let galley = ctx.fonts_mut(|f| f.layout_no_wrap(text.clone(), font.clone(), ink));
-                p.galley(pos2(shown.left(), shown.top() + row as f32 * ch), galley, ink);
+                out.push((cut, Shape::galley(pos2(shown.left(), shown.top() + row as f32 * ch), galley, ink)));
             }
         }
+        out
     }
 
     /// The shapes of the cells' backgrounds and text, from `at`.
@@ -246,11 +261,21 @@ impl Shown {
         let (mut back, mut text) = (Vec::new(), Vec::new());
         let bg = self.scene.bg.as_str();
         let cell_rect = |x: f32, y: f32, w: f32| Rect::from_min_size(pos2(at.x + x * cw, at.y + y * ch), vec2(w * cw, ch));
+        // The grounds the roles paint over all of (a row of a timeline, a
+        // header): the cells' backgrounds under them are not drawn, each
+        // pixel drawn costs.
+        let grounds: Vec<[f64; 4]> = self
+            .roles
+            .iter()
+            .filter(|(node, _, _)| matches!(&node.kind, Kind::Role { role, .. } if roles::OPAQUE.contains(&role.as_str())))
+            .map(|(_, r, c)| [r[0].max(c[0]), r[1].max(c[1]), r[2].min(c[2]), r[3].min(c[3])])
+            .collect();
+        let hidden = |x: f64, y: f64, w: f64| grounds.iter().any(|g| g[0] <= x && g[1] <= y && g[2] >= x + w && g[3] >= y + 1.0);
         ctx.fonts_mut(|fonts| {
             for (y, row) in self.rows.iter().enumerate() {
                 let y = y as f32;
                 for run in row {
-                    if run.bg != bg {
+                    if run.bg != bg && !hidden(run.x as f64, y as f64, run.w as f64) {
                         back.push(Shape::rect_filled(cell_rect(run.x as f32, y, run.w as f32), CornerRadius::ZERO, colour(&run.bg)));
                     }
                     let fg = colour(&run.fg);
@@ -323,12 +348,25 @@ impl Shown {
         self.pictures(ui, &painter, rect.min, cell, true);
         painter.extend(text);
         for (node, at, cut) in &self.roles {
-            let cut = roles::rect_of(*cut, rect.min, cell);
-            let role_painter = painter.with_clip_rect(cut.intersect(painter.clip_rect()));
+            let (cut, at) = (roles::rect_of(*cut, rect.min, cell), roles::rect_of(*at, rect.min, cell));
+            // A role that shows whole is painted with the window's own cut:
+            // shapes of one cut are drawn together, each cut costs a draw.
+            let role_painter = if cut.contains_rect(at) { painter.clone() } else { painter.with_clip_rect(cut.intersect(painter.clip_rect())) };
             let salt = Id::unique(("scene-role", id, &node.key));
-            roles::paint(ui, &role_painter, salt, node, roles::rect_of(*at, rect.min, cell), cell, live);
+            roles::paint(ui, &role_painter, salt, node, at, cell, live);
         }
-        self.paint_over(ui.ctx(), &painter, rect.min, cell);
+        if self.over_shapes.as_ref().is_none_or(|s| s.1 != key) {
+            self.over_shapes = Some((self.over_shapes(ui.ctx(), rect.min, cell), key));
+        }
+        if let Some((over, _)) = &self.over_shapes {
+            for (cut, shape) in over {
+                if cut.contains_rect(shape.visual_bounding_rect()) {
+                    painter.add(shape.clone());
+                } else {
+                    painter.with_clip_rect(cut.intersect(painter.clip_rect())).add(shape.clone());
+                }
+            }
+        }
         self.pictures(ui, &painter, rect.min, cell, false);
         if let Some([x, y]) = self.scene.cursor {
             let bar = Rect::from_min_size(pos2(rect.min.x + x * cell.0, rect.min.y + y * cell.1), vec2(2.0, cell.1));
@@ -415,6 +453,12 @@ impl View {
         self.scenes.seen.insert(id.to_string());
         if ui.rect_contains_pointer(clip) {
             self.scenes.hovering = Some(id.to_string());
+            // The shape the view gives the pointer there (an edge to drag).
+            match self.s.modal["pointer"].as_str() {
+                Some("resize_h") => ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal),
+                Some("resize_v") => ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical),
+                _ => {}
+            }
         }
         let size = [rect.width().max(0.0) / cell.0, rect.height().max(0.0) / cell.1];
         if self.scenes.told.get(id) != Some(&size) {

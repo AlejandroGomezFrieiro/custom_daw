@@ -127,14 +127,18 @@ function view:layout(w, h)
   local room = math.max(1, h - ruler_rows - master_rows)
   -- Take lanes (a line each) and automation lanes shown as rows (two
   -- lines each) take their lines first.
-  local lane_lines = 0
-  for _, id in ipairs(tracks) do lane_lines = lane_lines + paw.takes.lane_count(id) + 2 * #paw.lanes.shown(id) end
+  local lane_lines, own = 0, false
+  for _, id in ipairs(tracks) do
+    lane_lines = lane_lines + paw.takes.lane_count(id) + 2 * #paw.lanes.shown(id)
+    own = own or (api.track_get(id).height or 1) ~= 1
+  end
   local th = view.track_height(#tracks, math.max(1, room - lane_lines))
   -- Squeezed by panels below, a track takes what there is rather than vanish.
   if not tonumber(paw.opt.track_height) and room < th then th = math.max(1, room) end
   local fit = math.max(1, math.floor(room / th))
   local cursor_index = paw.cursor.row() or 1
-  if lane_lines > 0 then
+  -- Tracks of heights of their own are placed one by one, as lanes are.
+  if lane_lines > 0 or own then
     local rows, y = self:rows_with_lanes(tracks, th, ruler_rows, room, cursor_index)
     return {
       hw = hw, tw = w - hw, th = th, ruler_rows = ruler_rows, tempo_rows = tempo_rows, rows = rows, tracks = tracks,
@@ -208,9 +212,11 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
   local g = draw.g
   local w = buf.width
   local style = selected and "TrackHeaderSel" or "TrackHeader"
-  buf:fill(0, y, w, height, " ", style)
-  -- A stripe in the track's colour down its whole height.
-  for row = 0, height - 1 do buf:text(0, y + row, selected and g.stripe_sel or g.stripe, hue.fg) end
+  -- Its ground, with a stripe in the track's colour down its whole height.
+  buf:mark("trackhead", 0, y, w, height, {
+    style = style, stripe = selected and g.stripe_sel or g.stripe, stripe_style = hue.fg,
+    color = draw.track_colour(t, index), selected = selected or nil,
+  })
   local narrow = w < 16
   if not narrow then buf:text(1, y, string.format("%2s", index or ""), selected and "TrackInfo" or "TrackIndex") end
   local name_at = narrow and 2 or 4
@@ -237,7 +243,10 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
     -- Each a switch, which a window paints as a button.
     for i, chip in ipairs(list) do
       local x = chips_at + (i - 1) * (1 + gap)
-      buf:mark("switch", x, y, 1, 1, { letter = chip[1], on = chip[2] or false, style = chip[3], tone = chip_tones[chip[4]] })
+      buf:mark("switch", x, y, 1, 1, {
+        letter = chip[1], on = chip[2] or false, style = chip[3], tone = chip_tones[chip[4]],
+        icon = chip[4] == "monitor" and "speaker" or nil, label = chip[4],
+      })
       if not narrow then self.flags[chip[4]] = x end
     end
   end
@@ -281,23 +290,31 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
   end
   local room = math.max(1, before - name_at)
   if api.str_width(name) > room then name = util.fit(name, room) end
-  buf:text(name_at, y, name, selected and "TrackNameSel" or "TrackName")
+  -- In words, in a window.
+  buf:mark("label", name_at, y, room, 1, { text = name, style = selected and "TrackNameSel" or "TrackName", font = "title", tone = "text" })
   -- What modules mark on the header (`paw.ui.layer("arrange", "header", ...)`):
   -- `x` is the free column before the name.
   paw.ui.paint("arrange", "header", { buf = buf, x = mark_at, y = y, width = w, height = height, track = t.id })
 
   if height >= 2 then
-    local left, r = api.track_meter(t.id)
-    local peak = math.max(left, r)
+    local left, r, hold, clipped = draw.track_peak(t.id)
     local vol = draw.db_text(t.volume)
     local vol_at = right - #vol
     if vol_at - 1 > name_at then
-      -- A window moves it with the live values, and shows the volume on it.
+      -- A window moves it with the live values, and shows the volume on it
+      -- and the clip light at its end. The master's has both sides.
       buf:mark("hmeter", name_at, y + 1, vol_at - 1 - name_at, 1, {
-        levels = { left, r }, hold = draw.hold("track" .. t.id, peak), at = fader_at(t.volume), bind = "meter:" .. t.id,
+        levels = { left, r }, hold = hold, clipped = clipped, stereo = t.master or nil, at = fader_at(t.volume),
+        bind = "meter:" .. t.id,
       })
     end
     buf:text(vol_at, y + 1, vol, selected and "Bright" or "TrackInfo")
+    -- The input, which a click chooses: lit when the track has one.
+    if not narrow and not t.master then
+      buf:mark("button", 1, y + 1, 2, 1, {
+        text = "in", icon = "mic", on = t.input ~= nil, on_style = "Input", style = "TrackIndex", quiet = true, label = "input",
+      })
+    end
   end
 
   -- The rows under: pan, devices and output; sends; the input.
@@ -315,7 +332,10 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
     if kind == "route" then
       local pan = draw.pan_text(t.pan or 0)
       if not (narrow and pan == "C") then
-        buf:text(x, row, pan, pan == "C" and "TrackIndex" or "TrackInfo")
+        -- A knob in a window.
+        buf:mark("knob", x, row, math.max(3, #pan), 1, {
+          value = t.pan or 0, text = pan, style = pan == "C" and "TrackIndex" or "TrackInfo", round = true, label = "pan",
+        })
         x = x + (narrow and #pan + 1 or math.max(4, #pan + 1))
       end
       local out = ""
@@ -409,7 +429,7 @@ function view.clip_props(clip, track, hue, kind, zoom, chosen)
   -- A clip with takes says which plays: `take 3 ‹2/4›`.
   local badge = paw.takes.badge(clip)
   local label = clip.offline and ("offline · " .. clip.name) or clip.name
-  -- Stretched, shifted, looped: `×1.5 ⟳ drums`.
+  -- Stretched, shifted, looped: `×1.5 ↻ drums`.
   local mark = paw.stretch.badge(clip)
   if mark then label = mark .. " " .. label end
   local warps = {}
@@ -479,6 +499,14 @@ local function lane(self, buf, row, track, selected, cursor_clip, lanes, hue, ma
       paw.ui.paint("arrange", "clip", { buf = box, width = cw, height = height, clip = clip })
     end
   end
+  -- The take being made on an armed track, which a window makes grow with
+  -- the playhead.
+  local rec = self.rec
+  if rec and track.armed then
+    plane:mark("recording", rec.start, y, math.max((rec.to or (scroll + w / zoom)) - rec.start, 1 / zoom), height, {
+      start = rec.start, at = rec.at, to = rec.to, per = zoom, color = draw.track_colour(track), bind = "position",
+    })
+  end
   -- The volume curve runs over the empty lane, never over clips, and only
   -- on the track the cursor is on: drawn on every track it ran along the
   -- clips' edges and made the notes harder to read, and the curve of a
@@ -524,26 +552,11 @@ local function welcome(buf)
   end
 end
 
-local scale = { -48, -24, -12, -6, 0 }
-
---- The master's level along the timeline: both sides in one row of half
---- blocks, the loudest of late in numbers beside them, and a scale under.
-local function master_meter(buf, y, width)
-  local left, right = api.track_meter(0)
-  local x, mw = 1, math.min(40, width - 10)
-  if mw < 8 then
-    buf:mark("hmeter", 1, y, math.max(1, width - 2), 1, { levels = { left, right }, bind = "meter:0" })
-    return
-  end
-  buf:mark("hmeter", x, y, mw, 1, { levels = { left, right }, stereo = true, bind = "meter:0" })
-  -- The loudest of late, moved by the live values in a window as the meter is.
-  local hold = draw.hold("master", math.max(left, right))
-  buf:mark("peak", x + mw + 1, y, 6, 1, { hold = hold, bind = "meter:0" })
-  for _, mark in ipairs(scale) do
-    local at = x + draw.db_cell(mark, mw)
-    local label = tostring(mark)
-    buf:text(math.min(at - math.floor(#label / 2), x + mw - #label), y + 1, label, "MeterScale")
-  end
+--- The lines a track's row takes, `th` the tracks' height: its own share
+--- of it (`height`, which a drag of its header's bottom edge sets), at
+--- least one.
+function view.row_height(id, th)
+  return math.max(1, math.floor(th * (api.track_get(id).height or 1) + 0.5))
 end
 
 --- The rows from `self.top` when some tracks show their take lanes or their
@@ -558,9 +571,10 @@ function view:rows_with_lanes(tracks, th, ruler_rows, room, cursor_index)
     local out, y = {}, ruler_rows
     for index = top, #tracks do
       local id = tracks[index]
-      if #out > 0 and y + th > bottom then break end
-      out[#out + 1] = { kind = "track", id = id, index = index, y = y, h = th }
-      y = y + th
+      local h = view.row_height(id, th)
+      if #out > 0 and y + h > bottom then break end
+      out[#out + 1] = { kind = "track", id = id, index = index, y = y, h = h }
+      y = y + h
       for k = 1, paw.takes.lane_count(id) do
         if y + 1 > bottom then return out, y, false end
         out[#out + 1] = { kind = "take", id = id, take = k, index = index, y = y, h = 1 }
@@ -663,7 +677,7 @@ function view:draw_tempo_row(headers, timeline, y, lines)
   local function level(bpm) return util.clamp((bpm - lo) / (hi - lo), 0, 1) end
   local points = {}
   for i, p in ipairs(paw.tempo.points()) do
-    points[i] = { p.beat, level(p.bpm), paw.opt.ascii and (p.ramp and ">" or "*") or (p.ramp and "◢" or "◆") }
+    points[i] = { p.beat, level(p.bpm), paw.opt.ascii and (p.ramp and ">" or "*") or (p.ramp and "↗" or "◆") }
   end
   curve(timeline, 0, y, tw, 2, function(i)
     return level(paw.tempo.at(scroll + (i + 0.5) / (zoom * 2)))
@@ -699,12 +713,17 @@ function view:draw_take_row(headers, timeline, row, lines)
       local cw = math.max(1, x1 - x0)
       if x0 < tw and x0 + cw > 0 then
         local on = takes.active == k
-        local box = timeline:sub(x0, y, cw, 1)
-        box:fill(0, 0, cw, 1, " ", on and hue.title or "TakeLaneName")
+        local label = (on and (draw.g.play .. " ") or "") .. (entry.name or ("take " .. k))
+        -- A clip of its own, which a window paints with the take's notes
+        -- or waveform.
+        local row_of = paw.frontend.take_rows(clip)
+        self.plane:mark("clip", clip.start, y, clip.length, 1, {
+          key = "take:" .. clip.id .. ":" .. k, id = clip.id, take = k, active = on or nil, name = entry.name, label = label,
+          color = draw.track_colour(api.track_get(row.id), row.index), midi = clip.kind ~= "audio", length = clip.length,
+          per = zoom, content = row_of and row_of[k] and row_of[k].key, title_style = on and hue.title or "TakeLaneName",
+        })
         local at = cw > 2 and 1 or 0
-        local n = box:text(at, 0, (on and (draw.g.play .. " ") or "") .. (entry.name or ("take " .. k)))
-        names[#names + 1] = { x0 + at, x0 + at + math.min(n, cw - at) }
-        box:fill(0, 0, 1, 1, draw.g.clip_start, "ClipEdge")
+        names[#names + 1] = { x0 + at, x0 + at + math.min(api.str_width(label), cw - at) }
       end
     end
   end
@@ -858,6 +877,13 @@ function view:render(buf, ctx)
   local marks = {}
   for i, line in ipairs(lines) do marks[i] = { line.beat, line.bar and true or false } end
   local loop_beats = loop and { t.loop_start, t.loop_end } or nil
+  -- A take being made: from where the playhead was when it began, or from
+  -- the punch-in.
+  if t.take then self.rec_start = self.rec_start or t.position else self.rec_start = nil end
+  self.rec = self.rec_start and {
+    start = t.punch_enabled and math.max(self.rec_start, t.punch_start) or self.rec_start, at = t.position,
+    to = t.punch_enabled and t.punch_end or nil,
+  } or nil
   local cursor_clip = cursor.clip()
   cursor_clip = cursor_clip and cursor_clip.id
   local covered, names_of = {}, {}
@@ -914,7 +940,6 @@ function view:render(buf, ctx)
   local master = api.track_get(0)
   header(self, headers, mst.y, mst.h, master, nil, false, api.lane_list(0), draw.track_hue(master))
   lanes:fill(0, mst.y, tw, mst.h, " ", "TrackHeader")
-  master_meter(lanes, mst.y, tw)
 
   local names = {}
   for name in pairs(self.layers) do names[#names + 1] = name end
@@ -1014,7 +1039,7 @@ view.titled = true
 -- What moves on its own as the song plays: the playhead and the meters. A
 -- frontend that paints them with the live values needs no new scene for
 -- them, but for when the view must scroll to follow the playhead.
-view.live_roles = { "playhead", "hmeter", "peak" }
+view.live_roles = { "playhead", "hmeter", "recording" }
 
 --- Whether the view must be drawn again although its live roles move on
 --- their own: the playhead it follows has left the time it shows.

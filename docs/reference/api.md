@@ -1228,8 +1228,8 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.mouse.gesture()`: The gesture under way, if any: what was handed to `grab`.
 - `paw.mouse.grab(down, handlers)`: Hold the pointer from a press (`down`, as the view got it) until its button is released. Each drag goes to `handlers.drag(e)` and the release to `handlers.up(e)`, at any pointer position. `x` and `y` are relative to the view of the press, and `dx` and `dy` are the cells from the press. `moved` tells if the pointer left the cell of the press. A press of a different button calls `handlers.cancel()` and stops the gesture.
 - `paw.mouse.has(event, letter)`: True if the modifiers of an event contain `letter` ("C", "A" or "S").
-- `paw.mouse.hint(text)`: Show on the status line what is under the pointer, or what it would do. nil shows nothing. A view calls it while the pointer moves over it.
-- `paw.mouse.hint_text()`: What the status line says about the pointer, if anything.
+- `paw.mouse.hint(text, shape)`: Show on the status line what is under the pointer, or what it would do. nil shows nothing. A view calls it while the pointer moves over it. `shape` is the shape a window gives the pointer there: "resize_h" over an edge dragged sideways, "resize_v" over one dragged up or down.
+- `paw.mouse.hint_text()`: What the status line says about the pointer, if anything; and the shape of the pointer, if it has one.
 - `paw.mouse.mark_double(event)`: True if a press is the second press of a double click. That is the same button on the same cell soon after the first press, which was not a second press itself. For the pointer of a window, in fractions of a cell, the cell that contains it counts.
 - `paw.mouse.mode(event)`: How a click with modifiers chooses: "toggle" with Ctrl, "add" with Shift, else "only".
 - `paw.mouse.on_grid(x, scroll, zoom, grid)`: The same, on the grid: the step the column's left edge falls in, which is the one drawn there.
@@ -1604,7 +1604,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 ## Module paw.stretch
 
-- `paw.stretch.badge(c)`: The stretch, shift and loop of a clip in a few characters, for its label: "×1.5 +3st ⟳". `stretching…` shows while paw makes its sound. Nil for a clip with none of these.
+- `paw.stretch.badge(c)`: The stretch, shift and loop of a clip in a few characters, for its label: "×1.5 +3st ↻". `stretching…` shows while paw makes its sound. Nil for a clip with none of these.
 - `paw.stretch.carry(c, snap, by)`: Give `snap` the playback values of `c`. `snap` is the snapshot of a piece of clip `c` that starts `by` beats into it. The values are its stretch, shift and timebase, and its loop from the start of the piece. Returns `M.moved(c, by)`.
 - `paw.stretch.file_at(c, by)`: The time in the file of an audio clip that plays `by` beats after its start. It obeys the stretch, the warp markers and the bend of the clip along the tempo (`clip.bent`, when it follows a tempo that changes in it).
 - `paw.stretch.file_seconds(c, beats, at)`: Seconds of an audio clip's file that `beats` beats of it from beat `at` (its start when left out) play.
