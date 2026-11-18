@@ -28,7 +28,7 @@ under the same headings; each extension has its own page besides
 - [Language servers and diagnostics](lsp.md): language servers, addresses, diagnostics, MIDI LSP
 - [Scripting](scripting.md): the `paw` module, `paw ctl`, scripts and other programs
 - [Extensions](extensions.md): what belongs in the core, what an extension can own
-- [Lua API reference](api.md): every function, made from the code
+- [Lua API reference](reference/api.md): every function, made from the code
 - [The control protocol](protocol.md): the socket's messages
 - [What is missing](missing.md): what paw does not do yet
 

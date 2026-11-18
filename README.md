@@ -167,7 +167,7 @@ it needs, built by Nix: [utau](extensions/utau) brings its own singing
 engine and [sampler](extensions/sampler) its own sample player, and the core
 knows nothing about either. Write one view and it works in the terminal and
 the window alike. See [extensions](docs/extensions.md) and the
-[API reference](docs/api.md); LuaLS completes `paw.*` from
+[API reference](docs/reference/api.md); LuaLS completes `paw.*` from
 [runtime/types](runtime/types). With Claude Code, the
 [`paw-extension` skill](.claude/skills/paw-extension/SKILL.md) knows how.
 
@@ -214,7 +214,7 @@ batch an agent makes is one named undo step. See
 | [Recording](docs/recording.md) and [mixing](docs/mixing.md) | inputs, takes, routing, automation, tempo, export |
 | [Devices](docs/devices.md) | plugins, the sandbox, built-in devices, devices in Lua |
 | [Configuration](docs/configuration.md) and [scripting](docs/scripting.md) | options, the look, the `paw` module, `paw ctl` |
-| [Extensions](docs/extensions.md) and the [API](docs/api.md) | what belongs in the core, what an extension can own, every function |
+| [Extensions](docs/extensions.md) and the [API](docs/reference/api.md) | what belongs in the core, what an extension can own, every function |
 | [Architecture](docs/architecture.md) and [protocol](docs/protocol.md) | the crates, the threads, the socket |
 | [What is missing](docs/missing.md) | what it does not do yet |
 

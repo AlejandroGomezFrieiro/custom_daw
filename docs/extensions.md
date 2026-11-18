@@ -210,7 +210,7 @@ check of the hardware that a person takes part in.
 
 ### API reference
 
-[The Lua API reference](api.md) lists every public function of the `paw`
+[The Lua API reference](reference/api.md) lists every public function of the `paw`
 modules and of `paw.api` with what its comment in the source says, and is a
 page of `:help` (`:help paw.ext.unload`). It is made by `tools/apidoc.lua`
 (`paw --clean --no-plugins -l tools/apidoc.lua`), which also writes

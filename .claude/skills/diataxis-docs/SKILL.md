@@ -1,6 +1,6 @@
 ---
 name: diataxis-docs
-description: Write, review, restructure or move paw's documentation by the Diátaxis framework (tutorials, how-to guides, reference, explanation), in ASD-STE100 Simplified Technical English. Use whenever a task writes or changes anything under docs/, a README (top level, crates/*, extensions/*), the tutor's lessons, :help pages or docs/api.md's generator, or asks where a piece of documentation belongs, why a page reads badly, or to "document", "write up", "add docs for" a feature — even when it only says "update the README" or "add a section".
+description: Write, review, restructure or move paw's documentation by the Diátaxis framework (tutorials, how-to guides, reference, explanation), in ASD-STE100 Simplified Technical English. Use whenever a task writes or changes anything under docs/, a README (top level, crates/*, extensions/*), the tutor's lessons, :help pages or docs/reference/api.md's generator, or asks where a piece of documentation belongs, why a page reads badly, or to "document", "write up", "add docs for" a feature — even when it only says "update the README" or "add a section".
 ---
 
 # Documentation with Diátaxis

@@ -16,7 +16,7 @@ the source of truth; this page is the map):
   (devices, track kinds, native engines, Nix packaging).
 - `docs/scripting.md` — the API by area, with **Events** (every hook, one
   table) and buffer types / text buffer kinds.
-- `docs/api.md` (`:help paw.<name>`) — every public function, generated.
+- `docs/reference/api.md` (`:help paw.<name>`) — every public function, generated.
   `runtime/types/paw.lua` is the LuaLS meta file: point LuaLS's
   `workspace.library` at `runtime/types` to get completion while writing.
 - `docs/terminal.md` and `docs/reference/keys.md` — the keys a user expects;
