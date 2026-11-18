@@ -756,7 +756,7 @@ function(err, result) end)`, `notify(name, method, params)`,
 `show_hover()`, `code_actions()`, `hover(clip, pitch, beat, cb)`,
 `complete(ctx, done)`, `attach(name, address)` to keep a subject open,
 `settle()` for scripts; events `lsp.status`, `lsp.analysis`. See
-[Language servers and diagnostics](lsp.md).
+[Language servers and diagnostics](reference/language-servers.md).
 
 **Searching.** `paw.query(q)` finds nodes of the project's tree by a
 query (`"clip[name~=pizz] > note[pitch>=C5]"`, or a table of steps) and

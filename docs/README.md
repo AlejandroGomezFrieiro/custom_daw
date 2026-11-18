@@ -15,6 +15,7 @@ each extension (`:help notation`).
 - [Run paw](running.md): install paw, build it from the source, its options, audio devices, other computers
 - [How to record a performance from the session view](how-to/record-a-performance-from-the-session-view.md)
 - [How to map a MIDI controller](how-to/map-a-midi-controller.md)
+- [How to write a language server](how-to/write-a-language-server.md)
 
 ## Reference
 
@@ -28,7 +29,7 @@ each extension (`:help notation`).
 - [The session view](reference/session-view.md): slots, scenes, launch rules, keys and commands
 - [MIDI controllers](reference/learn.md): bind knobs, faders and pads to controls
 - [Harmony, completion and snippets](harmony.md): keys and chords, snippets, completion, many clips in the piano roll
-- [Language servers and diagnostics](lsp.md): language servers, addresses, diagnostics, MIDI LSP
+- [Language servers and diagnostics](reference/language-servers.md): keys, addresses, subjects, server configs, the protocol, MIDI LSP
 - [Scripts](scripting.md): the `paw` module, `paw ctl`, scripts and other programs
 - [Extensions](extensions.md): what is in the core, what an extension can add
 - [Lua API reference](reference/api.md): each function, made from the code
@@ -39,3 +40,4 @@ each extension (`:help notation`).
 
 - [About the architecture](explanation/about-the-architecture.md): the crates, the threads, the kernel and its frontends
 - [About the session view](explanation/about-the-session-view.md): why the engine times a launch, and why a render needs a capture
+- [About language servers](explanation/about-language-servers.md): the four layers, addresses with ids, subjects, LSP
