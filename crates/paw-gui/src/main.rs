@@ -262,7 +262,6 @@ fn run() -> Result<()> {
     let options = eframe::NativeOptions { viewport, renderer: eframe::Renderer::Glow, ..Default::default() };
     let ours = child.is_some();
     let kernel_pid = child.as_ref().map(|c| c.id());
-    let mixer = kept["mixer"].as_bool() == Some(true);
     eframe::run_native(
         "paw",
         options,
@@ -274,9 +273,6 @@ fn run() -> Result<()> {
             // request to draw at once.
             client.wake_on_events(move || ctx.request_repaint_after(std::time::Duration::from_millis(1)));
             let view = app::View::new(Box::new(client), ours);
-            if mixer {
-                view.eval("if not paw.ui.visible('mixer') then paw.commands.exec('view.toggle mixer') end", json!([]));
-            }
             Ok(Box::new(Window { view, child }))
         }),
     )

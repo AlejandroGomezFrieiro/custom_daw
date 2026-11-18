@@ -75,6 +75,30 @@ pitches up, for the piano roll. A note is at its beat and pitch. The
 terminal rounds it to cells, and the window paints it where it is, between
 cells.
 
+## The layout is the kernel's too
+
+The tabs and windows of the screen are also the kernel's, one layout for
+each seat. The terminal draws them in cells. The graphical window draws
+the same tree in pixels, a pane for each window, and the kernel sends a
+scene for each pane. So a split made with `Ctrl-w v` shows in both
+frontends. A drag of a border, a click on a tab and the close button of a
+pane go to `paw.panes`. That module calls the layout code that `Ctrl-w`
+calls.
+
+An earlier window had its own fixed panels. There, the arrange view was
+always the main panel, and the other views opened around it. Now no view
+is the home of the screen. A tab can show only the notation, or two piano
+rolls. This is why a view keeps a state for each window: two windows of
+one view are two scenes with two cursors.
+
+The transport bar along the top of the window is not a scene. It is the
+window's own drawing, with its buttons, the tempo and the load. Its clock
+changes many times a second while the song plays. A scene of the bar
+would come again each time, and the window would paint it whole. So the
+window reads the clock from the state that the kernel pushes
+(`frontend.watch`), and paints only the bar. The terminal shows the same
+values in its status line.
+
 ## What is not yet a scene
 
 Most views come from scenes. Among them are the arrange view, the mixer,

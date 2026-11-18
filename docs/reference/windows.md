@@ -12,17 +12,34 @@ The status line and the bottom line stay along the bottom of every tab.
 
 ## The start
 
-At the start there is one tab. It shows the arrange view, and the panels
-open and close in their places (`,m`, `,d`, `,p`, `Enter` on a clip).
+At the start there is one tab. The configuration can give a start layout
+(see [Layouts](#layouts)). Without one, the tab shows the arrange view.
+The panels open and close in their places (`,m`, `,d`, `,p`, `Enter` on
+a clip).
+
+No view is the home of the screen. Any view can be alone in a
+tab. paw never puts the arrange view in a window that you did not ask
+for.
 
 - `,p` with no clip open opens the piano roll on the clip under the cursor. If there is no clip there, it shows a message and changes nothing.
-- `,m` in a window that shows only the mixer (after `Ctrl-w o`) puts the arrange view back in its place.
+- A view that is not in the tab docks on its side of the window that has the keyboard, as a split in Neovim does. For example, `,m` puts the mixer below that window.
+- The last window of a tab does not close. `Ctrl-w c`, `:close`, `,m` and the other keys that close a panel leave it. It continues to show its view.
+- When a window closes, the keyboard goes to the window that had it before.
 - `:view.focus` of a view that does not show puts it in the current window. So the focus is never on a view that is not visible.
 - `:help` splits half of the screen, as Vim does for its help.
 
+## The start page
+
+An empty window shows the start page: `:vnew`, `:tabnew` without a name,
+`Ctrl-w n`. It is a buffer type, `empty`, with a buffer for each window.
+
+- The first line shows the project, the tempo, and where the transport is.
+- The list of recent projects follows. `j` and `k` move in it, and `Enter` or a double click opens the project.
+- The last lines tell what to type to show a view in the window.
+
 ## Sizes
 
-- Sometimes three or more panels are one above the other. Then the arrange view keeps a third of the rows (as `Ctrl-w =` gives it), and the notation view takes half or less.
+- A view says what part of the room it keeps where windows share it (`share` in [Lua views](lua-views.md)). Sometimes three or more panels are one above the other. Then the arrange view keeps a third of the rows (as `Ctrl-w =` gives it), and the notation view takes half or less.
 - In a column, the arrange view keeps two fifths of the rows. The panels with a size of their own give rows last.
 - In a panel whose height is an option (`mixer_height`), `Ctrl-w +` and `Ctrl-w -` change that option.
 
@@ -32,18 +49,34 @@ open and close in their places (`,m`, `,d`, `,p`, `Enter` on a clip).
 in the new half. `Ctrl-w h` and `Ctrl-w l` go between the two. Each window
 takes its own keys, and a clip that you open shows in that window.
 
-- A built-in view is one buffer, shown in one window at a time. If you show it in a different window, it moves there, with a message.
-- A panel window closed with `Ctrl-w c` keeps its place. The panel returns there.
+- The arrange view, the piano roll and the notation view show in any number of windows. Each window has its own state: the open clip, the cursor, the scroll and the zoom of the view. The edit cursor of the arrange view (the track and the time) is one for all its windows.
+- The mixer, the device panel, the session view and the views of extensions without a state for each window show in one window at a time. If you show one of them in a different window, it moves there, with a message.
+- A panel window closed with `Ctrl-w c` keeps its place. The panel returns there. A second window of a view closes for good.
 - New windows go to the right of and below the window that you split. `:set splitright!` and `:set splitbelow!` put them to the left and above.
+
+## Names of a clip in a view
+
+A view that opens a thing of its own takes a name of the form
+`view://thing`, as Neovim takes `term://`. The name goes after `:e`, `:sp`,
+`:vs`, `:b` and `:tabnew`, and into a layout.
+
+| Name | Effect |
+| --- | --- |
+| `roll://riff` | The piano roll on the clip named riff (the first in the order of the tracks). |
+| `roll://7`, `roll://paw://clip/7` | The piano roll on clip 7. |
+| `notation://riff` | The notation view on the clip riff (the notation extension). |
+
+A name that is not a clip shows a message, and the window shows the view as it was.
 
 ## Keys and commands
 
 | Keys or command | Effect |
 | --- | --- |
-| `:sp roll`, `:vs roll` | Split the window, one above the other or side by side, and show a buffer. Without a name, show the same buffer, as in Vim. A list edited as text shows in both windows. The new window of the arrange view shows the piano roll, and that of the roll the arrange view. Any other view (one window at a time) gives an empty window that says so. |
+| `:sp roll`, `:vs roll` | Split the window, one above the other or side by side, and show a buffer. Without a name, show the same buffer, as in Vim. A list edited as text and a view with a state for each window show in both windows, the new one from the state of this one. A view shown in one window at a time gives the start page. |
 | `Ctrl-w s`, `Ctrl-w v` | The same as `:sp` and `:vs` without a name. |
-| `:vnew`, `Ctrl-w n` | Open an empty window. |
+| `:vnew`, `Ctrl-w n` | Open an empty window, with the start page. |
 | `:e roll`, `:b roll`, `:b 3` | Show a buffer in this window, by name or number. The name of a buffer or a view, or an address such as `paw://tracks`, comes before a file. Only a file asks about unsaved work: `:e song.json`, `:e song.mid`, `:e take.wav`. A folder shows as a [file buffer](file-manager.md). |
+| `:e roll://riff`, `:vs notation://7` | Show a view on a clip (see [Names of a clip in a view](#names-of-a-clip-in-a-view)). |
 | `:bn`, `:bp` | Show the next or the previous buffer. |
 | `:ls` | Lists the buffers. |
 | `:bd roll` | Closes every window of a buffer. |
@@ -61,7 +94,7 @@ takes its own keys, and a clip that you open shows in that window.
 | `Ctrl-w =` | Gives the windows equal sizes. |
 | `Ctrl-w _` `Ctrl-w \|` | Gives the window the whole tab. Again: puts the other windows back. |
 | `:resize 20`, `:resize +5`, `:vertical resize 40` | Set the height or the width of the window. |
-| `:tabnew Mix`, `:tabnew mixer` | Makes a new tab named Mix, or a tab that shows the mixer. |
+| `:tabnew Mix`, `:tabnew mixer`, `:tabnew roll://riff` | Makes a new tab named Mix, or a tab that shows the mixer or the clip riff in the piano roll. Without a name, the tab shows the start page. |
 | `gt` `gT`, `:tabn 2` | Go to the next and the previous tab. Go to tab 2. |
 | `Ctrl-w T` | Moves the window to a tab of its own. |
 | `:tabclose` | Closes the tab. |
@@ -99,6 +132,21 @@ paw.layouts.edit = {
 paw.opt.layout = "edit"
 ```
 
+`paw.ui.start_layout` is the layout that paw starts with. It is a view's
+name, a tree of windows, or a list of tabs. A window can name its clip:
+
+```lua
+paw.ui.start_layout = "notation"
+paw.ui.start_layout = { dir = "h", "notation://riff", "roll://riff" }
+```
+
+A project keeps its tabs and windows. When you save it, paw writes the
+tabs and windows of your frontend into the project file, with the clip
+of each window. When you open the project, paw puts them back. This is
+not an edit, and it is not an undo step. `:set project_screen=false`
+(`paw.opt.project_screen = false`) keeps the screen as it is when a
+project opens.
+
 | Field | Effect |
 | --- | --- |
 | `dir = "h"` | Puts the windows side by side. |
@@ -107,6 +155,7 @@ paw.opt.layout = "edit"
 | `weight` | The share of a window, 1 by default. |
 
 Each terminal attached with `paw attach` has its own tabs and windows.
+The project keeps a default: those of the frontend that saved it last.
 
 ## Narrowed tabs
 

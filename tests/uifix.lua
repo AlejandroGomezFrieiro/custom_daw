@@ -98,6 +98,9 @@ test("panels stacked under the arrange view leave it a third of the rows, and th
     end
     return out
   end
+  -- The panels' places stacked under the arrange view, the whole width.
+  paw.layout.restore({ { layout = { dir = "v", "arrange", { view = "roll", hidden = true, weight = 2 },
+    { view = "notation", hidden = true, weight = 2 }, { view = "mixer", hidden = true, weight = 0.5, min = 14 } } } })
   paw.ui.show("pianoroll")
   paw.ui.show("notation")
   paw.ui.show("mixer")

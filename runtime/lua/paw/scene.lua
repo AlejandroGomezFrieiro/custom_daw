@@ -210,7 +210,20 @@ local function in_pixels(event, cell)
   return out
 end
 
+local input
+
 paw.remote.methods["scene.input"] = function(client, id, event)
+  -- The view takes the pointer with the state of the window under it
+  -- (paw/layout.lua), and then of the window with the keyboard again.
+  local win = tonumber(id) and L.find_id(paw.ui.layout, tonumber(id))
+  if win then L.bind(win) end
+  local ok, result = pcall(input, client, id, event)
+  L.settle()
+  if not ok then error(result, 0) end
+  return result
+end
+
+function input(client, id, event)
   local watcher = watchers[client]
   if not (watcher and type(event) == "table") then return false end
   id = tostring(id)

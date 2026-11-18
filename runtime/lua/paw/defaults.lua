@@ -1425,9 +1425,8 @@ end, { desc = "Show or hide the piano roll; with no clip open, it opens on the c
 command("view.focus", function(ctx) paw.ui.focus(tostring(ctx.args[1])) end, { desc = "Focus a view by name", complete = { "views" } })
 command("view.close", function()
   if paw.ui.float then return paw.ui.close() end
-  if paw.ui.focused ~= "arrange" then paw.ui.hide(paw.ui.focused) end
-  paw.ui.focus("arrange")
-end, { desc = "Close the focused panel" })
+  paw.ui.hide(paw.ui.focused)
+end, { desc = "Close the focused panel; the keyboard goes to the window before" })
 command("view.window", function(ctx)
   local name = ctx.args[1] and tostring(ctx.args[1]) or (paw.ui.float and paw.ui.float.name) or paw.ui.focused
   if not paw.ui.views[name] then return paw.notify("no view `" .. name .. "`", "warn") end
@@ -1448,13 +1447,7 @@ command("view.open", function(ctx)
   local made, why = paw.layout.split({ view = name })
   if not made then paw.notify(why, "warn") end
 end, { desc = "Show a view docked: where it docks, else in a window split from this one: `view.open undotree`", complete = { "views" } })
-command("view.only", function()
-  for _, rect in ipairs(paw.ui.arrange()) do
-    local view = paw.ui.views[rect.name]
-    if rect.name ~= "arrange" and view and view.focusable ~= false then paw.ui.hide(rect.name) end
-  end
-  paw.ui.focus("arrange")
-end, { desc = "Close every panel but the arrange view" })
+command("view.only", function() paw.layout.only() end, { desc = "Close every window but this one, as `:only`" })
 command("zoom", function(ctx)
   local name = paw.ui.focused == "pianoroll" and "note_zoom" or "zoom"
   local arrange = paw.ui.views.arrange
@@ -1537,9 +1530,9 @@ command("edit", function(ctx)
   if paw.files.is_dir(path) then return paw.files.open(path, { here = true }) end
   -- A buffer's name, a view's or an address (`paw://tracks`) shows it here;
   -- only a file's path asks about the project.
-  local view, buf = paw.layout.resolve(path)
+  local view, buf, target = paw.layout.resolve(path)
   local win = view and not how and paw.layout.current()
-  if win then return paw.layout.show_in(win, view, buf and not buf.single and buf.id or nil) end
+  if win then return paw.layout.show_in(win, view, buf and not buf.single and buf.id or nil, target) end
   if paw.midifile.is_midi_file(path) or paw.is_audio_file(path) then return paw.commands.run("open", { path }) end
   if not paw.project.guard("edit") then return end
   paw.open(tostring(ctx.args[1]), { plugins_offline = how == "offline", all_online = how == "online" })
@@ -2639,8 +2632,8 @@ pmap("<Esc>", function()
 end, "Let go of the chosen notes", { repeatable = false })
 keymap.classic("<Esc>", function()
   if chosen() then return paw.frontend.act.clear_note_selection() end
-  paw.ui.focus("arrange")
-end, { view = "pianoroll", desc = "Let go of the chosen notes; back to the arrange view" })
+  paw.layout.back()
+end, { view = "pianoroll", desc = "Let go of the chosen notes; back to the window before" })
 
 -- Diagnostics and language servers (paw.diagnostic, paw.lsp), on whatever
 -- is under the cursor in each view: a note, a clip, a track, a strip, a

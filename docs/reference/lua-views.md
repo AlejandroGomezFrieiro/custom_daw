@@ -47,6 +47,47 @@ lists the fields for the graphical window (`title`, `window`, `paint`,
 | `moving(self)` | true while the view also shows something else that moves (see [Roles](#roles)) |
 | `redraw_every` | the milliseconds between two scenes of a view that moves while the song plays |
 | `title_of(self)` | the title of its pane in the graphical window, for what the view shows now |
+| `window_state` | the names of the fields of the view that each window has for itself (see [A state for each window](#a-state-for-each-window)) |
+| `window_fresh` | the fields of `window_state` that a new window starts without, for example caches |
+| `open_target(self, target)` | opens a thing by name in the window, for `:e view://target`. It returns false and a message when it cannot |
+| `window_target(self)` | the name of what the window shows, for a saved layout |
+| `share` | the part of the room that the view keeps: `column`, `least` and `most`, fractions (see [Windows, buffers and tabs](windows.md#sizes)) |
+
+### A state for each window
+
+A view keeps its state in its own table, for example `self.clip_id`.
+Without `window_state`, the view shows in one window at a time. With
+`window_state`, any number of windows show the view, and each has its own
+values of those fields. paw puts the values of a window into the table
+before the view draws in that window. It also does this before a key, the
+pointer or a command acts in the window. So the code of the view does not
+change.
+
+```lua
+paw.ui.view("score", {
+  clip_id = nil, beat = 0, cache = nil,
+  window_state = { "clip_id", "beat", "cache" },
+  window_fresh = { "cache" },
+  open_target = function(self, target)
+    local clip = paw.layout.clip_named(target)
+    if not clip then return false, "no clip " .. target end
+    self.clip_id, self.beat = clip.id, 0
+  end,
+  window_target = function(self) return self.clip_id end,
+  render = function(self, buf, ctx) end,
+})
+```
+
+| Function | Effect |
+| --- | --- |
+| `paw.layout.window_keep(view, get, set, fresh)` | keeps other state of a view for each window, for example locals of a module. `get()` gives one value, `set(value)` puts it back, `fresh(value)` gives the value of a new window |
+| `paw.layout.within(win, fn, ...)` | runs `fn` with the state of the window `win` in the table, then puts the state before back |
+| `paw.layout.bound(view)` | the window whose state the table of the view has now |
+| `paw.layout.clip_named(target)` | the clip of a number, an address or a name |
+
+A command can act on a view from a different window, for example
+`Enter` on a clip in the arrange view. Then it acts in the window of that
+view that had the keyboard last.
 
 ### Pictures
 
@@ -533,3 +574,6 @@ places locations:
 | `go` | moves the cursor to a location |
 
 `paw.ui.location()` and `paw.ui.go(location)` use the locators.
+`paw.ui.location(view, win)` gives the location under the cursor of the
+window `win`: each window of a view has its own cursor. `paw.ui.go`
+goes first to a window that shows the location already.

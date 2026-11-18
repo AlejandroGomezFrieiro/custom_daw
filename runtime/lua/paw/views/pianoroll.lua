@@ -14,6 +14,10 @@ local view = {
   beat = 0,       -- cursor column, in beats from the start of the active clip
   top = 72,       -- pitch of the first row
   scroll = 0,     -- beat at the left edge
+  -- Each window of the roll has its own clip, cursor and scroll: two
+  -- windows show two clips, or one clip twice.
+  window_state = { "clip_id", "pitch", "beat", "top", "scroll", "geometry", "length" },
+  window_fresh = { "geometry" },
 }
 paw.seats.fields("pianoroll", view, { "clip_id", "pitch", "beat", "top", "scroll", "geometry", "length" },
   { pitch = 60, beat = 0, top = 72, scroll = 0 })
@@ -27,17 +31,34 @@ end
 --- each (see `paw.roll_clips.parts`).
 function view:parts() return clips.parts() end
 
---- Open a MIDI clip in the piano roll, alone.
-function view:edit(clip)
-  if clip.kind ~= "midi" then return paw.notify("only MIDI clips open in the piano roll", "warn") end
+local function open(self, clip)
   self.clip_id, self.beat, self.scroll = clip.id, 0, 0
   clips.only()
   local notes = clip:notes()
   self.pitch = notes[1] and notes[1].pitch or 60
   self.top = nil
+end
+
+--- Open a MIDI clip in the piano roll, alone.
+function view:edit(clip)
+  if clip.kind ~= "midi" then return paw.notify("only MIDI clips open in the piano roll", "warn") end
+  open(self, clip)
   paw.ui.focus("pianoroll")
   paw.emit("pianoroll.opened", { clip = clip.id })
 end
+
+--- Open the clip a window's name gives (`:e roll://riff`, `:vs roll://7`):
+--- by its name, its number or its address.
+function view:open_target(target)
+  local clip = paw.layout.clip_named(target)
+  if not clip then return false, "no clip `" .. tostring(target) .. "`" end
+  if clip.kind ~= "midi" then return false, "only MIDI clips open in the piano roll" end
+  open(self, clip)
+  paw.emit("pianoroll.opened", { clip = clip.id })
+end
+
+--- What a saved layout keeps of the window: the number of its clip.
+function view:window_target() return self.clip_id end
 
 --- Shown beside a view that has a clip open (the notation view), the roll
 --- takes that clip, as the arrange view's clip is taken: the window that

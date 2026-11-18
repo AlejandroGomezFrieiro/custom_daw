@@ -24,7 +24,7 @@ local api = paw.api
 local M = {
   types = {},      -- buffer types made with `paw.buftype`, by name
   buffers = {},    -- every buffer, by number
-  homes = {},      -- where a docked view goes when no window has it: { side, size, weight, min, float_below, index }
+  homes = {},      -- where a docked view goes when no window has it: { side, size, weight, min, float_below }
   -- Short names for the buffers of built-in views, to type after `:vs`,
   -- and what they are called in lists.
   names = { pianoroll = "roll" },
@@ -61,8 +61,10 @@ function M.leaf(view, fields)
   return win
 end
 
---- The tree every tab starts with: the arrange view, and the panels' places,
---- closed.
+--- The tree that paw starts with when the configuration names no start
+--- layout (`paw.ui.start_layout`): the arrange view, and the panels' places
+--- next to it, closed. Nothing else depends on it: any view can be alone
+--- in a tab.
 function M.default_tree()
   return {
     dir = "v",
@@ -73,8 +75,8 @@ function M.default_tree()
 end
 
 M.homes.devices = { side = "right", size = 40, float_below = 80 }
-M.homes.pianoroll = { side = "bottom", weight = 2, index = 2 }
-M.homes.mixer = { side = "bottom", weight = 0.5, min = 14, index = 3 }
+M.homes.pianoroll = { side = "bottom", weight = 2 }
+M.homes.mixer = { side = "bottom", weight = 0.5, min = 14 }
 
 -- The tree ----------------------------------------------------------------------
 
@@ -120,16 +122,183 @@ local function parent_of(node, target)
 end
 M.parent_of = parent_of
 
---- The window of a view in a tree, one on screen first.
-function M.find(root, name)
+-- Views with a state for each window ---------------------------------------------
+--
+-- A view keeps its state in its own table (`self.clip_id`), as it always
+-- did. A view that names that state (`window_state` in `paw.ui.view`, or
+-- `M.window_keep`) is shown by any number of windows, each with a state of
+-- its own: before the view draws in a window, or a key, the pointer or a
+-- command acts in one, paw puts the state of that window in the table and
+-- keeps the state of the window before. So the view's code is the same for
+-- one window or many.
+M.keepers = {}    -- view name -> { { key, get, set, fresh } }
+local bound = {}  -- view name -> the window whose state is in the view's table now
+paw.seats.keep("layout.bound", function() return bound end, function(b) bound = b end, function() return {} end)
+
+--- Keep some state of a view for each window. `get()` gives it (one
+--- value), `set(value)` puts it back, `fresh(value)` gives what a new
+--- window starts with from the value of the window it is split from.
+--- `key` names it: the same key again (a module loaded again) replaces it.
+function M.window_keep(name, get, set, fresh, key)
+  local list = M.keepers[name] or {}
+  M.keepers[name] = list
+  local entry = { key = key, get = get, set = set, fresh = fresh or function(v) return v end }
+  for i, k in ipairs(list) do
+    if key ~= nil and k.key == key then
+      list[i] = entry
+      return
+    end
+  end
+  list[#list + 1] = entry
+end
+
+--- Keep fields of a view's table for each window: `keys` names them,
+--- `fresh` the ones a new window starts without (caches, what drawing
+--- measures). A new window starts with the others as they are.
+function M.window_fields(name, tbl, keys, fresh, key)
+  local without = {}
+  for _, key in ipairs(fresh or {}) do without[key] = true end
+  M.window_keep(name,
+    function()
+      local out = {}
+      for i, key in ipairs(keys) do out[i] = tbl[key] end
+      return out
+    end,
+    function(values)
+      for i, key in ipairs(keys) do tbl[key] = values[i] end
+    end,
+    function(values)
+      local out = {}
+      for i, key in ipairs(keys) do
+        local v = values[i]
+        if without[key] then
+          v = nil
+        elseif type(v) == "table" then
+          -- A list or a set of the window's own, not shared with the other.
+          local copied = {}
+          for k, x in pairs(v) do copied[k] = x end
+          v = copied
+        end
+        out[i] = v
+      end
+      return out
+    end, key or "fields")
+end
+
+--- True if a view is shown in one window at a time: a view without a
+--- state for each window. A buffer type is not.
+function M.one_window(name)
+  return not M.types[name] and not M.keepers[name]
+end
+
+--- Put the state of `win` in the table of its view, and keep the state of
+--- the window before. A window new to the view starts from that state
+--- (`fresh`). Nothing happens for a view with one state.
+function M.bind(win)
+  local name = win and win.view
+  local keep = name and M.keepers[name]
+  if not keep or bound[name] == win then return end
+  local was = bound[name]
+  local now = {}
+  for i, k in ipairs(keep) do now[i] = k.get() end
+  local saved = win.kept
+  -- The window before went (another layout, a closed tab) or shows
+  -- another view now: what the table holds is the view's latest state,
+  -- and this window takes it.
+  if was and (was.view ~= name or not M.get(was.id)) then was, saved = nil, nil end
+  if was then
+    was.kept = now
+    if not saved then
+      saved = {}
+      for i, k in ipairs(keep) do saved[i] = k.fresh(now[i]) end
+    end
+  else
+    -- The first window takes the state that the table has.
+    saved = saved or now
+  end
+  for i, k in ipairs(keep) do k.set(saved[i]) end
+  win.kept = nil
+  bound[name] = win
+end
+
+--- The window whose state the table of a view holds now, if any.
+function M.bound(name) return bound[name] end
+
+local function pack(...) return { n = select("#", ...), ... } end
+
+--- Run `fn(...)` with the state of `win` in its view's table, then put
+--- back the state that was there.
+function M.within(win, fn, ...)
+  local name = win and win.view
+  local before = name and bound[name]
+  if not (name and M.keepers[name]) or before == win then return fn(...) end
+  M.bind(win)
+  local result = pack(pcall(fn, ...))
+  if before then M.bind(before) end
+  if not result[1] then error(result[2], 0) end
+  return unpack(result, 2, result.n)
+end
+
+--- After a window drew or took the pointer: each view's table holds the
+--- state of its window in the current tab that had the keyboard last, so
+--- that keys and commands act there.
+function M.settle()
+  local u = ui()
+  local t = u.tabs and u.tabs[u.tab]
+  if not t then return end
+  for name in pairs(M.keepers) do
+    local win = t.win and M.find_id(t.layout, t.win)
+    if not (win and win.view == name) then
+      local id = t.last and t.last[name]
+      win = id and M.find_id(t.layout, id)
+    end
+    -- Else a window of the view in the tab, or its closed place: what acts
+    -- on the view meanwhile acts on what it will show.
+    if not (win and win.view == name and not win.hidden) then win = M.find(t.layout, name) end
+    if win then M.bind(win) end
+  end
+end
+
+--- A copy of a seat's tabs for a new seat: the windows keep their places
+--- and options, and start from that seat's state.
+function M.copy_tabs(tabs)
+  local function walk(value)
+    if type(value) ~= "table" then return value end
+    local out = {}
+    for k, v in pairs(value) do
+      if k ~= "kept" then out[k] = walk(v) end
+    end
+    return out
+  end
+  return walk(tabs)
+end
+
+--- The window of a view in a tree, one on screen first: the window with
+--- the keyboard, else the one whose state the view holds, else the one
+--- that had the keyboard last. With `shown`, only one on screen.
+function M.find(root, name, shown)
+  local u = ui()
+  local t = u.tabs and u.tabs[u.tab]
+  local prefer = {}
+  if t and t.layout == root then
+    prefer[#prefer + 1] = t.win or false
+    prefer[#prefer + 1] = t.last and t.last[name] or false
+  end
+  prefer[#prefer + 1] = bound[name] and bound[name].id or false
+  local all = M.windows(root, true)
+  for _, id in ipairs(prefer) do
+    for _, win in ipairs(all) do
+      if id and win.id == id and win.view == name and not win.hidden then return win end
+    end
+  end
   local hidden
-  for _, win in ipairs(M.windows(root, true)) do
+  for _, win in ipairs(all) do
     if win.view == name then
       if not win.hidden then return win end
       hidden = hidden or win
     end
   end
-  return hidden
+  if not shown then return hidden end
 end
 
 --- A window by its number, and the tab it is in.
@@ -201,35 +370,51 @@ local function remove_view(root, name, keep)
   return was_shown
 end
 
---- Put a window for a docked view where it docked: along a side of the tab.
+--- The window of a tree that has the keyboard, if the tree is the current
+--- tab's, else the tree's first window that takes it.
+local function keyboard_in(root)
+  local u = ui()
+  local t = u.tabs and u.tabs[u.tab]
+  if t and t.layout == root and t.win then
+    for _, win in ipairs(M.windows(root)) do
+      if win.id == t.win then return win end
+    end
+  end
+  for _, win in ipairs(M.windows(root)) do
+    if focusable(win.view) then return win end
+  end
+end
+
+--- Put a window for a docked view where it docks: on its side of the
+--- window that has the keyboard, as a split in Neovim is.
 local function place_home(root, name, home, hidden)
   local win = M.leaf(name, { size = home.size, weight = home.weight, min = home.min, float_below = home.float_below, hidden = hidden })
   local side = home.side or "bottom"
-  if side == "left" or side == "right" then
-    local row
-    for _, child in ipairs(root) do
-      if child.dir == "h" then row = child end
+  local dir = (side == "left" or side == "right") and "h" or "v"
+  local before = side == "left" or side == "top"
+  local cur = keyboard_in(root)
+  local parent, at
+  if cur then parent, at = parent_of(root, cur) end
+  if not parent then
+    -- Nothing to stand beside: along that side of the tab.
+    if dir == "h" then
+      local row = { dir = "h" }
+      for i, child in ipairs(root) do row[i] = child end
+      for i = #root, 1, -1 do root[i] = nil end
+      root[1] = row
+      table.insert(row, before and 1 or #row + 1, win)
+    else
+      table.insert(root, before and 1 or #root + 1, win)
     end
-    if not row then
-      -- No row yet: the main part of the tab becomes one, with the panel beside it.
-      local at
-      for i, child in ipairs(root) do
-        if not (child.view and not focusable(child.view)) then at = at or i end
-      end
-      if not at then
-        table.insert(root, win)
-        return win
-      end
-      local main = root[at]
-      row = { dir = "h", size = main.size, weight = main.weight, min = main.min, main }
-      main.size, main.weight, main.min = nil, nil, nil
-      root[at] = row
-    end
-    table.insert(row, side == "left" and 1 or #row + 1, win)
-  elseif side == "top" then
-    table.insert(root, 1, win)
+    return win
+  end
+  if parent.dir == dir then
+    table.insert(parent, before and at or at + 1, win)
   else
-    table.insert(root, home.index and math.min(home.index, #root + 1) or #root + 1, win)
+    local node = { dir = dir, size = cur.size, weight = cur.weight, min = cur.min }
+    cur.size, cur.weight, cur.min = nil, nil, nil
+    node[1], node[2] = before and win or cur, before and cur or win
+    parent[at] = node
   end
   return win
 end
@@ -314,6 +499,44 @@ function M.resolve(name)
   end
   local kind, target = name:match("^([%w_]+)://(.*)$")
   if kind and M.types[kind] then return kind, M.buf_create(kind, target ~= "" and target or nil) end
+  -- A view that opens a thing of its own in its window (`roll://7`, the
+  -- piano roll on clip 7): the view, and what to open, for `open_target`.
+  local view = kind and target ~= "" and M.view_named(kind)
+  if view and views[view].open_target then return view, single(view), target end
+end
+
+--- The view a name or a short name (`roll`) stands for, or nil.
+function M.view_named(name)
+  local views = ui().views
+  for view, short in pairs(M.names) do
+    if short == name and views[view] then return view end
+  end
+  if views[name] and views[name].focusable ~= false and not M.types[name] then return name end
+end
+
+--- The clip a name of a window's thing stands for: an id (`7`), an
+--- address (`paw://clip/7`) or the name of a clip, the first in the order
+--- of the tracks. Nil if there is none.
+function M.clip_named(target)
+  local id = tonumber(target) or tonumber(tostring(target):match("^paw://clip/(%d+)"))
+  if id then return pcall(api.clip_get, id) and paw.clip(id) or nil end
+  for _, track in ipairs(api.track_list()) do
+    for _, c in ipairs(api.clip_list(track)) do
+      if c.name == target then return paw.clip(c.id) end
+    end
+  end
+end
+
+--- Open `target` in a window that shows the view `name`, by the view's
+--- `open_target(target)`: false and why when it cannot.
+local function aim(name, target)
+  if target == nil then return true end
+  local view = ui().views[name]
+  if not (view and view.open_target) then return false, name .. " opens nothing by name" end
+  local ok, why = view:open_target(target)
+  if ok == false then return false, why or ("nothing called `" .. tostring(target) .. "`") end
+  api.ui_redraw()
+  return true
 end
 
 --- The buffers to list (`:ls`), by number: the views' that are in the
@@ -619,6 +842,10 @@ function M.enter(win)
     paw.emit("win.enter", { win = win.id })
     if new_buf and old_buf ~= new_buf then paw.emit("buf.enter", { buf = new_buf.id, name = new_buf.name }) end
   end
+  -- The view's table holds this window's state while it has the keyboard.
+  M.bind(win)
+  t.last = t.last or {}
+  t.last[win.view] = win.id
   if u.focused ~= win.view then
     local before = u.focused
     u.focused = win.view
@@ -631,7 +858,7 @@ end
 --- is shown in one window at a time.
 local function take(name)
   local u = ui()
-  if M.types[name] then return end
+  if not M.one_window(name) then return end
   for i, t in ipairs(u.tabs) do
     if i ~= u.tab then
       for _, win in ipairs(M.windows(t.layout)) do
@@ -683,13 +910,15 @@ function M.reveal(name, go)
   return win
 end
 
---- Hide the windows of a view in each tab. Returns true if one was on the screen.
+--- Hide the windows of a view in each tab, but the last window of a tab,
+--- which stays. Returns true if one that was on the screen went.
 function M.conceal(name)
   local was = false
   for _, t in ipairs(ui().tabs) do
     for _, win in ipairs(M.windows(t.layout)) do
       if win.view == name and not win.buf then
-        win.hidden, was = true, true
+        win.hidden = true
+        if first_window(t.layout) then was = true else win.hidden = false end
       end
     end
   end
@@ -725,11 +954,21 @@ function M.close(win)
     return false
   end
   local current = M.current() == win
-  if win.buf then
+  -- A second window of a view with a state for each goes, as a buffer's
+  -- does: the view keeps one place in the tab.
+  local again = M.keepers[win.view] and not win.buf
+  if again then
+    again = false
+    for _, w in ipairs(M.windows(t.layout, true)) do
+      if w ~= win and w.view == win.view then again = true end
+    end
+  end
+  if win.buf or again then
     local parent, at = parent_of(t.layout, win)
     if parent then table.remove(parent, at) end
     M.tidy(t.layout)
     reap(win.buf)
+    if bound[win.view] == win then bound[win.view] = nil end
   else
     win.hidden = true
     local view = u.views[win.view]
@@ -742,6 +981,27 @@ function M.close(win)
     if prev then M.enter(prev) end
   end
   api.ui_redraw()
+  return true
+end
+
+--- Give the keyboard to the window that had it before the current one
+--- (`Ctrl-w p`), else to another window of the tab. Returns false when
+--- the current window is the only one.
+function M.back()
+  local t = tab()
+  local cur = M.current()
+  local win = t.prev and M.find_id(t.layout, t.prev)
+  if not (win and win ~= cur and not win.hidden and focusable(win.view)) then
+    win = nil
+    for _, w in ipairs(focusable_windows()) do
+      if w ~= cur then
+        win = w
+        break
+      end
+    end
+  end
+  if not win then return false end
+  M.enter(win)
   return true
 end
 
@@ -766,14 +1026,16 @@ end
 --- Split a window (the current one) and show a buffer in the new half,
 --- which gets the keyboard. `opts`: `vertical` (side by side), `view` (the
 --- type; "empty" by default), `buf` (a buffer of a type that has more than
---- one), `win`. Returns the new window, or nil and why not.
+--- one), `target` (what the view opens there, as in `roll://7`), `win`.
+--- Returns the new window, or nil and why not.
 function M.split(opts)
   local u, t = ui(), tab()
   local cur = opts.win or M.current()
   local name = opts.view or "empty"
   if not u.views[name] then return nil, "no buffer `" .. tostring(name) .. "`" end
   local single_view = not M.types[name]
-  if single_view and cur and cur.view == name then return nil, name .. " is in this window already" end
+  local one = M.one_window(name)
+  if one and cur and cur.view == name then return nil, name .. " is in this window already" end
   if cur then
     local r = rect_of(cur)
     local room = r and (opts.vertical and r.w or r.h)
@@ -782,7 +1044,7 @@ function M.split(opts)
     if room and room > 0 and room < least * 2 + 1 then return nil, "not enough room" end
   end
   local buf = opts.buf or (not single_view and M.buf_create(name).id) or nil
-  local moved = single_view and remove_view(t.layout, name)
+  local moved = one and remove_view(t.layout, name)
   local win = M.leaf(name, { buf = buf })
   local root = t.layout
   local parent, at
@@ -817,39 +1079,51 @@ function M.split(opts)
     if moved then
       paw.notify(called(name) .. " moved to the new window")
     elseif view.on_show then
-      view:on_show()
+      -- A view with a state for each window starts the new window from
+      -- the state of the window it was split from, or of its last.
+      M.within(win, view.on_show, view)
     end
   end
   M.enter(win)
+  local ok, why = aim(name, opts.target)
+  if not ok then paw.notify(why, "warn") end
   return win
 end
 
 --- Show a buffer in a window instead of the one it shows. A view on
---- screen in another window moves here.
-function M.show_in(win, name, buf)
+--- screen in another window moves here. `target` is what the view opens
+--- there (`roll://7`: clip 7).
+function M.show_in(win, name, buf, target)
   local u, t = ui(), tab()
-  if win.view == name and win.buf == buf then return win end
+  if win.view == name and win.buf == buf then
+    if target ~= nil then
+      M.enter(win)
+      local ok, why = aim(name, target)
+      if not ok then paw.notify(why, "warn") end
+    end
+    return win
+  end
   local old_view, old_buf = win.view, win.buf
   local before = M.buf_of(win)
   -- What `Ctrl-^` goes back to.
   win.alt = { view = old_view, buf = old_buf }
   local single_view = not M.types[name]
-  if single_view then
+  if M.one_window(name) then
     local moved = remove_view(t.layout, name, win)
     take(name)
     if moved then paw.notify(called(name) .. " moved to this window") end
-  elseif not buf then
+  elseif not single_view and not buf then
     buf = M.buf_create(name).id
   end
-  win.view, win.buf, win.state = name, single_view and nil or buf, {}
+  win.view, win.buf, win.state, win.kept = name, single_view and nil or buf, {}, nil
   M.buf_of(win).listed = M.buf_of(win).listed or single_view
-  if old_view ~= name and not old_buf then
+  if old_view ~= name and not old_buf and not M.find(t.layout, old_view, true) then
     local view = u.views[old_view]
     if view and view.on_hide then view:on_hide() end
   end
   if single_view and old_view ~= name then
     local view = u.views[name]
-    if view.on_show then view:on_show() end
+    if view.on_show then M.within(win, view.on_show, view) end
   end
   reap(old_buf)
   local after = M.buf_of(win)
@@ -858,6 +1132,8 @@ function M.show_in(win, name, buf)
     if after then paw.emit("buf.enter", { buf = after.id, name = after.name }) end
   end
   M.enter(win)
+  local ok, why = aim(name, target)
+  if not ok then paw.notify(why, "warn") end
   return win
 end
 
@@ -1072,7 +1348,11 @@ end
 
 --- Move a border to the position of the pointer. If one of the two sides
 --- has its own size, it keeps a size. If not, the first side gets a size.
-function M.drag_border(border, rects, x, y)
+--- A graphical frontend lays the tree out in pixels (paw/panes.lua):
+--- `opts.unit` is its cell `{ w, h }`, and `opts.map` takes each node
+--- of its arrangement to the node of the tree. Sizes stay in cells.
+function M.drag_border(border, rects, x, y, opts)
+  opts = opts or {}
   local nodes = rects.nodes or {}
   local a, b = nodes[border.a], nodes[border.b]
   if not (a and b) then return end
@@ -1081,10 +1361,13 @@ function M.drag_border(border, rects, x, y)
   local finish = across and b.x + b.w or b.y + b.h
   local at = math.max(start + 1, math.min(across and x or y, finish - 1))
   local axis = across and "width" or "height"
-  if border.b.size and not border.a.size then
-    M.set_size(border.b, axis, finish - at)
+  local unit = opts.unit and (across and opts.unit.w or opts.unit.h) or 1
+  local first, second = border.a, border.b
+  if opts.map then first, second = opts.map[first], opts.map[second] end
+  if second.size and not first.size then
+    M.set_size(second, axis, math.max(1, math.floor((finish - at) / unit + 0.5)))
   else
-    M.set_size(border.a, axis, at - start)
+    M.set_size(first, axis, math.max(1, math.floor((at - start) / unit + 0.5)))
   end
   api.ui_redraw()
 end
@@ -1121,24 +1404,35 @@ function M.maximize()
 end
 
 --- Make a tab after the current tab, and go to it. It shows a buffer (the
---- name of a view, or `buf`) or the window `win`. Without them, it shows an
---- empty window.
-function M.tab_new(name, view, win)
+--- name of a view; `buf`, a buffer of a type with many) or the window
+--- `win`. Without them, it shows an empty window, the start page. `target`
+--- is what the view opens there (`roll://7`).
+function M.tab_new(name, view, win, buf, target)
   local u = ui()
-  local buf
   if not win then
     view = view or "empty"
-    if not M.types[view] then
-      for _, t in ipairs(u.tabs) do remove_view(t.layout, view) end
-    else
-      buf = M.buf_create(view).id
-    end
+    if M.types[view] then buf = buf or M.buf_create(view).id end
     win = M.leaf(view, { buf = buf })
   end
   local t = { name = name, layout = { dir = "v", win }, win = win.id }
   table.insert(u.tabs, u.tab + 1, t)
   M.tab_go(u.tab + 1)
+  -- A view shown in one window at a time leaves the other tabs, each left
+  -- with a window (`take`).
+  take(win.view)
+  local ok, why = aim(win.view, target)
+  if not ok then paw.notify(why, "warn") end
   return t
+end
+
+--- Open in each window of a tree what its view opens there, as it was
+--- saved (`M.import` keeps it as `pending`).
+local function open_pending(root)
+  for _, win in ipairs(M.windows(root, true)) do
+    local target = win.pending
+    win.pending = nil
+    if target ~= nil then M.within(win, aim, win.view, target) end
+  end
 end
 
 --- Make a tab with the same windows as the current one, after it, and go
@@ -1156,6 +1450,7 @@ function M.tab_copy(name)
     if here and win.view == here.view then t.win = win.id end
   end
   table.insert(u.tabs, u.tab + 1, t)
+  open_pending(root)
   M.tab_go(u.tab + 1)
   return t
 end
@@ -1213,6 +1508,12 @@ local function export(node)
     if node.opts and next(node.opts) then out.opts = copy(node.opts) end
     local buf = node.buf and M.buffers[node.buf]
     if buf then out.target = buf.target end
+    -- What a view opens in the window (its clip), as `roll://7` names it.
+    local view = not buf and ui().views[node.view]
+    if view and view.window_target then
+      local ok, target = pcall(M.within, node, view.window_target, view)
+      if ok then out.target = target end
+    end
     return out
   end
   out.dir, out.children = node.dir, {}
@@ -1245,10 +1546,15 @@ local function import(spec)
   if type(spec) == "string" then spec = { view = spec } end
   if type(spec) ~= "table" then return nil end
   if spec.view then
-    local name = M.resolve(spec.view)
+    local name, _, named = M.resolve(spec.view)
     if not name then return nil end
     local win = M.leaf(name, { size = spec.size, weight = spec.weight, min = spec.min, float_below = spec.float_below, hidden = spec.hidden, opts = copy(spec.opts or {}) })
-    if M.types[name] then win.buf = M.buf_create(name, spec.target).id end
+    if M.types[name] then
+      win.buf = M.buf_create(name, spec.target).id
+    else
+      -- What the view opens there, once the window is in a tab.
+      win.pending = spec.target or named
+    end
     return win
   end
   local node = { dir = spec.dir == "h" and "h" or "v", size = spec.size, weight = spec.weight, min = spec.min }
@@ -1276,7 +1582,7 @@ function M.restore(saved)
       -- A view has one window in a tab: the first of any more.
       local seen = {}
       for _, win in ipairs(M.windows(root, true)) do
-        if not win.buf then
+        if M.one_window(win.view) then
           if seen[win.view] then remove_view(root, win.view, seen[win.view]) else seen[win.view] = win end
         end
       end
@@ -1288,8 +1594,36 @@ function M.restore(saved)
   end
   if #tabs == 0 then return false end
   u.tabs, u.tab = tabs, 0
-  M.tab_go(math.max(1, math.min(tonumber(saved.tab) or 1, #tabs)))
+  local go = math.max(1, math.min(tonumber(saved.tab) or 1, #tabs))
+  for _, t in ipairs(tabs) do open_pending(t.layout) end
+  M.tab_go(go)
   return true
+end
+
+--- A layout as `M.restore` takes it, from any of the forms a configuration
+--- writes: a view's name (`"notation"`), a tree (`{ dir = "h", "roll",
+--- "notation" }`), a list of tabs, or what `M.capture` gives.
+function M.as_tabs(spec)
+  if type(spec) == "string" then return { { layout = spec } } end
+  if type(spec) ~= "table" then return {} end
+  if spec.view or spec.dir or spec.children then return { { layout = spec } } end
+  return spec
+end
+
+--- Lay out the screen as the configuration starts it: `paw.ui.start_layout
+--- = "notation"` in init.lua (any form `M.as_tabs` takes), or a named
+--- layout, `paw.opt.layout = "edit"`. Without either, the screen is the
+--- default tree. paw does this once its configuration has run.
+function M.start()
+  local start = paw.ui.start_layout
+  if start ~= nil and not M.restore(M.as_tabs(start)) then
+    paw.notify("paw.ui.start_layout has no window that paw can show", "warn")
+  end
+  local name = paw.opt.layout
+  if name and name ~= "" then
+    local ok, why = M.load(name)
+    if not ok then paw.notify(why, "warn") end
+  end
 end
 
 --- Layouts a configuration names, by name: `paw.layouts.edit = { ... }` in
@@ -1372,8 +1706,9 @@ end
 --- Call it after paw draws the main window. The other windows take its time.
 function M.time_follow(lead, win)
   local u = ui()
-  local left, zoom = u.views[lead.view]:time_axis({ win = lead })
-  if left then u.views[win.view]:set_time_axis(left, zoom, { win = win }) end
+  local lead_view, view = u.views[lead.view], u.views[win.view]
+  local left, zoom = M.within(lead, lead_view.time_axis, lead_view, { win = lead })
+  if left then M.within(win, view.set_time_axis, view, left, zoom, { win = win }) end
 end
 
 --- Set a window option (`timebind`) on a window (the current one).
@@ -1412,9 +1747,9 @@ M.win = {
   close = M.close,
   only = M.only,
   show = function(win, name)
-    local view, buf = M.resolve(name)
+    local view, buf, target = M.resolve(name)
     if not view then error("no buffer `" .. tostring(name) .. "`", 2) end
-    return M.show_in(win or M.current(), view, buf and not buf.single and buf.id or nil)
+    return M.show_in(win or M.current(), view, buf and not buf.single and buf.id or nil, target)
   end,
   resize = M.resize,
   equalize = M.equalize,
@@ -1447,36 +1782,8 @@ M.tabs = {
 function M.setup()
   local command, map = paw.command, paw.keymap.set
 
-  -- An empty window: what `:vnew` opens, and `:sp` without a name.
-  M.buftype("empty", {
-    listed = false,
-    -- Numbered among the empty windows there are now, the lowest free
-    -- number first, so a long session does not climb to `[No Name 14]`.
-    bufname = function(_, buf)
-      local taken = {}
-      for _, other in pairs(M.buffers) do
-        if other ~= buf and other.type == "empty" then taken[other.name] = true end
-      end
-      local name, n = "[No Name]", 1
-      while taken[name] do
-        n = n + 1
-        name = "[No Name " .. n .. "]"
-      end
-      return name
-    end,
-    title = function() return "[No Name]" end,
-    render = function(_, canvas, ctx)
-      local names = {}
-      for _, item in ipairs(M.buffer_names()) do
-        if #names < 6 then names[#names + 1] = item.text end
-      end
-      paw.ui.titlebar(canvas, { name = "[No Name]", focused = ctx.focused })
-      canvas:text(2, 2, "An empty window.", "Empty")
-      canvas:text(2, 3, ":e <name> shows a buffer here: " .. table.concat(names, ", "), "Empty")
-      canvas:text(2, 4, ":ls lists them, :close closes the window.", "Empty")
-      canvas:text(2, 5, "A view shows in one window only: splitting it opens this one instead.", "Empty")
-    end,
-  })
+  -- An empty window shows the start page: what `:vnew` and `:tabnew` open.
+  require("paw.views.start")
 
   paw.option.define("splitright", true)
   paw.option.define("splitbelow", true)
@@ -1485,31 +1792,27 @@ function M.setup()
   local names = function() return M.buffer_names() end
 
   -- What a split without a name shows, as Vim shows the same buffer: a
-  -- buffer of a type with many (a text list) again; a view has one window,
-  -- so the arrange view's companion is the piano roll and the other way
-  -- round, and any other view gets an empty window that says so.
-  local companions = { arrange = "pianoroll", pianoroll = "arrange" }
+  -- buffer of a type with many (a text list) again, a view with a state
+  -- for each window again (from where this window is); a view shown in
+  -- one window at a time leaves the new window empty, on the start page.
   local function same_buffer()
     local buf = M.buf_of(M.current())
     if not buf then return "empty" end
-    if not buf.single then return buf.type, buf end
-    local other = companions[buf.type]
-    local shown = other and M.find(ui().layout, other)
-    if other and ui().views[other] and not (shown and not shown.hidden) then return other, single(other) end
+    if not buf.single or not M.one_window(buf.type) then return buf.type, buf end
     return "empty"
   end
 
   local function split(vertical, empty)
     return function(ctx)
       local name = ctx.args[1]
-      local view, buf = "empty", nil
+      local view, buf, target = "empty", nil, nil
       if name ~= nil then
-        view, buf = M.resolve(name)
+        view, buf, target = M.resolve(name)
         if not view then return paw.notify("no buffer `" .. tostring(name) .. "`: `:ls` lists them", "warn") end
       elseif not empty then
         view, buf = same_buffer()
       end
-      local made, why = M.split({ vertical = vertical, view = view, buf = buf and not buf.single and buf.id or nil })
+      local made, why = M.split({ vertical = vertical, view = view, buf = buf and not buf.single and buf.id or nil, target = target })
       if not made then paw.notify(why, "warn") end
     end
   end
@@ -1573,9 +1876,9 @@ function M.setup()
   end
   command("buffer", function(ctx)
     if ctx.args[1] == "#" then return M.alternate() end
-    local view, buf = M.resolve(ctx.args[1])
+    local view, buf, target = M.resolve(ctx.args[1])
     if not view then return paw.notify("no buffer `" .. tostring(ctx.args[1]) .. "`: `:ls` lists them", "warn") end
-    M.show_in(M.current(), view, buf and not buf.single and buf.id or nil)
+    M.show_in(M.current(), view, buf and not buf.single and buf.id or nil, target)
   end, { desc = "Show a buffer in this window, by name or number: `b roll`, `b 3`; `b #` what it showed before", complete = names })
   command.alias("b", "buffer")
   command("bnext", function(ctx) listed_step(ctx.count or 1) end, { desc = "Show the next buffer in this window" })
@@ -1615,10 +1918,12 @@ function M.setup()
 
   command("tabnew", function(ctx)
     local name = ctx.args[1]
-    local view = name ~= nil and M.resolve(name)
-    -- `:tabnew mixer` shows the mixer in it; any other word names it.
-    M.tab_new(name ~= nil and tostring(name) or nil, view or nil)
-  end, { desc = "A new tab: `tabnew Mix` named, `tabnew mixer` showing the mixer", complete = names })
+    local view, buf, target
+    if name ~= nil then view, buf, target = M.resolve(name) end
+    -- `:tabnew mixer` shows the mixer in it, `:tabnew roll://7` the piano
+    -- roll on clip 7; any other word names it.
+    M.tab_new(name ~= nil and tostring(name) or nil, view or nil, nil, buf and not buf.single and buf.id or nil, target)
+  end, { desc = "A new tab: `tabnew Mix` named, `tabnew mixer` showing the mixer, `tabnew roll://riff` the piano roll on the clip riff", complete = names })
   command("tabclose", function()
     if not M.tab_close() then paw.notify("the last tab does not close", "warn") end
   end, { desc = "Close the tab" })
@@ -1752,14 +2057,18 @@ function M.setup()
   map("gt", "tabnext", { desc = "The next tab" })
   map("gT", "tabprevious", { desc = "The previous tab" })
 
-  -- The configuration's layout to start with: `paw.opt.layout = "edit"`.
-  paw.on("startup", function()
-    local name = paw.opt.layout
-    if name and name ~= "" then
-      local ok, why = M.load(name)
-      if not ok then paw.notify(why, "warn") end
-    end
+  -- The project keeps the tabs and windows of the seat that saves it, and
+  -- opens with them: each seat has its own after that.
+  paw.option.define("project_screen", true)
+  paw.on("project.saving", function()
+    if paw.opt.project_screen then api.project_screen_set(M.capture()) end
   end)
+  paw.on("project.loaded", function()
+    local screen = paw.opt.project_screen and api.project_screen()
+    if type(screen) == "table" then M.restore(screen) end
+  end)
+
+  paw.on("startup", M.start)
 end
 
 return M

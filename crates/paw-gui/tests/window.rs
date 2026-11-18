@@ -1554,6 +1554,70 @@ fn tabs_show_along_the_top_and_a_click_or_gt_goes_to_one() {
     w.assert_alive("after tabs");
 }
 
+/// The demo song, the notation extension, and the first two MIDI clips of
+/// the song as `first` and `second`.
+const TWO_CLIPS: &str = "
+dofile('examples/demo-song.lua')
+paw.ext.load('extensions/notation')
+local ids = {}
+for _, t in ipairs(paw.api.track_list()) do
+  for _, c in ipairs(paw.api.clip_list(t)) do
+    if c.kind == 'midi' then ids[#ids + 1] = c.id end
+  end
+end
+first, second = ids[1], ids[#ids]
+";
+
+#[test]
+fn a_start_layout_of_the_notation_alone_fills_the_window() {
+    let mut w = scene!("notation-alone", &format!("{TWO_CLIPS}\npaw.ui.start_layout = 'notation://' .. first\npaw.layout.start()"));
+    w.expect(
+        "one pane, the notation, the whole main area",
+        "(function() local s = paw.panes.state() return #s.panes == 1 and s.panes[1].view == 'notation' and s.panes[1].x == 0 and s.panes[1].y == 0 end)()",
+    );
+    w.expect("on the clip that the layout names", "paw.ui.views.notation.clip_id == first");
+    w.pause(1.0);
+    w.shot("notation-alone.png");
+    // Closing and toggling leave it: no arrange view comes.
+    w.key("ctrl+w");
+    w.key("c");
+    w.type_text(":view.close");
+    w.key("Return");
+    w.expect(
+        "still the notation alone, and no arrange view in the layout",
+        "(function() local s = paw.panes.state() return #s.panes == 1 and s.panes[1].view == 'notation' and not paw.layout.find(paw.ui.layout, 'arrange') end)()",
+    );
+    w.assert_alive("with the notation alone");
+}
+
+#[test]
+fn a_split_made_with_ctrl_w_v_shows_two_piano_rolls_on_two_clips() {
+    let mut w = scene!("two-rolls", &format!("{TWO_CLIPS}\npaw.layout.restore(paw.layout.as_tabs('roll://' .. first))"));
+    w.expect("the roll alone", "#paw.panes.state().panes == 1 and paw.ui.focused == 'pianoroll'");
+    w.key("ctrl+w");
+    w.key("v");
+    w.expect(
+        "two panes of the roll side by side",
+        "(function() local s = paw.panes.state() return #s.panes == 2 and s.panes[1].view == 'pianoroll' and s.panes[2].view == 'pianoroll' and s.panes[2].x > s.panes[1].x end)()",
+    );
+    let second = w.ctl("return second");
+    w.type_text(&format!(":e roll://{second}"));
+    w.key("Return");
+    w.expect(
+        "each pane on its own clip",
+        "(function() local c = {} for _, win in ipairs(paw.layout.windows(paw.ui.layout)) do c[#c + 1] = paw.layout.within(win, function() return paw.ui.views.pianoroll.clip_id end) end return c[1] == first and c[2] == second end)()",
+    );
+    w.pause(1.0);
+    w.shot("two-rolls.png");
+    // A click in the left pane (on its keyboard, which plays a note) gives
+    // it the keyboard of the computer, with its clip.
+    let left = w.ctl("local p = paw.panes.state().panes[1] return math.floor(p.x + 12)").parse::<i32>().unwrap();
+    let mid = w.ctl("local p = paw.panes.state().panes[1] return math.floor(p.y + p.h / 2)").parse::<i32>().unwrap();
+    w.click((left, place::AREA_TOP + mid));
+    w.expect("the left roll has the keyboard, on the first clip", "paw.ui.views.pianoroll.clip_id == first");
+    w.assert_alive("with two rolls");
+}
+
 #[test]
 fn the_window_follows_a_change_made_from_outside() {
     let mut w = scene!("pushed", DEMO);

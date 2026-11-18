@@ -387,7 +387,7 @@ the piano roll. Every key that edits writes the MIDI of the clip (see
 | `zj` | keep the cursor's bar on the system before; again, let it go where it fits |
 | `:notation.bars-per-system 4` | that many bars on every system; without a number, as they fit |
 | `K` | what is under the cursor: the note as written (its value, voice, marks and the dynamic in force) and the MIDI note it is, then the clip and the track |
-| `,n` | back to the arrange view |
+| `,n` | back to the window before |
 | `:q` `ZZ` `Ctrl-w c` | close the view |
 | `Esc` | stay: drop a count, an operator or a selection |
 

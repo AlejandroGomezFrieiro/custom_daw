@@ -179,6 +179,10 @@ struct ProjectFile {
     project: Project,
     #[serde(default)]
     transport: Transport,
+    /// The tabs and windows the project opens with, as the frontends' Lua
+    /// keeps them: not part of the song, and not an edit to undo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    screen: Option<Value>,
 }
 
 /// The text of a project file for a project given as data, such as one
@@ -389,6 +393,8 @@ pub struct Session {
     seeks: u32,
     seek_target: f64,
     pub path: Option<PathBuf>,
+    /// The screen the project file keeps (`ProjectFile::screen`).
+    pub screen: Option<Value>,
     /// Change notifications waiting to be delivered to Lua.
     pub events: Vec<ModelEvent>,
     pub warnings: Vec<String>,
@@ -539,6 +545,7 @@ impl Session {
             seeks: 0,
             seek_target: 0.0,
             path: None,
+            screen: None,
             events: Vec::new(),
             warnings: Vec::new(),
             take: None,
@@ -875,6 +882,8 @@ impl Session {
             ..transport
         };
         self.path = path;
+        // Another project opens with its own screen, if it keeps one.
+        self.screen = None;
         self.send_transport();
         self.flush();
         self.launcher_reset();
@@ -911,6 +920,7 @@ impl Session {
             .with_context(|| format!("{} cannot be loaded", path.display()))?;
         let moved = self.find_media(&mut file.project, path);
         self.replace_project(file.project, file.transport, Some(path.to_path_buf()));
+        self.screen = file.screen;
         // Files found elsewhere are a change the file does not have yet.
         self.touched |= moved;
         Ok(())
@@ -1000,6 +1010,7 @@ impl Session {
             version: FILE_VERSION,
             project,
             transport: self.transport.clone(),
+            screen: self.screen.clone(),
         };
         let text = serde_json::to_string_pretty(&file)?;
         // Write beside the target, flush it and rename, so a crash cannot

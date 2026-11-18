@@ -1164,8 +1164,8 @@ function paw.autosave.orphan_takes() end
 function paw.autosave.recover(file, opts) end
 
 --- Give the keyboard back to the main window from a view in a separate
---- window. It goes to the window that had it before the view went there.
---- If there is no such window, it goes to the arrange view.
+--- window. It goes to the window that had it before the view went there,
+--- else to the current window of the tab.
 ---@param name any
 function paw.canvas.back(name) end
 
@@ -3957,6 +3957,23 @@ function paw.layout.all_windows() end
 ---@param win any
 function paw.layout.alternate(win) end
 
+--- A layout as `M.restore` takes it, from any of the forms a configuration
+--- writes: a view's name (`"notation"`), a tree (`{ dir = "h", "roll",
+--- "notation" }`), a list of tabs, or what `M.capture` gives.
+---@param spec any
+function paw.layout.as_tabs(spec) end
+
+--- Give the keyboard to the window that had it before the current one
+--- (`Ctrl-w p`), else to another window of the tab. Returns false when
+--- the current window is the only one.
+function paw.layout.back() end
+
+--- Put the state of `win` in the table of its view, and keep the state of
+--- the window before. A window new to the view starts from that state
+--- (`fresh`). Nothing happens for a view with one state.
+---@param win any
+function paw.layout.bind(win) end
+
 --- The border between two windows at a cell of an arrangement
 --- (`paw.ui.arrange`). This is the rule between windows side by side, or
 --- the top row of a window below a different window.
@@ -3964,6 +3981,10 @@ function paw.layout.alternate(win) end
 ---@param x any
 ---@param y any
 function paw.layout.border_at(rects, x, y) end
+
+--- The window whose state the table of a view holds now, if any.
+---@param name any
+function paw.layout.bound(name) end
 
 --- A buffer of a type for a target, made if there is none. A view's type
 --- has one buffer, whatever the target.
@@ -3993,23 +4014,37 @@ paw.layout.buftype = paw.buftype
 --- The tabs and windows as plain data: what `:layout save` writes.
 function paw.layout.capture() end
 
+--- The clip a name of a window's thing stands for: an id (`7`), an
+--- address (`paw://clip/7`) or the name of a clip, the first in the order
+--- of the tracks. Nil if there is none.
+---@param target any
+function paw.layout.clip_named(target) end
+
 --- Close a window. The window of a view keeps its place, hidden. Other
 --- windows go. The last window of a tab closes the tab. The last window of
 --- all does not close. Returns true if it closed.
 ---@param win any
 function paw.layout.close(win) end
 
---- Hide the windows of a view in each tab. Returns true if one was on the screen.
+--- Hide the windows of a view in each tab, but the last window of a tab,
+--- which stays. Returns true if one that was on the screen went.
 ---@param name any
 function paw.layout.conceal(name) end
+
+--- A copy of a seat's tabs for a new seat: the windows keep their places
+--- and options, and start from that seat's state.
+---@param tabs any
+function paw.layout.copy_tabs(tabs) end
 
 --- The window that has the keyboard, in the current tab. This is the last
 --- window entered, or the window of the focused view when paw gave focus by
 --- the name of the view.
 function paw.layout.current() end
 
---- The tree every tab starts with: the arrange view, and the panels' places,
---- closed.
+--- The tree that paw starts with when the configuration names no start
+--- layout (`paw.ui.start_layout`): the arrange view, and the panels' places
+--- next to it, closed. Nothing else depends on it: any view can be alone
+--- in a tab.
 function paw.layout.default_tree() end
 
 --- Dock a view in the current tab and remember the place for other tabs.
@@ -4020,11 +4055,15 @@ function paw.layout.dock(name, opts) end
 
 --- Move a border to the position of the pointer. If one of the two sides
 --- has its own size, it keeps a size. If not, the first side gets a size.
+--- A graphical frontend lays the tree out in pixels (paw/panes.lua):
+--- `opts.unit` is its cell `{ w, h }`, and `opts.map` takes each node
+--- of its arrangement to the node of the tree. Sizes stay in cells.
 ---@param border any
 ---@param rects any
 ---@param x any
 ---@param y any
-function paw.layout.drag_border(border, rects, x, y) end
+---@param opts any
+function paw.layout.drag_border(border, rects, x, y, opts) end
 
 --- Close the windows of buffers whose target is gone, as when another
 --- project is opened (a window with `paw://lane/9` in it): a type says so
@@ -4049,10 +4088,13 @@ function paw.layout.exchange(count) end
 ---@param node any
 function paw.layout.export(node) end
 
---- The window of a view in a tree, one on screen first.
+--- The window of a view in a tree, one on screen first: the window with
+--- the keyboard, else the one whose state the view holds, else the one
+--- that had the keyboard last. With `shown`, only one on screen.
 ---@param root any
 ---@param name any
-function paw.layout.find(root, name) end
+---@param shown any
+function paw.layout.find(root, name, shown) end
 
 --- The window of an id in the tree under `root`.
 ---@param root any
@@ -4098,6 +4140,11 @@ function paw.layout.move_to_edge(edge) end
 ---@param dir any
 ---@param count any
 function paw.layout.neighbour(dir, count) end
+
+--- True if a view is shown in one window at a time: a view without a
+--- state for each window. A buffer type is not.
+---@param name any
+function paw.layout.one_window(name) end
 
 --- Close every window of the current tab but one.
 ---@param win any
@@ -4174,16 +4221,23 @@ function paw.layout.set_option(win, name, value) end
 ---@param size any
 function paw.layout.set_size(node, axis, size) end
 
+--- After a window drew or took the pointer: each view's table holds the
+--- state of its window in the current tab that had the keyboard last, so
+--- that keys and commands act there.
+function paw.layout.settle() end
+
 --- Make the empty buffer type, the commands and the keys. Run once the
 --- default commands are there, as some of these take over their short names.
 function paw.layout.setup() end
 
 --- Show a buffer in a window instead of the one it shows. A view on
---- screen in another window moves here.
+--- screen in another window moves here. `target` is what the view opens
+--- there (`roll://7`: clip 7).
 ---@param win any
 ---@param name any
 ---@param buf any
-function paw.layout.show_in(win, name, buf) end
+---@param target any
+function paw.layout.show_in(win, name, buf, target) end
 
 --- True if a node takes space: a window that is not hidden, or a node with such a window.
 ---@param node any
@@ -4192,9 +4246,16 @@ function paw.layout.shown(node) end
 --- Split a window (the current one) and show a buffer in the new half,
 --- which gets the keyboard. `opts`: `vertical` (side by side), `view` (the
 --- type; "empty" by default), `buf` (a buffer of a type that has more than
---- one), `win`. Returns the new window, or nil and why not.
+--- one), `target` (what the view opens there, as in `roll://7`), `win`.
+--- Returns the new window, or nil and why not.
 ---@param opts any
 function paw.layout.split(opts) end
+
+--- Lay out the screen as the configuration starts it: `paw.ui.start_layout
+--- = "notation"` in init.lua (any form `M.as_tabs` takes), or a named
+--- layout, `paw.opt.layout = "edit"`. Without either, the screen is the
+--- default tree. paw does this once its configuration has run.
+function paw.layout.start() end
 
 --- The current tab.
 function paw.layout.tab() end
@@ -4214,12 +4275,15 @@ function paw.layout.tab_copy(name) end
 function paw.layout.tab_go(i) end
 
 --- Make a tab after the current tab, and go to it. It shows a buffer (the
---- name of a view, or `buf`) or the window `win`. Without them, it shows an
---- empty window.
+--- name of a view; `buf`, a buffer of a type with many) or the window
+--- `win`. Without them, it shows an empty window, the start page. `target`
+--- is what the view opens there (`roll://7`).
 ---@param name any
 ---@param view any
 ---@param win any
-function paw.layout.tab_new(name, view, win) end
+---@param buf any
+---@param target any
+function paw.layout.tab_new(name, view, win, buf, target) end
 
 --- Go `n` tabs on (back, when negative), round the end.
 ---@param n any
@@ -4250,11 +4314,42 @@ function paw.layout.title(buf) end
 --- Move the current window to a tab of its own.
 function paw.layout.to_tab() end
 
+--- The view a name or a short name (`roll`) stands for, or nil.
+---@param name any
+function paw.layout.view_named(name) end
+
+--- Keep fields of a view's table for each window: `keys` names them,
+--- `fresh` the ones a new window starts without (caches, what drawing
+--- measures). A new window starts with the others as they are.
+---@param name any
+---@param tbl any
+---@param keys any
+---@param fresh any
+---@param key any
+function paw.layout.window_fields(name, tbl, keys, fresh, key) end
+
+--- Keep some state of a view for each window. `get()` gives it (one
+--- value), `set(value)` puts it back, `fresh(value)` gives what a new
+--- window starts with from the value of the window it is split from.
+--- `key` names it: the same key again (a module loaded again) replaces it.
+---@param name any
+---@param get any
+---@param set any
+---@param fresh any
+---@param key any
+function paw.layout.window_keep(name, get, set, fresh, key) end
+
 --- The windows of a tree in order, the hidden ones too with `all`. A window
 --- made by code that only gave it a view gets what a window has.
 ---@param root any
 ---@param all any
 function paw.layout.windows(root, all) end
+
+--- Run `fn(...)` with the state of `win` in its view's table, then put
+--- back the state that was there.
+---@param win any
+---@param fn any
+function paw.layout.within(win, fn, ...) end
 
 --- Bind a controller to a target, in place of whatever moved that target
 --- before. `source` is { cc = 74 }, { bend = true } or { pressure = true },
@@ -5002,14 +5097,18 @@ function paw.option.undefine(name, was) end
 
 --- The size of the main area in pixels, from the frontend: at the start
 --- and each time that it changes. The first time that the window of a seat
---- gives it, paw shows the device panel. A window shows the devices of the
---- selected track next to the timeline unless the user closes them.
+--- gives it, paw shows the device panel when the tab has its place, closed,
+--- as the default start layout has (`paw.layout.default_tree`): a window
+--- shows the devices of the selected track next to the timeline unless the
+--- user closes them. A start layout of the configuration's own is shown as
+--- it is.
 ---@param width any
 ---@param height any
 function paw.panes.area(width, height) end
 
 --- A border of the last arrangement (by its place in `state().borders`)
---- dragged to `x, y`: the side that has a size keeps one, in whole cells.
+--- dragged to `x, y`: as a border dragged in the terminal, the side that
+--- has a size keeps one, in whole cells.
 ---@param index any
 ---@param x any
 ---@param y any
@@ -6863,7 +6962,9 @@ function paw.ui.focus_next(step) end
 ---@param location any
 function paw.ui.go(location) end
 
---- Close the window of a view, in each tab. The view keeps its place for the next time.
+--- Close the window of a view, in each tab. The view keeps its place for
+--- the next time. The last window of a tab does not close: it goes on
+--- showing the view, as `Ctrl-w c` leaves it.
 ---@param name any
 function paw.ui.hide(name) end
 
@@ -6896,9 +6997,11 @@ function paw.ui.input(opts, on_submit) end
 ---@param paint any
 function paw.ui.layer(view, part, name, order, paint) end
 
---- The location under the cursor of the focused view (or `view`).
+--- The location under the cursor of the focused view (or `view`). With
+--- `win`, the cursor of that window: each window of a view has its own.
 ---@param view any
-function paw.ui.location(view) end
+---@param win any
+function paw.ui.location(view, win) end
 
 --- Say how a view places locations (`{ uri, selector }`):
 ---   at()            the location under its cursor, or nil
@@ -7062,6 +7165,16 @@ function paw.ui.toggle(name) end
 --- with no mapping, `modal` (each key goes to `on_key`), `on_mouse(self, event)`,
 --- `on_show(self)`, `on_hide(self)`. A view is a buffer type with one
 --- buffer, with the name of the view or the name from `bufname`.
+--- 
+--- `window_state` names the fields of the view's table that are each
+--- window's own (the cursor, the scroll, the open clip). Then any number of
+--- windows show the view, and the table holds the state of the window that
+--- draws or acts (`paw.layout.bind`). `window_fresh` names the fields a
+--- new window starts without, such as caches. Without `window_state`, the
+--- view shows in one window at a time. `open_target(self, target)` opens
+--- a thing by name in the window (`:e roll://7`), and `window_target(self)`
+--- gives that name back for a saved layout. `share` says what part of the
+--- room the view keeps where windows share it: `{ column, least, most }`.
 ---@param name any
 ---@param def any
 function paw.ui.view(name, def) end
@@ -7912,6 +8025,14 @@ function paw.api.project_recover(path, opts) end
 
 ---@param path string?
 function paw.api.project_save(path) end
+
+--- The tabs and windows that the project file keeps, as plain data,
+--- or nil. They are not part of the song: setting them is not an
+--- edit, and the next save writes them.
+function paw.api.project_screen() end
+
+---@param value any
+function paw.api.project_screen_set(value) end
 
 ---@param key string
 ---@param value any

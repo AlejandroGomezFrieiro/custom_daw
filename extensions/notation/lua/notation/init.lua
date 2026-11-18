@@ -1834,11 +1834,7 @@ end
 
 -- Opening ---------------------------------------------------------------------------------
 
---- Open a MIDI clip as notation, in the terminal and in a window.
-function view:edit(clip)
-  if type(clip) == "number" then clip = paw.clip(clip) end
-  if not clip then return paw.notify("no clip here", "warn") end
-  if clip.kind ~= "midi" then return paw.notify("only MIDI clips can be shown as notation", "warn") end
+local function open(self, clip)
   self.clip_id, self.beat, self.first, self.chord, self.last, self.cache = clip.id, 0, 1, nil, nil, nil
   self.parts, self.gone = nil, nil
   self.triplets, self.tuplet, self.again, self.push, self.repitch, self.grace, self.pending_grace = false, nil, nil, nil, nil, nil, nil
@@ -1853,9 +1849,29 @@ function view:edit(clip)
   end
   if first and first.notes then self.step = first.notes[#first.notes].step end
   if first then self.beat = math.max(0, first.notes and first.start or 0) end
+end
+
+--- Open a MIDI clip as notation, in the terminal and in a window.
+function view:edit(clip)
+  if type(clip) == "number" then clip = paw.clip(clip) end
+  if not clip then return paw.notify("no clip here", "warn") end
+  if clip.kind ~= "midi" then return paw.notify("only MIDI clips can be shown as notation", "warn") end
+  open(self, clip)
   paw.ui.focus("notation")
   if paw.canvas then paw.canvas.open("notation", { title = "Notation", width = 1100, height = 560 }) end
 end
+
+--- Open the clip a window's name gives (`:e notation://riff`, `:vs
+--- notation://7`): by its name, its number or its address.
+function view:open_target(target)
+  local clip = paw.layout.clip_named(target)
+  if not clip then return false, "no clip `" .. tostring(target) .. "`" end
+  if clip.kind ~= "midi" then return false, "only MIDI clips can be shown as notation" end
+  open(self, clip)
+end
+
+--- What a saved layout keeps of the window: the number of its clip.
+function view:window_target() return self.clip_id end
 
 --- The clip to open: the piano roll's when it has the keyboard, else the
 --- one under the arrange cursor.
