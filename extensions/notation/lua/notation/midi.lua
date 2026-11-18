@@ -562,16 +562,19 @@ local function put_note_part(ev, by_id)
   ev.art = next(art) and art or nil
 end
 
---- A measure's voices as text, which changes when they do.
+--- A measure's voices as text, which changes when they do. Its pieces are
+--- joined with `..` rather than gathered in a table to concatenate: it is
+--- made for every measure of a score, and that is quicker.
 local function voices_token(m)
   local out = {}
   for _, entry in ipairs(m.voices) do
     out[#out + 1] = "|" .. entry.staff .. ":" .. entry.voice
     for _, ev in ipairs(entry.events) do
       local tp = ev.tuplet
-      out[#out + 1] = table.concat({ ev.id, ev.kind, ev.dur[1], ev.dur[2], ev.dots or 0, tp and (tp.id .. "/" .. tp.actual .. "/" .. tp.normal) or "",
-        ev.grace or "", ev.arpeggio or "", ev.beam or "", ev.stem or "", ev.orn or "", ev.lyric or "",
-        ev.art and serial(ev.art) or "", ev.lyrics and serial(ev.lyrics) or "" }, ",")
+      out[#out + 1] = ev.id .. "," .. ev.kind .. "," .. ev.dur[1] .. "," .. ev.dur[2] .. "," .. (ev.dots or 0) .. ","
+        .. (tp and (tp.id .. "/" .. tp.actual .. "/" .. tp.normal) or "") .. "," .. (ev.grace or "") .. ","
+        .. (ev.arpeggio or "") .. "," .. (ev.beam or "") .. "," .. (ev.stem or "") .. "," .. (ev.orn or "") .. ","
+        .. (ev.lyric or "") .. "," .. (ev.art and serial(ev.art) or "") .. "," .. (ev.lyrics and serial(ev.lyrics) or "")
       for _, n in ipairs(ev.notes or {}) do
         out[#out + 1] = n.id .. "," .. n.step .. "," .. n.alter .. "," .. n.octave .. (n.tie and "~" or "")
       end
@@ -620,7 +623,7 @@ local function note_key(n, keep)
   local meta = n.meta
   local own = type(meta) == "table" and type(meta.notation) == "table" and meta.notation or nil
   local lyric = type(meta) == "table" and meta.lyric or nil
-  if not own then return table.concat({ keep[n.index] or "?", n.pitch, lyric and serial(lyric) or "" }, ",") end
+  if not own then return (keep[n.index] or "?") .. "," .. n.pitch .. "," .. (lyric and serial(lyric) or "") end
   return table.concat({ keep[n.index] or "?", n.pitch, lyric and serial(lyric) or "", tostring(own.letter), tostring(own.alter),
     tostring(own.pitch), tostring(own.beam), tostring(own.orn), tostring(own.stem), tostring(own.grace),
     own.art ~= nil and serial(own.art) or "", own.lyrics ~= nil and serial(own.lyrics) or "" }, ",")
@@ -639,6 +642,10 @@ local function chord_key(c, keep, known)
   known[c] = hit
   return hit
 end
+
+-- Functions are made once, outside the loops that use them: LuaJIT does
+-- not compile a loop that makes one.
+local function by_start(a, b) return a.start < b.start end
 
 local function sorted_keys(t)
   local out = {}
@@ -685,8 +692,8 @@ local function write_measures(tr, o, keep, next_id, by_id)
           key[#key + 1] = "v" .. s .. ":" .. v
           for _, p in ipairs(pieces) do
             local c = p.seg.chord
-            key[#key + 1] = table.concat({ num(p.a), num(p.b), count[p.seg] or 0, p.seg.e > stop + 1e-6 and "~" or "",
-              c and chord_key(c, keep, known) or "r" }, ",")
+            key[#key + 1] = num(p.a) .. "," .. num(p.b) .. "," .. (count[p.seg] or 0) .. ","
+              .. (p.seg.e > stop + 1e-6 and "~" or "") .. "," .. (c and chord_key(c, keep, known) or "r")
           end
         end
       end
@@ -711,7 +718,7 @@ local function write_measures(tr, o, keep, next_id, by_id)
         for _, v in ipairs(voices_of[s]) do
           for _, p in ipairs(lines[s][v].pieces[i] or {}) do
             local c, had = p.seg.chord, count[p.seg] or 0
-            table.sort(p.evs, function(a, b) return a.start < b.start end)
+            table.sort(p.evs, by_start)
             local total = had + #p.evs + (p.seg.e > stop + 1e-6 and 1 or 0)
             for k, ev in ipairs(p.evs) do model.tie_piece(ev, c, had + k, total) end
             if c and had > 0 then
