@@ -26,10 +26,12 @@ paw.ui.hl("Playhead", { bg = "#f38ba8" })
 paw.keymap.set("<leader>T", "track.add Strings device=synth", { desc = "A strings track" })
 ```
 
-Drive it from the keyboard in the [terminal](docs/terminal.md), with the
-mouse in a [window](docs/window.md), from [Lua scripts](docs/scripting.md),
-over a [socket](docs/protocol.md), or from an AI assistant through `paw-mcp`.
-They all drive one kernel and can be open on the same project.
+paw lives in the [terminal](docs/terminal.md), modal and keyboard first,
+with pictures where the terminal can show them (kitty graphics). The same
+views also open in a [window](crates/paw-gui/README.md) for the mouse, drawn
+from the same Lua, and everything can be driven from
+[Lua scripts](docs/scripting.md), over a [socket](docs/protocol.md)
+(`paw ctl`), or by an [AI agent](#for-agents).
 
 > [!NOTE]
 > paw is a **personal, work-in-progress** project, made first for one
@@ -51,13 +53,13 @@ builds paw from source, which takes several minutes.
 
 ```sh
 git clone https://github.com/AlejandroGomezFrieiro/custom_daw paw && cd paw
-nix run . -- -e 'dofile("examples/demo-song.lua")'          # the terminal, with a demo song
-nix run .#paw-gui -- -e 'dofile("examples/demo-song.lua")'  # the window, with the same song
+nix run . -- -e 'dofile("examples/demo-song.lua")'          # paw in the terminal, with a demo song
 ```
 
 `Space` plays, `?` lists every key of the view you are in, `:tutor` runs a
 course of seventeen short lessons, `:help` opens the manual and `:q` quits.
-`nix run . -- doctor` checks your sound devices, MIDI ports and plugins.
+`:checkhealth` says what works on your machine, and `nix run . -- doctor`
+walks through your sound devices, MIDI ports and plugins.
 [Running it](docs/running.md) covers installing, building from source and
 the audio options.
 
@@ -69,7 +71,7 @@ and would rather write ten lines of Lua than wait for a feature.
 
 | If you want | Look at |
 | --- | --- |
-| A keyboard-first, modal DAW you script and reshape, terminal or window | **paw** |
+| A keyboard-first, modal DAW in the terminal that you script and reshape | **paw** |
 | A mature, deeply customisable DAW on every platform | [REAPER](https://www.reaper.fm) |
 | A mature open-source DAW for recording and mixing on Linux | [Ardour](https://ardour.org) |
 | Sound design, modulation and performance | [Bitwig Studio](https://www.bitwig.com), [Ableton Live](https://www.ableton.com) |
@@ -83,19 +85,30 @@ not for the size of its feature list.
 
 - **Editing.** MIDI and audio clips, a piano roll, take lanes with comping,
   time stretch and pitch shift, looping clips, markers, a tempo map with
-  signature changes, and an undo tree that never loses a branch.
+  signature changes, and an undo tree that never loses a branch. Every note
+  can carry its articulation (MIDI 2.0), sent to any instrument as the
+  keyswitches it needs.
+- **Big projects.** Narrow the views to a group (`:narrow Strings`) with the
+  rest frozen to audio, freeze any track, render stems by group.
 - **Recording.** Audio and MIDI with an input and monitoring per track, loop
   recording into takes, punch in and out, count-in. Takes survive a crash.
 - **Mixing.** Groups, sends, side-chains, instruments with several outputs,
   automation with read, touch, latch and write modes, controller learn.
-- **Devices.** A synth, a drum kit, a sampler and fifteen effects and meters,
-  devices written in Lua, and your CLAP, LV2 and VST3 plugins, each in a
-  process of its own so that a crash takes nothing else with it.
+- **Devices.** A synth, a drum kit and fifteen effects and meters, paw's
+  own sample player for SFZ and Decent Sampler libraries, devices written in
+  Lua, and your CLAP, LV2 and VST3 plugins, each in a process of its own so
+  that a crash takes nothing else with it.
 - **Files.** Projects are readable JSON. Renders to WAV and FLAC (MP3, Ogg
   and Opus through ffmpeg) on a background thread; MIDI files open and export.
+- **Finding things.** Pickers in the manner of telescope and fzf-lua with
+  previews you hear, `:vimgrep` over the whole project into quickfix, and
+  structural queries (`:select clip[name~=pizz] > note[pitch>=C5]`).
+- **Files.** A file manager like oil.nvim (`:e ~/samples`: rename, move and
+  place sounds by editing lines), and `:Pdiff` / git drivers that diff and
+  merge projects.
 - **Live and remote.** Clips launched on the bar in scenes
-  ([live](docs/live.md)); the terminal or the window attached to an instance
-  on another machine over TLS ([running](docs/running.md#on-another-machine)).
+  ([live](docs/live.md)); a terminal or a window attached to an instance on
+  another machine over TLS ([running](docs/running.md#on-another-machine)).
 
 ## A tour
 
@@ -122,7 +135,7 @@ in oil.nvim; `:w` shows the plan and applies it as one undo step:
 ![The tracks as text: one renamed and turned down, then written](docs/images/tui-textbuf.gif)
 
 <details>
-<summary>More: recording, help, configuration, the window</summary>
+<summary>More: recording, help, configuration</summary>
 
 ![Loop recording into takes (played in by a script) and comping one](docs/images/tui-takes.gif)
 
@@ -130,33 +143,34 @@ in oil.nvim; `:w` shows the plan and applies it as one undo step:
 
 ![init.lua edited beside paw: :reload changes the playhead and adds a key](docs/images/tui-config.gif)
 
-The window shows the same views as panes for the mouse; keys still work in
-it. [docs/window.md](docs/window.md) has every gesture.
-
-![The window's panes: arrange, device panel, piano roll, tracks as text](docs/images/gui-panes.png)
-
-![Clips copied, trimmed and zoomed with the mouse](docs/images/gui-arrange.gif)
-
-![The piano roll as a pencil: notes and velocities drawn](docs/images/gui-pianoroll.gif)
-
-![A chorus added by name, the mixer, and a cutoff curve drawn](docs/images/gui-mix.gif)
-
 </details>
 
 The whole keyboard is on one page in [docs/course/keys.md](docs/course/keys.md).
+The status line is yours to compose, as lualine is (`paw.statusline.setup`).
+
+**The window.** `paw-gui` shows the same views as panes for the mouse, drawn
+from the same Lua the terminal draws: see [its page](crates/paw-gui/README.md).
 
 ## Extensions
 
-An extension is a directory of Lua that adds commands, keys, views, windows,
-devices and kinds of track. It can also ship the native programs it needs,
-built by Nix: [utau](extensions/utau) brings its own singing engine, and the
-core knows nothing about singing. See
-[everything an extension can own](docs/extensions.md#everything-an-extension-can-own).
+An extension is a directory of Lua that adds commands, keys, views, buffer
+types, devices and kinds of track, with a manifest, hooks into every edit,
+save and undo, and its own `:checkhealth`. Whatever it registers is its own,
+so `:ext.unload` takes it away cleanly. It can also ship the native programs
+it needs, built by Nix: [utau](extensions/utau) brings its own singing
+engine and [sampler](extensions/sampler) its own sample player, and the core
+knows nothing about either. Write one view and it works in the terminal and
+the window alike. See [extensions](docs/extensions.md) and the
+[API reference](docs/api.md); LuaLS completes `paw.*` from
+[runtime/types](runtime/types). With Claude Code, the
+[`paw-extension` skill](.claude/skills/paw-extension/SKILL.md) knows how.
 
 | Extension | Adds |
 | --- | --- |
 | [notation](extensions/notation) | a clip as a score or tablature, engraved, a view over its MIDI |
 | [utau](extensions/utau) | vocal tracks sung by OpenUtau's voicebanks, with their own editor |
+| [sampler](extensions/sampler) | paw's own sample player: SFZ and Decent Sampler, articulations per note |
+| [articulations](extensions/articulations) | one file per instrument: keyswitches, ranges, delays and articulations per note |
 | [drums](extensions/drums) | drum tracks and a grid to program them on |
 | [pattern](extensions/pattern) | clips written as a line of text, as in TidalCycles |
 | [musicops](extensions/musicops) | humanize, strum, arpeggiate and other note edits |
@@ -174,17 +188,27 @@ Each one's page shows it at work. Load them from `init.lua`
 ([config/init.lua](config/init.lua) loads them all), or build paw with them
 in Nix: `paw.withExtensions (exts: [ exts.utau ])`.
 
+## For agents
+
+An AI agent with a shell drives paw the way a script does: `paw ctl --json
+eval '<lua>'` against a running instance, or `paw -l script.lua` headless
+(see "Driving paw from an agent" in [scripting](docs/scripting.md)). Clients
+without a shell use the MCP server, `paw-mcp`: tools that return JSON, a
+`lua` escape hatch, and the manual and API reference as resources. Every
+batch an agent makes is one named undo step. See
+[crates/paw-mcp](crates/paw-mcp/README.md).
+
 ## Documentation
 
 | Page | About |
 | --- | --- |
 | [Running it](docs/running.md) | installing, options, audio devices, other machines |
 | [The terminal](docs/terminal.md) | every key and picker, Ex, text buffers, quickfix, `:help` |
-| [The window](docs/window.md) | every gesture |
+| [The window](crates/paw-gui/README.md) | the mouse frontend, and [every gesture](docs/window.md) |
 | [Recording](docs/recording.md) and [mixing](docs/mixing.md) | inputs, takes, routing, automation, tempo, export |
 | [Devices](docs/devices.md) | plugins, the sandbox, built-in devices, devices in Lua |
 | [Configuration](docs/configuration.md) and [scripting](docs/scripting.md) | options, the look, the `paw` module, `paw ctl` |
-| [Extensions](docs/extensions.md) | what belongs in the core, and what an extension can own |
+| [Extensions](docs/extensions.md) and the [API](docs/api.md) | what belongs in the core, what an extension can own, every function |
 | [Architecture](docs/architecture.md) and [protocol](docs/protocol.md) | the crates, the threads, the socket |
 | [What is missing](docs/missing.md) | what it does not do yet |
 
