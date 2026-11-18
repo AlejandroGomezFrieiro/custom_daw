@@ -60,8 +60,8 @@ song. The track commands take the track of the cursor.
 | `:5,8transpose 12` | Moves notes by semitones. |
 | `:%quantize`, `:%quantize 1/16` | Snaps notes to the grid of the piano roll, or to a note value or a count of beats. |
 | `:t2,t4 mute`, `:t* unmute`, `:t/Drums/ solo`, `:t* unsolo` | Mutes and solos tracks. `mute!` and `solo!` switch each track. `:5,8 mute` mutes the clips in bars 5 to 8. |
-| `:t* volume -3`, `:t2 volume =-6` | Steps the volume of tracks down 3 dB. Sets it to -6 dB. |
-| `:t2 pan =-0.5` | Sets the pan, from -1 (left) to 1 (right). |
+| `:t* volume -=3`, `:t2 volume -6` | Steps the volume of tracks down 3 dB. Sets it to -6 dB. |
+| `:t2 pan -0.5`, `:t2 pan +=0.1` | Sets the pan, from -1 (left) to 1 (right). Steps it to the right. |
 | `:5,8normal x`, `:t* normal gcc` | Types keys at the start of each bar of the range, on each of its tracks. With a range of tracks, at each track. |
 | `:%s/pattern/replacement/flags` | Changes what matches (below). |
 | `:&`, `:&&` | Does the last `:s` again on a range, without and with its flags. |

@@ -359,6 +359,12 @@ function paw.emit(name, payload) end
 ---@param fn any
 function paw.every(ms, fn) end
 
+--- What a user sees of an error: one line, without the stack traceback
+--- and with the place in the code (`paw/x.lua:12:`) moved to the end, where
+--- it does not hide what went wrong. The whole error goes to the log.
+---@param err any
+function paw.failure(err) end
+
 --- Send the change events for the edits made until now. The kernel does
 --- this at the end of each turn. Call `paw.flush()` to make handlers run sooner.
 function paw.flush() end
@@ -460,6 +466,8 @@ function paw.tracks() end
 
 --- Call a function. If it fails, show the error as a message and do not
 --- raise it. Returns true and the results of the function, or false and the error.
+--- The message is the error's first lines, never a stack traceback
+--- (`paw.failure`); the log keeps the traceback.
 ---@param fn any
 function paw.try(fn, ...) end
 
@@ -2500,6 +2508,21 @@ function paw.ext.unload(name, opts) end
 ---@param tree any
 function paw.files.buffer_name(dir, tree) end
 
+--- Set the folder for relative names, as `:cd` does: `dir` is relative to
+--- the folder now; `-` is the folder before; nil is the home folder;
+--- false goes back to the default (beside the project).
+--- Returns the folder, or nil and why not.
+---@param dir any
+function paw.files.cd(dir) end
+
+--- The folder that `:cd` set, or nil when there is none.
+function paw.files.cwd() end
+
+--- The folder that a relative name in a command goes to: the folder that
+--- `:cd` set; else the folder of the project's file; else the folder that
+--- paw started in.
+function paw.files.here() end
+
 --- True if a path is a folder.
 ---@param path any
 function paw.files.is_dir(path) end
@@ -2509,6 +2532,12 @@ function paw.files.is_dir(path) end
 ---@param dir any
 ---@param opts any
 function paw.files.open(dir, opts) end
+
+--- The full path of a name that the user typed: `~` is the home folder, and
+--- a relative name is in `paw.files.here()`.
+---   paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" beside song.json
+---@param name any
+function paw.files.path(name) end
 
 --- What a sound file's header says: `{ rate, channels, seconds }`, or nil
 --- for a file that is not one that can be read.
@@ -6963,8 +6992,9 @@ function paw.track_kinds.spec(which) end
 ---@param height any
 function paw.ui.arrange(width, height) end
 
---- Ask for an exact value on the command line: a number, or `+2` and `-3`
---- to change the current value by steps. `=-6` gives a value below zero.
+--- Ask for an exact value on the command line: a number is the value, with
+--- its sign (`-6` is -6 dB), and `+=2` and `-=3` change the current value
+--- by a step.
 ---   paw.ui.ask_value({ label = "Volume", now = -8, unit = "dB", min = -60, max = 12 }, function(v) ... end)
 --- The options are `show(value)`, which writes the current value,
 --- `parse(text)`, which reads one absolute value, and `min` and `max`, the

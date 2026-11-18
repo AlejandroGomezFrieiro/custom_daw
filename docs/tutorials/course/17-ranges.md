@@ -34,8 +34,8 @@ The tutor opens a practice project for this lesson. It checks each step when you
    - ✓ Only Bass lost its last bar.
 4. Press `u` again.
    - ✓ The bar is back.
-5. `t*` is all the tracks. Make them all 3 dB quieter: type `:t* volume -3`, then press `<CR>`.
-   - ✓ Each fader went down by 3 dB. `=-6` sets them all to -6 dB.
+5. `t*` is all the tracks. Make them all 3 dB quieter: type `:t* volume -=3`, then press `<CR>`.
+   - ✓ Each fader went down by 3 dB. `:t* volume -6` sets them all to -6 dB.
 6. Now we use `:s`. Type `:%s/c4/d4/g`. The line counts the C4 notes of the song, and the clips that contain them are highlighted. Press `<CR>`.
    - *Hint:* `<Esc>` leaves the line and changes nothing. Then type `:` and the command again.
    - ✓ Each C4 is a D4 now. `%` was the whole song, and `g` was each match in each bar.
@@ -44,6 +44,6 @@ The tutor opens a practice project for this lesson. It checks each step when you
 
 ## What we did
 
-We used `:2,3d`, `:t2 4d`, `:t* volume -3`, `:%s/c4/d4/g` and `:g/name:b/mute`: a range, then a command, one undo step for each.
+We used `:2,3d`, `:t2 4d`, `:t* volume -=3`, `:%s/c4/d4/g` and `:g/name:b/mute`: a range, then a command, one undo step for each.
 
 Previous: [The bundled extensions](16-extensions.md) · [All lessons](README.md)

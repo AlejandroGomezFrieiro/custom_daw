@@ -1,5 +1,5 @@
 -- Tests of Ex: ranges over time and tracks, and the commands that take
--- them (`:5,8d`, `:%s/c4/d4/g`, `:g/vel<20/d`, `:t* volume -3`), with the
+-- them (`:5,8d`, `:%s/c4/d4/g`, `:g/vel<20/d`, `:t* volume -=3`), with the
 -- live preview, confirming each change, and undo. Loaded by
 -- tests/suite.lua with its helpers.
 local T = ...
@@ -227,10 +227,12 @@ end)
 
 test("ex: track commands take ranges of tracks", function()
   local t, drums = song()
-  run("t* volume -3")
-  eq(t.volume .. " " .. drums.volume, "-3 -3", ":t* volume -3 steps every track down")
-  run("t2 volume =-12")
-  eq(drums.volume, -12, "= sets it")
+  run("t* volume -=3")
+  eq(t.volume .. " " .. drums.volume, "-3 -3", ":t* volume -=3 steps every track down")
+  run("t2 volume -12")
+  eq(drums.volume, -12, "a number sets it")
+  run("t2 volume =-11")
+  eq(drums.volume, -11, "= sets it too")
   run("t/dru/ solo")
   eq(drums.solo, true, "solo by name")
   run("t1,t2 mute")

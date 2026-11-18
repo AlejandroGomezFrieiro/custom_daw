@@ -10,11 +10,34 @@ package.loaded["paw"] = paw
 paw.util = require("paw.util")
 paw.inspect = paw.util.inspect
 
+--- What a user sees of an error: one line, without the stack traceback
+--- and with the place in the code (`paw/x.lua:12:`) moved to the end, where
+--- it does not hide what went wrong. The whole error goes to the log.
+function paw.failure(err)
+  local text = tostring(err)
+  local short = text:match("^(.-)\n*stack traceback:") or text
+  short = short:gsub("%s+$", "")
+  local file, line, rest = short:match("^[^\n]-([%w_%-]+%.lua):(%d+): (.*)$")
+  if file then
+    -- An error raised by the code itself (`attempt to index a nil value`)
+    -- says where; one raised on purpose says what to do, and that is enough.
+    local internal = rest:match("^attempt to ") or rest:match("^bad argument") or rest:match("^stack overflow")
+    short = internal and string.format("%s (%s:%s)", rest, file, line) or rest
+  end
+  return short
+end
+
 --- Call a function. If it fails, show the error as a message and do not
 --- raise it. Returns true and the results of the function, or false and the error.
+--- The message is the error's first lines, never a stack traceback
+--- (`paw.failure`); the log keeps the traceback.
 function paw.try(fn, ...)
   local result = { xpcall(fn, debug.traceback, ...) }
-  if not result[1] then paw.notify(result[2], "error") end
+  if not result[1] then
+    local short = paw.failure(result[2])
+    if short ~= tostring(result[2]) then api.log("[error] " .. tostring(result[2])) end
+    paw.notify(short, "error")
+  end
   return unpack(result)
 end
 

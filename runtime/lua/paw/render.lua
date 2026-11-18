@@ -315,11 +315,12 @@ paw.command("render", function(ctx)
     return stems.command(ctx, opts)
   end
   if a.stems == true then
-    local dir = a[1] and tostring(a[1]) or (default_path():gsub("%.wav$", "") .. " stems")
+    local dir = a[1] and paw.files.path(tostring(a[1])) or (default_path():gsub("%.wav$", "") .. " stems")
     local files = M.stems(dir, paw.util.merge(opts, { format = a.format }))
     return paw.notify(string.format("rendering %d stem%s into %s", #files, #files == 1 and "" or "s", dir))
   end
-  local path = a[1] and tostring(a[1]) or default_path()
+  -- A relative name goes beside the project, or to the folder `:cd` set.
+  local path = a[1] and paw.files.path(tostring(a[1])) or default_path()
   local info = M.render(path, opts)
   if info then
     notify_rendered(path, info, "")
@@ -373,7 +374,7 @@ paw.command("render.cancel", function()
 end, { desc = "Stop the render running in the background; it leaves no file" })
 
 paw.command("stems", function(ctx)
-  local dir = tostring(ctx.args[1] or "stems")
+  local dir = paw.files.path(tostring(ctx.args[1] or "stems"))
   local files = M.stems(dir, {
     tail = tonumber(ctx.args.tail), bits = tonumber(ctx.args.bits), format = ctx.args.format,
     quality = ctx.args.quality and tostring(ctx.args.quality) or nil, bitrate = tonumber(ctx.args.bitrate),

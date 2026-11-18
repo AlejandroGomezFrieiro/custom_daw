@@ -401,15 +401,16 @@ paw.mouse.overlays[#paw.mouse.overlays + 1] = function(e)
   return true
 end
 
---- Read a typed value against the one there is now: `6` or `=6` is 6, and
---- `+2` or `-3` are steps from `now`. `parse(text)` reads one absolute
+--- Read a typed value against the one there is now. A number is the value
+--- itself, with its sign: `-6` is -6, `+3` is 3 (`=-6` is -6 too). `+=2`
+--- and `-=3` change `now` by a step. `parse(text)` reads one absolute
 --- value (default: a number, with any unit after it ignored). Nil when the
 --- text says nothing usable.
 function M.read_value(text, now, parse)
   parse = parse or function(t) return tonumber((t:match("^%s*([%+%-]?[%d%.]+)"))) end
   text = text:match("^%s*(.-)%s*$")
   if text == "" then return nil end
-  local sign, rest = text:match("^([%+%-])%s*(.+)$")
+  local sign, rest = text:match("^([%+%-])=%s*(.+)$")
   if sign then
     local by = parse(rest)
     if not by then return nil end
@@ -418,8 +419,9 @@ function M.read_value(text, now, parse)
   return parse((text:gsub("^=%s*", "")))
 end
 
---- Ask for an exact value on the command line: a number, or `+2` and `-3`
---- to change the current value by steps. `=-6` gives a value below zero.
+--- Ask for an exact value on the command line: a number is the value, with
+--- its sign (`-6` is -6 dB), and `+=2` and `-=3` change the current value
+--- by a step.
 ---   paw.ui.ask_value({ label = "Volume", now = -8, unit = "dB", min = -60, max = 12 }, function(v) ... end)
 --- The options are `show(value)`, which writes the current value,
 --- `parse(text)`, which reads one absolute value, and `min` and `max`, the
@@ -427,7 +429,7 @@ end
 function M.ask_value(opts, set)
   local now = opts.now
   local shown = opts.show and opts.show(now) or (string.format("%g", now) .. (opts.unit and opts.unit ~= "" and " " .. opts.unit or ""))
-  M.open({ prompt = string.format("%s %s → (6, +2, -3, =-6): ", opts.label, shown), history = "value",
+  M.open({ prompt = string.format("%s %s → (-6 sets, +=2 -=3 step): ", opts.label, shown), history = "value",
     label = "Set " .. opts.label }, function(text)
     local value = M.read_value(text, now, opts.parse)
     if not value then return paw.notify("not a value: `" .. text .. "`", "warn") end

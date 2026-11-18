@@ -6,7 +6,7 @@
 --   :5,8d          bars 5 to 8 of every track         :t2,t4 mute    tracks 2 to 4
 --   :5.3,6.1y      from beat 3 of bar 5 to beat 1 of bar 6, both beats taken in
 --   :%s/c4/d4/g    every C4 of the song               :t/Drums/ solo  tracks whose name holds Drums
---   :.,.+3>        from the cursor's bar, 4 bars      :t* volume -3   every track 3 dB down
+--   :.,.+3>        from the cursor's bar, 4 bars      :t* volume -=3  every track 3 dB down
 --   :'a,'bd        from mark a up to mark b           :'<,'>s/vel>100/vel=90/
 --   :t2 5,8d       bars 5 to 8 of track 2 alone       :t'<,'>         the tracks of the selection
 --
@@ -1421,25 +1421,25 @@ ex({ "solo", "solo!" }, function(ctx) mute_or_solo(ctx, "solo", true) end, { ite
   desc = "Solo tracks: `:t/Drums/ solo`; `solo!` switches", label = "Solo" })
 ex({ "unsolo" }, function(ctx) mute_or_solo(ctx, "solo", false) end, { items = true, desc = "Unsolo tracks: `:t* unsolo`", label = "Unsolo" })
 ex({ "volume" }, function(ctx)
-  local text = number_arg(ctx, "volume", "`:t* volume -3` 3 dB down, `=-6` to −6 dB")
+  local text = number_arg(ctx, "volume", "`:t* volume -6` to -6 dB, `-=3` 3 dB down")
   local read = require("paw.views.cmdline").read_value
   local ids = set_tracks(ctx, "volume", "volume", function(now)
     local v = read(text, now)
-    if not v then fail("`%s`: not a volume: `-3`, `+2`, `=-6`", text) end
+    if not v then fail("`%s`: not a volume: `-6`, `+=2`, `-=3`", text) end
     return util.clamp(v, -150, 24)
   end)
   paw.notify("volume of " .. plural(#ids, "track"))
-end, { items = true, desc = "Set the volume of tracks: `:t* volume -3` steps down 3 dB, `=-6` sets −6 dB", label = "Volume" })
+end, { items = true, desc = "Set the volume of tracks: `:t* volume -6` sets -6 dB, `-=3` steps down 3 dB", label = "Volume" })
 ex({ "pan" }, function(ctx)
-  local text = number_arg(ctx, "pan", "`:t2 pan =-0.5` half left, `+0.1` a step right")
+  local text = number_arg(ctx, "pan", "`:t2 pan -0.5` half left, `+=0.1` a step right")
   local read = require("paw.views.cmdline").read_value
   local ids = set_tracks(ctx, "pan", "pan", function(now)
     local v = read(text, now)
-    if not v then fail("`%s`: not a pan: `=-0.5`, `+0.1`, `0`", text) end
+    if not v then fail("`%s`: not a pan: `-0.5`, `+=0.1`, `0`", text) end
     return util.clamp(v, -1, 1)
   end)
   paw.notify("pan of " .. plural(#ids, "track"))
-end, { items = true, desc = "Pan tracks, -1 left to 1 right: `:t2 pan =-0.5`, `+0.1` a step right", label = "Pan" })
+end, { items = true, desc = "Pan tracks, -1 left to 1 right: `:t2 pan -0.5`, `+=0.1` a step right", label = "Pan" })
 ex({ "quantize" }, function(ctx)
   local grid = grid_arg(arg(ctx))
   local items = notes_in(ctx)

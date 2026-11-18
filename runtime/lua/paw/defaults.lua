@@ -868,7 +868,7 @@ command("import", function(ctx)
     local rest, word = path:match("^(.-)%s+tempo=(%S+)%s*$")
     if rest then path, tempo = rest, word end
   end
-  if path and path ~= "" then return bring((path:gsub("^~", os.getenv("HOME") or "~"))) end
+  if path and path ~= "" then return bring(paw.files.path(path)) end
   local endings = {}
   for _, list in ipairs({ audio_extensions, paw.midifile.extensions }) do
     for _, ext in ipairs(list) do endings[#endings + 1] = ext end
@@ -887,7 +887,7 @@ command("open", function(ctx)
   end
   local path = ctx.args[1]
   if path and path ~= "" and paw.files.is_dir(path) then return paw.files.open(path, { here = true }) end
-  if path and path ~= "" then return go((path:gsub("^~", os.getenv("HOME") or "~"))) end
+  if path and path ~= "" then return go(paw.files.path(path)) end
   paw.pick.file({ title = "Open", on_choose = go })
 end, { desc = "Open a project, a MIDI file as a new project, or a sound file on a new track: `open song.json`, `open song.mid`, `open take.wav`; alone, choose it from a list", raw = true, complete = "files" })
 
@@ -896,7 +896,7 @@ command("export", function(ctx)
   if not path or not paw.midifile.is_midi_file(path) then
     return paw.notify("usage: export <song.mid> [clip|selection]; `:render` makes sound files", "warn")
   end
-  path = path:gsub("^~", os.getenv("HOME") or "~")
+  path = paw.files.path(path)
   local opts = {}
   if what == "clip" then
     local clip = cursor.clip()
@@ -1521,20 +1521,30 @@ command("redo", function(ctx)
 end, { desc = "Redo, saying what was redone" })
 command("write", function(ctx)
   local path = ctx.args[1] and tostring(ctx.args[1]) or nil
+  -- A relative name goes beside the project, or to the folder `:cd` set.
+  if path then path = paw.files.path(path) end
   -- A project that has no file yet is asked where it goes, when there is
   -- somebody to ask.
   if not path and not api.project_get().path and paw.fx.interactive() then return paw.frontend.save_as() end
   if path and paw.midifile.is_midi_file(path) then
     return paw.notify("a project is not saved as a MIDI file: `:export " .. path .. "` writes one", "warn")
   end
-  if path and paw.files.is_dir((path:gsub("^~", os.getenv("HOME") or "~"))) then
+  if path and paw.files.is_dir(path) then
     return paw.notify(path .. " is a folder: name a file in it, `:w " .. path:gsub("/+$", "") .. "/song.json`", "warn")
   end
   paw.notify("saved " .. paw.project.save(path))
 end, { desc = "Save the project: `write song.json`", complete = { "projects" } })
 command("saveas", function() paw.frontend.save_as() end, { desc = "Save the project under a name chosen from a list of directories" })
 command("edit", function(ctx)
-  if not ctx.args[1] then return paw.notify("usage: edit <project.json>", "warn") end
+  -- Alone, as in Vim, it opens the project's own file again: `:e!` goes
+  -- back to the saved project and throws away what changed since.
+  if not ctx.args[1] then
+    local path = api.project_get().path
+    if not path then return paw.notify("the project has no file yet: `:e song.json` opens one, `:w song.json` saves this one", "warn") end
+    if not paw.project.guard("edit") then return end
+    paw.open(path)
+    return paw.notify("opened " .. path .. " again as it was saved")
+  end
   local how = ctx.args[2] and tostring(ctx.args[2])
   if how and how ~= "offline" and how ~= "online" then return paw.notify("usage: edit <project.json> [offline|online]", "warn") end
   local path = tostring(ctx.args[1])
@@ -1545,10 +1555,11 @@ command("edit", function(ctx)
   local view, buf, target = paw.layout.resolve(path)
   local win = view and not how and paw.layout.current()
   if win then return paw.layout.show_in(win, view, buf and not buf.single and buf.id or nil, target) end
+  path = paw.files.path(path)
   if paw.midifile.is_midi_file(path) or paw.is_audio_file(path) then return paw.commands.run("open", { path }) end
   if not paw.project.guard("edit") then return end
-  paw.open(tostring(ctx.args[1]), { plugins_offline = how == "offline", all_online = how == "online" })
-end, { desc = "Open a project: `edit song.json`; `edit song.json offline` with every plugin offline, `online` with none held back; a MIDI or sound file as `open` does", complete = { "openable", function() return { "offline", "online" } end } })
+  paw.open(path, { plugins_offline = how == "offline", all_online = how == "online" })
+end, { desc = "Open a project: `edit song.json`; alone, the project's file again (`edit!` goes back to it as saved); `edit song.json offline` with every plugin offline, `online` with none held back; a MIDI or sound file as `open` does", complete = { "openable", function() return { "offline", "online" } end } })
 command("new", function()
   if paw.project.guard("new") then paw.project.new() end
 end, { desc = "Start an empty project, unless there is unsaved work" })
@@ -2931,7 +2942,7 @@ map("<C-w>_", "view.maximize", { desc = "Give the window the whole tab, or put t
 
 -- Exact values ----------------------------------------------------------------
 --
--- A prompt that takes a number, or `+2` and `-3` to step from the value now.
+-- A prompt that takes a number (`-6` is -6), or `+=2` and `-=3` to step from the value now.
 
 --- Pan as it is shown, L30 C R25, read back into -100..100.
 local function read_pan(text)
@@ -2949,7 +2960,7 @@ command("track.volume.set", function()
     track.volume = v
     paw.notify(string.format("%s at %+.1f dB", track.name, track.volume))
   end)
-end, { desc = "Type the track's volume in dB: a number, or +2 and -3 to step" })
+end, { desc = "Type the track's volume in dB: a number (-6 is -6 dB), or +=2 and -=3 to step" })
 command("track.pan.set", function()
   local track = need_track()
   if not track then return end
@@ -2960,7 +2971,7 @@ command("track.pan.set", function()
     track.pan = v / 100
     paw.notify(track.name .. " panned " .. paw.draw.pan_text(track.pan))
   end)
-end, { desc = "Type the track's pan: L30, R25, C, or -100 to 100; +10 and -10 step" })
+end, { desc = "Type the track's pan: L30, R25, C, or -100 to 100; +=10 and -=10 step" })
 command("tempo.set", function()
   -- The tempo in force at the cursor: the change at or before it.
   local point = paw.tempo.point_at(cursor.beat)
@@ -2968,7 +2979,7 @@ command("tempo.set", function()
     api.tempo_set(point.beat, v)
     paw.notify(string.format("tempo %g bpm from %s", v, point.beat == 0 and "the start" or "bar " .. paw.time.bar_of(point.beat)))
   end)
-end, { desc = "Type the tempo in force at the cursor (the change at or before it) in bpm: a number, or +2 and -3 to step", label = "Set the tempo" })
+end, { desc = "Type the tempo in force at the cursor (the change at or before it) in bpm: a number, or +=2 and -=3 to step", label = "Set the tempo" })
 
 --- Read a parameter's value as it is shown: a choice by name, or a number.
 local function param_reader(p)

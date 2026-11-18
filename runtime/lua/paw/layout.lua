@@ -1936,6 +1936,8 @@ function M.setup()
       for _, c in ipairs(paw.commands.completers.openable(text)) do out[#out + 1] = c end
       return out
     end })
+  -- `:e!` as in Vim: the saved project again, or another, without the unsaved work.
+  paw.project.allow_discard("e")
 
   local function listed_step(step)
     local list = M.buffers_list()

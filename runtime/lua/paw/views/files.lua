@@ -58,6 +58,51 @@ local function join(dir, name) return dir == "/" and "/" .. name or dir .. "/" .
 local function dirname(path) return normalize(path:match("^(.*)/[^/]+$") or "/") end
 local function basename(path) return path:match("([^/]+)$") or path end
 
+-- The folder that `:cd` set, and the one before it for `:cd -`.
+local chosen, previous
+
+--- The folder that `:cd` set, or nil when there is none.
+function M.cwd() return chosen end
+
+--- The folder that a relative name in a command goes to: the folder that
+--- `:cd` set; else the folder of the project's file; else the folder that
+--- paw started in.
+function M.here()
+  if chosen then return chosen end
+  local path = api.project_get().path
+  if path and path ~= "" then return dirname(resolve(path)) end
+  return cwd()
+end
+
+--- The full path of a name that the user typed: `~` is the home folder, and
+--- a relative name is in `paw.files.here()`.
+---   paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" beside song.json
+function M.path(name)
+  return resolve(name, M.here())
+end
+
+--- Set the folder for relative names, as `:cd` does: `dir` is relative to
+--- the folder now; `-` is the folder before; nil is the home folder;
+--- false goes back to the default (beside the project).
+--- Returns the folder, or nil and why not.
+function M.cd(dir)
+  if dir == false then
+    chosen, previous = nil, nil
+    return M.here()
+  end
+  local target
+  if dir == "-" then
+    if not previous then return nil, "no folder before this one" end
+    target = previous
+  else
+    target = resolve(dir or home(), M.here())
+  end
+  local stat = api.fs_stat(target)
+  if not (stat and stat.dir) then return nil, target .. " is not a folder" end
+  previous, chosen = M.here(), target
+  return target
+end
+
 --- The name of the buffer that lists a folder, as a tree or not.
 function M.buffer_name(dir, tree)
   return (tree and "paw://tree" or "paw://files") .. normalize(dir)
@@ -65,7 +110,7 @@ end
 
 --- True if a path is a folder.
 function M.is_dir(path)
-  local stat = api.fs_stat(resolve(path))
+  local stat = api.fs_stat(resolve(path, M.here()))
   return stat ~= nil and stat.dir
 end
 
@@ -499,7 +544,7 @@ kind("tree", true)
 --- default). `opts.tree`, `opts.filter` ("unused") and `opts.hidden`.
 function M.open(dir, opts)
   opts = opts or {}
-  dir = resolve(dir or cwd())
+  dir = resolve(dir or M.here(), M.here())
   local stat = api.fs_stat(dir)
   if not (stat and stat.dir) then return nil, dir .. " is not a folder" end
   local name = M.buffer_name(dir, opts.tree)
@@ -522,16 +567,14 @@ end
 local function default_dir()
   local buf = tb.buf()
   if buf and buf.state.kind and buf.state.kind.files then return root_of({ args = buf.state.args }) end
-  local path = api.project_get().path
-  if path and path ~= "" then return dirname(resolve(path)) end
-  return cwd()
+  return M.here()
 end
 
 local function dir_arg(ctx)
   local arg = ctx.args[1] and tostring(ctx.args[1]) or ""
   if arg == "" then return default_dir() end
   if arg == "media" then return api.media_dir() end
-  return resolve(arg)
+  return resolve(arg, M.here())
 end
 
 local function show(tree)
@@ -540,6 +583,17 @@ local function show(tree)
     if not win then paw.notify(err, "warn") end
   end
 end
+
+paw.command("cd", function(ctx)
+  local arg = ctx.args[1] and tostring(ctx.args[1]) or nil
+  local dir, why = M.cd(arg)
+  if not dir then return paw.notify(why, "warn") end
+  paw.notify("relative names go to " .. dir)
+end, { desc = "Set the folder that relative names go to, as in Vim: `cd ~/songs`, `cd -` the one before; alone, the home folder", raw = false, complete = { "dirs" } })
+paw.command("pwd", function()
+  local how = chosen and "set with `:cd`" or api.project_get().path and "the project's folder" or "where paw started"
+  paw.notify(M.here() .. " (" .. how .. ")")
+end, { desc = "Show the folder that relative names (`:w mix.json`, `:render mix.wav`) go to" })
 
 paw.command("files", show(false), {
   desc = "The files of a folder as a buffer to edit, in this window: `files`, `files ~/music`, `files media` (the project's own folder)",

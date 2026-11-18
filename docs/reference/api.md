@@ -33,6 +33,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.device_types()`: Descriptions of each kind of device that you can add to a track. A kind that an extension added (`paw.plugins.add_dir`) has its extension in `from`.
 - `paw.emit(name, payload)`: Call each handler for `name`. paw reports a handler that fails, and goes to the next. Returns true, or false and the reason when a handler returned `false, reason`. So a handler refuses the request of an event (`edit.before`, `project.saving`, `key.pre`).
 - `paw.every(ms, fn)`: Run `fn` every `ms` milliseconds. Returns a handle for `paw.cancel`.
+- `paw.failure(err)`: What a user sees of an error: one line, without the stack traceback and with the place in the code (`paw/x.lua:12:`) moved to the end, where it does not hide what went wrong. The whole error goes to the log.
 - `paw.flush()`: Send the change events for the edits made until now. The kernel does this at the end of each turn. Call `paw.flush()` to make handlers run sooner.
 - `paw.import_audio(path, opts)`: Bring a sound file into the project: on a new track named after the file (or on `opts.track`), at the cursor (or `opts.start`). Returns the clip.
 - `paw.inspect(value, indent, seen)`: Render any value as readable Lua-like text.
@@ -54,7 +55,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.restore_track(snap, index)`: Make a track from a snapshot, at a 1-based position in the track list.
 - `paw.track(which)`: A track by id, or by name.
 - `paw.tracks()`: Every track, in order, as `paw.Track` objects (the master is `paw.master`).
-- `paw.try(fn, ...)`: Call a function. If it fails, show the error as a message and do not raise it. Returns true and the results of the function, or false and the error.
+- `paw.try(fn, ...)`: Call a function. If it fails, show the error as a message and do not raise it. Returns true and the results of the function, or false and the error. The message is the error's first lines, never a stack traceback (`paw.failure`); the log keeps the traceback.
 - `paw.undo`: the same as `paw.api.undo`.
 - `paw.wait`: the same as `paw.api.wait`.
 
@@ -612,8 +613,16 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 ## Module paw.files
 
 - `paw.files.buffer_name(dir, tree)`: The name of the buffer that lists a folder, as a tree or not.
+- `paw.files.cd(dir)`: Set the folder for relative names, as `:cd` does: `dir` is relative to the folder now; `-` is the folder before; nil is the home folder; false goes back to the default (beside the project). Returns the folder, or nil and why not.
+- `paw.files.cwd()`: The folder that `:cd` set, or nil when there is none.
+- `paw.files.here()`: The folder that a relative name in a command goes to: the folder that `:cd` set; else the folder of the project's file; else the folder that paw started in.
 - `paw.files.is_dir(path)`: True if a path is a folder.
 - `paw.files.open(dir, opts)`: Show a folder: in this window (`opts.here`), or split beside (a tree by default). `opts.tree`, `opts.filter` ("unused") and `opts.hidden`.
+- `paw.files.path(name)`: The full path of a name that the user typed: `~` is the home folder, and a relative name is in `paw.files.here()`.
+
+  ```lua
+  paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" beside song.json
+  ```
 - `paw.files.sound_info(path, stat)`: What a sound file's header says: `{ rate, channels, seconds }`, or nil for a file that is not one that can be read.
 - `paw.files.watch()`: Start to watch the cursor, when a files buffer exists.
 
@@ -1767,7 +1776,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 ## Module paw.ui
 
 - `paw.ui.arrange(width, height)`: The position of each visible view on a screen of the current size: a list of `{ name, win, x, y, w, h }`. The tab line is along the top when there is more than one tab. `.borders` contains the borders between windows, and `.nodes` the position of each node of the tree, to resize them.
-- `paw.ui.ask_value(opts, set)`: Ask for an exact value on the command line: a number, or `+2` and `-3` to change the current value by steps. `=-6` gives a value below zero.
+- `paw.ui.ask_value(opts, set)`: Ask for an exact value on the command line: a number is the value, with its sign (`-6` is -6 dB), and `+=2` and `-=3` change the current value by a step.
 
   ```lua
   paw.ui.ask_value({ label = "Volume", now = -8, unit = "dB", min = -60, max = 12 }, function(v) ... end)
