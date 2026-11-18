@@ -214,7 +214,7 @@ each note.
 - **Export and import** go through the engine. `paw-utau-engine --export`
   makes the OpenUtau project from the description that the engine sings,
   and saves it with the writers of OpenUtau. `--convert` reads it back with
-  the readers of OpenUtau. A `.ustx` comes back with the same notes,
+  the readers of OpenUtau. A `.ustx` returns with the same notes,
   lyrics, note properties, singer and curves (on the whole-number grid of
   OpenUtau). OpenUtau gives its default pitch points to notes that have
   none.
@@ -223,8 +223,9 @@ each note.
   curves and voice. The bounced file is in the media folder of the project.
 - **Singer presets** are JSON files in `~/.local/share/paw/utau/presets`
   (`paw.opt.utau_presets_dir`). A preset holds the singer, phonemizer,
-  renderer, resampler, wavtool, voice color, the options of the engine (AI
-  pitch, unison, shifts) and the value of each curve that has no lane. A
+  renderer, resampler, wavtool and voice color. It also holds the options
+  of the engine (AI pitch, unison, shifts) and the value of each curve with
+  no lane. A
   preset replaces the full voice of the track.
 - **Install** runs `paw-utau-engine --install`. It finds the type of the
   singer and the encoding of the file names. A folder is copied into
@@ -233,11 +234,12 @@ each note.
   singers again.
 - **A harmony** is a copy of the track (voice, curves, lyrics and note
   properties), 3 dB quieter and panned 0.3 to one side. Its notes move by
-  scale degrees in the key: the key of the project when the `musicops`
-  extension has one, else the key of the melody (Krumhansl-Schmuckler).
+  scale degrees in the key. That is the key of the project when the
+  `musicops` extension has one, else the key of the melody
+  (Krumhansl-Schmuckler).
 - **A double** keeps the notes. It moves the start of each note by up to 18
-  ticks and its tuning by up to 8 cents, the same each time for the same
-  take.
+  ticks and its pitch by up to 8 cents. The same take gives the same
+  result.
 - **AI pitch, retakes and the curves of the renderer** belong to the
   engine. Its cache keeps the takes across sessions. You hear them with
   DiffSinger and other renderers that have a pitch model or such curves. A
@@ -317,7 +319,7 @@ editor work, but nothing sings, and an offline render tells you.
   `engine/PawUtau.Protocol` on the other side). After each edit, the
   extension compares the vocal tracks with what it sent last, and sends
   the difference.
-- Rendered phrases come back as audio, with their place in seconds. The
+- Rendered phrases return as audio, with their place in seconds. The
   extension writes each to a file of 32-bit floats, and posts the list of
   files of a voice to every `utau` device (`paw.api.device_post(kind,
   "voice.<n>", list)`, `lua/utau/voices.lua`).
@@ -355,8 +357,8 @@ editor work, but nothing sings, and an offline render tells you.
   `:utau.import` reads back what you saved there.
 - One clip is one part. A clip cannot hold several parts.
 - No clips that loop or play at another rate.
-- Tempo ramps in OpenUtau: the engine and the `.ustx` export get a ramp as
-  steps of a quarter beat, each as long as that part of the ramp. An
+- Tempo ramps in OpenUtau: the engine and the `.ustx` export change a ramp
+  into steps of a quarter beat. An
   import away from the start of the song keeps the tempo map of the song.
 - Curves do not follow a clip through a ripple delete
   (`paw.opt.ripple`). The pieces after the cut move without their curves.
