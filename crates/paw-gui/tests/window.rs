@@ -588,6 +588,29 @@ impl Scene {
         (ticks() - before) / per_second / seconds * 100.0
     }
 
+    /// The share of a processor of the window and its kernel together (every
+    /// process of the window's group), over `seconds`, in percent of one.
+    fn group_cpu_percent(&self, seconds: f64) -> f64 {
+        let group = self.gui.id().to_string();
+        let ticks = || -> f64 {
+            let mut sum = 0.0;
+            for entry in fs::read_dir("/proc").unwrap().flatten() {
+                let Ok(stat) = fs::read_to_string(entry.path().join("stat")) else { continue };
+                let Some(close) = stat.rfind(')') else { continue };
+                let rest: Vec<&str> = stat[close + 2..].split(' ').collect();
+                // Fields after the name: the group is the 3rd, user and system time the 12th and 13th.
+                if rest.len() > 12 && rest[2] == group {
+                    sum += rest[11].parse::<f64>().unwrap_or(0.0) + rest[12].parse::<f64>().unwrap_or(0.0);
+                }
+            }
+            sum
+        };
+        let before = ticks();
+        std::thread::sleep(Duration::from_secs_f64(seconds));
+        let per_second = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
+        (ticks() - before) / per_second / seconds * 100.0
+    }
+
     /// The window's share of a processor once it has settled, in percent of
     /// one: measured five seconds at a time until a measure is under
     /// `limit`, six times at most; every measure taken, the last last. On a
@@ -1323,6 +1346,42 @@ fn an_idle_window_uses_little_of_a_processor() {
     w.assert_alive("while idle");
 }
 
+// What playing costs with two piano rolls side by side, against one: the
+// window and its kernel together, measured in turns so that what else the
+// machine does falls on both alike. Run on its own, with the threads of the
+// software renderer fixed (`LP_NUM_THREADS=4 cargo test --release -p
+// paw-gui --test window -- --ignored --nocapture playing_with_two_rolls`).
+#[test]
+#[ignore]
+fn playing_with_two_rolls_costs_about_what_one_does() {
+    let mut w = scene!("cpu-two-rolls", TWO_CLIPS, alone);
+    w.ctl("paw.ui.start_layout = 'roll://' .. first paw.layout.start()");
+    w.expect("one roll", "#paw.panes.state().panes == 1 and paw.ui.views.pianoroll.clip_id == first");
+    let (mut one, mut two) = (Vec::new(), Vec::new());
+    for round in 0..4 {
+        for split in [round % 2 == 1, round % 2 == 0] {
+            if split {
+                w.ctl("paw.ui.start_layout = { dir = 'h', 'roll://' .. first, 'roll://' .. second } paw.layout.start()");
+                w.expect("two rolls", "#paw.panes.state().panes == 2");
+            } else {
+                w.ctl("paw.ui.start_layout = 'roll://' .. first paw.layout.start()");
+                w.expect("one roll", "#paw.panes.state().panes == 1");
+            }
+            w.ctl("paw.api.transport_seek(0) paw.api.transport_play()");
+            w.pause(1.5);
+            let cpu = w.group_cpu_percent(5.0);
+            w.ctl("paw.api.transport_stop()");
+            w.pause(0.5);
+            if split { two.push(cpu) } else { one.push(cpu) }
+        }
+    }
+    let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+    eprintln!("playing, window and kernel, % of a core: one roll {one:.1?} (mean {:.1}), two rolls {two:.1?} (mean {:.1})", mean(&one), mean(&two));
+    w.shot("cpu-two-rolls.png");
+    assert!(mean(&two) < mean(&one) * 1.6 + 5.0, "two rolls cost {:.1}% against {:.1}% for one", mean(&two), mean(&one));
+    w.assert_alive("after playing");
+}
+
 #[test]
 fn an_idle_window_with_kernel_panes_and_a_window_of_a_view_asks_for_nothing() {
     let mut w = scene!("idle-panes", &format!("{LANE_SONG}\npaw.qf.set({{ {{ address = paw.address.project(), text = 'zebra crossing' }} }})"), alone);
@@ -1552,6 +1611,40 @@ fn tabs_show_along_the_top_and_a_click_or_gt_goes_to_one() {
     w.key("Return");
     w.expect("one tab again", "#paw.ui.tabs == 1");
     w.assert_alive("after tabs");
+}
+
+/// Where the row of tabs puts tab `i` (from 0): every tab is 150 pixels
+/// wide with 2 between, from 6 in (crates/paw-gui/src/panes.rs).
+fn tab_at(i: i32, dx: i32) -> Point {
+    (6 + i * 152 + dx, place::AREA_TOP + 15)
+}
+
+#[test]
+fn a_tab_closes_by_its_button_or_a_middle_click_a_plus_opens_one_and_a_drag_moves_it() {
+    let mut w = scene!("tab-buttons", DEMO);
+    let views = "(function() local out = {} for _, t in ipairs(paw.ui.tabs) do out[#out + 1] = paw.layout.windows(t.layout)[1].view end return table.concat(out, ' ') end)()";
+    w.type_text(":tabnew mixer");
+    w.key("Return");
+    w.expect("two tabs", "#paw.ui.tabs == 2");
+    // The + after the last tab: a new tab on the start page.
+    w.click((6 + 2 * 152 + 11, place::AREA_TOP + 15));
+    w.expect("+ opens a third tab, on the start page", &format!("#paw.ui.tabs == 3 and paw.ui.tab == 3 and {views} == 'arrange mixer empty'"));
+    w.shot("tab-new.png");
+    // Its close button, at its right end.
+    w.click(tab_at(2, 150 - 13));
+    w.expect("its close button closes it", &format!("{views} == 'arrange mixer'"));
+    // A middle click on a tab closes it.
+    w.type_text(":tabnew session");
+    w.key("Return");
+    w.expect("a tab of the session view", &format!("{views} == 'arrange mixer session'"));
+    w.mouse_to(tab_at(1, 60));
+    w.xdotool(&["click", "2"]);
+    w.pause(0.3);
+    w.expect("a middle click closes the mixer's tab", &format!("{views} == 'arrange session'"));
+    // A drag of the first tab past the second moves it there, as :tabmove.
+    w.drag(tab_at(0, 60), tab_at(1, 100));
+    w.expect("the arrange view's tab is the second now", &format!("{views} == 'session arrange'"));
+    w.assert_alive("after the tab buttons");
 }
 
 /// The demo song, the notation extension, and the first two MIDI clips of
