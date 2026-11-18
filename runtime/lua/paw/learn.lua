@@ -159,6 +159,7 @@ function M.unbind(which)
   return gone
 end
 
+--- Forget every controller binding.
 function M.clear()
   if #M.bindings() > 0 then save({}) end
 end
@@ -250,6 +251,7 @@ function M.start(target)
   paw.notify("learn: move a knob or fader of the controller for " .. M.target_name(target) .. " (`:learn.cancel` gives up)")
 end
 
+--- Stop waiting for a controller to learn.
 function M.cancel()
   if M.learning then paw.notify("learn: given up") end
   M.learning = nil
@@ -377,6 +379,7 @@ paw.command("learn.param", function(ctx)
   M.start({ track = d.track, target = "param", device = device, param = tostring(ctx.args[2]) })
 end, { desc = "Bind a MIDI controller to a parameter of a device, by their ids: `learn.param 12 cutoff`" })
 -- `:param.last learn` (paw.fx) learns the parameter touched last.
+--- Learn a controller for a device's parameter: the next one moved moves it.
 paw.fx.learn = function(device, param)
   M.start({ track = api.device_get(device).track, target = "param", device = device, param = param })
 end

@@ -278,6 +278,8 @@ local SCALE = {
   minor = { [0] = true, [2] = true, [3] = true, [5] = true, [7] = true, [8] = true, [9] = true, [10] = true, [11] = true },
 }
 
+--- How well a histogram of pitch classes fits a key's profile from `tonic`,
+--- from -1 to 1 (Pearson's correlation).
 local function correlate(h, profile, tonic)
   local hm, pm = 0, 0
   for pc = 0, 11 do hm, pm = hm + h[pc], pm + profile[pc + 1] end

@@ -46,3 +46,17 @@ require("utau.commands")
 require("utau.editor_keys")
 
 utau.schedule()
+
+-- `:checkhealth utau`: the engine, and whether it is up.
+paw.health.register("utau", function(h)
+  local engine = utau.engine.find()
+  if engine then
+    h.ok("the engine at " .. engine)
+  else
+    h.error("reautau-engine not found", { "set paw.opt.utau_engine or $REAUTAU_ENGINE to it",
+      "or run the program built with it: nix run .#paw-utau" })
+  end
+  local state = utau.engine.state
+  if state == "failed" then h.error("the engine failed: " .. tostring(utau.engine.reason), ":messages has more")
+  elseif state then h.info("the engine is " .. state) end
+end, { desc = "singing synthesis" })

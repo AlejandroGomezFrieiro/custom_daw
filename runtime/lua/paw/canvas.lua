@@ -548,9 +548,9 @@ function M.paint_cells(name, window, width, height, opts)
   return { title = window.title, ops = ops }
 end
 
+local outlines = {}
 --- A music font's glyph as commands and numbers in staff spaces from its
 --- origin, y down, from the fonts built into the kernel, or nil.
-local outlines = {}
 function M.glyph_outline(font, codepoint)
   if type(codepoint) ~= "number" then return nil end
   local key = (font or "") .. ":" .. codepoint

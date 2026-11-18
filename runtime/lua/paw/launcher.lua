@@ -77,11 +77,13 @@ function M.scenes()
   return type(scenes) == "table" and scenes or {}
 end
 
+--- A scene's name (rows from 0): its own, or "Scene N".
 function M.scene_name(row)
   local name = M.scenes()[row + 1]
   return (type(name) == "string" and name ~= "") and name or ("Scene " .. (row + 1))
 end
 
+--- Name a scene (rows from 0), kept with the project.
 function M.set_scene_name(row, name)
   local meta = api.project_get().meta
   local scenes = type(meta.scenes) == "table" and meta.scenes or {}
@@ -252,6 +254,7 @@ local function piece(c, from, to)
   return opts
 end
 
+--- End the clip being recorded into a slot.
 local function finish_recording()
   local r = M.recording
   if not r then return end

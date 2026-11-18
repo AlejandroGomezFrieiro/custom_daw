@@ -118,6 +118,7 @@ function M.set(id, fields)
   return found
 end
 
+--- Remove a marker by id.
 function M.remove(id)
   local list, gone = {}, false
   for _, m in ipairs(M.list()) do
@@ -150,6 +151,7 @@ function M.next(beat)
   end
 end
 
+--- The last marker before a beat, or nil.
 function M.prev(beat)
   local found
   for _, m in ipairs(M.list()) do

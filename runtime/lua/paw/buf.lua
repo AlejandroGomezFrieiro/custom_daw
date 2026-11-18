@@ -30,10 +30,13 @@ function Buf.root(width, height)
   return new(0, 0, width, height, 0, 0, width, height)
 end
 
+--- Write `text` at column `x`, row `y` of this buffer in highlight group
+--- `style`, clipped to it; returns the columns written.
 function Buf:text(x, y, text, style)
   return grid_text(self.x + x, self.y + y, text, style, self.cx, self.cy, self.cw, self.ch)
 end
 
+--- Fill a `w` by `h` area at `x`, `y` with `char` in `style`, clipped.
 function Buf:fill(x, y, w, h, char, style)
   grid_fill(self.x + x, self.y + y, w, h, char, style, self.cx, self.cy, self.cw, self.ch)
 end
@@ -104,6 +107,7 @@ function Buf:columns(widths, gap)
   return unpack(out, 1, #widths)
 end
 
+--- A buffer for the area `x`, `y`, `w` by `h` of this one, clipped to it.
 function Buf:sub(x, y, w, h)
   x, y, w, h = floor(self.x + x), floor(self.y + y), max(0, floor(w)), max(0, floor(h))
   local cx, cy = max(x, self.cx), max(y, self.cy)

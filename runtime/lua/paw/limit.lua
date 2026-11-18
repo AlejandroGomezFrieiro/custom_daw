@@ -66,6 +66,9 @@ local function limited(name, call, fn, ...)
   return result
 end
 
+--- Call `fn(...)` under the time limit for Lua (`paw.opt.lua_limit`): a
+--- call that runs too long is stopped and reported as `name`; errors are
+--- reported, not raised. Returns what `fn` returned.
 function M.guard(name, fn, ...)
   if deadline or (paw.opt.lua_limit or 0) <= 0 then return paw.try(fn, ...) end
   return unpack(limited(name, paw.try, fn, ...))

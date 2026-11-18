@@ -140,6 +140,7 @@ local ascii = {
 M.g = {}
 M.glyphs = { unicode = unicode, ascii = ascii }
 
+--- Take the glyphs `paw.opt.ascii` asks for into `paw.draw.g`.
 function M.use_glyphs()
   local from = paw.opt.ascii and ascii or unicode
   for k, v in pairs(from) do M.g[k] = v end
@@ -209,6 +210,7 @@ function M.track_colour(track, index)
   return theme.hues[((track.index or index or 1) - 1) % #theme.hues + 1]
 end
 
+--- The hue of a track's colour, from 0 to 360.
 function M.track_hue(track, index)
   return M.hue(M.track_colour(track, index))
 end
@@ -307,9 +309,9 @@ function M.stereo_meter(buf, x, y, width, left, right)
   end
 end
 
+local held = {}
 --- Peaks held for a while, by key: `hold(key, peak)` gives the loudest of
 --- the last two seconds, which falls back once that time has passed.
-local held = {}
 function M.hold(key, peak)
   local now = api.now()
   local h = held[key]

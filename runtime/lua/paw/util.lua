@@ -32,12 +32,14 @@ function M.inspect(value, indent, seen)
   return "{\n" .. table.concat(parts, ",\n") .. "\n" .. indent .. "}"
 end
 
+--- `v`, kept between `lo` and `hi`.
 function M.clamp(v, lo, hi)
   if v < lo then return lo end
   if v > hi then return hi end
   return v
 end
 
+--- `v` rounded to the nearest multiple of `step` (1).
 function M.round(v, step)
   step = step or 1
   return math.floor(v / step + 0.5) * step

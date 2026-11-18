@@ -74,21 +74,33 @@ end
 
 -- Constructors ---------------------------------------------------------------
 
+--- The address of the project, the tempo map, a track, a clip, a note, a
+--- lane, a marker, a rendered file and a send, as `parse` reads them.
 function M.project() return "paw://project" end
+--- The tempo map's address.
 function M.tempo() return "paw://tempo" end
+--- A track's address.
 function M.track(id) return "paw://track/" .. id end
+--- A clip's address.
 function M.clip(id) return "paw://clip/" .. id end
+--- A note's address: its clip, and the note's id there.
 function M.note(clip, id) return "paw://clip/" .. clip .. "/note/" .. id end
+--- An automation lane's address.
 function M.lane(id) return "paw://lane/" .. id end
+--- A marker's address.
 function M.marker(id) return "paw://marker/" .. id end
+--- A rendered file's address.
 function M.render(path) return "paw://render/" .. encode(path) end
+--- The address of a track's send to another.
 function M.send(track, target) return "paw://track/" .. track .. "/send/" .. target end
 
+--- A device's address, under its track's.
 function M.device(id)
   local d = api.device_get(id)
   return "paw://track/" .. d.track .. "/device/" .. id
 end
 
+--- A device parameter's address, by its key.
 function M.param(device, key) return M.device(device) .. "/param/" .. encode(key) end
 
 --- A location: an address and, optionally, a part of it.

@@ -162,6 +162,7 @@ function M.spread(device)
   return made
 end
 
+--- Define the commands for sends and sidechains. The runtime calls this once at start.
 function M.setup()
   local command = paw.command
 

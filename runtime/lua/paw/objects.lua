@@ -41,8 +41,10 @@ end)
 --- A plain table with every field of the track, read once.
 function Track:get() return api.track_get(self.id) end
 
+--- Whether the track is still in the project.
 function Track:exists() return (pcall(api.track_get, self.id)) end
 
+--- Take the track out of the project, with its clips and devices.
 function Track:remove() api.track_remove(self.id) end
 
 --- Move to a 1-based position in the track list.
@@ -54,6 +56,7 @@ function Track:add_device(kind, params, opts)
   return wrap(Device, api.device_add(self.id, kind, { params = params, index = opts and opts.index }))
 end
 
+--- The track's devices in the order they process, as `paw.Device` objects.
 function Track:devices()
   local out = {}
   for i, id in ipairs(api.track_get(self.id).devices) do out[i] = wrap(Device, id) end
@@ -76,6 +79,7 @@ function Track:add_clip(opts)
   return wrap(Clip, api.clip_add(self.id, opts))
 end
 
+--- The track's clips, as `paw.Clip` objects.
 function Track:clips()
   local out = {}
   for i, clip in ipairs(api.clip_list(self.id)) do out[i] = wrap(Clip, clip.id) end
@@ -248,10 +252,13 @@ class(Device, "Device", api.device_get, function(id, key, value)
   api.device_set(id, key, value)
 end)
 
+--- Everything about the device as plain data (`paw.api.device_get`).
 function Device:get() return api.device_get(self.id) end
 
+--- Whether the device is still in the project.
 function Device:exists() return (pcall(api.device_get, self.id)) end
 
+--- Take the device off its track.
 function Device:remove() api.device_remove(self.id) end
 
 --- The track this device is on.
@@ -326,8 +333,10 @@ function Device:restart() return api.device_restart(self.id) end
 --- passed over, its state and parameters kept as they are; or back online.
 function Device:set_offline(on) api.device_set(self.id, "offline", on ~= false) end
 
+--- Show the plugin's own window.
 function Device:open_editor() return api.device_editor(self.id, true) end
 
+--- Close the plugin's own window.
 function Device:close_editor() return api.device_editor(self.id, false) end
 
 --- The key of a parameter given by key or by name.
@@ -341,6 +350,7 @@ local function param_key(d, name)
   return name
 end
 
+--- The automation lanes of the device's parameters, as `paw.Lane` objects.
 function Device:lanes()
   local out = {}
   for _, lane in ipairs(api.lane_list(api.device_get(self.id).track)) do
@@ -387,12 +397,16 @@ class(Clip, "Clip", api.clip_get, function(id, key, value)
   api.clip_set(id, key, value)
 end)
 
+--- Everything about the clip as plain data (`paw.api.clip_get`).
 function Clip:get() return api.clip_get(self.id) end
 
+--- Whether the clip is still in the project.
 function Clip:exists() return (pcall(api.clip_get, self.id)) end
 
+--- Take the clip out of its track.
 function Clip:remove() api.clip_remove(self.id) end
 
+--- The track the clip is on.
 function Clip:track() return wrap(Track, api.clip_get(self.id).track) end
 
 --- The notes of a MIDI clip: a list of { pitch, start, length, velocity },
@@ -424,6 +438,7 @@ function Clip:set_note(index, fields)
   return api.clip_note_set(self.id, index, fields)
 end
 
+--- Remove the note at a place among the clip's notes (from 1).
 function Clip:remove_note(index) api.clip_note_remove(self.id, index) end
 
 --- Change, remove and add several notes as one edit. Every index is a
@@ -443,6 +458,7 @@ end
 --- so drawing code can ask for it every frame.
 function Clip:peaks(n) return api.clip_peaks(self.id, n) end
 
+--- Replace every note of the clip with `notes` (as `add_note` takes each).
 function Clip:set_notes(notes) api.clip_set_notes(self.id, M.notes(notes)) end
 
 --- What the clip does besides notes: controller moves, the pitch wheel,
@@ -464,6 +480,7 @@ function Clip:set_controls(controls)
   api.clip_set_controls(self.id, out)
 end
 
+--- Add several notes as one edit (as `add_note` takes each).
 function Clip:add_notes(notes) api.clip_add_notes(self.id, M.notes(notes)) end
 
 ---   clip:add_note({ pitch = "E4", start = 1, length = 0.5, velocity = 90 })
@@ -507,12 +524,16 @@ end
 
 class(Lane, "Lane", api.lane_get, api.lane_set)
 
+--- Everything about the lane as plain data (`paw.api.lane_get`).
 function Lane:get() return api.lane_get(self.id) end
 
+--- Whether the lane is still in the project.
 function Lane:exists() return (pcall(api.lane_get, self.id)) end
 
+--- Take the lane away, and the automation in it.
 function Lane:remove() api.lane_remove(self.id) end
 
+--- The track the lane belongs to.
 function Lane:track() return wrap(Track, api.lane_get(self.id).track) end
 
 --- The points as a list of { beat, value }, sorted by beat.
@@ -526,6 +547,7 @@ function Lane:set_points(points) api.lane_set_points(self.id, M.points(points)) 
 --- own units: dB for volume, -1 to 1 for pan, the parameter's range otherwise.
 function Lane:add(beat, value) api.lane_add_point(self.id, beat, value) end
 
+--- Remove every point of the lane.
 function Lane:clear() api.lane_set_points(self.id, {}) end
 
 --- The value at a beat, whether or not the lane is on. Nil without points.
@@ -594,11 +616,14 @@ function M.restore_device(snap, track, index)
   return device
 end
 
+--- A new track, last unless `opts.index` says where: `opts` as `paw.api.track_add`
+--- takes them (`name`, `volume`, `output` as a track or an id, ...).
 function M.add_track(opts)
   if opts and opts.output then opts = paw.util.merge(opts, { output = id_of(opts.output) }) end
   return wrap(Track, api.track_add(opts))
 end
 
+--- Every track, in order, as `paw.Track` objects (the master is `paw.master`).
 function M.tracks()
   local out = {}
   for i, id in ipairs(api.track_list()) do out[i] = wrap(Track, id) end
@@ -613,8 +638,11 @@ function M.track(which)
   end
 end
 
+--- The device, clip or automation lane of an id, as an object.
 function M.device(id) return wrap(Device, id) end
+--- The clip of an id, as a `paw.Clip`.
 function M.clip(id) return wrap(Clip, id) end
+--- The automation lane of an id, as a `paw.Lane`.
 function M.lane(id) return wrap(Lane, id) end
 
 M.master = wrap(Track, 0)

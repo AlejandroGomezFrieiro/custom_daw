@@ -196,6 +196,9 @@ end
 -- name, `fn(uri, parts)` giving a target as above, or nil to leave it.
 M.providers = {}
 
+--- Make curves of addresses of your own: `fn(uri, parts)` returns a target
+--- with `points`, `write`, `name`, `format`, `lo`, `hi` and the rest, or nil
+--- to leave the address to the others (docs/scripting.md, Curves).
 function M.provide(name, fn) M.providers[name] = fn end
 
 --- The curve at an address, or nil and why not.
@@ -273,6 +276,7 @@ function M.copy(q)
   return { beat = q.beat, value = q.value, shape = q.shape or "linear", tension = q.tension or 0 }
 end
 
+--- Points sorted by beat, those at the same beat kept in the order given.
 local function sorted(points)
   local order = {}
   for i, q in ipairs(points) do order[i] = { q = q, i = i } end
