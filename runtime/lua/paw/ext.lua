@@ -148,6 +148,12 @@ M.registries = {
   keyed("track_kinds", "kinds of track", function() return paw.track_kinds.kinds end, function(key, value)
     if value then paw.track_kinds.define(key, value) else paw.track_kinds.remove(key) end
   end),
+  keyed("roles", "roles", function() return paw.roles and paw.roles.registry end, function(key, value)
+    paw.roles.registry[key] = value
+    -- Frontends that paint roles learn the set changed.
+    paw.roles.version = paw.roles.version + 1
+    api.ui_redraw()
+  end),
   keyed("pickers", "picker sources", function() return paw.pick.sources end),
   { kind = "query_fields", title = "query fields", snapshot = two_level(function() return paw.query and paw.query.fields end),
     put = function(key, value)

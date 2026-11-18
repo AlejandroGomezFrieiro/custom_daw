@@ -199,3 +199,17 @@ test("every bundled extension has a manifest that names it and asks for this API
     eq(paw.ext.satisfies(api.version, m.requires and m.requires.paw), true, name .. " asks for this API")
   end
 end)
+
+test("a role an extension defines is its own, and goes with it", function()
+  T.after(read_errors)
+  write(dir("roley") .. "/init.lua", [[
+paw.ui.role("roley.dot", { cells = function(buf) buf:text(0, 0, "o", "Normal") end })
+]])
+  paw.ext.load(dir("roley"))
+  eq(paw.roles.registry["roley.dot"] ~= nil, true, "the role is defined")
+  eq(provided("roley", "roles"), "roley.dot", "and listed as the extension's")
+  local before = paw.roles.version
+  paw.ext.unload("roley")
+  eq(paw.roles.registry["roley.dot"], nil, "unloading takes it away")
+  eq(paw.roles.version > before, true, "and frontends are told the roles changed")
+end)
