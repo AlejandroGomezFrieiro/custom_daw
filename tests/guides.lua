@@ -6,9 +6,11 @@ local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
 local api = paw.api
 
+-- The keyboard is a test MIDI port of its own: other tests count what
+-- happens to theirs.
 local function start()
   fresh()
-  api.engine_restart({ backend = "null", test_input = { frequency = 440, level = -12, channels = 2 }, test_midi = { "Keys A" } })
+  api.engine_restart({ backend = "null", test_input = { frequency = 440, level = -12, channels = 2 }, test_midi = { "Keystation 49" } })
   paw.keymap.feed("<Esc><Esc>")
   while paw.ui.float do paw.ui.close() end
   paw.ui.focus("arrange")
@@ -69,8 +71,15 @@ local function notes(clip)
   return table.concat(out, " ")
 end
 
-local function load_bundled(name)
-  if not paw.ext.loaded[name] then keys(":ext.load " .. name .. "<CR>") end
+--- Load a bundled extension as the guide says. Unless `keep`, unload it
+--- after the test: the keys and views that it adds (undotree maps `\`) are
+--- not there for the other tests. The doctor stays, as its own tests leave
+--- it: its key bar outlives an unload.
+local function load_bundled(name, keep)
+  if not paw.ext.loaded[name] then
+    keys(":ext.load " .. name .. "<CR>")
+    if not keep then T.after(function() paw.ext.unload(name, { force = true }) end) end
+  end
   eq(paw.ext.loaded[name] ~= nil, true, name .. " is loaded")
 end
 
@@ -95,7 +104,7 @@ test("guide: start paw the first time and hear sound", function()
   keys("q")
   eq(paw.ui.float, nil, "q closes the window")
   -- The test tone: on the null backend the check runs and says why it is skipped.
-  load_bundled("doctor")
+  load_bundled("doctor", true)
   paw.opt.doctor_dir = T.scratch .. "/doctor"
   keys(":doctor output<CR>")
   local doctor = require("doctor")
@@ -127,7 +136,7 @@ end)
 test("guide: connect a MIDI keyboard", function()
   start()
   keys(":midi.inputs<CR>")
-  shows("Keys A", "the port is in the list")
+  shows("Keystation 49", "the port is in the list")
   shows("open", "and open")
   keys("<Esc>")
   paw.ui.close()
@@ -135,8 +144,8 @@ test("guide: connect a MIDI keyboard", function()
   keys("a")
   keys("synth<CR>")
   local t = paw.tracks()[1]
-  local function play() return loudest(t, 300, function() paw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keys A" }) end) end
-  local function release() paw.midi.inject({ type = "note_off", pitch = 60, port = "Keys A" }) paw.wait(100) end
+  local function play() return loudest(t, 300, function() paw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keystation 49" }) end) end
+  local function release() paw.midi.inject({ type = "note_off", pitch = 60, port = "Keystation 49" }) paw.wait(100) end
   eq(play() < 0.001, true, "a track that is not armed does not play the keyboard")
   release()
   keys("r")
@@ -149,11 +158,11 @@ test("guide: connect a MIDI keyboard", function()
   eq(play() > 0.01, true, "and the track plays the keyboard")
   release()
   keys("I")
-  keys("Keys A<CR>")
-  eq(t.midi_input and t.midi_input.port, "Keys A", "I takes one port")
-  keys(":track.midi Keys ch=1<CR>")
-  eq(t.midi_input.port .. " " .. tostring(t.midi_input.channel), "Keys A 1", ":track.midi takes a port and a channel")
-  keys(":midi.select Keys<CR>")
+  keys("Keystation<CR>")
+  eq(t.midi_input and t.midi_input.port, "Keystation 49", "I takes one port")
+  keys(":track.midi Keystation ch=1<CR>")
+  eq(t.midi_input.port .. " " .. tostring(t.midi_input.channel), "Keystation 49 1", ":track.midi takes a port and a channel")
+  keys(":midi.select Keystation<CR>")
   T.after(function() paw.midi.select(nil) end)
   eq(play() > 0.01, true, "the selected port still plays")
   release()
@@ -171,7 +180,7 @@ test("guide: use your own plugins", function()
   eq(paw.tracks()[1]:devices()[1].kind, "reverb", "a part of the name in the list of devices")
   keys(":device.add delay<CR>")
   eq(paw.tracks()[1]:devices()[2].kind, "delay", ":device.add takes a part of the name")
-  load_bundled("doctor")
+  load_bundled("doctor", true)
   local before = paw.opt.doctor_plugins
   T.after(function() paw.opt.doctor_plugins = before end)
   keys(":lua paw.opt.doctor_plugins = { \"surge\" }<CR>")
