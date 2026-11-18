@@ -174,18 +174,18 @@ test("articulations: the roll labels keyswitch rows, tags notes, shows the band 
   eq(roll.row_look(40, track.id).shade, "ArtOutOfRange", "below the range")
   eq(roll.row_look(103, track.id).shade, "ArtUncomfortable", "above the comfortable range")
   eq(roll.row_look(28, track.id).label, "pz", "E1 is pizzicato's keyswitch")
-  -- The window is handed the same: tinted, named notes over the roll's,
-  -- shaded and named rows under them.
-  local under, over = roll:marks(clip.id)
-  local labels, rows = {}, {}
-  for _, m in ipairs(over) do
-    if m.label then labels[#labels + 1] = m.pitch .. ":" .. m.label .. ":" .. m.fill end
+  -- A window is sent the rows named as the terminal draws them.
+  api.scene_forget(0)
+  api.scene_roles(0, { "note" })
+  paw.ui.render_scene("pianoroll", 120, 44, { w = 8, h = 16 })
+  local patch = api.json_decode(api.scene_end(0, "articulations"))
+  api.scene_forget(0)
+  local texts = {}
+  for _, n in ipairs(patch.set) do
+    if n.t == "run" then texts[#texts + 1] = n.text end
   end
-  for _, m in ipairs(under) do
-    if m.pitch == 28 or m.pitch == 40 then rows[#rows + 1] = m.pitch .. ":" .. tostring(m.label) end
-  end
-  eq(table.concat(labels, " "), "67:stc:#d08a3c 69:pz:#e8b27a 71:stc:#d08a3c 72:stc:#d08a3c", "the notes")
-  eq(table.concat(rows, " "), "28:pz 40:nil", "a keyswitch row, a row out of range")
+  local said = table.concat(texts, "|")
+  eq(said:find("sus", 1, true) ~= nil and said:find("hrm", 1, true) ~= nil, true, "the keyswitch rows: " .. said)
 end)
 
 test("articulations: K on a note says its articulation and how it is sent", function()

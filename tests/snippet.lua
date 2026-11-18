@@ -251,22 +251,21 @@ test("snippet: the active snippet is drawn in the terminal and told to the windo
   keys(":snippet stack<CR><Tab>")
   local screen = table.concat(api.ui_snapshot(120, 40), "\n")
   eq(screen:find("stack · interval: 3 (1/3)", 1, true) ~= nil, true, "its choice along the bottom")
-  local marks = S.window_marks(clip.id)
-  local notes, chips = 0, 0
-  for _, m in ipairs(marks) do
-    if m.badge then chips = chips + 1 else notes = notes + 1 end
+  local m = S.marks(clip.id)
+  eq(#m.notes, 3, "its notes")
+  eq(m.label, "stack · interval: 3 (1/3)", "and its choice, named")
+  -- A window is sent what the terminal shows, in cells over the notes.
+  api.scene_forget(0)
+  paw.ui.render_scene("pianoroll", 120, 40, { w = 8, h = 16 })
+  api.scene_end(0, "snippet")
+  local text = ""
+  for _, row in ipairs(api.scene_cells(0, "snippet").rows) do
+    for _, run in ipairs(row) do text = text .. run.text end
   end
-  eq(notes, 3, "its notes")
-  eq(chips, 1, "and a chip saying its choice")
-  eq(marks[4].label, "stack · interval: 3 (1/3)", "which it names")
-  local over = paw.frontend.state(0).modal.roll.over
-  local sent = 0
-  for _, m in ipairs(over) do
-    if m.fill == "#ac93e6" then sent = sent + 1 end
-  end
-  eq(sent, 4, "in the state the window is sent, in front of the notes")
+  api.scene_forget(0)
+  eq(text:find("stack · interval: 3 (1/3)", 1, true) ~= nil, true, "in the scene a window is sent")
   keys("<C-y>")
-  eq(#S.window_marks(clip.id), 0, "nothing once it ends")
+  eq(S.marks(clip.id), nil, "nothing once it ends")
 end)
 
 test("snippet: an extension's snippet does not replace the user's", function()

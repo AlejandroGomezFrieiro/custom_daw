@@ -336,32 +336,19 @@ end
 roll().layer("draw", 35, function(L)
   if not M.active() then return end
   sync()
-  local g = paw.draw.g
   local at = L.data.start
-  for _, n in ipairs(drawn()) do
+  local insert = require("paw.theme").palette.insert
+  local colour = paw.draw.track_colour(api.track_get(L.data.track))
+  for i, n in ipairs(drawn()) do
     local row = L.row(n.pitch)
     local x0, x1 = L.x(n.start - at), L.x(n.start + n.length - at)
     if row and x1 > 0 and x0 < L.width then
-      local w = math.max(1, x1 - x0)
-      L.roll:fill(x0, row, w, 1, " ", n.pending and pending_style() or paw.draw.note_style(L.hue, n.velocity))
-      L.roll:text(x0, row, g.clip_start)
-      if w >= 4 then L.roll:text(x0 + 1, row, music.name(n.pitch):sub(1, w - 1)) end
+      L.plane:mark("note", n.start - at, n.pitch, n.length, 1, {
+        label = music.name(n.pitch), style = n.pending and pending_style() or paw.draw.note_style(L.hue, n.velocity),
+        color = n.pending and insert or colour, velocity = n.velocity, pending = n.pending, key = "drawn:" .. i,
+      })
     end
   end
-end, function(clip_id)
-  if not M.active() then return {} end
-  sync()
-  local palette = require("paw.theme").palette
-  local entry = by_clip(drawn())[clip_id]
-  local out = {}
-  -- The one being drawn is fainter than those kept, with the same edge.
-  for _, n in ipairs(entry and entry.notes or {}) do
-    out[#out + 1] = {
-      pitch = n.pitch, start = n.start, length = n.length, fill = palette.insert, alpha = n.pending and 0.25 or 0.55,
-      edge = palette.insert, label = music.name(n.pitch),
-    }
-  end
-  return out
 end)
 
 return M

@@ -235,8 +235,9 @@ test("the note being drawn is drawn in insert mode's colour, its pitch and lengt
   eq(line[1][1] .. " " .. line[1][2], "D4 4 steps · 1 beat", "the key line starts with it")
   eq(line[2][1] .. " " .. line[2][2], "l longer", "then the keys that draw")
   eq(#paw.ui.keybar.check(), 0, "every key it shows is mapped")
-  local _, over = roll:marks(clip.id)
-  eq(#over == 1 and over[1].pitch .. "@" .. over[1].start .. "+" .. over[1].length, "62@0+1", "the window is given it to draw")
+  local drawn
+  for _, n in ipairs(T.roll_notes()) do if n.props.pending then drawn = n end end
+  eq(drawn and api.json_encode(drawn.r), "[0,62,1,1]", "a window is sent it as a note being drawn, to paint where it is")
   typed("<CR>")
   local kept = cell(0.5, 62)
   eq(kept.fg ~= palette.insert and kept.bg ~= note.bg, true, "a note kept no longer looks like the one being drawn")

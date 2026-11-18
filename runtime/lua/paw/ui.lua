@@ -457,7 +457,8 @@ end
 --- Draw a one-row title bar along the top of a docked panel and return a
 --- buffer for the rest of it. `opts`: `name`, `pill` (`{ text, group }`,
 --- drawn ahead of the name), `context` (after the name),
---- `right` (state, at the right end), `focused`. Focus shows as the whole
+--- `right` (state, at the right end), `reserve` (columns kept free at the
+--- right end, for what the view puts there), `focused`. Focus shows as the whole
 --- bar in the accent colour, inverted.
 ---   local body = paw.ui.titlebar(buf, { name = "Mixer", context = "5 tracks", focused = ctx.focused })
 function M.titlebar(buf, opts)
@@ -471,7 +472,10 @@ function M.titlebar(buf, opts)
   -- What the winbar (`paw.statusline`) adds, at the end of the state.
   local winbar = paw.statusline and M.drawing and paw.statusline.winbar(M.drawing, focused)
   if winbar then right = right ~= "" and (winbar .. "  " .. right) or winbar end
-  local right_w = api.str_width(right)
+  -- Columns kept free at the right end for what the view puts there (its
+  -- tools), left of which `right` goes.
+  local reserve = opts.reserve or 0
+  local right_w = api.str_width(right) + reserve
   if opts.pill then
     -- A coloured label ahead of the name, such as a clip in its track's colour.
     x = x + buf:text(x, 0, " " .. tostring(opts.pill[1]) .. " ", opts.pill[2]) + 1
@@ -490,7 +494,7 @@ function M.titlebar(buf, opts)
       x = x + 2 + buf:text(x + 2, 0, text, plain)
     end
   end
-  if right_w > 0 and buf.width - right_w - 1 > x then buf:text(buf.width - right_w - 1, 0, right, focused and "TitleBarFocus" or "TitleBarFaint") end
+  if right ~= "" and buf.width - right_w - 1 > x then buf:text(buf.width - right_w - 1, 0, right, focused and "TitleBarFocus" or "TitleBarFaint") end
   return buf:sub(0, 1, buf.width, buf.height - 1)
 end
 

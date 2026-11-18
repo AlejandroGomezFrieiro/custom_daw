@@ -18,7 +18,7 @@ use std::rc::Rc;
 
 use mlua::{Lua, Table, Value as LuaValue};
 use paw_scene::cells::{Rect, Style};
-use paw_scene::{Kind, Node, Picture, Scene};
+use paw_scene::{Axis, Kind, Map, Node, Picture, Plane, Scene};
 use serde::Deserialize;
 use serde_json::Value;
 use unicode_width::UnicodeWidthStr;
@@ -29,15 +29,38 @@ use crate::api::{Shared, from_lua, to_lua};
 /// content key.
 const BLOB_SIZE: usize = 16 << 10;
 
+/// A node open (`scene_open`): what is written goes into it, placed in
+/// its kids' space (`map`, from that space to the scene's units).
+struct Open {
+    key: String,
+    map: Map,
+    /// A plane opened to put a node in it (`into`), closed with that node.
+    with: bool,
+}
+
+/// A plane of the scene (`scene_open` with `plane`), which nodes are put
+/// into later by its key (`into`): the node it is in, its own node as it
+/// was made, the node that has its kids now, and its kids' space. A plane
+/// put into after something else was drawn after it goes on in a node of
+/// its own past that, so that the scene draws in the order the view did.
+struct PlaneAt {
+    parent: Option<String>,
+    node: Node,
+    current: String,
+    map: Map,
+    parts: u32,
+}
+
 /// A scene being made, and how many nodes of each name it has.
 struct Building {
     scene: Scene,
     names: HashMap<String, u32>,
     /// Writes to the grid are being kept.
     recording: bool,
-    /// The nodes open (a role being drawn, `scene_open`), innermost last:
-    /// what is written goes into the last, placed from its corner.
-    open: Vec<(String, [f32; 2])>,
+    /// The nodes open (a role being drawn), innermost last.
+    open: Vec<Open>,
+    /// The planes made, by the key they were given.
+    planes: HashMap<String, PlaneAt>,
 }
 
 #[derive(Default)]
@@ -52,11 +75,15 @@ pub struct Scenes {
 }
 
 impl Building {
+    fn new(scene: Scene, recording: bool) -> Building {
+        Building { scene, names: HashMap::new(), recording, open: Vec::new(), planes: HashMap::new() }
+    }
+
     /// A name of its own for a node: `base`, then `base#2`..., under the
     /// name of the node it is in.
     fn name(&mut self, base: String) -> String {
         let base = match self.open.last() {
-            Some((parent, _)) => format!("{parent}/{base}"),
+            Some(open) => format!("{}/{base}", open.key),
             None => base,
         };
         let count = self.names.entry(base.clone()).or_insert(0);
@@ -64,9 +91,22 @@ impl Building {
         if *count == 1 { base } else { format!("{base}#{count}") }
     }
 
-    /// The corner of the node writes go into, in units of the scene.
-    fn origin(&self) -> [f32; 2] {
-        self.open.last().map_or([0.0, 0.0], |(_, at)| *at)
+    /// The space writes go into: the open node's kids', or the scene's units.
+    fn map(&self) -> Map {
+        self.open.last().map_or(Map::UNITS, |open| open.map)
+    }
+
+    /// The cell the space writes go into starts in, which their names
+    /// count from.
+    fn origin(&self) -> [i32; 2] {
+        let map = self.map();
+        [map.x.0.floor() as i32, map.y.0.floor() as i32]
+    }
+
+    /// A rectangle of the scene's units in the space writes go into.
+    fn local(&self, r: [f32; 4]) -> [f32; 4] {
+        let [x, y, w, h] = r.map(f64::from);
+        self.map().unrect([x, y, x + w, y + h])
     }
 
     /// The part of the scene a write is cut to: nothing when it is all of it.
@@ -74,18 +114,37 @@ impl Building {
         let size = self.scene.size;
         let all = Rect { x: 0, y: 0, w: size[0] as i32, h: size[1] as i32 };
         let clip = clip.intersect(&all);
-        let [ox, oy] = self.origin();
-        (clip != all || !self.open.is_empty()).then_some([clip.x as f32 - ox, clip.y as f32 - oy, clip.w as f32, clip.h as f32])
+        (clip != all || !self.open.is_empty()).then(|| self.local(units(clip)))
     }
 
-    /// Put a node in, its rectangle in units of the scene, into the node
-    /// open (placed from its corner) or the root.
-    fn push(&mut self, mut node: Node) {
-        let [ox, oy] = self.origin();
-        node.rect[0] -= ox;
-        node.rect[1] -= oy;
-        let parent = self.open.last().map(|(key, _)| key.clone());
+    /// Put a node in, its rectangle in the space of the node open (or the
+    /// root's), as that node's last kid.
+    fn push(&mut self, node: Node) {
+        let parent = self.open.last().map(|open| open.key.clone());
         self.scene.push(parent.as_deref(), node);
+    }
+
+    /// Open the plane made as `key` to put a node in it: in a node of its
+    /// own after whatever was drawn since its last. False for a plane that
+    /// was not made.
+    fn into(&mut self, key: &str) -> bool {
+        let Some(plane) = self.planes.get_mut(key) else { return false };
+        let kids = match &plane.parent {
+            Some(parent) => self.scene.nodes.get(parent).map(|n| &n.kids),
+            None => Some(&self.scene.root),
+        };
+        if kids.and_then(|k| k.last()) != Some(&plane.current) {
+            plane.parts += 1;
+            let mut node = plane.node.clone();
+            node.key = format!("{}#{}", plane.node.key, plane.parts);
+            // The plane's own hit region is its first node's: one over it
+            // again would hide what is in that one from the pointer.
+            node.hit = None;
+            plane.current = node.key.clone();
+            self.scene.push(plane.parent.as_deref(), node);
+        }
+        self.open.push(Open { key: plane.current.clone(), map: plane.map, with: true });
+        true
     }
 
     fn visible(&self, clip: Rect, area: Rect) -> bool {
@@ -101,12 +160,13 @@ impl Scenes {
     pub fn text(&mut self, clip: Rect, x: i32, y: i32, text: &str, style: Style) {
         let Some(b) = self.building.as_mut().filter(|b| b.recording) else { return };
         let cols = text.width() as i32;
-        if !b.visible(clip, Rect { x, y, w: cols, h: 1 }) {
+        let area = Rect { x, y, w: cols, h: 1 };
+        if !b.visible(clip, area) {
             return;
         }
         let [ox, oy] = b.origin();
-        let key = b.name(format!("t{},{}", x as f32 - ox, y as f32 - oy));
-        let mut node = Node::new(key, Kind::Run { text: text.to_string() }, [x as f32, y as f32, cols as f32, 1.0]);
+        let key = b.name(format!("t{},{}", x - ox, y - oy));
+        let mut node = Node::new(key, Kind::Run { text: text.to_string() }, b.local(units(area)));
         node.clip = b.cut(clip);
         node.style = style;
         b.push(node);
@@ -119,12 +179,58 @@ impl Scenes {
             return;
         }
         let [ox, oy] = b.origin();
-        let key = b.name(format!("f{},{},{},{}", area.x as f32 - ox, area.y as f32 - oy, area.w, area.h));
-        let rect = [area.x as f32, area.y as f32, area.w as f32, area.h as f32];
-        let mut node = Node::new(key, Kind::Fill { ch }, rect);
+        let key = b.name(format!("f{},{},{},{}", area.x - ox, area.y - oy, area.w, area.h));
+        let mut node = Node::new(key, Kind::Fill { ch }, b.local(units(area)));
         node.clip = b.cut(clip);
         node.style = style;
         b.push(node);
+    }
+
+    /// Open a node over `rect` (see `scene_open`): true when one was, to be
+    /// closed.
+    fn open(&mut self, rect: [f32; 4], opts: OpenOpts) -> Result<bool, String> {
+        let Some(b) = self.building.as_mut().filter(|b| b.recording) else { return Ok(false) };
+        if let Some(plane) = &opts.into
+            && !b.into(plane)
+        {
+            return Ok(false);
+        }
+        // In a plane's domain as given; else from the scene's units.
+        let local = if opts.into.is_some() { rect } else { b.local(rect) };
+        let [ox, oy] = b.origin();
+        let what = opts.role.as_deref().unwrap_or(if opts.plane.is_some() { "plane" } else { "g" });
+        let base = opts.key.clone().unwrap_or_else(|| format!("{what}@{},{}", rect[0] - ox as f32, rect[1] - oy as f32));
+        let key = b.name(base);
+        let kind = match (opts.role, opts.plane) {
+            (Some(role), _) => Kind::Role { role, props: opts.props.unwrap_or(Value::Null) },
+            (None, Some(plane)) => Kind::Plane(Plane { x: plane.x, y: plane.y }),
+            (None, None) => Kind::Group,
+        };
+        let mut node = Node::new(key.clone(), kind, local);
+        node.clip = opts.clip.map(|c| b.local(c.units()));
+        node.hit = opts.hit;
+        node.bind = opts.bind;
+        let map = b.map().inside(&node);
+        if matches!(node.kind, Kind::Plane(_)) {
+            let name = opts.key.unwrap_or_else(|| key.clone());
+            if b.planes.contains_key(&name) {
+                return Err(format!("two planes made as `{name}`"));
+            }
+            let parent = b.open.last().map(|open| open.key.clone());
+            b.planes.insert(name, PlaneAt { parent, node: node.clone(), current: key.clone(), map, parts: 1 });
+        }
+        b.push(node);
+        b.open.push(Open { key, map, with: false });
+        Ok(true)
+    }
+
+    /// Close the node opened last, and the plane it was put into.
+    fn close(&mut self) {
+        let Some(b) = self.building.as_mut() else { return };
+        b.open.pop();
+        while b.open.last().is_some_and(|open| open.with) {
+            b.open.pop();
+        }
     }
 
     /// The scene made since `begin`, compared with what `client` was last
@@ -193,6 +299,11 @@ impl Scenes {
     }
 }
 
+/// A rectangle of whole cells in units.
+fn units(r: Rect) -> [f32; 4] {
+    [r.x as f32, r.y as f32, r.w as f32, r.h as f32]
+}
+
 /// A rectangle as Lua gives it, `{ x, y, w, h }`.
 #[derive(Deserialize)]
 struct Area {
@@ -220,6 +331,12 @@ struct PictureOpts {
 }
 
 #[derive(Deserialize)]
+struct PlaneOpts {
+    x: Axis,
+    y: Axis,
+}
+
+#[derive(Deserialize)]
 struct OpenOpts {
     role: Option<String>,
     props: Option<Value>,
@@ -227,6 +344,8 @@ struct OpenOpts {
     bind: Option<String>,
     key: Option<String>,
     clip: Option<Area>,
+    plane: Option<PlaneOpts>,
+    into: Option<String>,
 }
 
 pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> {
@@ -237,7 +356,7 @@ pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> 
         "scene_begin",
         lua.create_function(move |_, (w, h): (f32, f32)| {
             let scene = Scene::new([w.max(0.0), h.max(0.0)]);
-            sh.scenes.borrow_mut().building = Some(Building { scene, names: HashMap::new(), recording: false, open: Vec::new() });
+            sh.scenes.borrow_mut().building = Some(Building::new(scene, false));
             Ok(())
         })?,
     )?;
@@ -246,38 +365,25 @@ pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> 
     // units of the scene, that what is written until `scene_close` goes
     // into. `opts`: `role` (a group without), `props`, `hit` (a press on
     // it is on that), `bind` (`meter:4`), `key` (its name; the role and
-    // where it is without), `clip` (the part that shows). False when no
-    // scene is being drawn, with nothing to close.
+    // where it is without), `clip` (the part that shows). With `plane`
+    // (`{ x = axis, y = axis }`, each `{ domain, from, per }`, see
+    // `paw_scene::Axis`) it is a plane, whose kids are placed in its domain;
+    // with `into` (the key a plane was made with) it goes into that plane,
+    // `rect` in the plane's domain. False when no scene is being drawn, or
+    // there is no such plane, with nothing to close.
     api.set(
         "scene_open",
         lua.create_function(move |lua, (rect, opts): (LuaValue, LuaValue)| {
             let rect: Area = from_lua(lua, rect)?;
             let opts: OpenOpts = from_lua(lua, opts)?;
-            let mut scenes = sh.scenes.borrow_mut();
-            let Some(b) = scenes.building.as_mut().filter(|b| b.recording) else { return Ok(false) };
-            let [ox, oy] = b.origin();
-            let base = opts.key.unwrap_or_else(|| format!("{}@{},{}", opts.role.as_deref().unwrap_or("g"), rect.x - ox, rect.y - oy));
-            let key = b.name(base);
-            let kind = match opts.role {
-                Some(role) => Kind::Role { role, props: opts.props.unwrap_or(Value::Null) },
-                None => Kind::Group,
-            };
-            let mut node = Node::new(key.clone(), kind, rect.units());
-            node.clip = opts.clip.map(|c| [c.x - ox, c.y - oy, c.w, c.h]);
-            node.hit = opts.hit;
-            node.bind = opts.bind;
-            b.push(node);
-            b.open.push((key, [rect.x, rect.y]));
-            Ok(true)
+            sh.scenes.borrow_mut().open(rect.units(), opts).map_err(mlua::Error::runtime)
         })?,
     )?;
     let sh = shared.clone();
     api.set(
         "scene_close",
         lua.create_function(move |_, ()| {
-            if let Some(b) = sh.scenes.borrow_mut().building.as_mut() {
-                b.open.pop();
-            }
+            sh.scenes.borrow_mut().close();
             Ok(())
         })?,
     )?;
@@ -425,7 +531,7 @@ mod tests {
 
     fn building(w: f32, h: f32) -> Scenes {
         let scene = Scene::new([w, h]);
-        Scenes { building: Some(Building { scene, names: HashMap::new(), recording: true, open: Vec::new() }), ..Scenes::default() }
+        Scenes { building: Some(Building::new(scene, true)), ..Scenes::default() }
     }
 
     fn all(w: i32, h: i32) -> Rect {
@@ -456,7 +562,7 @@ mod tests {
     fn a_window_drawn_again_alike_says_nothing_and_a_change_says_only_itself() {
         let mut s = Scenes::default();
         let draw = |s: &mut Scenes, word: &str| {
-            s.building = Some(Building { scene: Scene::new([10.0, 2.0]), names: HashMap::new(), recording: true, open: Vec::new() });
+            s.building = Some(Building::new(Scene::new([10.0, 2.0]), true));
             s.text(all(10, 2), 0, 0, "title", Style::default());
             s.text(all(10, 2), 0, 1, word, Style::default());
             s.end(1, "w")
@@ -475,14 +581,15 @@ mod tests {
     fn writes_while_a_role_is_open_are_its_cells_and_a_frontend_that_draws_it_gets_none() {
         let draw = |s: &mut Scenes| {
             let scene = Scene::new([10.0, 4.0]);
-            s.building = Some(Building { scene, names: HashMap::new(), recording: true, open: Vec::new() });
+            s.building = Some(Building::new(scene, true));
             s.text(all(10, 4), 0, 0, "Mixer", Style::default());
             let b = s.building.as_mut().unwrap();
             let props = serde_json::json!({ "value": -6 });
             let mut node = Node::new("fader@4,1", Kind::Role { role: "fader".into(), props }, [4.0, 1.0, 3.0, 3.0]);
             node.hit = Some(serde_json::json!({ "kind": "fader", "track": 1 }));
             b.push(node);
-            b.open.push(("fader@4,1".into(), [4.0, 1.0]));
+            let map = Map::UNITS.inside(&b.scene.nodes["fader@4,1"]);
+            b.open.push(Open { key: "fader@4,1".into(), map, with: false });
             s.fill(all(10, 4), Rect { x: 5, y: 1, w: 1, h: 3 }, Some('│'), Style::default());
             s.text(all(10, 4), 4, 2, "━━━", Style::default());
             s.building.as_mut().unwrap().open.pop();
@@ -505,6 +612,54 @@ mod tests {
         assert_eq!(keys, vec!["t0,0", "fader@4,1"]);
         s.forget(2, None);
         assert!(!s.roles.contains_key(&2), "forgotten with the connection");
+    }
+
+    fn opts(value: Value) -> OpenOpts {
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn nodes_put_into_a_plane_are_in_its_domain_with_their_cells_and_keep_the_order_drawn() {
+        let mut s = building(20.0, 6.0);
+        // A roll: beats along x from beat 4, two units a beat; pitches up,
+        // pitch 64 on the plane's first row.
+        let axes = serde_json::json!({ "x": { "domain": "beat", "from": 4, "per": 2 }, "y": { "domain": "pitch", "from": 65, "per": -1 } });
+        let made = s.open([2.0, 1.0, 16.0, 4.0], opts(serde_json::json!({ "plane": axes, "key": "roll", "hit": { "kind": "grid" } })));
+        assert_eq!(made, Ok(true));
+        s.close();
+        // A note from beat 5.25, a beat long, on pitch 62: units 4.5 to 6.5
+        // along, the plane's third row; a terminal snaps it to columns 5
+        // and 6 (rounding its edges), where its cells are written.
+        let note = |s: &mut Scenes, start: f32, key: &str| {
+            let o = opts(serde_json::json!({ "into": "roll", "role": "note", "key": key, "hit": { "kind": "note" } }));
+            assert_eq!(s.open([start, 62.0, 1.0, 1.0], o), Ok(true));
+            let x = (2.0 + (start - 4.0) * 2.0 + 0.5).floor() as i32;
+            s.fill(all(20, 6), Rect { x, y: 3, w: 2, h: 1 }, Some('█'), Style::default());
+            s.close();
+        };
+        note(&mut s, 5.25, "n1");
+        // Drawn over the plane after it: what was put in it before stays under.
+        s.fill(all(20, 6), Rect { x: 0, y: 3, w: 20, h: 1 }, None, Style { fg: Some(Color::Indexed(1)), ..Style::default() });
+        note(&mut s, 8.25, "n2");
+        let patch: Patch = serde_json::from_str(&s.end(1, "w").unwrap()).unwrap();
+        let root = patch.root.clone().unwrap();
+        assert_eq!(root, vec!["roll".to_string(), "f0,3,20,1".into(), "roll#2".into()], "the plane goes on after what covered it");
+        let n1 = patch.set.iter().find(|n| n.key == "roll/n1").expect("the note in the plane");
+        assert_eq!(n1.rect, [5.25, 62.0, 1.0, 1.0], "in the plane's domain");
+        // Its cells in its own space: a quarter beat in (column 5 is unit
+        // 5, the note starts at 4.5), a beat wide, named by their cell.
+        let cells = patch.set.iter().find(|n| n.key.starts_with("roll/n1/")).expect("its cells");
+        assert_eq!((cells.key.as_str(), cells.rect), ("roll/n1/f1,-1,2,1", [0.25, 0.0, 1.0, 1.0]));
+        let mut kept = Scene::default();
+        kept.apply(&patch);
+        let row: String = kept.to_cells().cells[3 * 20..4 * 20].iter().map(|c| c.ch).collect();
+        assert_eq!(row, "     ██    ██       ", "each note's cells where the terminal wrote them");
+        let on = kept.hit([5.0, 3.5]).expect("the note under the pointer");
+        assert_eq!((on.key.as_str(), on.at), ("roll/n1", [5.5, 62.5]), "where in the plane's domain");
+        assert_eq!(on.rect, [4.5, 3.0, 2.0, 1.0], "the note as it is, not as a terminal snaps it");
+        let grid = kept.hit([15.0, 1.5]).expect("the empty grid");
+        assert_eq!(grid.hit["kind"], "grid");
+        assert_eq!(s.open([0.0, 0.0, 1.0, 1.0], opts(serde_json::json!({ "into": "none" }))), Ok(false), "no such plane");
     }
 
     #[test]

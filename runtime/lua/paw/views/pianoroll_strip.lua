@@ -1,14 +1,13 @@
--- The strip under the piano roll in the terminal: the notes' velocities,
--- as the roll draws them, or one controller's moves (the pitch wheel,
--- modulation, expression, the sustain pedal) as the window's strip shows
--- them, drawn over with the pointer. A click on the strip's name, at its
--- left, chooses what it shows.
+-- The strip under the piano roll: the notes' velocities, as the roll draws
+-- them, or one controller's moves (the pitch wheel, modulation,
+-- expression, the sustain pedal), drawn over with the pointer. A click on
+-- the strip's name, at its left, chooses what it shows.
 --
 -- Over a controller: the left button held draws it, a press on a move's
 -- head (the top of its bar) chooses it (Ctrl or Shift adds it or takes it
 -- out) and a drag moves the chosen, Ctrl and a drag chooses the moves in a
 -- box, the right button dragged draws a straight line and clicked opens
--- the menu. Each through `paw.frontend.act`, as the window's strip.
+-- the menu. Each through `paw.frontend.act`.
 local api = paw.api
 local util = paw.util
 local mouse = paw.mouse
@@ -55,8 +54,8 @@ local function draw(self, buf)
   local eighths = paw.draw.g.eighths
   local top, rows, keys = g.head + g.rows, g.vel, g.keys
   local tw = buf.width - keys
-  buf:fill(0, top, buf.width, rows, " ", "VelocityLane")
-  buf:text(1, top + rows - 1, shown.short, "VelocityLane")
+  -- Its name at the left is the roll's (a button that chooses what it shows).
+  buf:fill(keys, top, tw, rows, " ", "VelocityLane")
   local lane = buf:sub(keys, top, tw, rows)
   local hue = paw.draw.track_hue(api.track_get(api.clip_get(clip.id).track))
   local list, value = {}, shown.kind == "bend" and 0 or nil
@@ -148,13 +147,13 @@ local function choose_kind(where)
   paw.ui.menu(items, where)
 end
 
---- A press on the strip, `e` in the view's cells: the strip's name opens
---- the menu of what it shows; the rest is drawn on. Returns whether the
---- press was taken here.
+--- A press on the strip, `e` in the view's cells (fractions of them from a
+--- window, `e.fine`): the strip's name opens the menu of what it shows;
+--- the rest is drawn on. Returns whether the press was taken here.
 function M.press(self, e, clip)
   local g = self.geometry
   local top, rows = g.head + g.rows, g.vel
-  local where = { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) }
+  local where = { x = math.floor(e.x + (e.view_x or 0)), y = math.floor(e.y + (e.view_y or 0)) }
   if e.x < g.keys then
     if e.button == "left" or e.button == "right" then
       mouse.grab(e, { up = function(u) if not u.moved then choose_kind(where) end end })
@@ -164,15 +163,17 @@ function M.press(self, e, clip)
   if not shown.kind then return false end
   local kind, number = shown.kind, shown.number
   local function beat(x) return mouse.beat(x - g.keys, self.scroll, g.zoom) end
-  local function fraction(y) return util.clamp(1 - (y - top + 0.5) / rows, 0, 1) end
+  -- A terminal's cell at its middle, a window's pointer where it is.
+  local half = e.fine and 0 or 0.5
+  local function fraction(y) return util.clamp(1 - (y - top + half) / rows, 0, 1) end
   if e.button == "right" then
-    local x0, y0 = e.x, e.y
+    local x0, y0 = math.floor(e.x), math.floor(e.y)
     mouse.grab(e, {
       strip = function(_, buf)
         local d = mouse.gesture().d
         if d and d.moved then
           buf:text(x0, y0, paw.draw.g.point, "MouseBox")
-          buf:text(d.x, util.clamp(d.y, top, top + rows - 1), paw.draw.g.point, "MouseBox")
+          buf:text(math.floor(d.x), util.clamp(math.floor(d.y), top, top + rows - 1), paw.draw.g.point, "MouseBox")
         end
       end,
       drag = function(d) mouse.gesture().d = d end,
@@ -184,14 +185,19 @@ function M.press(self, e, clip)
     return true
   end
   if e.button ~= "left" then return true end
-  -- A move whose head is under the pointer: the top of its bar.
+  -- A move whose head is under the pointer: the top of its bar, in the
+  -- cell a terminal draws it in; within half a cell of it in a window.
   local tx = e.x - g.keys
+  local function on_head(c)
+    local x = (c.start - self.scroll) * g.zoom
+    local f = controls.fraction(kind, c.value)
+    if e.fine then return math.abs(tx - x) <= 0.5 and math.abs(e.y - (top + rows * (1 - f))) <= 0.5 end
+    local level = f * rows * 8
+    return math.floor(x + 0.5) == tx and e.y == top + rows - 1 - math.max(0, math.floor((level - 1) / 8))
+  end
   for place, c in ipairs(clip:controls()) do
-    local x = math.floor((c.start - self.scroll) * g.zoom + 0.5)
-    if controls.is(c, kind, number) and x == tx then
-      local level = controls.fraction(kind, c.value) * rows * 8
-      local head = top + rows - 1 - math.max(0, math.floor((level - 1) / 8))
-      if e.y == head then
+    if controls.is(c, kind, number) then
+      if on_head(c) then
         local toggling = mouse.has(e, "C") or mouse.has(e, "S")
         if toggling then
           A.select_control(clip.id, place, mouse.has(e, "C") and "toggle" or "add")
@@ -217,7 +223,7 @@ function M.press(self, e, clip)
     mouse.grab(e, {
       up = function(u)
         local a, b = math.min(x0, u.x), math.max(x0, u.x)
-        A.select_controls(clip.id, kind, number, beat(a), fraction(math.max(y0, u.y)), beat(b + 1), fraction(math.min(y0, u.y)), mouse.has(u, "S") and "add" or "only")
+        A.select_controls(clip.id, kind, number, beat(a), fraction(math.max(y0, u.y)), beat(b + (e.fine and 0 or 1)), fraction(math.min(y0, u.y)), mouse.has(u, "S") and "add" or "only")
       end,
     })
     return true

@@ -260,7 +260,7 @@ paw.keymap.feed("3jdd")          paw.keymap.normal("dic")  -- as typed; from ins
 paw.edit.arrange.yank(region)    paw.edit.arrange.paste(value)   paw.edit.roll.delete(clip, region)
 track:snapshot()                 paw.restore_track(snapshot, index)   -- with devices, clips, automation
 paw.roll_clips.parts()           paw.roll_clips.open(ids, active)     -- the clips the piano roll edits (docs/harmony.md)
-paw.ui.views.pianoroll.layer("lint", 35, paint, marks)                -- draw in the piano roll, both frontends
+paw.ui.views.pianoroll.layer("lint", 35, paint)                       -- draw in the piano roll, both frontends
 
 -- A view of your own joins in by having a grid: where its cursor is, and how to move it.
 view.grid = { get = function() return row, beat end, set = function(row, beat) end, step = function() return 1 end }
@@ -370,6 +370,31 @@ view whose only parts that move on their own while the song plays are
 bound roles names them in `view.live_roles` (the mixer's `{ "meter",
 "peak" }`): a window that paints them all is then sent no new scene of
 the view as it plays, only the live values.
+
+A **plane** is a rectangle with a domain of its own along each way, beats
+along and pitches up, say, or time running down for a tracker: what is
+marked in it is placed by the domain, not by cells. The terminal shows a
+mark on the cells its edges round to; the window paints it where it is,
+between cells, and a press on the plane or on a mark in it comes with
+`e.at`, where in the domain it was. The piano roll's grid is one, its notes
+`note` roles on it (`label`, `style`, `color`, `velocity`, `selected`,
+`cursor`, `pending`, `ghost`), beside it `keyboard`, `playhead` (bound to
+`position`) and `scrollbar`. A view whose title row has buttons of its own
+says `titled = true`, and a window then gives it no title of its own; a
+view whose only part that moves as the song plays is a bound role names it
+in `live_roles` (`{ "playhead" }`), and a window that paints it is sent no
+new scene while it plays. A `button` with `menu` opens one (a caret).
+
+```lua
+local roll = buf:plane(5, 2, buf.width - 5, 20, {
+  key = "roll", hit = { kind = "grid" },                        -- its empty part a hit region
+  x = { domain = "beat", from = scroll, per = zoom },           -- `per` cells a beat, `from` at its left edge
+  y = { domain = "pitch", from = top + 1, per = -1 },           -- a row a pitch, running up
+})
+roll:mark("note", 1.5, 60, 0.5, 1, { label = "C4", style = "Title", color = "#e0a050", hit = { kind = "note", n = 1 } })
+roll:hit(4, 60, 1, 1, { kind = "here" })
+local x, y, w, h = roll:cells(1.5, 60, 0.5, 1)                  -- where the terminal shows it
+```
 
 **Buffers, windows and tabs.** A view is a buffer type with one buffer,
 shown in one window at a time (see Windows, buffers and tabs in
@@ -588,22 +613,23 @@ paw.on("complete.changed", function(e) end)  -- e.shown
 **The piano roll's layers.** What a module draws over the piano roll's grid
 goes in a layer, so that several share it in a fixed order from back to
 front: other tracks' notes (10), the clip's own notes (20), diagnostics (30),
-an active snippet (40), suggestions (50), then the cursor. A layer paints in
-the terminal with `paint(p)` and may tell the window what to draw with
-`marks(clip)`; keys that hold while some state lasts go in a key scope,
-which comes before the piano roll's own keys; the window's toolbar takes
-switches.
+an active snippet (40), suggestions (50), then the cursor. A layer draws
+with `paint(p)`, once for both frontends: what it writes in cells shows in
+the window as in the terminal (over the notes when drawn after them), and
+what it marks on the roll's plane (`p.plane:mark(role, beat, pitch,
+length, 1, props)`, a note say) a window paints where it is, between
+cells. A chip that does something is a hit region of kind `act`. Keys that
+hold while some state lasts go in a key scope, which comes before the
+piano roll's own keys; the roll's row of tools takes switches.
 
 ```lua
 local roll = paw.ui.views.pianoroll
 roll.layer("lint", 30,
-  function(p)                           -- p.roll, p.x(beat), p.row(pitch) (nil off screen), p.data, p.hue
+  function(p)                           -- p.roll, p.plane, p.x(beat), p.row(pitch) (nil off screen), p.data, p.hue
     local row = p.row(60)
-    if row then p.roll:text(p.x(4), row, "!", "Error") end
-  end,
-  function(clip)                        -- what the window draws: boxes, or chips that can be clicked
-    return { { pitch = 60, start = 4, length = 1, fill = "#e06c75", alpha = 0.2, edge = "#e06c75" },
-             { pitch = 61, start = 4, length = 0, badge = true, label = "parallel fifths", act = "my_fix", arg = 1 } }
+    if not row then return end
+    local w = p.roll:text(p.x(4), row, "! parallel fifths", "Error")
+    p.roll:hit(p.x(4), row, w, 1, { kind = "act", act = "my_fix", arg = 1, tip = "fix it" })   -- a chip to click
   end)
 roll:key_scope("pianoroll.lint", 30, function() return showing end)   -- then map keys in view "pianoroll.lint"
 roll:tool("lint", function() return { label = "Lint", on = enabled, act = "toggle_lint", tip = "..." } end)
@@ -616,7 +642,7 @@ knows: `lane(p)` draws on the velocity lane (`p.lane`, `p.vel` rows),
 and a line on what its keys do to it.
 
 A chip's `act` names a `paw.frontend.act` function, called with the clip and
-`arg`. A key scope that maps `<Esc>` gets it before insert or visual mode is
+`arg`; its `tip` is what the pointer over it says. A key scope that maps `<Esc>` gets it before insert or visual mode is
 left. A failing layer is skipped, and the others are drawn.
 
 An instrument whose keys mean more than pitches (keyswitches, a playable

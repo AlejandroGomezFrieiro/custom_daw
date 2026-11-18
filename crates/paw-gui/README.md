@@ -25,9 +25,10 @@ roles — and sends the window only what changed (see "Scenes" in
 scene in cells (and kitty pixels); the window draws it with crisp text and
 vector pictures. An extension's view therefore works in both with no code
 for the window, and a test checks that the two agree for every view
-(`tests/scene_parity.lua`). The mixer and the drum grid already draw from
-roles (faders, meters, buttons) that the window renders as real widgets; the
-arrange view and the piano roll still have native egui code that is being
+(`tests/scene_parity.lua`). The mixer, the piano roll and the drum grid
+already draw from roles (faders, meters, buttons, notes on a plane of beats
+and pitches) that the window renders as real widgets; the arrange view, the
+device panel and the session view still have native egui code that is being
 moved onto scenes (see [docs/reference/limits.md](../../docs/reference/limits.md)).
 
 ## Pictures

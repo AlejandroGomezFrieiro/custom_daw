@@ -208,10 +208,18 @@ function M.describe(kind, args)
   return describe(M.items(kind, args))
 end
 
+--- The menu the kernel has open (`paw.ui.menu`: a right click in a pane
+--- the window shows from its scene), which the window shows as its own.
+function M.shown()
+  return (require("paw.menu").shown()) or {}
+end
+
 --- Do the entry at `path` (its place from 1 in each menu down to it) of
 --- menu `kind` for `args`, as built again now.
 function M.choose(kind, args, path)
   local items = M.items(kind, args)
+  -- The kernel's menu the window showed is let go before its entry is done.
+  if kind == "shown" then require("paw.menu").close(0) end
   local item
   for _, at in ipairs(path) do
     item = items and items[at]
@@ -223,5 +231,8 @@ end
 
 paw.frontend.menu = M.describe
 paw.frontend.act.menu_choose = M.choose
+--- The window let go of the kernel's menu it showed (`shown`) without
+--- choosing: so does the kernel.
+paw.frontend.act.menu_dismiss = function() require("paw.menu").close(0) end
 
 return M

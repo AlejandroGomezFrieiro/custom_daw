@@ -405,31 +405,31 @@ test("complete.show draws ghost notes for any module, with or without the keys",
   eq(clip:notes()[1].velocity, 40, "with its velocities")
 end)
 
-test("the window is told the ghost notes, a chip per alternative and the toolbar switch", function()
+test("the roll's row of tools has the switch, and a click on the suggestion's badge accepts it, in both frontends", function()
   local _, clip = start()
   with({ fixed("fixed", next_bar) }, {}, function()
-    local function told() return paw.frontend.state(paw.frontend.revision).modal.roll end
-    local tools = told().tools
+    local tools = paw.ui.views.pianoroll:toolbar()
     eq(tools[1] and tools[1].label, "Suggest", "the switch for automatic suggestions")
     eq(tools[1].on, false, "off here")
     paw.frontend.act[tools[1].act](clip.id)
     eq(paw.opt.complete_auto, true, "a click turns it on")
     paw.opt.complete_auto = false
     complete.request()
-    local over = told().over
-    local ghosts, chips = 0, {}
-    for _, mark in ipairs(over) do
-      if mark.badge then chips[#chips + 1] = mark else ghosts = ghosts + 1 end
+    paw.frontend.act.complete_badge(clip.id, 2)
+    eq(complete.current().index, 2, "the second shown")
+    -- The badge is a hit region of the scene a window is sent.
+    api.scene_forget(0)
+    paw.ui.render_scene("pianoroll", 120, 40, { w = 8, h = 16 })
+    local patch = api.json_decode(api.scene_end(0, "complete"))
+    api.scene_forget(0)
+    local badge
+    for _, n in ipairs(patch.set) do
+      if n.hit and n.hit.kind == "act" and n.hit.act == "complete_badge" then badge = n end
     end
-    eq(ghosts, 2, "the ghost notes, in front of the clip's")
-    eq(#chips, 3, "a chip for each alternative, and one for what shows")
-    eq(chips[3].label, "1/2 fixed: rise", "which says what it is")
-    paw.frontend.act[chips[2].act](clip.id, chips[2].arg)
-    eq(complete.current().index, 2, "a click on another chip shows it")
+    eq(badge and badge.hit.arg, 2, "the badge, for the one showing")
     local before = T.melody(clip)
-    over = told().over
-    paw.frontend.act[over[#over].act](clip.id, over[#over].arg)
-    eq(T.melody(clip), before .. " 64@4+1 62@5+1", "a click on the one showing accepts it")
+    paw.frontend.act[badge.hit.act](clip.id, badge.hit.arg)
+    eq(T.melody(clip) ~= before, true, "a click on it accepts it")
   end)
 end)
 

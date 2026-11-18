@@ -248,6 +248,27 @@ no new scene for them. A node with `hit`
 is a hit region: a press, a move or the wheel there means what the view
 says it does (`hit.kind` and the rest, its action).
 
+A `plane` places its kids in a domain of its own (`buf:plane`): `x` and
+`y`, each `{ "domain", "from", "per" }`, put the domain's `from` at its
+edge and run `per` units for each unit of it (backwards when negative). A
+kid's rectangle is in the domain, so a note of the piano roll is
+`{"k": "roll/note:7:3", "t": "role", "role": "note", "r": [1.5, 60, 0.5, 1],
+"props": {"label": "C4", "color": "#e0a050", "velocity": 90}}`, a half beat
+from beat 1.5 on pitch 60, which a window paints there, between cells; its
+cells, which the terminal rounds it to, are placed in the domain too. A
+plane drawn over by something else and then marked again goes on in a
+node of its own after that (`roll#2`), so that the order drawn is kept.
+Runs and fills drawn after a role a frontend paints and over it are
+painted over it again, as the terminal shows them (a tint, for a fill that
+only restyles).
+
+A menu the kernel opens (a right click on a pane drawn from its scene)
+is told in `frontend.watch`'s `modal.menu`, how many it has opened; the
+window shows `paw.frontend.menu("shown")` at the pointer, and says what was
+chosen with `menu_choose("shown", {}, path)` or that it was let go with
+`menu_dismiss`. `modal.hint` is what the pointer is over, or what its drag
+will do, for the status line.
+
 `scene.input` takes a pointer event as `paw.canvas.pointer` does (`kind`
 down, up, move, hover, double or wheel, `button`, `ctrl`, `shift`,
 `alt`, `dx`, `dy`), with `x` and `y` in units from the window's corner.
