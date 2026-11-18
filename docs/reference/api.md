@@ -1285,7 +1285,8 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
   ```
 - `paw.option.definitions()`: Each option given a default by `paw.option.define`, by name: what it was given, `{ default, spec }`, the same table until defined again.
 - `paw.option.list()`: Every option that has a default, by name: { name, default }.
-- `paw.option.read(name, text)`: The value typed text stands for in option `name` (`true`, `off`, a number, or the text), or nil and an error that says what it takes. A value that is not text is checked as it is.
+- `paw.option.read(name, text)`: The value typed text stands for in option `name` (`true`, `off`, a number, the text, or a list for an option that takes one: `a,b`), or nil and an error that says what it takes. A value that is not text is checked as it is.
+- `paw.option.show(value)`: An option's value as text: a list is its items with commas between.
 - `paw.option.undefine(name, was)`: Remove the definition of an option and its value (the extension that defined it unloaded). `paw.opt[name]` is nil again. With `was`, the value that `paw.option.definitions` gave before, that definition returns, and the value stays.
 
 ## Module paw.panes

@@ -5154,11 +5154,16 @@ function paw.option.definitions() end
 function paw.option.list() end
 
 --- The value typed text stands for in option `name` (`true`, `off`, a
---- number, or the text), or nil and an error that says what it takes.
---- A value that is not text is checked as it is.
+--- number, the text, or a list for an option that takes one: `a,b`), or
+--- nil and an error that says what it takes. A value that is not text is
+--- checked as it is.
 ---@param name any
 ---@param text any
 function paw.option.read(name, text) end
+
+--- An option's value as text: a list is its items with commas between.
+---@param value any
+function paw.option.show(value) end
 
 --- Remove the definition of an option and its value (the extension that
 --- defined it unloaded). `paw.opt[name]` is nil again. With `was`, the

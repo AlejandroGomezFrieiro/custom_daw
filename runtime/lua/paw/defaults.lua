@@ -923,6 +923,23 @@ command("set", function(ctx)
   end
   if not name then return paw.pick("options") end
   name = tostring(name)
+  -- `set plugins+=Surge` and `set plugins-=Surge` add to a list and take
+  -- from it, as in Vim.
+  local list_name, how, item = name:match("^([%w_]+)([%+%-])=(.*)$")
+  if list_name then
+    if type(paw.opt[list_name]) ~= "table" then
+      return paw.notify(list_name .. " is not a list option: `set " .. list_name .. "=value`", "warn")
+    end
+    local out = {}
+    for _, v in ipairs(paw.opt[list_name]) do
+      if not (how == "-" and tostring(v) == item) then out[#out + 1] = v end
+    end
+    if how == "+" then out[#out + 1] = tonumber(item) or item end
+    local value, err = paw.option.read(list_name, out)
+    if value == nil then return paw.notify(err, "error") end
+    paw.opt[list_name] = value
+    return paw.notify(list_name .. " = " .. paw.option.show(paw.opt[list_name]))
+  end
   -- `set follow?` shows an option; a name that is none is an error, as in Vim.
   local ask = name:match("^(.-)%?$")
   if ask then name, value = ask, nil end
@@ -948,14 +965,14 @@ command("set", function(ctx)
   elseif value == nil and boolean and not ask then
     value = true
   end
-  if value == nil then return paw.notify(name .. " = " .. tostring(paw.opt[name])) end
+  if value == nil then return paw.notify(name .. " = " .. paw.option.show(paw.opt[name])) end
   local err
   value, err = paw.option.read(name, value)
   if value == nil then return paw.notify(err, "error") end
   paw.opt[name] = value
-  paw.notify(name .. " = " .. tostring(paw.opt[name]))
+  paw.notify(name .. " = " .. paw.option.show(paw.opt[name]))
 end, {
-  desc = "Show or set an option: `set zoom 4`, `set zoom=4`, `set zoom?` shows it, `set follow` and `set nofollow` turn it on and off, `set follow!` flips it, `set` alone lists them",
+  desc = "Show or set an option: `set zoom 4`, `set zoom=4`, `set zoom?` shows it, `set follow` and `set nofollow` turn it on and off, `set follow!` flips it, a list `set plugins=a,b`, `+=c`, `-=a`; `set` alone lists them",
   complete = { "options" },
 })
 

@@ -301,7 +301,7 @@ M.completers = {
   end,
   options = function()
     local out = {}
-    for _, o in ipairs(paw.option.list()) do out[#out + 1] = item(o.name, "now " .. tostring(paw.opt[o.name])) end
+    for _, o in ipairs(paw.option.list()) do out[#out + 1] = item(o.name, "now " .. paw.option.show(paw.opt[o.name])) end
     return out
   end,
   views = function()
