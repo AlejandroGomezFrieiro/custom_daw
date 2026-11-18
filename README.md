@@ -214,7 +214,7 @@ the same pages.
 - How-to guides: [run paw](docs/running.md), with its options, audio devices
   and other computers.
 - Reference: [all the keys](docs/reference/keys.md),
-  [the terminal](docs/terminal.md), [the graphical window](docs/window.md),
+  [the terminal](docs/terminal.md), [the graphical window](docs/reference/window.md),
   [the Lua API](docs/reference/api.md) and [the limits](docs/reference/limits.md).
   The manual has more reference pages.
 - Explanation: [about the architecture](docs/explanation/about-the-architecture.md).

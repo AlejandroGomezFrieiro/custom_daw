@@ -189,4 +189,4 @@ program. `:help statusline` has this page.
 The graphical window shows the line it has always shown, until `setup` is
 called: then the kernel tells it the line's pieces as `modal.statusline`
 (`{ left, right }`, each a list of `{ text, group }`) and the window is
-to draw those; see [Window](window.md).
+to draw those; see [Window](reference/window.md).

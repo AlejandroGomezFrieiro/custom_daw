@@ -87,7 +87,7 @@ same name, so any part of the runtime can be replaced.
 no code of its own: it is offered under More in the window, opened with
 `:view.window name`, and drawn there as the terminal draws it, with its keys
 and its `on_mouse` (see "Views in windows" under
-[The graphical frontend](window.md)). A `title` field names it
+[The graphical frontend](reference/window.md)). A `title` field names it
 in the menu, and `window = false` keeps it off. An extension that wants more
 than cells in the window gives the view a `paint(g, ctx)` and a
 `pointer(e)` as well: the window then paints it in pixels with
