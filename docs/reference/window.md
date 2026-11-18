@@ -168,7 +168,7 @@ window asks the same question. In Lua, the question is
 Open… with a `.mid` file opens it as a new project. Import, and the import
 entry of the timeline menu, put its tracks below the track of the cursor.
 They start at the cursor, and the tempo map does not change. See
-[Recording](../recording.md) for what paw makes of a MIDI file.
+[MIDI](midi.md#midi-files) for what paw makes of a MIDI file.
 
 The render dialog has these fields:
 
@@ -275,7 +275,7 @@ tells what the click does.
 | `Shift` and drag | Moves off the grid. |
 | Drag an edge | Trims the clip, and the same edge of each selected clip. The start moves without a change to what plays: an audio clip starts later in its file, a MIDI clip hides the notes before its new start. When you drag the edge out again, the notes show again. |
 | `Alt` and drag an edge | Slips the contents inside the clip. |
-| `Alt`, `Shift` and drag the right edge of an audio clip | Stretches its sound to end there. See [Stretched and looped clips](../mixing.md#stretching-and-looping-clips). |
+| `Alt`, `Shift` and drag the right edge of an audio clip | Stretches its sound to end there. See [Stretched and looped clips](stretch.md). |
 | Drag the end of a looped clip | Makes it longer, and the loop repeats. |
 | Double-click | Opens the notes of the clip. A selection of several clips opens all of them, with the clicked one active. A clip of a kind of track with an `editor` opens in that editor. |
 | Right-click | A menu: rename, split at the pointer or at the edit cursor, glue the selected clips, repeat, mute, stretch, shift, loop, delete, and the entries of extensions. |
@@ -421,7 +421,7 @@ and the `A` flag on the header, set the automation mode of the track.
 | Click a scene at the right | Launches its row. |
 | Bar along the top | Sets the quantize, captures, returns all tracks to the arrangement, and stops all clips. |
 
-See [Live performance](../live.md).
+See [The session view](session-view.md).
 
 ## Mixer
 
@@ -551,7 +551,7 @@ the selection, or what insert mode draws. The tools are, in order:
 | snap | Starts or stops the snap to the grid. |
 | quantize | Quantizes the selected notes, or all notes (`:notes.quantize`). |
 | step | Step input (`:notes.step_input`): with the transport stopped, notes played on a MIDI keyboard go in at the cursor, chords together, and the cursor moves on. |
-| list | The event list: each note and move of the clip as a row to change in place. See [Edit, mix and render](../mixing.md). |
+| list | The event list: each note and move of the clip as a row to change in place. See [The event list](midi.md#the-event-list). |
 | Suggest, and other switches of modules | Start and stop the suggestions of a completion source. |
 | tracks | `:roll.tracks`: each track near the roll, to show or hide its notes, and its clips, to edit them together. |
 | zoom | A menu of zooms. |
@@ -560,7 +560,7 @@ the selection, or what insert mode draws. The tools are, in order:
 
 Above the ruler, a row shows the names of the chords that sound over all
 pitched tracks (`paw.opt.chords`: names, Roman numerals, both, or off). See
-[Harmony, completion and snippets](../harmony.md). The ruler counts bars
+[Harmony](harmony.md). The ruler counts bars
 and beats. A dot on the keyboard shows the keys that sound at the cursor.
 The title shows the name of the chord.
 
@@ -583,7 +583,7 @@ notes of all of them. Each note stays in its clip. Each edit is one undo
 step.
 
 Suggestions, with a completion source loaded (see
-[Harmony, completion and snippets](../harmony.md)):
+[Harmony](harmony.md)):
 
 | Key | Effect |
 | --- | --- |
@@ -710,7 +710,7 @@ shows its main area, the kernel puts the device panel beside the arrange
 view.
 
 A tab narrowed to a group (`:narrow Strings`, `zn`, see
-[Edit, mix and render](../mixing.md#mixing-midi-and-rendering-in-the-core))
+[Narrowed tabs](narrowing.md))
 has the name of the group in the row of tabs. Its panes show only the
 tracks of the group: the timeline, the mixer and the device panel take
 their rows from `paw.groups.rows()`.
