@@ -109,7 +109,7 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: 
             painter.rect_filled(shape, CornerRadius::same(4), if on { alpha(t.select, 0.85) } else { face });
             let colour = if on { t.surface } else if props["off"] == true { t.text_3 } else { tone(props, t.text) };
             let font = font_for(rect, false);
-            let whole = text(props, "text");
+            let whole = props["words"].as_str().map_or_else(|| text(props, "text"), String::from);
             // An icon in place of the glyph that stands for it in cells: a
             // text of one character is that glyph alone, a longer one the
             // words after it.
@@ -361,7 +361,7 @@ fn playhead(painter: &Painter, rect: Rect, props: &Value, bind: Option<&str>, li
         return;
     }
     let ruler = rect.top() + ch;
-    painter.vline(x.round() + 0.5, ruler..=rect.bottom(), Stroke::new(1.0, t.play));
+    painter.vline(x.round() + 0.5, ruler..=rect.bottom(), Stroke::new(1.5, t.play));
     painter.add(egui::Shape::convex_polygon(vec![pos2(x - 4.5, ruler - 6.0), pos2(x + 4.5, ruler - 6.0), pos2(x, ruler)], t.play, Stroke::NONE));
 }
 

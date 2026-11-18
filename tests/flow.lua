@@ -268,7 +268,7 @@ test("Ctrl-w + and - change track height, = makes it automatic", function()
   paw.add_track({ name = "A" })
   paw.add_track({ name = "B" })
   screen(100, 30)
-  eq(paw.ui.views.arrange.geometry.th, 6, "two tracks on 30 rows get the most")
+  eq(paw.ui.views.arrange.geometry.th, 4, "two tracks on 30 rows get the most")
   paw.opt.track_height = th
 end)
 

@@ -874,6 +874,10 @@ function view:on_mouse(e)
   if area == "tempo" and e.button == "right" then
     return mouse.grab(e, { up = function() self:menu_at(h, { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) }) end })
   end
+  -- Under the last track: the kinds of track to make one of.
+  if area == "below" and h.header and e.button == "left" then
+    return paw.ui.menu(require("paw.window_menus").add_track(), { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) + 1 })
+  end
   if area ~= "track" then return end
   if e.button == "right" then
     if h.header then

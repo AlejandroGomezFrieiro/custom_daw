@@ -337,8 +337,8 @@ fn curve(painter: &Painter, props: &Value, rect: Rect, (cw, _): (f32, f32)) {
 }
 
 /// A level across a row: a well lit from the left in the meter colours by
-/// how far it reaches, both sides a half each when `stereo`, the loudest of
-/// late a line; with `at`, a fader's cap where the volume stands.
+/// how far it reaches on the fader's scale, both sides a half each, the
+/// loudest of late a line; with `at`, a fader's cap where the volume stands.
 fn hmeter(ui: &Ui, painter: &Painter, props: &Value, bind: Option<&str>, live: &Value, rect: Rect) {
     let t = th();
     let track = bind.and_then(|b| b.strip_prefix("meter:"));
@@ -351,12 +351,14 @@ fn hmeter(ui: &Ui, painter: &Painter, props: &Value, bind: Option<&str>, live: &
     painter.rect_filled(light, CornerRadius::same(1), if clipped { t.meter_clip } else { t.meter_well });
     let well = Rect::from_min_max(pos2(rect.left() + 1.0, rect.center().y - (rect.height() * 0.3).clamp(3.0, 5.5)), pos2(light.left() - 2.0, rect.center().y + (rect.height() * 0.3).clamp(3.0, 5.5)));
     painter.rect(well, CornerRadius::same(2), t.meter_well, Stroke::new(1.0, t.divider), StrokeKind::Outside);
-    let reach = |peak: f32| ((20.0 * peak.max(1e-6).log10() + 60.0) / 60.0).clamp(0.0, 1.0);
+    // On the fader's scale, -60 to +6 dB, so that a level stands where the
+    // fader's cap would stand for it.
+    let reach = |peak: f32| ((20.0 * peak.max(1e-6).log10() + 60.0) / 66.0).clamp(0.0, 1.0);
     let bands = |part: Rect, peak: f32| {
         let end = part.left() + part.width() * reach(peak);
         let mut from = part.left();
-        for (db, colour) in [(-18.0f32, t.meter_low), (-9.0, t.meter_mid), (-3.0, t.meter_high), (0.0, t.meter_hot)] {
-            let to = (part.left() + part.width() * (db + 60.0) / 60.0).min(end);
+        for (db, colour) in [(-18.0f32, t.meter_low), (-9.0, t.meter_mid), (-3.0, t.meter_high), (0.0, t.meter_hot), (6.0, t.meter_clip)] {
+            let to = (part.left() + part.width() * (db + 60.0) / 66.0).min(end);
             if to > from {
                 painter.rect_filled(Rect::from_x_y_ranges(from..=to, part.y_range()), CornerRadius::ZERO, colour);
             }
@@ -366,14 +368,11 @@ fn hmeter(ui: &Ui, painter: &Painter, props: &Value, bind: Option<&str>, live: &
             }
         }
     };
+    // Both sides, a thin bar each.
     let (left, right) = (levels.first().copied().unwrap_or(0.0), levels.get(1).copied().unwrap_or(0.0));
-    if props["stereo"] == true {
-        let half = well.height() / 2.0;
-        bands(Rect::from_min_size(well.min, vec2(well.width(), half - 0.5)), left);
-        bands(Rect::from_min_size(well.min + vec2(0.0, half + 0.5), vec2(well.width(), half - 0.5)), right);
-    } else {
-        bands(well, left.max(right));
-    }
+    let half = well.height() / 2.0;
+    bands(Rect::from_min_size(well.min, vec2(well.width(), half - 0.5)), left);
+    bands(Rect::from_min_size(well.min + vec2(0.0, half + 0.5), vec2(well.width(), half - 0.5)), right);
     if hold > 1e-5 {
         let x = well.left() + well.width() * reach(hold);
         painter.vline(x, well.y_range(), Stroke::new(1.0, if hold >= 1.0 { t.meter_clip } else { t.text_2 }));

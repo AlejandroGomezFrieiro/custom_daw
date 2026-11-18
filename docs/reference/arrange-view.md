@@ -13,9 +13,9 @@ are in [Motions, operators and modes](grammar.md).
 - A thin amber playhead.
 - The track headers. Each has the chips `M` `S` `R` `I` (mute, solo, arm, monitor). If there are enough rows, a header also shows the level and volume and the pan. It can also show the devices, the output (`→ Bus`), the sends (`↗ Reverb -9`) and the input.
 - A letter before the name of a track of a kind that an extension defines.
-- The master track, at the bottom, with the levels of both sides in one row and a dB scale.
+- The master track, pinned at the bottom: a header like the others, with the levels of both sides in one row. Beside it, the timeline shows its volume automation, if it has any.
 
-The tracks share the rows of the window, three to six rows each
+The tracks share the rows of the window, three to four rows each
 (`paw.opt.track_height`). The headers are 26, 22, 18 or 12 columns wide,
 by the width of the screen (`paw.opt.header_width`).
 

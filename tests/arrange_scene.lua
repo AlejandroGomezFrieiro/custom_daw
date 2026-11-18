@@ -258,3 +258,13 @@ test("a take lane in a window: each take a clip of its own, with the take's key 
   eq(table.concat(takes, " "), "1:true 2*:true", "both takes, the second playing, each with its key")
   paw.commands.exec("take.lanes")
 end)
+
+test("in a window the new track button under the tracks offers the kinds of track", function()
+  song()
+  local L = view.geometry.layout
+  input("down", 8.5, L.used + 0.5)
+  input("up", 8.5, L.used + 0.5)
+  local items = require("paw.menu").shown()
+  eq(items ~= nil and items[1].label, "Empty track", "the menu of new tracks")
+  paw.frontend.act.menu_dismiss()
+end)

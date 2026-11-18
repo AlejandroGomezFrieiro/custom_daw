@@ -88,12 +88,12 @@ function view.header_width(w)
 end
 
 --- Rows a track takes when `count` tracks share `room` rows:
---- `paw.opt.track_height`, or with "auto" as many as fit, from 3 to 6.
+--- `paw.opt.track_height`, or with "auto" as many as fit, from 3 to 4.
 function view.track_height(count, room)
   local want = tonumber(paw.opt.track_height)
   if want then return math.max(1, math.floor(want)) end
   if count < 1 then return 3 end
-  return util.clamp(math.floor(room / count), 3, 6)
+  return util.clamp(math.floor(room / count), 3, 4)
 end
 
 --- Whether the ruler has a second row: when something registered in
@@ -194,6 +194,12 @@ local chip_tones = { mute = "mute", solo = "solo", armed = "rec", monitor = "sel
 --- Where a fader of the volume stands, from 0 at -60 dB to 1 at +6 dB.
 local function fader_at(volume)
   return util.clamp(((volume or 0) + 60) / 66, 0, 1)
+end
+
+--- Words on a header in `style`, which a window writes in its font for
+--- words, in the colour `tone` (a name of the palette).
+local function words(buf, x, y, text, style, tone)
+  buf:mark("label", x, y, math.max(1, api.str_width(text)), 1, { text = text, style = style, font = "sans", tone = tone })
 end
 
 --- What a track sends, in a few words: `↗ Reverb -9  ↗ Delay -12`.
@@ -348,17 +354,17 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
       if out ~= "" then
         local out_w = api.str_width(out)
         if out_w > room_left - 2 then out = util.fit(out, math.max(1, room_left - 2)) out_w = api.str_width(out) end
-        buf:text(right - out_w, row, out, "TrackInfo")
+        words(buf, right - out_w, row, out, "TrackInfo", "text_3")
         room_left = room_left - out_w - 1
       end
       if devices ~= "" and room_left > 2 then
         if api.str_width(devices) > room_left then devices = util.fit(devices, room_left) end
-        buf:text(x, row, devices, "TrackRoute")
+        words(buf, x, row, devices, "TrackRoute", "text_2")
       end
     elseif kind == "sends" then
       local text = sends_text(t)
       if api.str_width(text) > width then text = util.fit(text, width) end
-      buf:text(x, row, text, "TrackInfo")
+      words(buf, x, row, text, "TrackInfo", "text_3")
     elseif kind == "input" then
       -- What the track takes in, with the level arriving there whether or
       -- not it is heard, so that a guitar can be seen before anything is armed.
@@ -371,7 +377,7 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
           x = x + 2
         end
         label = util.fit(label, math.max(1, right - x))
-        buf:text(x, row, label, heard and "Input" or "TrackInfo")
+        words(buf, x, row, label, heard and "Input" or "TrackInfo", heard and "select" or "text_3")
       end
     end
   end
@@ -801,7 +807,7 @@ function view:render(buf, ctx)
   if hw >= 12 then
     local pos = paw.time.format(cursor.beat)
     if hw - 2 >= #pos + 5 then
-      buf:text(1, 0, "cur", "RulerCornerLabel")
+      buf:mark("label", 1, 0, 3, 1, { text = "cur", style = "RulerCornerLabel", font = "sans", tone = "text_3" })
       buf:text(5, 0, pos, "RulerCorner")
     else
       buf:text(1, 0, util.fit(pos, hw - 2), "RulerCorner")
@@ -934,12 +940,23 @@ function view:render(buf, ctx)
     welcome(buf:sub(0, L.ruler_rows, w, mst.y - L.ruler_rows))
   elseif mst.y - L.used >= 2 then
     -- Room left under the last track says how to fill it.
+    -- A button in a window, which a click opens the kinds of track from.
     headers:text(hw >= 16 and 4 or 2, L.used, "o", "EmptyKey")
-    headers:text(hw >= 16 and 6 or 4, L.used, "new track", "Empty")
+    local at = hw >= 16 and 6 or 4
+    headers:mark("button", at, L.used, math.max(9, math.min(13, hw - 1 - at)), 1, {
+      text = "new track", words = "New track", icon = "plus", style = "Empty", quiet = true, label = "new track",
+    })
   end
   local master = api.track_get(0)
   header(self, headers, mst.y, mst.h, master, nil, false, api.lane_list(0), draw.track_hue(master))
-  lanes:fill(0, mst.y, tw, mst.h, " ", "TrackHeader")
+  -- Beside the master, its automation when it has some; else nothing.
+  for _, l in ipairs(api.lane_list(0)) do
+    if l.target == "volume" and l.point_count > 0 then
+      curve(lanes, 0, mst.y, tw, mst.h, function(i)
+        return (api.lane_value_at(l.id, self.scroll + (i + 0.5) / (zoom * 2)) + 60) / 66
+      end, { style = l.enabled and "Automation" or "Faint", color = draw.track_colour(master), enabled = l.enabled, from = self.scroll, per = zoom })
+    end
+  end
 
   local names = {}
   for name in pairs(self.layers) do names[#names + 1] = name end

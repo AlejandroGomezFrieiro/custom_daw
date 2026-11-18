@@ -24,11 +24,13 @@ role("label", {
 })
 
 --- Something to click: its text, lit when `on`. A window draws `icon`
---- in place of the text, when it has one of that name.
+--- in place of the text, when it has one of that name, and writes `words`
+--- in place of the text where it has them.
 role("button", {
   props = {
     text = "string", style = "highlight group", on = "boolean", menu = "boolean: it opens a menu",
-    quiet = "boolean: no face until the pointer is on it", off = "boolean: dimmed", tone = "theme token of its text (window)",
+    quiet = "boolean: no face until the pointer is on it", off = "boolean: dimmed",
+    tone = "theme token of its text (window)", words = "string (window)",
     icon = "up | down | remove | window | plus | automate | learn | plugs | warning | circle | mic | speaker (window)",
   },
   cells = function(buf, p)

@@ -213,7 +213,7 @@ test("tracks fit their height to the screen, and the headers their width", funct
   local arrange = paw.ui.views.arrange
   for i = 1, 2 do paw.add_track({ name = "t" .. i }) end
   paw.flush()
-  eq(arrange:layout(120, 34).th, 6, "two tracks on a tall screen get six rows each")
+  eq(arrange:layout(120, 34).th, 4, "two tracks on a tall screen get four rows each")
   for i = 3, 20 do paw.add_track({ name = "t" .. i }) end
   paw.flush()
   eq(arrange:layout(120, 34).th, 3, "twenty get three, and scroll")

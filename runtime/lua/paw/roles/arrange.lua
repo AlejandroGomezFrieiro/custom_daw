@@ -143,7 +143,8 @@ role("recording", {
 --- (linear, both sides), `hold`, the loudest of late, marked. With
 --- `stereo`, both sides in one row of half blocks. With `at` (0 to 1), a
 --- fader's place along it, which a window shows as a thumb: the volume a
---- drag across the row sets. Bound to a track's meter (`bind =
+--- drag across the row sets. A window always shows both sides, a thin bar
+--- each, on the fader's scale. Bound to a track's meter (`bind =
 --- "meter:<id>"`), a window moves the levels with `scene.live`.
 role("hmeter", {
   props = { levels = "list of two numbers 0..", hold = "number", stereo = "boolean", at = "number 0..1", clipped = "boolean" },
