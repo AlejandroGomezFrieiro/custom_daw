@@ -1,6 +1,7 @@
 -- The how-to guides of the user guide about mixing, each driven with the
 -- keys that it gives (docs/how-to/set-levels-and-pan.md and the others).
--- Loaded by tests/suite.lua with its helpers.
+-- Loaded by tests/suite.lua with its helpers. The guides that load an
+-- extension run last (`T.last`), so that its commands do not reach the other tests.
 local T = ...
 local test, eq, near, fresh = T.test, T.eq, T.near, T.fresh
 local api = paw.api
@@ -181,7 +182,7 @@ test("guide: send several tracks to one reverb", function()
   eq(with > without, true, "the reverb track adds to the mix")
 end)
 
-test("guide: check the mix", function()
+T.last("guide: check the mix", function()
   start()
   local pad = T.tone("Pad", 16)
   paw.ui.focus("arrange")

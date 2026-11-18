@@ -117,7 +117,7 @@ test("guide: import audio and MIDI files", function()
   end
 end)
 
-test("guide: make and use track templates", function()
+T.last("guide: make and use track templates", function()
   start()
   paw.opt.templates_dir = T.scratch .. "/guide-templates"
   T.after(function() paw.opt.templates_dir = T.scratch .. "/templates" end)

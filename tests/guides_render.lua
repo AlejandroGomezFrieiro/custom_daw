@@ -1,6 +1,7 @@
 -- The how-to guides of the user guide about rendering and sharing, and about
 -- projects and files, each driven with the keys and commands that it gives.
--- Loaded by tests/suite.lua with its helpers.
+-- Loaded by tests/suite.lua with its helpers. The guides that load an
+-- extension run last (`T.last`), so that its commands do not reach the other tests.
 local T = ...
 local test, eq, near, fresh = T.test, T.eq, T.near, T.fresh
 local api = paw.api
@@ -130,7 +131,7 @@ test("guide: export MIDI for another program", function()
   eq(parts(d .. "/part.mid"), "Lead:1 Bass:2", ":export selection writes the selected tracks")
 end)
 
-test("guide: open a REAPER project, and save one for REAPER", function()
+T.last("guide: open a REAPER project, and save one for REAPER", function()
   start()
   T.tone("Lead", 8)
   local d = dir("reaper")
