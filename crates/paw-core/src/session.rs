@@ -94,6 +94,17 @@ pub struct Transport {
     pub pre_roll: u32,
     #[serde(skip)]
     pub pre_roll_seconds: f64,
+    /// The metronome's level in dB, whether the first beat of a bar is
+    /// higher, and the first output channel (from 1) of the pair it plays
+    /// on, or 0 for with the song. Set from `paw.opt.click_level`,
+    /// `paw.opt.click_accent` and `paw.opt.click_output`, so not saved
+    /// with a project.
+    #[serde(skip)]
+    pub click_level: f64,
+    #[serde(skip)]
+    pub click_accent: bool,
+    #[serde(skip)]
+    pub click_output: u32,
 }
 
 impl Default for Transport {
@@ -110,6 +121,9 @@ impl Default for Transport {
             count_in: 0,
             pre_roll: 0,
             pre_roll_seconds: 0.0,
+            click_level: 0.0,
+            click_accent: true,
+            click_output: 0,
         }
     }
 }
@@ -2611,6 +2625,11 @@ impl Session {
             end: t.loop_end,
         });
         self.handle.send(Msg::SetMetronome(t.metronome));
+        self.handle.send(Msg::SetClick {
+            gain: paw_engine::db_to_gain(t.click_level),
+            accent: t.click_accent,
+            output: t.click_output as u16,
+        });
     }
 
     /// Where a take punched in from a stop starts playing: the pre-roll
@@ -3647,6 +3666,7 @@ impl Session {
             "punch_enabled": t.punch_enabled, "punch_start": t.punch_start, "punch_end": t.punch_end,
             "count_in": t.count_in, "counting": self.counting(),
             "pre_roll": t.pre_roll, "pre_roll_seconds": t.pre_roll_seconds,
+            "click_level": t.click_level, "click_accent": t.click_accent, "click_output": t.click_output,
             "record_offset": self.record_offset,
             "write": self.write,
             "take": self.take.as_ref().map(|t| t.number),
@@ -3697,6 +3717,21 @@ impl Session {
                     bail!("a pre-roll is from 0 to 30 seconds");
                 }
                 t.pre_roll_seconds = seconds;
+            }
+            "click_level" => {
+                let db: f64 = de(key, value)?;
+                if !(-60.0..=12.0).contains(&db) {
+                    bail!("the click's level is from -60 to +12 dB");
+                }
+                t.click_level = db;
+            }
+            "click_accent" => t.click_accent = de(key, value)?,
+            "click_output" => {
+                let channel: f64 = de(key, value)?;
+                if !(0.0..=64.0).contains(&channel) || channel.fract() != 0.0 {
+                    bail!("the click's output is a channel from 1 to 64, or 0 for with the song");
+                }
+                t.click_output = channel as u32;
             }
             _ => bail!("the transport has no settable field `{key}`"),
         }
@@ -3996,6 +4031,17 @@ impl Session {
         let mut out: Vec<Id> = self.map.held_files.keys().copied().collect();
         out.sort_unstable();
         out
+    }
+
+    /// The track that plays MIDI input while no track is armed, as if it
+    /// were monitored, or none. The project does not change.
+    pub fn set_follow(&mut self, track: Option<Id>) {
+        if self.map.follow == track {
+            return;
+        }
+        self.map.follow = track;
+        self.dirty = true;
+        self.flush();
     }
 
     /// Let only these tracks be heard for now, with what they pass through

@@ -1771,7 +1771,7 @@ test("the dot, macros, marks, jumps and search repeat and find things", function
   eq(layout(t), "a@4+4 b@4+4 c@8+4", "a count on . replaces the one it had")
   paw.undo() paw.undo()
   paw.cursor.set_beat(0)
-  keys("j.")
+  keys("jk.")
   eq(layout(t), "a@1+4 b@4+4 c@8+4", "moving the cursor is not a change: . still repeats the one before")
   paw.undo()
 

@@ -59,6 +59,29 @@ command("transport.record", function()
     transport.record()
   end
 end, { desc = "Record armed tracks from the cursor (or, while the song plays, from the playhead), or stop recording" })
+-- MIDI overdub (`paw.opt.midi_record = "merge"`): a MIDI take that lands
+-- over clips joins its notes into them, in the step that recorded it. A
+-- take round a loop stays a clip of takes, for comping.
+paw.on("clip.added", function(e)
+  if paw.opt.midi_record ~= "merge" then return end
+  local ok, c = pcall(api.clip_get, e.id)
+  if not ok or c.kind ~= "midi" or not tostring(c.name):match("^take %d+$") then return end
+  local ok_track, t = pcall(api.track_get, c.track or e.track)
+  if not ok_track or not t.armed then return end
+  if paw.takes.count(e.id) > 1 then return end
+  local from, to, over = c.start, c.start + c.length, { [e.id] = true }
+  local any = false
+  for _, other in ipairs(api.clip_list(t.id)) do
+    if other.id ~= e.id and other.kind == "midi" and other.start < to - 1e-9 and other.start + other.length > from + 1e-9 then
+      over[other.id], any = true, true
+      from, to = math.min(from, other.start), math.max(to, other.start + other.length)
+    end
+  end
+  if not any then return end
+  local step = api.undo_current()
+  edit.arrange.join(t.id, from, to, over)
+  api.undo_join(step)
+end)
 command("transport.metronome", function()
   transport.metronome = not transport.metronome
 end, { desc = "Toggle the metronome" })
@@ -72,6 +95,57 @@ api.transport_set("count_in", count_in_bars(paw.opt.count_in))
 paw.on("option.changed", function(e)
   if e.name == "count_in" then api.transport_set("count_in", count_in_bars(e.value)) end
 end)
+-- The metronome's level, accent and output are options the kernel is told
+-- of: `paw.opt.click_level` (dB), `click_accent`, `click_output` (the first
+-- output channel of a pair, 0 for with the song).
+local function send_click()
+  for _, name in ipairs({ "click_level", "click_accent", "click_output" }) do
+    local ok, err = pcall(api.transport_set, name, paw.opt[name])
+    if not ok then paw.notify(tostring(err):gsub("^[^:]*:%d+: ", ""), "warn") end
+  end
+end
+send_click()
+paw.on("option.changed", function(e)
+  if e.name:match("^click_") then send_click() end
+end)
+local function click_said()
+  local o = paw.opt
+  return string.format("click at %+g dB, %s, %s", o.click_level, o.click_accent and "the first beat higher" or "every beat the same",
+    o.click_output > 0 and string.format("on outputs %d/%d", o.click_output, o.click_output + 1) or "with the song")
+end
+command("click", function(ctx)
+  local a = ctx.args
+  local level = a.level ~= nil and tonumber(a.level) or nil
+  if a.level ~= nil and not level then return paw.notify("click: level=-6, in dB", "warn") end
+  local words = { on = true, yes = true, ["1"] = true, ["true"] = true, off = false, no = false, ["0"] = false, ["false"] = false }
+  local accent = a.accent
+  if accent ~= nil and type(accent) ~= "boolean" then accent = words[tostring(accent)] end
+  if a.accent ~= nil and accent == nil then return paw.notify("click: accent=on or accent=off", "warn") end
+  local output = a.output
+  if output == "song" or output == "mix" or output == "main" then output = 0 end
+  if output ~= nil then output = tonumber((tostring(output):match("^(%d+)"))) end
+  if a.output ~= nil and not output then return paw.notify("click: output=3 (outputs 3 and 4), or output=song", "warn") end
+  local ok, err = pcall(function()
+    if level then paw.opt.click_level = level end
+    if accent ~= nil then paw.opt.click_accent = accent end
+    if output then paw.opt.click_output = output end
+  end)
+  if not ok then return paw.notify((tostring(err):gsub("^[^:]*:%d+: ", "")), "warn") end
+  paw.notify(click_said())
+end, { desc = "The metronome's sound: `click level=-6`, `click accent=off`, `click output=3` (outputs 3 and 4, for headphones), `click output=song`; alone, what it is" })
+-- The selected track plays the MIDI keyboard while no track is armed
+-- (`paw.opt.midi_follows_selection`): the kernel is told which track.
+local function send_follow()
+  if paw.seats.current ~= 0 then return end
+  local id = paw.opt.midi_follows_selection and cursor.track_id() or nil
+  api.engine_follow(id ~= 0 and id or nil)
+end
+paw.on("cursor.changed", send_follow)
+paw.on("project.loaded", send_follow)
+paw.on("option.changed", function(e)
+  if e.name == "midi_follows_selection" then send_follow() end
+end)
+send_follow()
 -- The undo history's limits are options the kernel is told of.
 local function send_undo_limits()
   api.undo_limits(paw.opt.undo_steps, math.floor(paw.opt.undo_memory * 1024 * 1024))
@@ -1079,16 +1153,41 @@ command("clip.split", function()
   clip.length = at
   clip:track():add_clip(right)
 end, { desc = "Split the clip at the cursor" })
+--- The clips over a clip (a take over it), and over those, on its track.
+local function clips_over(clip)
+  local from, to = clip.start, clip.start + clip.length
+  local found = { [clip.id] = true }
+  local list = clip:track():clips()
+  local grew = true
+  while grew do
+    grew = false
+    for _, other in ipairs(list) do
+      if not found[other.id] and other.start < to - 1e-9 and other.start + other.length > from + 1e-9 then
+        found[other.id], grew = true, true
+        from, to = math.min(from, other.start), math.max(to, other.start + other.length)
+      end
+    end
+  end
+  return found, from, to
+end
+
 command("clip.join", function()
   local clip = need_clip()
   if not clip then return end
+  local track = clip:track().id
+  -- Clips over each other first, as `:j` joins them; else the next one.
+  local over, from, to = clips_over(clip)
+  if next(over, next(over)) then
+    edit.arrange.join(track, from, to, over)
+    return paw.notify("joined the clips over each other")
+  end
   local finish, next_clip = clip.start + clip.length, nil
   for _, other in ipairs(clip:track():clips()) do
     if other.start >= finish - 1e-9 and (not next_clip or other.start < next_clip.start) then next_clip = other end
   end
-  if not next_clip then return paw.notify("no clip after this one to join it with", "warn") end
-  edit.arrange.join(clip:track().id, clip.start, next_clip.start + next_clip.length)
-end, { desc = "Join the clip with the next one on the track" })
+  if not next_clip then return paw.notify("no clip after this one, or over it, to join it with", "warn") end
+  edit.arrange.join(track, clip.start, next_clip.start + next_clip.length)
+end, { desc = "Join the clip with the clips over it (a take over it), or else with the next one on the track" })
 command("clip.rename", function(ctx)
   local clip = need_clip()
   if not clip then return end
@@ -2327,7 +2426,7 @@ amap("P", function(ctx) edit.arrange.paste(keymap.getreg(ctx.register), true, ct
 amap("&", "clip.duplicate", "Repeat the clip after itself")
 amap("~", "clip.mute", "Mute or unmute the clip")
 amap("S", "clip.split", "Split the clip at the cursor")
-amap("J", "clip.join", "Join the clip with the next one")
+amap("J", "clip.join", "Join the clip with those over it, or with the next one")
 amap("<CR>", "clip.edit", "Edit the clip's notes")
 amap("i", "clip.insert", "Enter notes here, in a new clip if there is none")
 amap("grc", "clip.rename", "Rename the clip")

@@ -339,7 +339,11 @@ function A.join(track, from, to, only)
   for _, c in ipairs(clips) do
     if c.kind ~= "midi" then error("only MIDI clips can be joined", 0) end
   end
-  local first, last = clips[1], clips[#clips]
+  -- Clips over each other (a take over a clip) join as well as clips side
+  -- by side: from the first start to the last end.
+  table.sort(clips, function(a, b) return a.start < b.start end)
+  local first, finish = clips[1], 0
+  for _, c in ipairs(clips) do finish = math.max(finish, c.start + c.length) end
   local notes, controls = api.clip_notes(first.id), api.clip_controls(first.id)
   for i = 2, #clips do
     local by = clips[i].start - first.start
@@ -353,7 +357,7 @@ function A.join(track, from, to, only)
     end
     api.clip_remove(clips[i].id)
   end
-  api.clip_set(first.id, "length", last.start + last.length - first.start)
+  api.clip_set(first.id, "length", finish - first.start)
   api.clip_set_notes(first.id, notes)
   if #controls > 0 then api.clip_set_controls(first.id, controls) end
   return true

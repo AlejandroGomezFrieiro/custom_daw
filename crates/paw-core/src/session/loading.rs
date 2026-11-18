@@ -263,8 +263,9 @@ impl Session {
     }
 }
 
-/// How the next project opened is to be opened: with every plugin offline,
-/// or some devices (by id). Taken by the next open.
+/// How the next project opened is to be opened: with every plugin (CLAP,
+/// LV2, VST3, and devices written in Lua) offline, or some devices (by id).
+/// Taken by the next open.
 #[derive(Default, Debug, Clone, serde::Deserialize)]
 #[serde(default)]
 pub struct OpenOpts {
@@ -283,7 +284,7 @@ impl Session {
         let plugin = |kind: &str| {
             registry
                 .get(kind)
-                .is_some_and(|f| matches!(f.info().format.as_str(), "clap" | "lv2" | "vst3"))
+                .is_some_and(|f| matches!(f.info().format.as_str(), "clap" | "lv2" | "vst3" | "lua"))
         };
         for track in project
             .tracks

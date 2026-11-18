@@ -201,3 +201,156 @@ test(":engine threads=2 reports the new count", function()
   keys(":engine threads=many<CR>")
   eq(said():find("a number", 1, true) ~= nil, true, "a word that is no number is refused: " .. said())
 end)
+
+--- A null engine with a MIDI port `Keys A`, put back when the test ends.
+local function keyboard()
+  api.engine_restart({ backend = "null", test_midi = { "Keys A" } })
+  T.after(function() api.engine_restart({ backend = "null" }) end)
+end
+
+--- Whether the track sounds when a key is played on the keyboard.
+local function plays(track)
+  -- What it played before dies away first.
+  local quiet = api.now() + 3000
+  while track:meter() > 0.005 and api.now() < quiet do api.sleep(20) end
+  paw.midi.inject({ type = "note_on", pitch = 60, velocity = 110, port = "Keys A", channel = 1 })
+  local deadline, heard = api.now() + 1500, false
+  while api.now() < deadline and not heard do
+    api.sleep(20)
+    heard = track:meter() > 0.02
+  end
+  paw.midi.inject({ type = "note_off", pitch = 60, port = "Keys A", channel = 1 })
+  api.sleep(300)
+  return heard
+end
+
+test("the selected instrument track plays the MIDI keyboard without arming", function()
+  start()
+  keyboard()
+  local was = paw.opt.midi_follows_selection
+  T.after(function() paw.opt.midi_follows_selection = was end)
+  local piano, bass = paw.add_track({ name = "Piano" }), paw.add_track({ name = "Bass" })
+  paw.cursor.set_track(piano)
+  keys("aSynth<CR>")
+  eq(piano:devices()[1].kind, "synth", "a adds an instrument")
+  eq(piano.armed or piano.monitor, false, "the track is not armed or monitored")
+  eq(plays(piano), true, "the selected track plays the keyboard")
+  bass:add_device("synth")
+  keys("j")
+  eq(plays(piano), false, "j to another track: the piano no longer plays")
+  eq(plays(bass), true, "the bass does")
+  keys("k")
+  bass.armed = true
+  paw.flush()
+  eq(plays(piano), false, "with a track armed, only the armed track plays")
+  bass.armed = false
+  keys(":set midi_follows_selection false<CR>")
+  eq(paw.opt.midi_follows_selection, false, ":set turns it off")
+  eq(plays(piano), false, "and the selected track no longer plays")
+  keys("<A-i>")
+  eq(piano.monitor, true, "Alt-i monitors the input")
+  eq(plays(piano), true, "and a monitored track plays the keyboard")
+  eq(#piano:clips(), 0, "it records nothing")
+end)
+
+test(":click sets the metronome's level, accent and output", function()
+  start()
+  local saved = { paw.opt.click_level, paw.opt.click_accent, paw.opt.click_output }
+  T.after(function() paw.opt.click_level, paw.opt.click_accent, paw.opt.click_output = saved[1], saved[2], saved[3] end)
+  keys(":click<CR>")
+  eq(said(), "click at +0 dB, the first beat higher, with the song", ":click alone says what it is")
+  keys(":click level=-12 accent=off<CR>")
+  eq(said(), "click at -12 dB, every beat the same, with the song", "a level and no accent")
+  local t = api.transport_get()
+  eq(t.click_level .. " " .. tostring(t.click_accent), "-12 false", "the engine is told")
+  keys(":click output=3<CR>")
+  eq(said(), "click at -12 dB, every beat the same, on outputs 3/4", "an output pair of its own")
+  eq(api.transport_get().click_output, 3, "the engine is told")
+  keys(":click output=song<CR>")
+  eq(api.transport_get().click_output, 0, "and back with the song")
+  keys(":click level=40<CR>")
+  eq(paw.opt.click_level, -12, "a level out of range is refused")
+  eq(said():find("click_level", 1, true) ~= nil, true, "with a message: " .. said())
+end)
+
+test(":plugins.offline and :edit offline cover devices written in Lua", function()
+  start()
+  local dir = T.scratch .. "/lua-offline"
+  os.execute("mkdir -p '" .. dir .. "'")
+  T.write_file(dir .. "/offline_fx.lua", "local dev = require('paw.dsp').device { name = 'Offline FX' }\n"
+    .. "function dev.process(b) end\nreturn dev\n")
+  paw.luadev.add_dir(dir)
+  local lead = T.tone("Lead", 4)
+  paw.cursor.set_track(lead)
+  keys("aOffline FX<CR>")
+  local fx = lead:devices()[2]
+  eq(fx.kind, "lua:offline_fx", "the Lua device is on the track")
+  keys(":plugins.offline<CR>")
+  eq(fx:get().offline, true, ":plugins.offline sets the Lua device offline")
+  eq(lead:devices()[1]:get().offline, false, "the synth that comes with paw stays online")
+  eq(said(), "1 plugin offline", "and counts it")
+  keys(":plugins.online<CR>")
+  eq(fx:get().offline, false, ":plugins.online brings it up")
+  keys(":w " .. dir .. "/song.json<CR>")
+  keys(":edit " .. dir .. "/song.json offline<CR>")
+  local again = paw.track("Lead"):devices()[2]
+  eq(again:get().offline, true, ":edit offline opens it offline too")
+end)
+
+test("J joins clips over each other, as :j does", function()
+  start()
+  local t = paw.add_track({ name = "Keys" })
+  t:add_clip({ start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1 } } })
+  t:add_clip({ start = 1, length = 2, notes = { { pitch = 64, start = 0, length = 1 } } })
+  t:add_clip({ start = 8, length = 4, notes = { { pitch = 67, start = 0, length = 1 } } })
+  paw.cursor.set_track(t)
+  paw.cursor.set_beat(0)
+  keys("J")
+  eq(#t:clips(), 2, "J joins the clip with the one over it")
+  local c = t:clip_at(0)
+  eq(c.start .. "+" .. c.length .. " " .. #c:notes(), "0+4 2", "into one clip with the notes of both")
+  eq(said(), "joined the clips over each other", "and says so")
+  keys("J")
+  eq(#t:clips(), 1, "with none over it, J joins the next one")
+  keys("u")
+  eq(#t:clips(), 2, "u takes that back")
+end)
+
+test("MIDI overdub: with midi_record merge a take joins the clip under it, in one undo step", function()
+  start()
+  keyboard()
+  local was = { paw.opt.midi_record, paw.opt.count_in }
+  T.after(function() paw.opt.midi_record, paw.opt.count_in = was[1], was[2] end)
+  paw.opt.count_in = 0
+  paw.project.save(T.scratch .. "/overdub.json")
+  local t = paw.add_track({ name = "Keys" })
+  paw.cursor.set_track(t)
+  keys("aSynth<CR>")
+  keys("IKeys A<CR>")
+  keys("r")
+  local function take(pitch)
+    keys("3|")
+    keys("R")
+    local deadline = api.now() + 3000
+    while not (paw.transport.recording and paw.transport.playing) and api.now() < deadline do api.sleep(10) end
+    api.sleep(150)
+    paw.midi.inject({ type = "note_on", pitch = pitch, velocity = 100, port = "Keys A", channel = 1 })
+    api.sleep(250)
+    paw.midi.inject({ type = "note_off", pitch = pitch, port = "Keys A", channel = 1 })
+    api.sleep(150)
+    keys("<Space>")
+    paw.flush()
+  end
+  take(60)
+  eq(#t:clips(), 1, "the first take is a clip")
+  keys(":set midi_record merge<CR>")
+  eq(paw.opt.midi_record, "merge", ":set midi_record merge")
+  take(64)
+  eq(#t:clips(), 1, "the second take joins the clip under it")
+  eq(#t:clips()[1]:notes(), 2, "with the notes of both")
+  keys("u")
+  eq(#t:clips() .. " " .. #t:clips()[1]:notes(), "1 1", "u takes the take and the merge back in one step")
+  keys(":set midi_record new<CR>")
+  take(67)
+  eq(#t:clips(), 2, "with midi_record new, a take is a clip of its own again")
+end)

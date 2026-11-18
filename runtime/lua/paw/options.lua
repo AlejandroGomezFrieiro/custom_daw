@@ -41,8 +41,17 @@ local defaults = {
   count_in = 0,            -- bars the metronome counts before recording from a stop; 0 for none
   pre_roll = 0,            -- bars a take punched in from a stop plays before the punch in
   pre_roll_seconds = 0,    -- and seconds more, before those bars
+  -- A MIDI take over a clip: "new" is a clip of its own on top, "merge"
+  -- joins its notes into the clips under it (overdub).
+  midi_record = "new",
+  click_level = 0,         -- dB, the metronome's level against its own
+  click_accent = true,     -- the first beat of a bar clicks higher
+  click_output = 0,        -- the first output channel of the pair the click plays on; 0 for with the song
   velocity = 100,          -- for notes entered by hand
   send_level = -12,        -- dB a new send starts at
+  -- The selected track plays the MIDI keyboard while no track is armed, as
+  -- if its input were monitored; false: only an armed or monitored track.
+  midi_follows_selection = true,
   note_grid = 0.25,        -- piano roll step and snap, in beats
   note_snap = true,        -- the pointer's notes land on the piano roll's grid
   note_zoom = 8,           -- piano roll columns per beat
@@ -80,6 +89,9 @@ local specs = {
   count_in = { min = 0, max = 16, integer = true },
   pre_roll = { min = 0, max = 64, integer = true },
   pre_roll_seconds = { min = 0, max = 60 },
+  click_level = { min = -60, max = 12 },
+  midi_record = { values = { "new", "merge" } },
+  click_output = { min = 0, max = 63, integer = true },
   velocity = { min = 1, max = 127, integer = true },
   send_level = { min = -150, max = 24 },
   note_grid = { min = 1 / 128, max = 64 },

@@ -29,11 +29,16 @@ on top of the old clip.
 ## Merge a take into the clip
 
 1. Record the new take over the clip, as above.
-2. Keep the cursor in the bar of the two clips, and type `:j`. paw merges
-   the clips of that bar into one clip, with the notes of both.
+2. Put the cursor on the clips and press `J`. paw merges the clips into
+   one clip, with the notes of both.
 
-If the clips cover more than one bar, give the bars: `:5,8j` merges the
-clips in bars 5 to 8.
+To merge the clips of some bars, type the bars: `:5,8j` merges the clips
+in bars 5 to 8.
+
+To merge each take into the clip under it while you record (overdub),
+type `:set midi_record merge`. `u` undoes the take and the merge in one
+step. A take round a loop stays a clip of takes. To make each take a new
+clip again, type `:set midi_record new`.
 
 ## Record over a loop
 

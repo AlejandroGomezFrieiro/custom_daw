@@ -145,9 +145,29 @@ test("guide: connect a MIDI keyboard", function()
   keys("a")
   keys("synth<CR>")
   local t = paw.tracks()[1]
-  local function play() return loudest(t, 300, function() paw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keystation 49" }) end) end
+  local function play()
+    -- The note before dies away first.
+    local quiet = api.now() + 3000
+    while t:meter() > 0.0005 and api.now() < quiet do paw.wait(20) end
+    return loudest(t, 300, function() paw.midi.inject({ type = "note_on", pitch = 60, velocity = 100, port = "Keystation 49" }) end)
+  end
   local function release() paw.midi.inject({ type = "note_off", pitch = 60, port = "Keystation 49" }) paw.wait(100) end
-  eq(play() < 0.001, true, "a track that is not armed does not play the keyboard")
+  eq(play() > 0.01, true, "the selected track plays the keyboard, not armed")
+  release()
+  local other = paw.add_track({ name = "Other" })
+  keys("j")
+  eq(paw.cursor.track_id(), other.id, "j goes to the next track")
+  eq(play() < 0.001, true, "and the keyboard no longer plays the first")
+  release()
+  keys("k")
+  other.armed = true
+  paw.flush()
+  eq(play() < 0.001, true, "with a track armed, only the armed tracks play the keyboard")
+  release()
+  other.armed = false
+  keys(":set midi_follows_selection false<CR>")
+  T.after(function() paw.opt.midi_follows_selection = true end)
+  eq(play() < 0.001, true, "turned off, the selected track does not play the keyboard")
   release()
   keys("r")
   eq(t.armed, true, "r arms the track")

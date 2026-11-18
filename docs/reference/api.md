@@ -415,13 +415,15 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.cursor.index()`: 1-based position of the cursor track in the track list.
 - `paw.cursor.lane_id()`: The automation lane row of the cursor: a lane of the cursor track that shows as a row (see `paw.lanes`). Nil when the cursor is on the track.
 - `paw.cursor.line()`: 1-based row of the cursor among every row drawn, lanes included.
-- `paw.cursor.move_track(delta)`: Move by rows. In normal mode, the rows of open automation lanes count. After an operator or in a selection, only tracks count, as for `dj`.
-- `paw.cursor.row()`: 1-based row of the cursor track among the tracks that are drawn: the same as `index` until a group is folded.
+- `paw.cursor.master_reachable()`: Whether a move of the cursor can go on from the last track to the master: a move of its own in normal mode, in the views that draw the master after the tracks. After an operator or in a selection, only tracks count.
+- `paw.cursor.move_track(delta)`: Move by rows. In normal mode, the rows of open automation lanes count. After an operator or in a selection, only tracks count, as for `dj`. From the last track, a move down goes on to the master, and from the master a move up comes back to the tracks.
+- `paw.cursor.on_master()`: Whether the cursor is on the master track: the row after the last track in the arrange view, the strip after the last in the mixer.
+- `paw.cursor.row()`: 1-based row of the cursor track among the tracks that are drawn: the same as `index` until a group is folded. On the master, the row after the last track.
 - `paw.cursor.set_beat(beat)`: Put the cursor at a beat (not before 0).
 - `paw.cursor.set_track(track, lane)`: Put the cursor on a track, or with `lane` on one of its lane rows.
 - `paw.cursor.snap(beat)`: Round a position to the arrange grid.
 - `paw.cursor.track()`: The track the cursor is on, as a `paw.Track`, or nil.
-- `paw.cursor.track_id()`: The id of the track of the cursor, or of the first track when that track does not exist now. Nil when the project has no tracks.
+- `paw.cursor.track_id()`: The id of the track of the cursor, or of the first track when that track does not exist now. Nil when the project has no tracks. 0 when the cursor is on the master track (`on_master`).
 
 ## Module paw.curves
 
@@ -1089,7 +1091,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 ## Module paw.loading
 
 - `paw.loading.memory(path)`: What is remembered of a project's plugins: `stopped` maps device ids (as strings) to `{ kind, name, reason }`.
-- `paw.loading.offline()`: Set every plugin offline. Returns how many.
+- `paw.loading.offline()`: Set every plugin offline, devices written in Lua too. Returns how many.
 - `paw.loading.online()`: Bring every offline device up. Returns how many.
 - `paw.loading.open(path, opts)`: Open a project, offline as `opts` says (`plugins_offline`, or `offline`, a list of device ids), and with the devices that could not be loaded last time offline as well.
 - `paw.loading.project_dir(path)`: The directory the program keeps things about a project in, outside the project file: one per project file.
@@ -1890,6 +1892,8 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 ## Module paw.util
 
 - `paw.util.clamp(v, lo, hi)`: `v`, kept between `lo` and `hi`.
+- `paw.util.expand_path(path)`: A path as typed, with `~` at its start for the home folder, as a shell reads it: `~/mix.wav`. Every command that takes a file name reads it so.
+- `paw.util.fader_db(now, want, lo, hi)`: The level a fader goes to from `now` when it is moved to `want`: in its travel (`lo` to `hi`, the fader's when not given), but never back past where it is. A track at +10 dB that is turned down goes to +9, not to the top of the travel.
 - `paw.util.fit(text, width)`: Cut or pad text to exactly `width` columns.
 - `paw.util.inspect`: the same as `paw.inspect`.
 - `paw.util.merge(base, extra)`: Shallow copy with the fields of `extra` laid over it.
@@ -1960,6 +1964,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.device_state(id)`: The state of a plugin. Give it as `state` when you add a copy of the device.
 - `paw.api.device_types()`: --- devices ---
 - `paw.api.engine_audible(tracks)`: Only these tracks heard for now, as a solo would, or all with nil.
+- `paw.api.engine_follow(track)`: The track that plays MIDI input while no track is armed, as if monitored, or none with nil (`paw.opt.midi_follows_selection`).
 - `paw.api.engine_get()`: --- engine ---
 - `paw.api.engine_held()`
 - `paw.api.engine_hold(track, file)`: Play a track from a sound file for now, as if it is frozen, or live again with nil. The project does not change (see `freeze.rs`).

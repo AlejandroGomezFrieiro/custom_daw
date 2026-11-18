@@ -1600,13 +1600,26 @@ function paw.cursor.lane_id() end
 --- 1-based row of the cursor among every row drawn, lanes included.
 function paw.cursor.line() end
 
+--- Whether a move of the cursor can go on from the last track to the
+--- master: a move of its own in normal mode, in the views that draw the
+--- master after the tracks. After an operator or in a selection, only
+--- tracks count.
+function paw.cursor.master_reachable() end
+
 --- Move by rows. In normal mode, the rows of open automation lanes count.
 --- After an operator or in a selection, only tracks count, as for `dj`.
+--- From the last track, a move down goes on to the master, and from the
+--- master a move up comes back to the tracks.
 ---@param delta any
 function paw.cursor.move_track(delta) end
 
+--- Whether the cursor is on the master track: the row after the last
+--- track in the arrange view, the strip after the last in the mixer.
+function paw.cursor.on_master() end
+
 --- 1-based row of the cursor track among the tracks that are drawn: the
---- same as `index` until a group is folded.
+--- same as `index` until a group is folded. On the master, the row after
+--- the last track.
 function paw.cursor.row() end
 
 --- Put the cursor at a beat (not before 0).
@@ -1626,7 +1639,8 @@ function paw.cursor.snap(beat) end
 function paw.cursor.track() end
 
 --- The id of the track of the cursor, or of the first track when that track
---- does not exist now. Nil when the project has no tracks.
+--- does not exist now. Nil when the project has no tracks. 0 when the
+--- cursor is on the master track (`on_master`).
 function paw.cursor.track_id() end
 
 --- A copy of a point.
@@ -4452,7 +4466,7 @@ function paw.limit.untrusted(fn) end
 ---@param path any
 function paw.loading.memory(path) end
 
---- Set every plugin offline. Returns how many.
+--- Set every plugin offline, devices written in Lua too. Returns how many.
 function paw.loading.offline() end
 
 --- Bring every offline device up. Returns how many.
@@ -7327,6 +7341,21 @@ function paw.ui.keybar.show(lhs) end
 ---@param hi any
 function paw.util.clamp(v, lo, hi) end
 
+--- A path as typed, with `~` at its start for the home folder, as a shell
+--- reads it: `~/mix.wav`. Every command that takes a file name reads it so.
+---@param path any
+function paw.util.expand_path(path) end
+
+--- The level a fader goes to from `now` when it is moved to `want`: in its
+--- travel (`lo` to `hi`, the fader's when not given), but never back past
+--- where it is. A track at +10 dB that is turned down goes to +9, not to
+--- the top of the travel.
+---@param now any
+---@param want any
+---@param lo any
+---@param hi any
+function paw.util.fader_db(now, want, lo, hi) end
+
 --- Cut or pad text to exactly `width` columns.
 ---@param text any
 ---@param width any
@@ -7622,6 +7651,11 @@ function paw.api.device_types() end
 --- Only these tracks heard for now, as a solo would, or all with nil.
 ---@param tracks integer[]?
 function paw.api.engine_audible(tracks) end
+
+--- The track that plays MIDI input while no track is armed, as if
+--- monitored, or none with nil (`paw.opt.midi_follows_selection`).
+---@param track integer?
+function paw.api.engine_follow(track) end
 
 --- --- engine ---
 function paw.api.engine_get() end
