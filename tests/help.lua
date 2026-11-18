@@ -115,7 +115,7 @@ test("tags are found for keys, commands, options, Lua modules, sections and page
     local tag = H.lookup(topic)
     return tag and tag.source.name .. " " .. tag.name or "none"
   end
-  eq(where("gU"), "course/keys.md gU", "a key: its row in the key table")
+  eq(where("gU"), "keys.md gU", "a key: its row in the key table")
   eq(where(":s"), "terminal.md :s", "a command")
   eq(where("'timebind'"), "terminal.md 'timebind'", "an option")
   eq(where("paw.qf"), "scripting.md paw.qf", "a Lua module")
@@ -126,7 +126,7 @@ test("tags are found for keys, commands, options, Lua modules, sections and page
   eq(where("notation"), "notation/README.md notation", "an extension")
   eq(where("notation-keys"), "notation/README.md notation-keys", "an extension's heading")
   eq(where("notation-popovers"), "notation/README.md notation-popovers", "another")
-  eq(where("ic"), "course/keys.md ic", "a text object: its row in the key table")
+  eq(where("ic"), "keys.md ic", "a text object: its row in the key table")
   eq(where("<C-w>o"), where("Ctrl-w o"), "a key written either way")
   -- Each lands on the line that names it.
   local tag = H.lookup("gU")
@@ -315,7 +315,7 @@ test("Ctrl-] in the keys picker opens the help of the key chosen", function()
   paw.pick("keys", { query = "Ctrl-w o" })
   paw.keymap.feed("<C-]>")
   local name, line = here()
-  eq(name, "help://course/keys.md", "the key table: " .. message())
+  eq(name, "help://keys.md", "the key table: " .. message())
   eq(line:find("<C-w>o", 1, true) ~= nil, true, "at the key: " .. tostring(line))
   -- And in the commands picker, the command's.
   paw.pick("commands", { query = "helpgrep" })

@@ -1,7 +1,7 @@
 -- The course as Markdown, made from the same lesson tables the tutor runs,
--- so the text in `docs/course/` cannot say something the tutor does not.
+-- so the text in `docs/tutorials/course/` cannot say something the tutor does not.
 --
---   paw --clean --no-plugins -l extensions/tutor/make-docs.lua    writes docs/course/
+--   paw --clean --no-plugins -l extensions/tutor/make-docs.lua    writes docs/tutorials/course/
 --
 -- The tests compare these with the files on disk.
 local M = {}
@@ -69,7 +69,7 @@ tutor says what to do next and notices when you have done it:]]))
   add("")
   add(paragraphs([[
 then `:tutor` in paw. These pages are made from the tutor's own lessons, so
-the two say the same. [keys.md](keys.md) is a page of keys to keep beside the
+the two say the same. [keys.md](../../reference/keys.md) is a page of keys to keep beside the
 keyboard.]]))
   add("")
   add("| | Lesson | What it teaches |")

@@ -1,4 +1,4 @@
--- Write the course as Markdown into docs/course/, from the tutor's lessons.
+-- Write the course as Markdown into docs/tutorials/course/, from the tutor's lessons.
 --
 --   paw --clean --no-plugins -l extensions/tutor/make-docs.lua [dir]
 --
@@ -8,7 +8,7 @@ paw.opt.tutor_dir = (os.getenv("TMPDIR") or "/tmp") .. "/paw-tutor-docs"
 paw.ext.load("extensions/tutor")
 local tutor = require("tutor")
 local docs = require("tutor.docs")
-local dir = ... or "docs/course"
+local dir = ... or "docs/tutorials/course"
 os.execute("mkdir -p '" .. dir .. "'")
 local n = 0
 for name, text in pairs(docs.files(tutor.lessons)) do

@@ -8,7 +8,7 @@ under the same headings; each extension has its own page besides
 
 ## Tutorials
 
-- [The course](course/README.md): seventeen short lessons for the first days with paw, also inside paw as `:tutor`
+- [The course](tutorials/course/README.md): seventeen short lessons for the first days with paw, also inside paw as `:tutor`
 
 ## How-to guides
 
@@ -16,7 +16,7 @@ under the same headings; each extension has its own page besides
 
 ## Reference
 
-- [Keys, by idea](course/keys.md): every key on one page, to keep beside the keyboard
+- [Keys, by idea](reference/keys.md): every key on one page, to keep beside the keyboard
 - [The terminal interface](terminal.md): keys, Ex, windows, text buffers, files, quickfix, the mouse, help, pickers, queries
 - [The graphical frontend](window.md): every gesture of the window
 - [Configuration](configuration.md): `init.lua`, options, the look, the status line

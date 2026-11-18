@@ -1223,7 +1223,7 @@ end
 
 if paw.ui.keybar then
   paw.ui.keybar.set("notation", "n", {
-    -- `+` `-` as in every view (docs/course/keys.md); `Ctrl-a` `Ctrl-x` are the same with a count.
+    -- `+` `-` as in every view (docs/reference/keys.md); `Ctrl-a` `Ctrl-x` are the same with a count.
     { "i", "enter" }, { "<CR>", "note" }, { "x", "delete" }, { "+", "sharp" }, { "-", "flat" },
     { "<A-l>", "longer" }, { "<A-h>", "shorter" }, { "g5", "quarter" }, { "gd", "dot" }, { "<leader>n", "back" },
   })

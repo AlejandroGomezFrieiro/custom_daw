@@ -151,7 +151,7 @@ in oil.nvim; `:w` shows the plan and applies it as one undo step:
 
 </details>
 
-The whole keyboard is on one page in [docs/course/keys.md](docs/course/keys.md).
+The whole keyboard is on one page in [docs/reference/keys.md](docs/reference/keys.md).
 The status line is yours to compose, as lualine is (`paw.statusline.setup`).
 
 **The window.** `paw-gui` shows the same views as panes for the mouse, drawn

@@ -213,7 +213,9 @@ local function manual_sources(docs)
       else
         name, aliases = inner, { base, inner }
       end
-      prefix = ""
+      -- The key table's sections are named as the pages that describe
+      -- the same keys at length: those keep the plain tags.
+      prefix = inner == "keys.md" and "keys" or ""
     end
     out[#out + 1] = {
       path = page.path, name = name, aliases = aliases, prefix = prefix, group = kind, manual = true,

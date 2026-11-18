@@ -924,7 +924,7 @@ place that topic is described:
 
 | Topic | Goes to |
 | --- | --- |
-| `:help gU`, `:help Ctrl-w o`, `:help <C-w>o` | a key, written either way: its row in the key table (`course/keys.md`) when it has one |
+| `:help gU`, `:help Ctrl-w o`, `:help <C-w>o` | a key, written either way: its row in the key table (`reference/keys.md`) when it has one |
 | `:help :s`, `:help :helpgrep` | a command |
 | `:help 'timebind'` | an option |
 | `:help paw.qf`, `:help paw.qf.feed` | a Lua module or function |
@@ -932,12 +932,17 @@ place that topic is described:
 | `:help key-rule`, `:help quickfix-list`, `:help motions` | a section of the manual |
 | `:help terminal`, `:help course-5`, `:help notation`, `:help notation-keys` | a page: of the manual, a lesson of the course, an extension's (by its name), a section of one |
 
-The pages are the manual (`docs/*.md`), the course (`docs/course/*.md`)
-and every extension's `README.md` and `doc/*.md`, those in your
-configuration and those bundled with the program, loaded or not; the page
-of an extension that is not loaded says how to load it. They are read from
-the source tree the program runs from, or from `$PAW_HOME`, where an
-installed program keeps them.
+The pages are all the Markdown files in `docs/`, and the `README.md` and
+`doc/*.md` files of each extension. The contents show the pages of the
+manual in four groups, in the order of `docs/README.md`: tutorials, how-to
+guides, reference and explanation. A page has the name of its file
+(`terminal`). If two groups have a page with the same name, the name of the
+group is at the start (`how-to-recording`). The course is in
+`docs/tutorials/course`. Help shows the extensions in your configuration and
+the extensions that come with paw, also when they are not loaded. The page
+of an extension that is not loaded tells you how to load it. Help reads the
+pages from the source tree that paw runs from, or from the source tree that
+`$PAW_HOME` names.
 
 A topic is found as Vim finds it: the tag itself first, then the tags that
 start with it, those that hold it, and those that hold its letters in order
@@ -948,7 +953,7 @@ in a lesson's with `course-5`), for each paragraph that starts in bold
 ("**Motions** move the cursor" is `motions`), and for each key, command,
 option, Lua name and address written as code, at the place it is described
 (a table's first column, the start of a list item) before the places it is
-only named, and in the manual before the course and the extensions.
+only named, and in the manual before the tutorials and the extensions.
 
 A page of help is a text buffer that cannot be changed: it moves, searches,
 selects and yanks as any text (`j` `k`, `w`, `/`, `n`, `v`, `y`, `gg`), and
