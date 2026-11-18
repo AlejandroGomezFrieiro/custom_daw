@@ -15,7 +15,7 @@ made by the scenes in its `images/make` (`docs/images/make/make.sh <name>`).
 | --- | --- |
 | [`articulations`](../../extensions/articulations/README.md) | the articulation of each note as its MIDI 2.0 attribute, with names for each instrument from `.art.toml` maps, and keyswitches for MIDI 1.0 instruments. Maps from SFZ, Decent Sampler, folders and Reaticulate banks |
 | [`continue`](../../extensions/continue/README.md) | a small completion source: how the phrase before the cursor in the piano roll can continue |
-| [`doctor`](../../extensions/doctor/README.md) | a guided check of the hardware (audio, MIDI, recording, plugins), with a written report: `:doctor`, `paw doctor` |
+| [`doctor`](../../extensions/doctor/README.md) | a guided check of the hardware (audio, MIDI, recording, plugins), with a written report, also from the shell |
 | [`drums`](../../extensions/drums/README.md) | drum tracks in one step, and a grid of the pieces of the kit by name |
 | [`luafx`](../../extensions/luafx/README.md) | devices written in Lua, to use and to copy |
 | [`midilsp`](../../extensions/midilsp/README.md) | MIDI LSP, the language server for music, in `paw.lsp`: diagnostics of voice leading with fixes, the chords it hears, suggestions |
@@ -23,7 +23,7 @@ made by the scenes in its `images/make` (`docs/images/make/make.sh <name>`).
 | [`musicops`](../../extensions/musicops/README.md) | musical operators: humanize, strum, arpeggiate, scales |
 | [`notation`](../../extensions/notation/README.md) | a MIDI clip as staff notation, in the terminal and in the graphical window |
 | [`pattern`](../../extensions/pattern/README.md) | clips written as patterns of text, as in TidalCycles |
-| [`projdiff`](../../extensions/projdiff/README.md) | the changes between two versions of a project, and three-way merges for git: `:Pdiff`, `:Pmerge`, `:Psnapshot` |
+| [`projdiff`](../../extensions/projdiff/README.md) | the changes between two versions of a project, and three-way merges for git |
 | [`rpp`](../../extensions/rpp/README.md) | opens and writes REAPER projects |
 | [`sampler`](../../extensions/sampler/README.md) | the sample player of paw, a CLAP plugin written in Rust |
 | [`sections`](../../extensions/sections/README.md) | named sections of the song as text objects, and edits by section |

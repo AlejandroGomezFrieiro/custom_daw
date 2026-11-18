@@ -15,8 +15,7 @@ local paw = require("paw")
   `paw.api.track_set(id, "volume", -6)`. The kernel in Rust defines them.
 - The objects of the `paw` module are a thin Lua layer over `paw.api`, in
   [objects.lua](../../runtime/lua/paw/objects.lua).
-- The other modules of `paw` (`paw.keymap`, `paw.ui`, `paw.qf`, and other)
-  are Lua in `runtime/lua/paw`.
+- The other modules of `paw` are Lua in `runtime/lua/paw`.
 
 ## Units
 
@@ -34,9 +33,9 @@ local paw = require("paw")
 | Page | What it describes |
 | --- | --- |
 | [Project objects](lua-objects.md) | the project, tracks, devices, clips, notes, MIDI files, note attributes, the transport, the tempo map, automation |
-| [Commands, keys and options](lua-commands.md) | `paw.command`, ranges, `paw.ex`, `paw.keymap`, `paw.option` |
+| [Commands, keys and options](lua-commands.md) | commands, ranges, fields of `:s` and `:g`, keys, operators, options |
 | [Views and buffers](lua-views.md) | views, roles, buffer types, windows and tabs, text buffers, the pointer, curves, completion, the layers of the piano roll |
-| [Addresses and lists](lua-addresses.md) | `paw.address`, `paw.diagnostic`, `paw.qf`, `paw.annotation`, `paw.lsp`, queries |
+| [Addresses and lists](lua-addresses.md) | addresses, diagnostics, the quickfix list, annotations, language servers, queries |
 | [Timers, programs and other modules](lua-other.md) | timers, helper programs, seats, other modules |
 | [Events](events.md) | every event, with its payload |
 | [Scripts and `paw ctl`](ctl.md) | `paw -l`, `paw ctl`, `paw attach` |
