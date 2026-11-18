@@ -64,7 +64,7 @@ each extension (`:help notation`).
 - [The session view](reference/session-view.md): slots, scenes, launch rules, keys and commands
 - [MIDI controllers](reference/learn.md): bind knobs, faders and pads to controls
 - [Harmony](reference/harmony.md): the chords and keys that paw reads, providers, theory functions, voicings, ranges
-- [Snippets](reference/snippets.md): keys, the starting set, the fields of a snippet
+- [Snippets](reference/snippets.md): keys, the first set, the fields of a snippet
 - [Completion](reference/completion.md): suggestions, their keys and options, the fields of a source
 - [Several clips in the piano roll](reference/roll-clips.md): context notes, edit many clips, `paw.roll_clips`, layers
 - [Language servers and diagnostics](reference/language-servers.md): keys, addresses, subjects, server configs, the protocol, MIDI LSP
