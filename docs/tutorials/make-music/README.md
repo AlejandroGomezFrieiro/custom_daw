@@ -22,17 +22,19 @@ the terminal, and the graphical window shows the same views.
 ## Before you start
 
 - Install paw (see [How to install paw with Nix](../../how-to/install-paw.md)).
-- Make a folder for your songs, and open a terminal in it. paw saves and
-  renders into the folder where it starts.
+- Make a folder for your songs, and open a terminal in it. paw saves a new
+  song into the folder where it starts. After that, paw saves and renders
+  next to the song.
 - For lesson 2, connect a MIDI keyboard. For lesson 3, connect an audio
   interface with a guitar on its input 1.
 
 Each lesson from lesson 2 opens a practice project: the song as the lesson
 before left it. So you can do any lesson again, or start at any lesson.
-The practice projects are Lua files in the `examples/tutorials/make-music`
+`:example` opens a practice project, and `Tab` completes its name. The
+practice projects are Lua files in the `examples/tutorials/make-music`
 folder of paw. The package of paw sets `PAW_HOME` to the folder that holds
-`examples`. If you run paw from its source folder, set `PAW_HOME` to that
-folder first.
+`examples`. If you run paw from its source folder, start it in that
+folder, or set `PAW_HOME` to it.
 
 **CAUTION:** Set the volume of your speakers or headphones low before you
 start. A new synth can be loud.

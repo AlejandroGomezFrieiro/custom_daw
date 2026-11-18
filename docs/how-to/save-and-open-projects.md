@@ -26,6 +26,8 @@ In the graphical window, choose File → Save, and File → Open recent.
   its name and press `Enter`.
 - To open the second project in that list, type `:recent 2`.
 - To open a project by its path, type `:e /home/ana/songs/demo/demo.json`.
+- To open an example song or a practice project of the lessons, type
+  `:example demo-song`. `Tab` completes the names.
 
 If the open project has work that is not saved, paw does not open the
 other project. Type `:w` to save the work first. To drop the work, type

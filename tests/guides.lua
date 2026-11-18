@@ -13,7 +13,6 @@ local test, eq = T.test, T.eq
 
 -- "Make music with paw" (docs/tutorials/make-music) --------------------------
 
-local practice = "examples/tutorials/make-music/"
 
 --- Type the keys of a step, each item as one key at the keyboard: the
 --- kernel closes the undo step after each.
@@ -25,12 +24,14 @@ local function step(...)
   end
 end
 
---- Open a practice project as `paw -e 'dofile(...)'` does: a new project,
---- then the script.
+--- Open a practice project as the lessons say: `:example make-music/<name>`.
 local function open(script)
   T.fresh()
   paw.keymap.feed("<Esc><Esc>")
-  if script then dofile(practice .. script) end
+  if script then
+    step(":example make-music/" .. script:gsub("%.lua$", "") .. "<CR>")
+    eq(paw.ui.message.text:find("opened the example", 1, true) ~= nil, true, ":example opens " .. script .. ": " .. paw.ui.message.text)
+  end
   paw.flush()
 end
 

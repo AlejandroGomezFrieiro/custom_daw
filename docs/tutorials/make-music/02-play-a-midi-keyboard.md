@@ -9,11 +9,8 @@ the notes on the grid.
 ## Open the practice project
 
 1. Connect the MIDI keyboard before you start paw.
-2. In your folder for songs, type this command and press Enter:
-
-   ```sh
-   paw -e 'dofile(os.getenv("PAW_HOME") .. "/examples/tutorials/make-music/2-midi-keyboard.lua")'
-   ```
+2. Start paw in your folder for songs. Type
+   `:example make-music/2-midi-keyboard` and press Enter.
 
    - paw opens the song of lesson 1: Drums, Bass and Keys, with the loop
      over four bars.

@@ -1584,6 +1584,68 @@ end, { desc = "Open a project: `edit song.json`; alone, the project's file again
 command("new", function()
   if paw.project.guard("new") then paw.project.new() end
 end, { desc = "Start an empty project, unless there is unsaved work" })
+
+--- The example and practice projects that come with paw, by name:
+--- `{ name, path }` for each `.lua` file under `examples/` (not the
+--- configuration) of the first source tree or package that has them.
+local function examples()
+  for _, root in ipairs(paw.help.roots()) do
+    local out = {}
+    local function walk(dir, prefix)
+      for _, entry in ipairs(api.read_dir(dir)) do
+        local name = entry.name
+        if entry.is_dir and name ~= "config" then
+          walk(dir .. "/" .. name, prefix .. name .. "/")
+        elseif not entry.is_dir and name:match("%.lua$") then
+          out[#out + 1] = { name = (prefix .. name:gsub("%.lua$", "")):gsub("^tutorials/", ""), path = dir .. "/" .. name }
+        end
+      end
+    end
+    walk(root .. "/examples", "")
+    if #out > 0 then
+      table.sort(out, function(a, b) return a.name < b.name end)
+      return out
+    end
+  end
+  return {}
+end
+command("example", function(ctx)
+  local list = examples()
+  if #list == 0 then
+    return paw.notify("no examples found: start paw in its source tree, or set PAW_HOME to it", "warn")
+  end
+  local word = ctx.args[1] and tostring(ctx.args[1]) or ""
+  local found
+  for _, e in ipairs(list) do
+    if e.name == word then found = e end
+  end
+  -- A part of the name is enough when only one example has it.
+  if not found and word ~= "" then
+    local some = {}
+    for _, e in ipairs(list) do
+      if e.name:find(word, 1, true) then some[#some + 1] = e end
+    end
+    if #some == 1 then found = some[1] end
+  end
+  if not found then
+    local names = {}
+    for i, e in ipairs(list) do names[i] = e.name end
+    return paw.notify((word == "" and "which example? " or "no single example `" .. word .. "`: ") .. table.concat(names, ", "), "warn")
+  end
+  if not paw.project.guard("example") then return end
+  paw.project.new()
+  dofile(found.path)
+  -- The example is where its history starts: `u` does not take it apart.
+  api.undo_reset()
+  paw.notify("opened the example " .. found.name .. ": `:w song.json` saves it as your own")
+end, {
+  desc = "Open an example or a practice project that comes with paw: `example demo-song`, `example make-music/2-midi-keyboard`",
+  complete = function()
+    local out = {}
+    for _, e in ipairs(examples()) do out[#out + 1] = { text = e.name, desc = e.path } end
+    return out
+  end,
+})
 -- `:render`, `:render.cancel` and `:stems` are in paw/render.lua.
 command("track.bounce", function()
   local track = need_track()
@@ -1785,7 +1847,7 @@ command("extensions", function()
   paw.ui.page("Extensions", lines)
 end, { desc = "List loaded extensions, each with what it registered" })
 
-for _, name in ipairs({ "open", "edit", "new" }) do paw.project.allow_discard(name) end
+for _, name in ipairs({ "open", "edit", "new", "example" }) do paw.project.allow_discard(name) end
 
 for alias, target in pairs({ w = "write", e = "edit", q = "quit", ["q!"] = "quit!", u = "undo" }) do
   command.alias(alias, target)

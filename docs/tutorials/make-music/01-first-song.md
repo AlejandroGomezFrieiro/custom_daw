@@ -115,7 +115,8 @@ same.
 
 To open the song again later, type `paw first-song.json` in the folder.
 The finished song of this lesson is also in the practice project
-`examples/tutorials/make-music/1-first-song.lua`.
+`examples/tutorials/make-music/1-first-song.lua`. To open it, type
+`:example make-music/1-first-song`.
 
 ## What we made
 

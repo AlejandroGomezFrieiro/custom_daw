@@ -10,11 +10,8 @@ loop, keep the best part of each take, and add a fade.
 ## Open the practice project
 
 1. Connect the audio interface and the guitar before you start paw.
-2. In your folder for songs, type this command and press Enter:
-
-   ```sh
-   paw -e 'dofile(os.getenv("PAW_HOME") .. "/examples/tutorials/make-music/3-guitar.lua")'
-   ```
+2. Start paw in your folder for songs. Type
+   `:example make-music/3-guitar` and press Enter.
 
    - paw opens the song of lesson 2: Drums, Bass, Keys and Lead.
 
