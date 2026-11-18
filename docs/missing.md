@@ -368,6 +368,19 @@
   where the system keeps them.
 - Packaged extensions (`paw.withExtensions`) are loaded at startup and
   cannot be left out for one run other than by running the plain program.
+- Unloading an extension (`paw.ext.unload`) takes away what it registered
+  while it loaded, not what it registers later (in a handler, a timer), nor
+  its timers; options it defined keep their defaults, and the Lua devices and
+  plugins it ships stay among the devices for the session. Requirements name
+  extensions and the API's version, not versions of the program or of
+  plugins. `:checkhealth` has no check of MIDI ports' latency or of the
+  frontends attached, and the window does not show it in a view of its own
+  (it is a page, as `:messages` is). `edit.before` sees a turn's edits as
+  the change events they made, not as the calls that made them, and is not
+  asked during an audition trial (the trial's end is). The API reference
+  documents the `paw.api` functions whose definition it can read in
+  crates/paw-core/src/api.rs; the others (the tempo map's, and a few written
+  across lines) are listed without their parameters.
 - The status line and the files: the window does not draw `paw.statusline`'s
   line (it is told the pieces, `modal.statusline`) nor the tab line's own
   sections, and `tabline.always` is the terminal's. A "scope" component has

@@ -32,6 +32,7 @@ M.PROBLEMS = "Problems"
 local LEVELS = { "error", "warning", "info", "hint" }
 local by_word = { error = 1, e = 1, warning = 2, warn = 2, w = 2, info = 3, information = 3, i = 3, hint = 4, h = 4 }
 
+--- A severity from 1 (error) to 4 (hint) from a number or a word; nil for none.
 local function severity_of(level)
   if level == nil or level == false then return nil end
   if type(level) == "number" then return math.max(1, math.min(4, math.floor(level))) end
@@ -254,6 +255,7 @@ refresh = function()
   refreshing = false
   if not ok then error(err, 0) end
 end
+--- Read every source of the Problems list again.
 M.refresh = function() refresh() end
 
 --- What a source has in the Problems list now.
@@ -376,7 +378,9 @@ function M.step(count, stack)
   return M.jump(to, stack)
 end
 
+--- Go to the list's first entry, or its last.
 function M.first(stack) return M.jump(1, stack) end
+--- Go to the list's last entry.
 function M.last(stack) return M.jump(math.huge, stack) end
 
 --- Go to an older list in the history (`count` back), or a newer one.
@@ -395,6 +399,7 @@ function M.older(count, stack)
   return list
 end
 
+--- Go to a newer list in the history (`count` on).
 function M.newer(count, stack) return M.older(-(count or 1), stack) end
 
 -- Counts and the status line ----------------------------------------------------------

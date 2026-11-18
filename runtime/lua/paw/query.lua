@@ -248,10 +248,10 @@ end
 
 local function meta(node) return type(node.data.meta) == "table" and node.data.meta or {} end
 
--- A note's articulations: its attribute's (`paw.attr`: the tag, the name
--- and the code, so `pz`, `pizzicato` and `11.A` all find a pizzicato),
--- those the score marks (`meta.notation.art`, a set) and any named in
--- `meta.articulation` (a name or a list of them).
+--- A note's articulations: its attribute's (`paw.attr`: the tag, the name
+--- and the code, so `pz`, `pizzicato` and `11.A` all find a pizzicato),
+--- those the score marks (`meta.notation.art`, a set) and any named in
+--- `meta.articulation` (a name or a list of them).
 local function articulations(node)
   local out, m = {}, meta(node)
   local d = node.data.attr and paw.attr.describe(node.data.attr)

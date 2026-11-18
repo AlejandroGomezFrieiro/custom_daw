@@ -31,6 +31,7 @@ local options = { virtual_text = true, signs = true, underline = true, severity_
 local store = {}    -- store[namespace][document] = list; a document is a clip id or any string
 M.revision = 0      -- moves on every change, for whoever caches what is drawn
 
+--- A severity from 1 (error) to 4 (hint), from a number or a word.
 local function severity_of(value)
   if type(value) == "number" then return math.max(1, math.min(4, math.floor(value))) end
   return by_word[tostring(value or ""):lower()] or 2
@@ -203,8 +204,8 @@ function M.notes_of(d)
   return out
 end
 
--- The kind of thing a diagnostic is about, for grouping: clip, track,
--- device, time, project, render, or an extension's kind.
+--- The kind of thing a diagnostic is about, for grouping: clip, track,
+--- device, time, project, render, or an extension's kind.
 function M.kind(d)
   local p = A.parse(d.location.uri)
   if not p then return "other" end
@@ -459,7 +460,9 @@ function M.jump(dir, count)
   return found
 end
 
+--- Go to the next diagnostic, or `opts.count` on (`]d`).
 function M.goto_next(opts) return M.jump(1, opts and opts.count) end
+--- Go to the diagnostic before, or `opts.count` back (`[d`).
 function M.goto_prev(opts) return M.jump(-1, opts and opts.count) end
 
 local KIND_TITLE = { clip = "Notes", track = "Tracks", device = "Devices", time = "Time", project = "Project", render = "Renders" }
@@ -488,6 +491,7 @@ end
 --- `opts` has `target`, `severity` (the least severe), `title`, `open`.
 --- `setloclist` puts them in the current window's location list.
 function M.setqflist(opts) return paw.qf.diagnostics(opts) end
+--- The diagnostics in the current window's location list.
 function M.setloclist(opts) return paw.qf.diagnostics(paw.util.merge(opts or {}, { win = (opts and opts.win) or true })) end
 
 -- Drawing ----------------------------------------------------------------------
@@ -503,7 +507,7 @@ function M.paint_roll(p)
   end
 end
 
--- One clip's, `offset` beats from the roll's own.
+--- One clip's, `offset` beats from the roll's own.
 function M.paint_part(p, id, offset)
   local list = M.get(id)
   if #list == 0 then return end

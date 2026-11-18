@@ -520,6 +520,9 @@ local function build()
         -- every mention in prose, and a key's own heading.
         local prio = (a.first and 2 or 4) + after
         if a.first and source.name == "course/keys.md" then prio = 1 end
+        -- The generated reference (docs/api.md) lists every Lua name: it is
+        -- where a name goes that the manual does not mention.
+        if source.name == "api.md" then prio = 5 end
         for _, name in ipairs(tags_of_code(a.text, a.first)) do add(name, source, a.row, a.col, prio) end
       end
     end
@@ -638,6 +641,7 @@ function M.lookup(topic) return M.find(topic, 1)[1] end
 
 -- The buffers -------------------------------------------------------------------------
 
+--- Whether a buffer is a page of help.
 local function is_help(buf) return buf and buf.type == "textbuf" and buf.state and buf.state.kind and buf.state.kind.name == "help" end
 M.is_help = is_help
 
@@ -824,7 +828,7 @@ function M.keyword()
   return M.jump(tag)
 end
 
--- `:helpgrep`: every line of help that holds the words, in the quickfix list.
+--- `:helpgrep`: every line of help that holds the words, in the quickfix list.
 function M.grep(pattern)
   pattern = (pattern or ""):gsub("^%s+", ""):gsub("%s+$", "")
   if pattern == "" then return paw.notify("usage: helpgrep words", "warn") end

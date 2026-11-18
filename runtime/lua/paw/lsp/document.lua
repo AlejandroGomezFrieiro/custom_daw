@@ -18,6 +18,7 @@ function M.uri(id) return "paw://clip/" .. id end
 --- The clip a URI names, or nil.
 function M.clip_of(uri) return tonumber(tostring(uri):match("^paw://clip/(%d+)$")) end
 
+--- Beats as ticks of `M.PPQ` a beat, the language server's unit.
 local function tick(beats) return math.floor(beats * M.PPQ + 0.5) end
 
 --- Whether a track plays drums: a drum map on it (extensions/drums keeps

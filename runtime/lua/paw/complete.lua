@@ -77,6 +77,7 @@ function M.register(spec)
   })
 end
 
+--- Remove the source of a name.
 function M.unregister(name)
   sources[name] = nil
 end

@@ -47,6 +47,7 @@ end
 
 --- A move's value as a height in the strip, and a height as a value.
 function M.fraction(kind, value) return kind == "bend" and (value + 1) / 2 or value end
+--- A height in the strip, from 0 to 1, as a move's value.
 function M.value(kind, fraction)
   fraction = util.clamp(fraction, 0, 1)
   return kind == "bend" and fraction * 2 - 1 or fraction
@@ -112,6 +113,7 @@ function M.select_box(clip, kind, number, beat0, low, beat1, high, mode)
   return #out
 end
 
+--- Choose none of the clip's controller moves.
 function M.clear(clip)
   choose(clip, {})
 end

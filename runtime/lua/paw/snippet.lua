@@ -53,6 +53,7 @@ function M.remove(name)
   M.list[name] = nil
 end
 
+--- The snippet of a name, or nil.
 function M.get(name)
   return M.list[name]
 end

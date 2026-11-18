@@ -337,13 +337,13 @@ end
 
 -- The song's notes and the reading ----------------------------------------------------
 
+local notes_cache = {}
 --- Every note of the pitched tracks, in project beats, each with `track`
 --- and `clip`. Muted clips and tracks are left out; so are notes hidden by
 --- a trim of the clip's edges. Kept until the project changes: this is
 --- what sounds, for the reading and for snippets alike. (The piano roll's
 --- context notes, `paw.roll_clips.context`, are what it shows, in its own
 --- beats and only of the tracks chosen to show.)
-local notes_cache = {}
 function M.notes()
   local edits = api.project_get().edits
   if notes_cache.edits == edits then return notes_cache.notes end
@@ -611,9 +611,9 @@ function M.draw(buf, scroll, span, zoom, origin, how)
   end
 end
 
--- A while after the project changes the reading is made again, so that
--- `harmony.changed` is heard even when nothing asks.
 local pending
+--- A while after the project changes the reading is made again, so that
+--- `harmony.changed` is heard even when nothing asks.
 function M.schedule()
   if pending then return end
   pending = paw.defer(function()

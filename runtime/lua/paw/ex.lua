@@ -54,6 +54,8 @@ local function fail(text, ...) error(string.format(text, ...), 0) end
 
 M.views = {}
 
+--- Say how a view of your own maps its columns to the song's beats and
+--- which clips it edits, for ranges: see docs/scripting.md.
 function M.view(name, spec) M.views[name] = spec end
 
 local function roll() return paw.ui.views.pianoroll end
@@ -534,6 +536,8 @@ end
 
 M.fields = {}
 
+--- A field that `:s` and `:g` patterns can name (`lyric:la`): `level`
+--- (note, clip or track), `type`, `get(item)`, `set(item, value, change)`.
 function M.field(name, spec)
   assert(type(name) == "string" and name:match("^[%a_][%w_]*$"), "a field's name is a word")
   assert(LEVEL[spec.level], "a field's level is note, clip or track")

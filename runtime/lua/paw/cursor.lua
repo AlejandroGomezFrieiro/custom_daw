@@ -31,6 +31,7 @@ function M.track_id()
   return track_id
 end
 
+--- The track the cursor is on, as a `paw.Track`, or nil.
 function M.track()
   local id = M.track_id()
   return id and paw.track(id) or nil
@@ -92,6 +93,7 @@ function M.move_track(delta)
   M.set_track(list[paw.util.clamp((M.row() or 1) + delta, 1, #list)])
 end
 
+--- Put the cursor at a beat (not before 0).
 function M.set_beat(beat)
   M.beat = math.max(0, beat)
   save()

@@ -59,6 +59,7 @@ function M.depth(track)
   return depth
 end
 
+--- Whether a group's tracks are folded out of sight.
 function M.folded(group)
   return meta(id_of(group)).group_folded == true
 end
