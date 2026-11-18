@@ -80,13 +80,15 @@ their peak for a moment as a thin line, and light the clip light when a
 level reaches 0 dB; it stays lit until it is clicked or the transport starts
 playing again. The mixer is the terminal's (see
 [Mixing](mixing.md)), laid out in cells of the window's font: a strip per
-track with its name on a plate in its colour, its first devices and its
-sends, the meters beside a fader with its scale, the peak and the level,
-the pan and `M` `S` `R` `I`, the master after them. The window paints its
-parts as widgets (the kernel sends them as roles: see "Roles" in
-[Scripting](scripting.md#roles)): the faders' caps at any place along
-their travel, the meters moved thirty times a second by the live values,
-lit switches. The pointer does what it does in the terminal, through the
+track with its name on a plate in its colour, where it plays into, its
+first four devices and its sends when the mixer is tall enough, the meters
+with their clip light beside a fader with its scale, the peak and the
+level, the pan and `M` `S` `R` `I`, the master after them. The window
+paints its parts as widgets (the kernel sends them as roles: see "Roles"
+in [Scripting](scripting.md#roles)): the faders' caps at any place along
+their travel, lit switches, and the meters, the peaks and the clip lights
+moved thirty times a second by the live values, with no new drawing of
+the strips. The pointer does what it does in the terminal, through the
 same hit regions, in fractions of a cell: a fader follows the pointer
 smoothly. VCAs have strips after the tracks; right-click a strip or a
 track's header to make a VCA with the track, put it under one or take it
@@ -106,7 +108,7 @@ is.
 | Routing | above the selected track's devices: "Output" chooses the track it plays into, "+ Send" a track its sound is sent to as well; each send has a level to drag, `pre` to take it ahead of the fader, and a cross to take it away |
 | Templates | with the templates extension: a track's menu saves it (or, on a group, the whole group) and saves its devices as a chain; `Track` → "From a template…" makes one again, and "Add devices from a template…" puts a saved chain on the track |
 | Session | the Session button shows the clip launcher under the timeline: a slot's play mark launches it (let go stops a gate clip), a click chooses it, a double click opens its notes (an empty slot gets a new MIDI clip first), a drag moves it to another slot (Ctrl copies), a clip dragged from the timeline onto a slot is copied there, the dot of an empty slot records into it; scenes down the right launch their rows, and the bar along the top sets the quantize, captures, sends every track back and stops every clip. See [Live performance](live.md) |
-| Mixer | as in the terminal: drag a fader up and down (with Shift finely) or the level sideways, click or drag along the pan; double click for 0 dB or the centre; the wheel moves the fader, with Shift the strips. A click on a device in a strip picks it in the device panel, on a send drags its level, on `M` `S` `R` `I` switches it; a right click opens the track's menu. With the keyboard in the mixer, the row its cursor is on is marked on its strip, as in the terminal |
+| Mixer | as in the terminal: drag a fader up and down (with Shift finely) or the level sideways, click or drag along the pan; double click for 0 dB or the centre; the wheel moves the fader, with Shift the strips. A click on a device in a strip picks it in the device panel, on where it plays into chooses another, on a send drags its level, on `M` `S` `R` `I` switches it, on the peak or the clip light puts the light out; a right click opens the track's menu. With the keyboard in the mixer, the row its cursor is on is marked on its strip, as in the terminal |
 | Devices | type part of a name to find a device or plugin, Enter or a click adds it (Esc lets go of the box); drag a parameter, wheel to nudge it, double click to put it back; the power button turns a device off and on, the arrows move it along the chain, the window button opens a plugin's own editor |
 | Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, open recent (a submenu, with "Clear the list" at its end), recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views, and More lists every other view the kernel has (the extensions' among them), each to open in a pane: where it docks, else split from the pane with the keyboard; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
 | File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC (and MP3, Ogg or Opus when ffmpeg is installed: the sample size and dither give way to a quality of Low, Medium, High or Best), the sample size, the tail, normalizing, dither, mono, a file per track, and under Tags the title, artist, album, track, year, genre, comment and cover that the files carry (kept with the project); the render runs in the background with its progress and a Cancel in the status line. Open…, Save as…, Import and the render's `…` button show the desktop's own file dialog (see below) |

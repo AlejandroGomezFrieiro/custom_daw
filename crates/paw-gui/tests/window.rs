@@ -947,6 +947,18 @@ impl Scene {
             .env("DISPLAY", &self.display)
             .output();
     }
+
+    /// The colours of the pixels in the box `size` points wide and high
+    /// from `at`, as red, green and blue.
+    fn pixels(&self, at: Point, size: (i32, i32)) -> Vec<[u8; 3]> {
+        let (x, y) = self.screen(at);
+        let output = Command::new(&self.tools.import)
+            .args(["-window", "root", "-crop", &format!("{}x{}+{x}+{y}", size.0, size.1), "-depth", "8", "rgb:-"])
+            .env("DISPLAY", &self.display)
+            .output()
+            .expect("running import");
+        output.stdout.chunks_exact(3).map(|p| [p[0], p[1], p[2]]).collect()
+    }
 }
 
 impl Drop for Scene {
@@ -1863,6 +1875,75 @@ fn the_mixer_is_the_kernels_scene_and_its_faders_and_switches_take_the_pointer()
     w.expect("M mutes", &format!("paw.api.track_get({id}).mute == true"));
     w.shot("mixer-scene-after.png");
     w.assert_alive("after working the mixer");
+}
+
+#[test]
+fn a_mixer_strip_says_where_its_track_plays_into_and_a_click_there_offers_another() {
+    let mut w = scene!("mixer-output", DEMO);
+    w.ctl("paw.ui.show('mixer')");
+    w.expect("the row under the name", "paw.ui.views.mixer.geometry ~= nil and paw.ui.views.mixer.geometry.strips[1].output ~= nil");
+    let id = "paw.ui.views.mixer.geometry.strips[1].id";
+    w.shot("mixer-output.png");
+    w.click(mixer_point(&w, "s.x + 3.5", "1 + s.output + 0.5"));
+    w.expect(
+        "the tracks it could play into, to choose from",
+        &format!("paw.pick.state() ~= nil and paw.pick.state().title == 'Output of ' .. paw.api.track_get({id}).name"),
+    );
+    w.key("Escape");
+    w.assert_alive("after choosing where a track plays into");
+}
+
+#[test]
+fn a_tall_mixer_strip_names_four_devices_and_a_click_on_the_fourth_picks_it() {
+    let mut w = scene!("mixer-devices", DEMO);
+    w.ctl("local t = paw.track(paw.api.track_list()[1]) for _ = 1, 5 do t:add_device('gain') end");
+    // The mixer in a tab of its own, as tall as the window.
+    w.type_text(":tabnew mixer");
+    w.key("Return");
+    w.expect("four rows for devices", "paw.ui.views.mixer.geometry ~= nil and paw.ui.views.mixer.geometry.strips[1].slots == 4");
+    w.shot("mixer-devices.png");
+    w.click(mixer_point(&w, "s.x + 3.5", "1 + s.devices + 3 + 0.5"));
+    w.expect(
+        "the fourth device picked in the device panel",
+        "paw.ui.focused == 'devices' and paw.ui.views.devices:selected().id == paw.api.track_get(paw.api.track_list()[1]).devices[4]",
+    );
+    w.assert_alive("after picking a device");
+}
+
+#[test]
+fn the_clip_light_lights_at_full_scale_and_a_click_on_the_peak_puts_it_out() {
+    let mut w = scene!("mixer-clip", DEMO);
+    w.ctl("paw.ui.show('mixer')");
+    w.expect("drawn", "paw.ui.views.mixer.geometry ~= nil");
+    let id = "paw.ui.views.mixer.geometry.strips[1].id";
+    // The clip light, along the top of the first strip's meters.
+    let light = mixer_point(&w, "s.x + 1", "1 + s.fader");
+    let red = |w: &Scene| w.pixels(light, (14, 6)).iter().any(|p| p[0] > 220 && p[1] < 90 && p[2] < 90);
+    assert!(!red(&w), "the light is out before anything clipped");
+    // Playing, the meters and peaks move by the live values alone: the
+    // mixer is not drawn again for them.
+    w.ctl(
+        "_G.drawn, _G.render = 0, paw.ui.render_scene
+         paw.ui.render_scene = function(view, ...) if view == 'mixer' then drawn = drawn + 1 end return render(view, ...) end
+         paw.api.transport_play()",
+    );
+    w.pause(1.5);
+    let drawn = w.number("return drawn");
+    w.ctl("paw.api.transport_stop(); paw.ui.render_scene = _G.render");
+    assert!(drawn <= 3.0, "the mixer was drawn {drawn} times in a second and a half of playing");
+    // Every meter at full scale for a moment, as the kernel reads them.
+    w.ctl("_G.real_meter = paw.api.track_meter; paw.api.track_meter = function() return 1, 1 end");
+    w.expect("lit in the live values", &format!("paw.scene.live().clips[tostring({id})] == true"));
+    w.ctl("paw.api.track_meter = _G.real_meter");
+    w.pause(0.5);
+    w.shot("mixer-clip.png");
+    assert!(red(&w), "the clip light is lit in the window");
+    w.expect("it stays lit", &format!("select(4, paw.draw.track_peak({id})) == true"));
+    w.click(mixer_point(&w, "s.x + s.w - 1.5", "1 + s.fader + s.rows + 0.5"));
+    w.expect("a click on the peak puts it out", &format!("select(4, paw.draw.track_peak({id})) == false"));
+    w.pause(0.5);
+    assert!(!red(&w), "and the window shows it out");
+    w.assert_alive("after the clip light");
 }
 
 #[test]

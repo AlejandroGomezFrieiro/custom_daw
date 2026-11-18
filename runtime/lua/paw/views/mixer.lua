@@ -1,9 +1,9 @@
 -- The mixer: one channel strip per track, the master after the last behind a
 -- heavier rule. Each strip, top to bottom: the name on a plate in the
--- track's colour; its first devices and its sends when there is room; the
--- level meters for both sides beside the fader, with the loudest of late held
--- and 0 dB marked on the fader's rail; the peak and the fader in dB; the pan;
--- and the M S R I chips.
+-- track's colour; where it plays into, its first devices and its sends when
+-- there is room; the level meters for both sides beside the fader, with the
+-- loudest of late held, a clip light on top and 0 dB marked on the fader's
+-- rail; the peak and the fader in dB; the pan; and the M S R I chips.
 local api = paw.api
 local util = paw.util
 
@@ -11,6 +11,9 @@ local util = paw.util
 -- "pan", "send2", "insert1", "mute" ...
 local view = { scroll = 0, row = "volume" }
 paw.seats.fields("mixer", view, { "scroll", "geometry", "row" }, { scroll = 0, row = "volume" })
+-- What moves on its own as the song plays is drawn as these roles, bound to
+-- the live values: a window that paints them is sent no new scene for it.
+view.live_roles = { "meter", "peak" }
 local draw = paw.draw
 
 local SCALE = 4 -- columns for the dB scale on the left
@@ -38,11 +41,18 @@ local function fader_row(volume, rows)
 end
 view.fader_row = fader_row
 
+--- The rows of a strip `height` tall that name its devices: none (they fold
+--- into one row that counts them), or four, the last saying how many more.
+local function device_rows(height)
+  return height >= 20 and 4 or 0
+end
+
 --- The rows above the fader, for a strip `height` tall: the most any kind of
 --- strip (a track, a VCA, the master) fills there. Every strip starts its
 --- fader on this row, so that one scale on the left serves them all.
 local function above_fader(height)
-  local plain = 1 + (height >= 20 and 3 or 0) + (height >= 12 and 1 or 0) + (height >= 10 and height < 24 and 1 or 0) + (height >= 24 and 2 or 0)
+  local plain = 1 + (height >= 14 and 1 or 0) + device_rows(height) + (height >= 12 and 1 or 0)
+    + (height >= 10 and height < 24 and 1 or 0) + (height >= 24 and 2 or 0)
   local vca = 1 + (height >= 12 and 3 or 0) + (height >= 24 and 2 or 0)
   return math.max(plain, vca)
 end
@@ -68,6 +78,19 @@ local function strip(buf, x, t, index, selected, height, sw, here)
   local parts = { x = x, w = w, id = t.id }
   local y = 1
   local vca = t.meta and t.meta.vca == true
+  -- Where it plays into, with room: a click chooses another.
+  if not vca and height >= 14 then
+    parts.output = y
+    if t.master then
+      buf:text(x + 1, y, util.fit(g.out .. " out", w - 1), "TrackIndex")
+    else
+      local ok, to = pcall(api.track_get, t.output or 0)
+      buf:mark("button", x + 1, y, w - 1, 1, {
+        text = g.out .. " " .. (t.output and ok and to.name or "Master"), style = "TrackInfo", hit = { kind = "output", track = id },
+      })
+    end
+    y = y + 1
+  end
   -- A VCA names the tracks it moves, with room; a track the VCAs it is under.
   if vca and height >= 12 then
     local members = paw.vca.members(t.id)
@@ -77,13 +100,24 @@ local function strip(buf, x, t, index, selected, height, sw, here)
       buf:text(x + 1, y, util.fit(name or (i == 1 and "no tracks" or ""), w - 1), name and "TrackInfo" or "TrackIndex")
       y = y + 1
     end
-  elseif height >= 20 then
-    parts.devices = y
-    for i = 1, 3 do
-      local device = (t.devices or {})[i]
+  elseif device_rows(height) > 0 then
+    parts.devices, parts.slots = y, device_rows(height)
+    local list = t.devices or {}
+    for i = 1, parts.slots do
+      local device = list[i]
       local ok, d = device ~= nil, nil
       if ok then ok, d = pcall(api.device_get, device) end
-      if ok and d then
+      if ok and d and i == parts.slots and #list > i then
+        -- The last row counts those it has no room for, or names the one
+        -- among them the cursor is on.
+        local at = here and here.kind == "insert" and here.index >= i and here.index or nil
+        local text = "+" .. (#list - i + 1) .. " more"
+        if at then
+          local okc, cur = pcall(api.device_get, list[at])
+          if okc and cur then text = (cur.bypass and g.bypass or " ") .. cur.name end
+        end
+        buf:mark("button", x + 1, y, w - 1, 1, { text = text, style = "TrackInfo", hit = { kind = "insert", track = id, index = at or i } })
+      elseif ok and d then
         buf:mark("button", x + 1, y, w - 1, 1, {
           text = (d.bypass and g.bypass or " ") .. d.name, style = d.bypass and "TrackIndex" or "TrackInfo",
           off = d.bypass, hit = { kind = "insert", track = id, index = i },
@@ -140,20 +174,21 @@ local function strip(buf, x, t, index, selected, height, sw, here)
   -- Meters and fader, over what the rows under them leave.
   y = above_fader(height)
   local rows = math.max(1, height - y - 4)
-  local left, right = api.track_meter(id)
-  local hold = draw.hold("mix" .. id, math.max(left, right))
-  -- The fader's rows, meters and all, are the fader's to the pointer.
+  local left, right, hold, clipped = draw.track_peak(id)
+  -- The fader's rows, meters and all, are the fader's to the pointer, but
+  -- for the meters' top row, the clip light, which a click puts out.
   buf:hit(x, y, w, rows, { kind = "fader", track = id })
-  buf:mark("meter", x + 1, y, 2, rows, { levels = { left, right }, hold = hold, bind = "meter:" .. id })
+  buf:mark("meter", x + 1, y, 2, rows, { levels = { left, right }, hold = hold, clipped = clipped, bind = "meter:" .. id })
+  buf:hit(x + 1, y, 2, 1, { kind = "peak", track = id })
   local fx = x + math.floor(w / 2) + 1
   buf:mark("fader", fx - 1, y, 3, rows, {
     at = fader_position(t.volume), zero = fader_position(0), value = t.volume, selected = selected,
   })
   y = y + rows
-  -- The loudest of late, then the fader, in dB.
-  local db = 20 * math.log10(math.max(hold, 1e-6))
-  local peak = db < -60 and "-inf" or string.format("%.1f", db)
-  buf:mark("label", x + w - #peak, y, #peak, 1, { text = peak, style = db > -0.1 and "MeterHigh" or "TrackIndex", tone = db > -0.1 and "meter_clip" or "text_3" })
+  -- The loudest of late, then the fader, in dB. A click on the peak puts
+  -- out the clip light and lets the peak fall.
+  local peak_w = math.min(5, w - 1)
+  buf:mark("peak", x + w - peak_w, y, peak_w, 1, { hold = hold, clipped = clipped, bind = "meter:" .. id, hit = { kind = "peak", track = id } })
   -- What modules label the strip with, on the peak's row (`paw.ui.layer("mixer", "strip_foot", ...)`).
   paw.ui.paint("mixer", "strip_foot", { buf = buf, x = x + 1, y = y, width = w - 1, track = id })
   local vol = draw.db_text(t.volume)
@@ -194,7 +229,7 @@ end
 local function mark_row(buf, parts, row)
   local g = draw.g
   local y
-  if row.kind == "insert" and parts.devices and row.index <= 3 then y = parts.devices + row.index - 1
+  if row.kind == "insert" and parts.devices then y = parts.devices + math.min(row.index, parts.slots) - 1
   elseif row.kind == "send" and parts.sends and row.index <= 2 then y = parts.sends + row.index - 1
   elseif (row.kind == "insert" or row.kind == "send") and parts.compact then y = parts.compact
   elseif row.kind == "volume" then y = parts.vol

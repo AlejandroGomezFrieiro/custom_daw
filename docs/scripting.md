@@ -358,13 +358,18 @@ paw.ui.view("pads", {
 The widget roles are `label` (`text`, `align`), `button` (`text`, `on`),
 `switch` (`letter`, `on`, `style`, `tone`), `knob` (`value` -1 to 1),
 `fader` (`at` and `zero`, 0 to 1 along its travel), `meter` (`levels`,
-`hold`) and `chip` (`text`, `style`, `color`); `style` is how the terminal
+`hold`, `clipped`), `peak` (`hold`, `clipped`: the loudest of late in dB)
+and `chip` (`text`, `style`, `color`); `style` is how the terminal
 draws it, `tone` a colour of the window's palette by name, `label` what it
 is called to a screen reader. A hit region's action may instead say what a
 click does by itself, `keys` to type or `cmd` to run, and `hint` what the
 status line says of it. A gesture returns false to leave the event to the
 view's `on_mouse`. `paw.ui.roles` lists the roles with their props; the
-mixer (`runtime/lua/paw/views/mixer.lua`) is built of them.
+mixer (`runtime/lua/paw/views/mixer.lua`) is built of them. A
+view whose only parts that move on their own while the song plays are
+bound roles names them in `view.live_roles` (the mixer's `{ "meter",
+"peak" }`): a window that paints them all is then sent no new scene of
+the view as it plays, only the live values.
 
 **Buffers, windows and tabs.** A view is a buffer type with one buffer,
 shown in one window at a time (see Windows, buffers and tabs in

@@ -322,6 +322,28 @@ function M.hold(key, peak)
   return h.peak
 end
 
+-- The tracks whose meters reached full scale since their light was put out.
+-- A light that came on in the last take is not news in the next: they go
+-- out when the transport starts.
+local clipped = {}
+paw.on("transport.play", function() clipped = {} end)
+
+--- A track's meter as the mixer shows it, in a terminal and in a window
+--- (`scene.live`): both sides, the loudest of late and whether it has
+--- reached full scale since `clear_peak` was last called for it.
+function M.track_peak(id)
+  local left, right = api.track_meter(id)
+  local loudest = math.max(left, right)
+  if loudest >= 0.9999 then clipped[id] = true end
+  return left, right, M.hold("mix" .. id, loudest), clipped[id] == true
+end
+
+--- Put out a track's clip light and let its loudest of late fall.
+function M.clear_peak(id)
+  clipped[id] = nil
+  held["mix" .. id] = nil
+end
+
 --- A slider `width` cells wide with its knob `fraction` of the way along.
 function M.slider(buf, x, y, width, fraction, on, off)
   local g = M.g

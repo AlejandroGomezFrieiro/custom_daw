@@ -498,6 +498,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.draw.beats(ruler, scroll, span, zoom, origin)`: Number a ruler above a roll that shows `span` beats from `scroll` at `zoom` columns a beat: bars as the project counts them (`origin` is the project beat of the roll's beat 0), beats in between as ticks. Returns where the lines go, as `{ x, bar }`, for the rows underneath.
 - `paw.draw.braille(bits)`: A braille character from its eight dots: bit k is dot k + 1.
 - `paw.draw.chips(buf, x, y, list, gap)`: Small on/off marks side by side, each a letter on a cell of its own: `chips(buf, x, y, { { "M", on, "Mute" }, ... }, gap)`. Returns the columns used.
+- `paw.draw.clear_peak(id)`: Put out a track's clip light and let its loudest of late fall.
 - `paw.draw.curve(buf, y, rows, value, style)`: Draw a curve as a thin line over `rows` rows of a buffer, from row `y` down: `value(i)` gives the height, from 0 at the bottom to 1 at the top, at the `i`th of two points per column. Only the cells the line passes through are touched. Sextants (a connected line), braille dots or lines at three heights a row, as `M.curve_glyphs()` says.
 - `paw.draw.curve_glyphs()`: How curves are drawn in cells: "sextant", "braille" or "line", by `paw.opt.curve_glyphs`; `paw.opt.braille = false` and `paw.opt.ascii` both mean "line" (ascii wins over all, and uses ASCII characters).
 - `paw.draw.db_cell(db, width)`: Where on a meter `width` cells long a level in dB falls, from 0.
@@ -533,6 +534,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.draw.trace(width, samples, y, sub, kind)`: A connected line over a grid of cells, for a curve: `y(sx)` gives the row of the line, from the top, in `sub` rows a cell (3 for sextants, 4 for braille), at the `sx`th of two samples a cell, from 0, or nil for none; `samples` of them. A jump is filled from the last row to this one, so that the line is unbroken. Returns `{ [row * width + col] = bits }`, the bits as `M.sextant` or `M.braille` take them.
 - `paw.draw.track_colour(track, index)`: The colour of a track: its own if it has one, else one of the theme's by its place in the track list.
 - `paw.draw.track_hue(track, index)`: The hue of a track's colour, from 0 to 360.
+- `paw.draw.track_peak(id)`: A track's meter as the mixer shows it, in a terminal and in a window (`scene.live`): both sides, the loudest of late and whether it has reached full scale since `clear_peak` was last called for it.
 - `paw.draw.truecolor()`: Whether the terminal shows 24-bit colour: `paw.opt.termcolors` "true" or "256", or with "auto" (the default) what the environment says: COLORTERM of truecolor or 24bit, or a TERM that ends in -direct.
 - `paw.draw.use_glyphs()`: Take the glyphs `paw.opt.ascii` asks for into `paw.draw.g`.
 - `paw.draw.vmeter(buf, x, y, height, peak, hold)`: A level meter `height` cells tall, lit from the bottom, with the peak held (`hold`, linear) marked by a line over its cell.
@@ -1497,6 +1499,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 ## Module paw.scene
 
 - `paw.scene.closed(client)`: A connection closed or stopped watching: nothing more is kept for it.
+- `paw.scene.live()`: The values a frontend moves bound nodes by (see crates/paw-scene's `bind`): the playhead, the clock, the engine's load, and each track's meter, its loudest of late, its clip light and its input, by track id; rounded to what a frontend can show, so that an idle program has nothing new to say (the load as `paw.audio.load` gives it, as `frontend.watch` sends it). Each call gives them as they are then.
 - `paw.scene.turn()`: After a turn of the kernel: the windows whose drawing may have changed are pushed now, not at the next tick.
 - `paw.scene.watchers()`: Who is watching: `{ client, windows }` each, `windows` the names of those it has said the size of.
 

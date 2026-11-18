@@ -59,16 +59,33 @@ role("fader", {
 })
 
 --- Level meters, a column each, lit from the bottom: `levels` (linear,
---- one a column) and `hold`, the loudest of late. Bound to a track's meter
---- (`bind = "meter:<id>"`), a window moves it with `scene.live`.
+--- one a column), `hold`, the loudest of late, and `clipped`, the clip
+--- light on top, lit once a level reached full scale. Bound to a track's
+--- meter (`bind = "meter:<id>"`), a window moves all three with
+--- `scene.live`, and they are not sent in the scene.
 role("meter", {
-  props = { levels = "list of numbers 0..", hold = "number" },
-  bound = { "levels" },
+  props = { levels = "list of numbers 0..", hold = "number", clipped = "boolean" },
+  bound = { "levels", "hold", "clipped" },
   cells = function(buf, p)
     for i, level in ipairs(p.levels or {}) do
       if i > buf.width then break end
       draw.vmeter(buf, i - 1, 0, buf.height, level, p.hold)
     end
+    if p.clipped then buf:text(0, 0, string.rep(draw.g.upper, math.min(buf.width, #(p.levels or {}))), "MeterClip") end
+  end,
+})
+
+--- The loudest of late in dB, at the right of its rectangle: `hold`
+--- (linear), red with `clipped`. Bound to a track's meter (`bind =
+--- "meter:<id>"`), a window takes both from `scene.live`.
+role("peak", {
+  props = { hold = "number", clipped = "boolean" },
+  bound = { "hold", "clipped" },
+  cells = function(buf, p)
+    local db = 20 * math.log10(math.max(p.hold or 0, 1e-6))
+    local text = db < -60 and "-inf" or string.format("%.1f", db)
+    local style = p.clipped and "MeterClip" or db > -0.1 and "MeterHigh" or "TrackIndex"
+    buf:text(buf.width - #text, 0, text, style)
   end,
 })
 

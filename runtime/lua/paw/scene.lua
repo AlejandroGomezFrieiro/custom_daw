@@ -39,6 +39,21 @@ local function shown()
   return out
 end
 
+--- Whether nothing of the view `name` moves on its own but what the
+--- watcher `w` moves by the live values: a view names the roles it draws
+--- such things with in `view.live_roles` (the mixer's meters and peaks),
+--- and a watcher that paints them all needs no new scene of it as the song
+--- plays.
+local function still(w, name)
+  local view = paw.ui.views[name]
+  local roles = view and view.live_roles
+  if not roles then return false end
+  for _, role in ipairs(roles) do
+    if not w.roles[role] then return false end
+  end
+  return true
+end
+
 --- Draw again the windows of a connection whose drawing may have changed
 --- (all of them with `all`, as on a tick: what moves while playing, and
 --- once a second what changes on its own, such as times), and push what
@@ -55,7 +70,7 @@ local function push(client, all)
         if area.drawn then api.scene_forget(client, id) end
         area.drawn, area.view = nil, nil
       elseif area.drawn ~= redraws or area.view ~= what.view
-        or (all and now - area.at >= (playing and 30 or 1000)) then
+        or (all and now - area.at >= (playing and 30 or 1000) and not still(w, what.view)) then
         area.drawn, area.view, area.at = redraws, what.view, now
         local ok, err = pcall(paw.ui.render_scene, what.view, area.w, area.h, w.cell, what.win)
         if not ok then api.log("the scene of " .. what.view .. " failed: " .. tostring(err)) end
@@ -68,27 +83,32 @@ end
 
 --- The values a frontend moves bound nodes by (see crates/paw-scene's
 --- `bind`): the playhead, the clock, the engine's load, and each track's
---- meter and input, by track id; rounded to what a frontend can show, so
---- that an idle program has nothing new to say (the load as
---- `paw.audio.load` gives it, as `frontend.watch` sends it).
+--- meter, its loudest of late, its clip light and its input, by track id;
+--- rounded to what a frontend can show, so that an idle program has
+--- nothing new to say (the load as `paw.audio.load` gives it, as
+--- `frontend.watch` sends it). Each call gives them as they are then.
 local function live()
   local t, e = api.transport_get(), api.engine_get()
-  local meters, inputs, levels = {}, {}, paw.audio.levels()
+  local meters, peaks, clips, inputs, levels = {}, {}, {}, {}, paw.audio.levels()
+  local function round(v) return math.floor(v * 10000 + 0.5) / 10000 end
   local function meter(id)
-    local l, r = api.track_meter(id)
-    meters[tostring(id)] = { math.floor(l * 10000 + 0.5) / 10000, math.floor(r * 10000 + 0.5) / 10000 }
+    local l, r, hold, clipped = paw.draw.track_peak(id)
+    meters[tostring(id)], peaks[tostring(id)] = { round(l), round(r) }, round(hold)
+    if clipped then clips[tostring(id)] = true end
   end
   for _, id in ipairs(api.track_list()) do
     meter(id)
-    inputs[tostring(id)] = math.floor(paw.audio.level(api.track_get(id), levels) * 10000 + 0.5) / 10000
+    inputs[tostring(id)] = round(paw.audio.level(api.track_get(id), levels))
   end
   -- The master's, as track 0.
   meter(0)
   return {
     position = t.position, playing = t.playing, recording = t.take ~= nil, clock = paw.time.clock(t.position),
-    cpu = paw.audio.load(e.cpu), meters = meters, inputs = inputs,
+    cpu = paw.audio.load(e.cpu), meters = meters, peaks = peaks, clips = clips, inputs = inputs,
   }
 end
+
+M.live = live
 
 local function tick()
   local values, text
@@ -126,12 +146,12 @@ paw.remote.methods["scene.watch"] = function(client, opts)
   paw.canvas.cell = cell
   api.scene_forget(client)
   -- The roles it paints itself are sent as roles, without their cells.
-  local roles = {}
+  local roles, known = {}, {}
   for _, name in ipairs(type(opts.roles) == "table" and opts.roles or {}) do
-    if type(name) == "string" then roles[#roles + 1] = name end
+    if type(name) == "string" then roles[#roles + 1], known[name] = name, true end
   end
   api.scene_roles(client, roles)
-  watchers[client] = { cell = cell, areas = {}, live = opts.live == true, held = {} }
+  watchers[client] = { cell = cell, areas = {}, live = opts.live == true, held = {}, roles = opts.live == true and known or {} }
   retime()
   return { theme = paw.canvas.palette, roles_version = paw.roles.version }
 end

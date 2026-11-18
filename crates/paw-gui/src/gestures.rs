@@ -755,13 +755,17 @@ fn the_mixer_is_painted_from_its_scene_with_widgets_and_its_meters_move_with_the
     let fader = h.get_by_label("fader of B").rect();
     assert!((fader.left() - (origin.x + 8.0 * cell.0)).abs() < 0.5 && (fader.height() - 8.0 * cell.1).abs() < 0.5, "{fader:?}");
     assert!(h.query_by_label("mute of B").is_some() && h.query_by_label("strip of B").is_some());
-    // A meter at full scale lights its clip mark, from the live values alone.
+    // A meter that reached full scale lights its clip light, from the live
+    // values alone.
     let clip = crate::theme::th().meter_clip;
     let lit = |h: &Harness<View>| h.output().shapes.iter().any(|c| matches!(&c.shape, egui::Shape::Rect(r) if r.fill == clip));
     assert!(!lit(&h), "nothing before the live values");
-    patches.borrow_mut().push(json!({ "scene.live": { "meters": { "3": [1.0, 0.2] } } }));
+    patches.borrow_mut().push(json!({ "scene.live": { "meters": { "3": [1.0, 0.2] }, "peaks": { "3": 1.0 }, "clips": { "3": true } } }));
     h.run_steps(2);
     assert!(lit(&h), "the meter moved with scene.live");
+    patches.borrow_mut().push(json!({ "scene.live": { "meters": { "3": [0.1, 0.1] }, "peaks": { "3": 0.1 }, "clips": [] } }));
+    h.run_steps(2);
+    assert!(!lit(&h), "and its light went out with them");
 }
 
 #[test]

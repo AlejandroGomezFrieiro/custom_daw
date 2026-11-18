@@ -2005,6 +2005,10 @@ function paw.draw.braille(bits) end
 ---@param gap any
 function paw.draw.chips(buf, x, y, list, gap) end
 
+--- Put out a track's clip light and let its loudest of late fall.
+---@param id any
+function paw.draw.clear_peak(id) end
+
 --- Draw a curve as a thin line over `rows` rows of a buffer, from row `y`
 --- down: `value(i)` gives the height, from 0 at the bottom to 1 at the top,
 --- at the `i`th of two points per column. Only the cells the line passes
@@ -2188,6 +2192,12 @@ function paw.draw.track_colour(track, index) end
 ---@param track any
 ---@param index any
 function paw.draw.track_hue(track, index) end
+
+--- A track's meter as the mixer shows it, in a terminal and in a window
+--- (`scene.live`): both sides, the loudest of late and whether it has
+--- reached full scale since `clear_peak` was last called for it.
+---@param id any
+function paw.draw.track_peak(id) end
 
 --- Whether the terminal shows 24-bit colour: `paw.opt.termcolors` "true" or
 --- "256", or with "auto" (the default) what the environment says: COLORTERM
@@ -5760,6 +5770,14 @@ function paw.routes.spread(device) end
 --- A connection closed or stopped watching: nothing more is kept for it.
 ---@param client any
 function paw.scene.closed(client) end
+
+--- The values a frontend moves bound nodes by (see crates/paw-scene's
+--- `bind`): the playhead, the clock, the engine's load, and each track's
+--- meter, its loudest of late, its clip light and its input, by track id;
+--- rounded to what a frontend can show, so that an idle program has
+--- nothing new to say (the load as `paw.audio.load` gives it, as
+--- `frontend.watch` sends it). Each call gives them as they are then.
+function paw.scene.live() end
 
 --- After a turn of the kernel: the windows whose drawing may have changed
 --- are pushed now, not at the next tick.
