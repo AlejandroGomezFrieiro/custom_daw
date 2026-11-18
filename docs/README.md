@@ -6,48 +6,105 @@ part of paw. Explanation pages tell why paw works as it does. In paw,
 `:help` shows the same pages under the same four headings, and a page for
 each extension (`:help notation`).
 
+The tutorials and how-to guides start with the user guide, for musicians.
+The guides are in groups by task. The guides for developers and for the
+writers of extensions come after them.
+
 ## Tutorials
 
+### Make music with paw
+
+- [Make music with paw](tutorials/make-music/README.md): five lessons that make one song, from the first note to an MP3 file
+  - [Your first song](tutorials/make-music/01-first-song.md): drums, a bass and chords in a loop of four bars
+  - [Play a synth from a MIDI keyboard](tutorials/make-music/02-play-a-midi-keyboard.md): play live, record over the loop, quantize
+  - [Record a guitar](tutorials/make-music/03-record-a-guitar.md): an amp chain, two takes, the best parts, a fade
+  - [Arrange the song](tutorials/make-music/04-arrange-the-song.md): verse and chorus, markers, the tempo, find a part
+  - [Mix and render the song](tutorials/make-music/05-mix-and-render.md): levels, pan, effects, a send, automation, WAV and MP3
 - [The course](tutorials/course/README.md): seventeen short lessons for your first days with paw, also inside paw as `:tutor`
 
 ## How-to guides
 
+### Install and configure
+
 - [How to install paw with Nix](how-to/install-paw.md): the package, without the dev shell
-- [How to build and run paw from the source](how-to/build-paw-from-source.md): the dev shell, the demo song, the example configuration
+- [How to start paw the first time and hear sound](how-to/start-paw-and-hear-sound.md): `paw doctor`, `:checkhealth`, a test tone
 - [How to choose the audio devices](how-to/choose-audio-devices.md): in paw, at the start, in `init.lua`
-- [How to configure paw](how-to/configure-paw.md): `init.lua`, options, colors, commands, keys, events
-- [How to change the status line](how-to/change-the-status-line.md): sections and components in `init.lua`
-- [How to add a picker](how-to/add-a-picker.md): a list to choose from, with a key
+- [How to lower the latency](how-to/lower-the-latency.md): the block size, and what to change when the sound crackles
+- [How to connect a MIDI keyboard](how-to/connect-a-midi-keyboard.md): check that paw sees it, and play an instrument
+- [How to use your own plugins](how-to/use-your-own-plugins.md): CLAP, VST3, LV2, where paw looks, Windows plugins through yabridge
+- [How to map a MIDI controller](how-to/map-a-midi-controller.md)
 - [How to work on paw from another computer](how-to/work-from-another-computer.md): attach over the network or SSH, send files, hear the sound
-- [How to run the tests](how-to/run-the-tests.md): the Lua suite, the Rust tests, the tests of the graphical window
-- [How to run the graphical window against a kernel on another machine](how-to/run-the-window-against-a-remote-kernel.md)
-- [How to run the graphical window without a graphics card](how-to/run-the-window-without-a-graphics-card.md)
-- [How to give an extension an editor in the graphical window](how-to/add-an-editor-to-the-window.md)
+
+### Tracks and instruments
+
+- [How to add a track with a virtual instrument](how-to/add-an-instrument-track.md): the built-in synth, a plugin, a preset
+- [How to add an audio track for a microphone or a guitar](how-to/add-an-audio-track.md): the input, the monitor, an amp
+- [How to name, color, reorder and group tracks](how-to/organize-tracks.md): groups are folders and buses
+- [How to change the sound of an instrument](how-to/change-the-sound-of-an-instrument.md): parameters, presets, the editor of the plugin
+- [How to play a hardware synth from a track](how-to/play-a-hardware-synth.md)
+- [How to route the outputs of a drum plugin](how-to/route-the-outputs-of-a-drum-plugin.md)
+
+### Edit and arrange
+
+- [How to move, copy, split and trim clips](how-to/move-copy-split-and-trim-clips.md)
+- [How to change the velocity, length and pitch of notes, and quantize them](how-to/edit-notes.md)
+- [How to loop a part of the song while you work](how-to/loop-a-part-of-the-song.md)
+- [How to change the tempo and the time signature](how-to/change-the-tempo-and-time-signature.md): also in the middle of the song
+- [How to undo, and return to an earlier state](how-to/undo-and-return-to-an-earlier-state.md): the undo tree
+- [How to fit audio to the tempo](how-to/fit-audio-to-the-tempo.md)
+- [How to work on one group of a large project](how-to/work-on-one-group.md)
+
+### Find things
+
+- [How to find a command or a key you forgot](how-to/find-a-command-or-a-key.md)
+- [How to find a track, a clip or a marker by name](how-to/find-a-track-clip-or-marker.md)
+- [How to search the project and go through the results](how-to/search-the-project.md): `:vimgrep`, notes, queries, the quickfix list
+
+### Record
+
 - [How to record an audio take](how-to/record-an-audio-take.md)
 - [How to record takes over a loop and comp them](how-to/record-takes-and-comp.md)
 - [How to punch in over a part](how-to/punch-in-over-a-part.md)
 - [How to set the recording offset](how-to/set-the-recording-offset.md)
+- [How to record a performance from the session view](how-to/record-a-performance-from-the-session-view.md)
+
+### Mix
+
+- [How to duck a track under the kick](how-to/duck-a-track-under-the-kick.md)
+- [How to write automation with the faders](how-to/write-automation-with-the-faders.md)
+- [How to freeze a heavy track](how-to/freeze-a-heavy-track.md)
+
+### Render and share
+
 - [How to render a song](how-to/render-a-song.md)
 - [How to render stems](how-to/render-stems.md)
-- [How to freeze a heavy track](how-to/freeze-a-heavy-track.md)
-- [How to work on one group of a large project](how-to/work-on-one-group.md)
-- [How to duck a track under the kick](how-to/duck-a-track-under-the-kick.md)
-- [How to route the outputs of a drum plugin](how-to/route-the-outputs-of-a-drum-plugin.md)
-- [How to write automation with the faders](how-to/write-automation-with-the-faders.md)
-- [How to fit audio to the tempo](how-to/fit-audio-to-the-tempo.md)
-- [How to play a hardware synth from a track](how-to/play-a-hardware-synth.md)
+
+### Projects and files
+
 - [How to relink lost media](how-to/relink-missing-media.md)
+
+### When something goes wrong
+
 - [How to recover lost work](how-to/recover-lost-work.md)
-- [How to record a performance from the session view](how-to/record-a-performance-from-the-session-view.md)
-- [How to map a MIDI controller](how-to/map-a-midi-controller.md)
-- [How to write a language server](how-to/write-a-language-server.md)
+- [How to open a project without its plugins](how-to/open-a-project-without-its-plugins.md)
+- [How to fix a plugin editor that does not work](how-to/fix-a-plugin-editor.md)
+
+### For developers and extensions
+
+- [How to build and run paw from the source](how-to/build-paw-from-source.md): the dev shell, the demo song, the example configuration
+- [How to configure paw](how-to/configure-paw.md): `init.lua`, options, colors, commands, keys, events
+- [How to change the status line](how-to/change-the-status-line.md): sections and components in `init.lua`
+- [How to load an extension](how-to/load-an-extension.md): a bundled extension, your own, or one from Nix
+- [How to add a picker](how-to/add-a-picker.md): a list to choose from, with a key
 - [How to write a snippet](how-to/write-a-snippet.md)
 - [How to write a completion source](how-to/write-a-completion-source.md)
 - [How to write a device in Lua](how-to/write-a-device-in-lua.md)
-- [How to fix a plugin editor that does not work](how-to/fix-a-plugin-editor.md)
-- [How to open a project without its plugins](how-to/open-a-project-without-its-plugins.md)
-- [How to load an extension](how-to/load-an-extension.md): a bundled extension, your own, or one from Nix
+- [How to write a language server](how-to/write-a-language-server.md)
+- [How to give an extension an editor in the graphical window](how-to/add-an-editor-to-the-window.md)
 - [How to drive paw from an agent](how-to/drive-paw-from-an-agent.md): let an agent that writes code, or an assistant, edit a project
+- [How to run the graphical window against a kernel on another machine](how-to/run-the-window-against-a-remote-kernel.md)
+- [How to run the graphical window without a graphics card](how-to/run-the-window-without-a-graphics-card.md)
+- [How to run the tests](how-to/run-the-tests.md): the Lua suite, the Rust tests, the tests of the graphical window
 
 ## Reference
 

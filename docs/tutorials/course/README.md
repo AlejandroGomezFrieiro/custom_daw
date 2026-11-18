@@ -31,3 +31,5 @@ Then type `:tutor` in paw. The tutor makes these pages from its lessons, so the 
 | 17 | [Ranges, :s and :g: edit by line](17-ranges.md) | We used `:2,3d`, `:t2 4d`, `:t* volume -3`, `:%s/c4/d4/g` and `:g/name:b/mute`: a range, then a command, one undo step for each. |
 
 Lessons 1 to 4 are the base: the screen, the cursor, and how to make tracks and notes. Lessons 5 to 8 are the grammar of the keys, which all of paw uses. Lessons 9 to 13 are the studio: devices, the mix, loops, recordings, and how to save and render. Lessons 14 to 16 help you find keys, make paw your own, and use the extensions. Lesson 17 edits by line, as Ex does in Vim: ranges of bars and tracks, `:s` and `:g`.
+
+The five lessons of [Make music with paw](../make-music/README.md) make one song, from the first note to an MP3 file. They use the keys of this course.

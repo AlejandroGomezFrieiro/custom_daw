@@ -49,5 +49,7 @@ default device and shows a message.
 
 ## See also
 
+- [How to lower the latency](lower-the-latency.md): a smaller block, and what to do when the sound crackles.
+- [How to start paw the first time and hear sound](start-paw-and-hear-sound.md): check the device and hear a test tone.
 - [The programs and their options](../reference/programs.md): `--audio`, `--rate`, `--buffer` and the other options.
 - [Files that paw keeps](../reference/state-files.md).

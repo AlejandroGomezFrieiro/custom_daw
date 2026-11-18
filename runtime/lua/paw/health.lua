@@ -118,7 +118,7 @@ end, { desc = "the program and its Lua" })
 M.register("audio", function(h)
   local e = api.engine_get()
   if e.backend == "null" then
-    h.warn("the null audio backend: nothing is heard", { "start without --audio null", ":audio.device picks a device" })
+    h.warn("the null audio backend: nothing is heard", { "start without --audio null", ":audio picks a device" })
   else
     h.ok(string.format("%s on %s, %d Hz, %d frames a block", tostring(e.backend), tostring(e.device or "the default device"),
       e.sample_rate or 0, e.buffer_size or e.block or 0))

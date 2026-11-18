@@ -87,6 +87,10 @@ which all of paw uses. Lessons 9 to 13 are the studio: devices, the mix, loops,
 recordings, and how to save and render. Lessons 14 to 16 help you find keys,
 make paw your own, and use the extensions. Lesson 17 edits by line, as Ex
 does in Vim: ranges of bars and tracks, `:s` and `:g`.]]))
+  add("")
+  add(paragraphs([[
+The five lessons of [Make music with paw](../make-music/README.md) make one
+song, from the first note to an MP3 file. They use the keys of this course.]]))
   return table.concat(out, "\n") .. "\n"
 end
 
