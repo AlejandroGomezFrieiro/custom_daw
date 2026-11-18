@@ -343,11 +343,16 @@ pub type Rescan = Rc<dyn Fn(&mut Registry, Option<&str>) -> Vec<String>>;
 /// there: see [`Registry::add_dir`].
 pub type AddDir = Rc<dyn Fn(&mut Registry, &std::path::Path) -> (Vec<String>, Vec<String>)>;
 
+/// Stops looking for plugins in a directory added before: see
+/// [`Registry::remove_dir`].
+pub type RemoveDir = Rc<dyn Fn(&std::path::Path)>;
+
 #[derive(Default, Clone)]
 pub struct Registry {
     factories: BTreeMap<String, Rc<dyn DeviceFactory>>,
     rescan: Option<Rescan>,
     add_dir: Option<AddDir>,
+    remove_dir: Option<RemoveDir>,
     /// What scripts posted to every device of a kind: by kind, each topic
     /// with its latest data, in the order the topics were first posted.
     posts: BTreeMap<String, Vec<(String, Arc<[u8]>)>>,
@@ -364,6 +369,28 @@ impl Registry {
 
     pub fn register(&mut self, factory: Rc<dyn DeviceFactory>) {
         self.factories.insert(factory.info().kind.clone(), factory);
+    }
+
+    /// Make no more devices of `kind` (an extension that brought it was
+    /// taken away); devices already made go on. Returns whether it was there.
+    pub fn unregister(&mut self, kind: &str) -> bool {
+        self.factories.remove(kind).is_some()
+    }
+
+    /// Say how to stop looking in a directory added with [`Registry::add_dir`].
+    pub fn set_remove_dir(&mut self, remove_dir: RemoveDir) {
+        self.remove_dir = Some(remove_dir);
+    }
+
+    /// Look in `dir` no more (later rescans leave it out), and make no more
+    /// devices of `kinds`, those found there.
+    pub fn remove_dir(&mut self, dir: &std::path::Path, kinds: &[String]) {
+        if let Some(remove_dir) = self.remove_dir.clone() {
+            remove_dir(dir);
+        }
+        for kind in kinds {
+            self.unregister(kind);
+        }
     }
 
     /// Say how to look for plugins again (the program that found them knows).

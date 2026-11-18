@@ -364,6 +364,17 @@ impl Kernel {
         let code =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let name = format!("@{}", path.display());
+        // As Neovim's `-l` and the `lua` program do: `arg[0]` is the
+        // script, `arg[1]` on its arguments, besides `...`.
+        let set_arg = || -> mlua::Result<()> {
+            let arg = self.lua.create_table()?;
+            arg.raw_set(0, path.to_string_lossy().into_owned())?;
+            for (i, a) in args.iter().enumerate() {
+                arg.raw_set(i + 1, a.as_str())?;
+            }
+            self.lua.globals().set("arg", arg)
+        };
+        set_arg().map_err(lua_error)?;
         let result = self
             .lua
             .load(code)

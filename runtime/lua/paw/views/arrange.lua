@@ -610,12 +610,14 @@ end
 --- many, over the clip's own stretch of time, lit where it is the one that
 --- plays and faint where it is not, with its name. To look at: comping here
 --- is `:take 2` over a selection, or a drag across the lane, with the
---- mouse in the terminal or the window.
+--- mouse in the terminal or the window. Returns the columns its names take,
+--- for the playhead to keep their letters.
 function view:draw_take_row(headers, timeline, row, lines)
   local y, k = row.y, row.take
   local zoom, scroll = self.geometry.zoom, self.scroll
   local hw, tw = headers.width, timeline.width
   local hue = draw.track_hue(api.track_get(row.id), row.index)
+  local names = {}
   headers:fill(0, y, hw, 1, " ", "TrackHeader")
   headers:text(0, y, "▏", hue.fg)
   headers:text(2, y, util.fit("↳ take " .. k, math.max(1, hw - 3)), "TrackInfo")
@@ -634,7 +636,9 @@ function view:draw_take_row(headers, timeline, row, lines)
         local on = takes.active == k
         local box = timeline:sub(x0, y, cw, 1)
         box:fill(0, 0, cw, 1, " ", on and hue.title or "TakeLaneName")
-        box:text(cw > 2 and 1 or 0, 0, (on and (draw.g.play .. " ") or "") .. (entry.name or ("take " .. k)))
+        local at = cw > 2 and 1 or 0
+        local n = box:text(at, 0, (on and (draw.g.play .. " ") or "") .. (entry.name or ("take " .. k)))
+        names[#names + 1] = { x0 + at, x0 + at + math.min(n, cw - at) }
         box:fill(0, 0, 1, 1, draw.g.clip_start, "ClipEdge")
       end
     end
@@ -645,6 +649,7 @@ function view:draw_take_row(headers, timeline, row, lines)
     local x0, x1 = math.min(comp.x0, comp.x1) - hw, math.max(comp.x0, comp.x1) - hw
     timeline:fill(math.max(0, x0), y, math.max(0, x1 - math.max(0, x0) + 1), 1, nil, "Visual")
   end
+  return names
 end
 
 --- The time this view shows, for windows bound in time (`timebind`): the
@@ -776,11 +781,11 @@ function view:render(buf, ctx)
   -- Tracks.
   local cursor_clip = cursor.clip()
   cursor_clip = cursor_clip and cursor_clip.id
-  local covered = {}
+  local covered, names_of = {}, {}
   local cursor_lane = cursor.lane_id()
   for _, row in ipairs(L.rows) do
     if row.kind == "lane" then self:draw_lane_row(headers, lanes, row, lines) end
-    if row.kind == "take" then self:draw_take_row(headers, lanes, row, lines) end
+    if row.kind == "take" then names_of[row] = self:draw_take_row(headers, lanes, row, lines) end
   end
   for _, row in ipairs(L.rows) do
     if row.kind == "track" then
@@ -857,11 +862,17 @@ function view:render(buf, ctx)
   if px >= 0 and px < tw then
     ruler:text(px, 0, g.cap, "RulerPlayhead")
     for _, row in ipairs(L.rows) do
-      local on_clip = false
+      local on_clip, on_name = false, false
       for _, s in ipairs(covered[row] or {}) do
         if px >= s[1] and px < s[2] then on_clip = true end
       end
-      if on_clip then
+      for _, s in ipairs(names_of[row] or {}) do
+        if px >= s[1] and px < s[2] then on_name = true end
+      end
+      if on_name then
+        -- A take's name keeps its letter, in the playhead's colour.
+        lanes:fill(px, row.y, 1, 1, nil, "PlayheadClip")
+      elseif on_clip then
         -- Under the clip's name only, so the name row reads unbroken.
         local skip = row.h > 1 and 1 or 0
         lanes:fill(px, row.y + skip, 1, row.h - skip, g.playhead, "PlayheadClip")

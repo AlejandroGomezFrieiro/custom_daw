@@ -1,6 +1,7 @@
 -- `paw.plugins`: plugins an extension ships, and what plugins call their keys.
 --
 --   paw.plugins.add_dir(dir)        -- look for CLAP and VST3 plugins in `dir` too
+--   paw.plugins.remove_dir(dir)     -- and no more
 --   paw.plugins.from["clap:dev.paw.sampler"]   -- "sampler": who added it
 --   paw.plugins.note_names(device)  -- { [36] = "Kick", ... } (CLAP note-name)
 --   paw.plugins.key_names(track)    -- the same for a track's devices together
@@ -11,6 +12,10 @@ local M = {}
 --- Which extension (or directory) each device kind added by `add_dir`
 --- came from, by kind.
 M.from = {}
+
+--- The directories added, by path: `{ dir, kinds, ext }`, the device kinds
+--- found there and the extension that added it.
+M.dirs = {}
 
 --- How long a device's key names are kept before it is asked again, in
 --- milliseconds: an instrument may load another sound and name its keys anew.
@@ -28,12 +33,14 @@ function M.add_dir(dir, name)
   dir = tostring(dir)
   local found = api.plugins_add_dir(dir)
   if not found then return nil end
-  name = name or dir:match("extensions/([^/]+)") or dir
+  local by = paw.commands.owner()
+  name = name or by or dir:match("extensions/([^/]+)") or dir
   local added = {}
   for _, kind in ipairs(found.kinds) do
     M.from[kind] = name
     added[kind] = true
   end
+  M.dirs[dir] = { dir = dir, kinds = found.kinds, ext = by }
   for _, note in ipairs(found.notes) do api.log("plugin scan: " .. note) end
   for _, id in ipairs(api.track_list()) do
     for _, device in ipairs(api.track_get(id).devices) do
@@ -43,6 +50,16 @@ function M.add_dir(dir, name)
   end
   paw.emit("plugins.scanned", { notes = found.notes, dir = dir, kinds = found.kinds })
   return found
+end
+
+--- Look in `dir` no more, and offer the devices found there no more;
+--- those made go on.
+function M.remove_dir(dir)
+  local known = M.dirs[tostring(dir)]
+  if not known then return end
+  M.dirs[known.dir] = nil
+  for _, kind in ipairs(known.kinds) do M.from[kind] = nil end
+  api.plugins_remove_dir(known.dir, known.kinds)
 end
 
 local names = {}
