@@ -11,11 +11,22 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
-if [ -z "${PAW_VALE_STYLES:-}" ]; then
-  echo "tools/vale.sh: run it in the dev shell (nix develop), which sets PAW_VALE_STYLES" >&2
-  exit 2
+# Outside the dev shell (an editor, a hook), take Vale and its styles from
+# the dev shell once and keep their paths in target/vale-env.
+if [ -z "${PAW_VALE_STYLES:-}" ] || ! command -v vale >/dev/null; then
+  env_file=target/vale-env
+  if [ ! -s "$env_file" ] || [ flake.nix -nt "$env_file" ] || [ flake.lock -nt "$env_file" ]; then
+    mkdir -p target
+    nix develop -c bash -c 'printf "PAW_VALE_STYLES=%s\nVALE_BIN=%s\n" "$PAW_VALE_STYLES" "$(command -v vale)"' 2>/dev/null > "$env_file.tmp"
+    mv "$env_file.tmp" "$env_file"
+  fi
+  PAW_VALE_STYLES=$(sed -n 's/^PAW_VALE_STYLES=//p' "$env_file")
+  vale_bin=$(sed -n 's/^VALE_BIN=//p' "$env_file")
+else
+  vale_bin=$(command -v vale)
 fi
-styles=target/vale-styles
+styles=target/vale-styles.$$
+trap 'rm -rf "$styles"' EXIT
 rm -rf "$styles"
 mkdir -p "$styles"
 for d in "$PAW_VALE_STYLES"/* .vale/styles/*; do ln -s "$(realpath "$d")" "$styles/$(basename "$d")"; done
@@ -28,4 +39,4 @@ done
 if [ ${#files[@]} -eq 0 ]; then
   files=(README.md docs crates/*/README.md extensions/*/README.md)
 fi
-exec vale --config "$root/.vale.ini" "${opts[@]}" "${files[@]}"
+"$vale_bin" --config "$root/.vale.ini" "${opts[@]}" "${files[@]}"
