@@ -1,6 +1,6 @@
 ---
 name: diataxis-docs
-description: Write, review, restructure or move paw's documentation by the Diátaxis framework (tutorials, how-to guides, reference, explanation). Use whenever a task writes or changes anything under docs/, a README (top level, crates/*, extensions/*), the tutor's lessons, :help pages or docs/api.md's generator, or asks where a piece of documentation belongs, why a page reads badly, or to "document", "write up", "add docs for" a feature — even when it only says "update the README" or "add a section".
+description: Write, review, restructure or move paw's documentation by the Diátaxis framework (tutorials, how-to guides, reference, explanation), in ASD-STE100 Simplified Technical English. Use whenever a task writes or changes anything under docs/, a README (top level, crates/*, extensions/*), the tutor's lessons, :help pages or docs/api.md's generator, or asks where a piece of documentation belongs, why a page reads badly, or to "document", "write up", "add docs for" a feature — even when it only says "update the README" or "add a section".
 ---
 
 # Documentation with Diátaxis
@@ -158,12 +158,114 @@ Rules specific to paw:
 - **Links**: relative Markdown links; after moving a page, grep the whole
   repo (code comments, manifests, READMEs, tests, flake.nix) for the old
   path and fix every one. Code comments point at reference or explanation, never tutorials.
-- **Style** (the house voice): plain, short sentences; terminal first, the
-  window second; British spelling as already used; no marketing words; no
-  emoji; never name the owner's unpublished projects or home paths.
+- **Style**: ASD-STE100 (next section); terminal first, the graphical
+  window second; no marketing words; no emoji; never name the owner's
+  unpublished projects or home paths.
 - **Pictures** belong to tutorials (what you will see) and to landing pages
   (what paw is). Reference may have a screenshot of a view's layout with
   labels. Keep their make scripts (docs/images/make, extensions' images/make).
+
+## Language: ASD-STE100 Simplified Technical English
+
+All of paw's documentation is written in ASD-STE100 Simplified Technical
+English (Issue 9): docs/**, every README, the tutor's lessons (they make
+the course) and the doc comments that tools/apidoc.lua turns into
+docs/reference/api.md. Diátaxis decides *what* a page says and where;
+STE decides *how* each sentence says it. The two agree: an explanation
+still discusses, a tutorial still says "we", but in STE sentences.
+
+The rules (Part 1 of the standard, by its sections; the official dictionary
+is not public, so use short, common words with one meaning each):
+
+**Words (1.x)**
+- One word, one meaning, one part of speech. Use a word only in its usual
+  meaning ("follow" means "come after"; to obey a rule, write "obey").
+- No synonyms for one thing: pick one word and keep it (rule 9.4). paw's
+  words are fixed in the glossary below.
+- Technical names (TN) are allowed for things: paw's names (track, clip,
+  lane, device, view, buffer, pane, scene, role, register, quickfix list),
+  and every code span (`:render`, `paw.qf`, `gU`, file names, option names)
+  is a technical name and counts as one word. Do not use a technical name
+  as a verb ("yank the clip" → "copy the clip with `y`", unless `yank` is
+  the command's name in code).
+- Technical verbs (TV) are allowed for computer actions where no simple
+  verb fits: run, build, install, load, save, render, record, play, quantize,
+  undo, redo, type, click, drag, select, paste, map (a key). Do not use them as nouns
+  ("the render" → "the rendered file"; "a save" → "when you save").
+- No slang, jargon or idiom ("out of the box", "under the hood", "spin up",
+  "kick off", "a no-op" → "does nothing").
+- American spelling (rule 1.14): color, behavior, center, license (noun
+  and verb), gray. Code and file names keep their own spelling.
+
+**Noun clusters (2.x)**: not more than three nouns together ("track
+output routing menu" → "the menu of track outputs").
+
+**Verbs (3.x)**
+- Only: infinitive, imperative, simple present, simple past, simple future
+  (will), and the past participle as an adjective ("the clip is selected").
+- No present perfect or continuous ("has been saved" → "is saved";
+  "is playing" → "plays"), no "-ing" form except in a technical name
+  ("Recording" as a heading → "Record audio" / "Recordings"; "while
+  playing" → "while the song plays").
+- Active voice. Passive only in description when the agent is unknown.
+- An action is a verb, not a noun ("do the adjustment" → "adjust";
+  "perform a deletion" → "delete").
+- No phrasal verbs ("set up" → "configure"/"prepare", "look up" → "find",
+  "turn on" → "enable"/"start", "go back" → "return", "carry out" → "do").
+
+**Sentences (4.x)**
+- Short and clear. No contractions, no omitted words ("Done." →
+  "The operation is complete." only where a sentence is needed; tables
+  and lists may use short fragments for values).
+- A vertical list for complex text: steps, conditions, alternatives.
+- Connecting words between related sentences (then, but, because, if).
+- Articles and demonstratives where English needs them ("Select the
+  clip", not "Select clip").
+- One topic per paragraph, not more than six sentences per paragraph.
+
+**Procedures (5.x)** — tutorials and how-to guides
+- Not more than 20 words in a sentence.
+- One instruction per sentence, unless the actions are simultaneous
+  ("Hold `Shift` and click the clip").
+- Imperative: "Press `R`." not "You should press `R`" or "`R` is pressed".
+- Put a condition or purpose first, with a comma: "If the track has no
+  input, press `I`." "To record a take, press `R`."
+- Notes give information, not instructions.
+
+**Descriptive writing (6.x)** — reference and explanation
+- Not more than 25 words in a sentence.
+- Give the most important information first. Use paragraphs and headings
+  to show the structure. Keep the same words for the same things.
+
+**Safety instructions (7.x)**: for data loss and loud sound only. Start
+with the level word in bold (**WARNING** for data loss or hearing damage,
+**CAUTION** for a smaller risk), then a clear command, then the risk:
+"**WARNING:** Save the project before you use `:e!`. `:e!` discards the
+changes that are not saved."
+
+**Punctuation and counts (8.x)**: no semicolons. A hyphenated word, a code
+span and a text in parentheses each count as one word. In a vertical list,
+a colon counts as a full stop.
+
+**Miscellaneous (9.x)**: when a word-for-word change does not work, write
+the sentence again with a different construction. Write "for example" and
+"that is" (not "e.g.", "i.e."), "and other" (not "etc.").
+
+**paw glossary (one word for each thing, rule 9.4)**: track (not channel
+strip), clip (not item, region), note, lane (an automation or controller
+lane), device (instrument or effect on a track; a plugin is a device that
+paw did not write), view (arrange view, piano roll, mixer, ...), window
+(a part of the screen that shows a view; "the window" alone is wrong — say
+"the graphical window" for paw-gui), project (not session, song file),
+command (`:name`), key, option (`paw.opt.name`), extension (not plugin, add-on),
+kernel, frontend (the terminal or the graphical window), buffer, register.
+
+**How to check**: `nix develop -c target/release/paw --clean --no-plugins -l
+tools/ste-check.lua <files...>` reports sentences that are too long,
+semicolons, long paragraphs, contractions, "-ing" forms, present perfect,
+passive with "by", phrasal verbs and words on the unapproved list, each with
+an approved alternative. It skips code blocks, code spans and generated
+pages. It is a help, not the standard: read every sentence yourself too.
 
 ## Workflow
 
@@ -194,5 +296,6 @@ fit to the user's need, anticipating the reader.
 - [ ] How-tos: titled "How to …", goal-first, conditional imperatives, no teaching, links to reference.
 - [ ] Reference: neutral, structured like the machinery, consistent entries, each name described once.
 - [ ] Explanation: "About …", why/context/alternatives, no steps or option tables.
+- [ ] STE: procedure sentences ≤ 20 words, descriptive ≤ 25, active voice, approved verb forms, no semicolons, glossary words; `tools/ste-check.lua` clean or each remaining report justified.
 - [ ] docs/README.md and the README landing pages link the new or moved pages.
 - [ ] No stale path anywhere (`grep -rn "docs/<old>"`), `:help <tag>` still lands, suite green.
