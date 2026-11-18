@@ -31,6 +31,16 @@ local cache = { key = nil, notes = {} }
 paw.seats.keep("roll_clips", function() return others, shown, cache end,
   function(o, s, c) others, shown, cache = o, s, c end,
   function() return {}, {}, { key = nil, notes = {} } end)
+-- And each window of the roll: a new one edits the same clips, and finds
+-- the notes around them for itself.
+paw.layout.window_keep("pianoroll", function() return { others, shown, cache } end,
+  function(v) others, shown, cache = v[1], v[2], v[3] end,
+  function(v)
+    local o, s = {}, {}
+    for i, id in ipairs(v[1]) do o[i] = id end
+    for k, x in pairs(v[2]) do s[k] = x end
+    return { o, s, { key = nil, notes = {} } }
+  end, "roll_clips")
 
 local function roll() return paw.ui.views.pianoroll end
 

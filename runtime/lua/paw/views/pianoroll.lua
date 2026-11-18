@@ -14,6 +14,10 @@ local view = {
   beat = 0,       -- cursor column, in beats from the start of the active clip
   top = 72,       -- pitch of the first row
   scroll = 0,     -- beat at the left edge
+  -- Each window of the roll has its own clip, cursor and scroll: two
+  -- windows show two clips, or one clip twice.
+  window_state = { "clip_id", "pitch", "beat", "top", "scroll", "geometry", "length" },
+  window_fresh = { "geometry" },
 }
 paw.seats.fields("pianoroll", view, { "clip_id", "pitch", "beat", "top", "scroll", "geometry", "length" },
   { pitch = 60, beat = 0, top = 72, scroll = 0 })
