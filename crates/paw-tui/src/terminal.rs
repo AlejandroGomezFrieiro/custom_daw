@@ -13,10 +13,10 @@ use crossterm::event::{
     MouseEventKind,
 };
 use crossterm::style::{
-    Attribute, Color as TermColor, Print, SetAttribute, SetBackgroundColor, SetForegroundColor,
+    Attribute, SetAttribute,
 };
 use crossterm::{cursor, execute, queue, terminal};
-use paw_core::grid::{self, Caps, Cell, Color, Grid};
+use paw_core::grid::{self, Caps, Color, Grid};
 use paw_core::{Frontend, InputEvent};
 use paw_raster::kitty;
 use paw_raster::probe::{self, Probe};
@@ -39,6 +39,8 @@ pub struct Terminal {
     /// A cell's size in pixels, as width << 16 | height, for the thread
     /// that reads the pointer in pixels.
     cell: Arc<AtomicU32>,
+    /// The bytes of a frame's cells, kept from one frame to the next.
+    cells: Vec<u8>,
 }
 
 /// What [`restore`] sends, as plain bytes for a signal handler to write:
@@ -154,6 +156,7 @@ impl Terminal {
                 graphics,
                 backing: graphics::Backing::default(),
                 cell,
+                cells: Vec::new(),
             },
             width,
             height,
@@ -262,14 +265,6 @@ impl Drop for Terminal {
     }
 }
 
-fn term_color(color: Color) -> TermColor {
-    match color {
-        Color::Default => TermColor::Reset,
-        Color::Indexed(index) => TermColor::AnsiValue(index),
-        Color::Rgb(r, g, b) => TermColor::Rgb { r, g, b },
-    }
-}
-
 impl Frontend for Terminal {
     fn present(&mut self, grid: &Grid, cursor_at: Option<(u16, u16)>) -> Result<()> {
         // Where a coloured background would hide a strip under the text,
@@ -304,36 +299,15 @@ impl Frontend for Terminal {
         }
         queue!(self.out, terminal::BeginSynchronizedUpdate, cursor::Hide)?;
 
-        // The style and position the terminal is currently in.
-        let mut style: Option<(Color, Color, u8)> = None;
-        let mut at: Option<(u16, u16)> = None;
         let width = grid.width as usize;
         // Cells written in this frame, where a surface's pixels are placed again.
         let track = self.graphics.is_some();
         let mut written = vec![false; if track { grid.cells.len() } else { 0 }];
-        for (index, cell) in grid.cells.iter().enumerate() {
-            let unchanged = self.shown.as_ref().is_some_and(|s| s.cells[index] == *cell);
-            if unchanged || cell.ch == '\0' {
-                continue;
-            }
-            let (x, y) = ((index % width) as u16, (index / width) as u16);
-            if track {
-                written[index] = true;
-            }
-            if at != Some((x, y)) {
-                queue!(self.out, cursor::MoveTo(x, y))?;
-            }
-            if style != Some((cell.fg, cell.bg, cell.attrs)) {
-                self.set_style(cell)?;
-                style = Some((cell.fg, cell.bg, cell.attrs));
-            }
-            queue!(self.out, Print(cell.ch))?;
-            let wide = grid
-                .cells
-                .get(index + 1)
-                .is_some_and(|next| next.ch == '\0');
-            at = Some((x + if wide { 2 } else { 1 }, y));
-        }
+        let mut cells = std::mem::take(&mut self.cells);
+        cells.clear();
+        write_cells(&mut cells, self.shown.as_ref(), grid, &mut written, write_pen);
+        self.out.write_all(&cells)?;
+        self.cells = cells;
         queue!(self.out, SetAttribute(Attribute::Reset))?;
         if let Some(graphics) = &mut self.graphics {
             graphics.frame(&mut images, grid, |x, y| {
@@ -353,28 +327,112 @@ impl Frontend for Terminal {
     }
 }
 
-impl Terminal {
-    fn set_style(&mut self, cell: &Cell) -> Result<()> {
-        queue!(
-            self.out,
-            SetAttribute(Attribute::Reset),
-            SetForegroundColor(term_color(cell.fg)),
-            SetBackgroundColor(term_color(cell.bg))
-        )?;
-        let attributes = [
-            (grid::BOLD, Attribute::Bold),
-            (grid::DIM, Attribute::Dim),
-            (grid::ITALIC, Attribute::Italic),
-            (grid::UNDERLINE, Attribute::Underlined),
-            (grid::REVERSE, Attribute::Reverse),
-            (grid::STRIKE, Attribute::CrossedOut),
-        ];
-        for (bit, attribute) in attributes {
-            if cell.attrs & bit != 0 {
-                queue!(self.out, SetAttribute(attribute))?;
-            }
+/// The style the terminal writes in: foreground, background, attributes.
+type Pen = (Color, Color, u8);
+
+/// Write the cells of `grid` that differ from `shown` (all of them without
+/// it): the cursor moved only to a cell that does not follow the last one
+/// written, the style changed by `pen` from the last one. `written` marks
+/// each cell written, when it is not empty.
+fn write_cells(out: &mut Vec<u8>, shown: Option<&Grid>, grid: &Grid, written: &mut [bool], pen: impl Fn(&mut Vec<u8>, Option<Pen>, Pen)) {
+    // The style and position the terminal is in: not known at first.
+    let mut style: Option<Pen> = None;
+    let mut at: Option<(u16, u16)> = None;
+    let width = grid.width as usize;
+    for (index, cell) in grid.cells.iter().enumerate() {
+        let unchanged = shown.is_some_and(|s| s.cells[index] == *cell);
+        if unchanged || cell.ch == '\0' {
+            continue;
         }
-        Ok(())
+        let (x, y) = ((index % width) as u16, (index / width) as u16);
+        if let Some(mark) = written.get_mut(index) {
+            *mark = true;
+        }
+        if at != Some((x, y)) {
+            queue!(out, cursor::MoveTo(x, y)).expect("writing to memory");
+        }
+        let now = (cell.fg, cell.bg, cell.attrs);
+        if style != Some(now) {
+            pen(out, style, now);
+            style = Some(now);
+        }
+        let mut utf8 = [0; 4];
+        out.extend_from_slice(cell.ch.encode_utf8(&mut utf8).as_bytes());
+        let wide = grid.cells.get(index + 1).is_some_and(|next| next.ch == '\0');
+        at = Some((x + if wide { 2 } else { 1 }, y));
+    }
+}
+
+/// The attributes, each with the SGR parameter that sets it and the one
+/// that ends it (bold and dim end together, with 22).
+const ATTRIBUTES: [(u8, &str, &str); 6] = [
+    (grid::BOLD, "1", "22"),
+    (grid::DIM, "2", "22"),
+    (grid::ITALIC, "3", "23"),
+    (grid::UNDERLINE, "4", "24"),
+    (grid::REVERSE, "7", "27"),
+    (grid::STRIKE, "9", "29"),
+];
+
+/// A colour as SGR parameters: `base` is 30 for the foreground, 40 for the
+/// background.
+fn colour_params(out: &mut Vec<u8>, colour: Color, base: u8) {
+    match colour {
+        Color::Default => write!(out, "{}", base + 9),
+        Color::Indexed(index) => write!(out, "{};5;{index}", base + 8),
+        Color::Rgb(r, g, b) => write!(out, "{};2;{r};{g};{b}", base + 8),
+    }
+    .expect("writing to memory");
+}
+
+/// One SGR sequence that changes the terminal's pen from `from` to `to`
+/// with only what differs; from a pen not known (`None`), all of `to`
+/// after a reset. A terminal draws the same as with a reset and every
+/// part at each change, in fewer bytes.
+fn write_pen(out: &mut Vec<u8>, from: Option<Pen>, to: Pen) {
+    let start = out.len();
+    out.extend_from_slice(b"\x1b[");
+    let mut params = 0;
+    let mut param = |out: &mut Vec<u8>, text: &str| {
+        if params > 0 {
+            out.push(b';');
+        }
+        out.extend_from_slice(text.as_bytes());
+        params += 1;
+    };
+    let (fg, bg, mut attrs) = match from {
+        Some(pen) => pen,
+        None => {
+            param(out, "0");
+            (Color::Default, Color::Default, 0)
+        }
+    };
+    // What ends: bold and dim end together, and the other goes on again.
+    let mut ended = 0u8;
+    for (bit, _, off) in ATTRIBUTES {
+        if attrs & bit != 0 && to.2 & bit == 0 && ended & bit == 0 {
+            param(out, off);
+            ended |= if off == "22" { grid::BOLD | grid::DIM } else { bit };
+        }
+    }
+    attrs &= !ended;
+    for (bit, on, _) in ATTRIBUTES {
+        if to.2 & bit != 0 && attrs & bit == 0 {
+            param(out, on);
+        }
+    }
+    if to.0 != fg {
+        param(out, "");
+        colour_params(out, to.0, 30);
+    }
+    if to.1 != bg {
+        param(out, "");
+        colour_params(out, to.1, 40);
+    }
+    if params == 0 {
+        out.truncate(start);
+    } else {
+        out.push(b'm');
     }
 }
 
@@ -472,6 +530,16 @@ fn mouse_event(mouse: MouseEvent, cell: Option<(u16, u16)>) -> InputEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::style::{Color as TermColor, SetBackgroundColor, SetForegroundColor};
+    use paw_core::grid::Cell;
+
+    fn term_color(color: Color) -> TermColor {
+        match color {
+            Color::Default => TermColor::Reset,
+            Color::Indexed(index) => TermColor::AnsiValue(index),
+            Color::Rgb(r, g, b) => TermColor::Rgb { r, g, b },
+        }
+    }
 
     #[test]
     fn control_and_a_bracket_is_that_key_not_a_digit() {
@@ -481,5 +549,207 @@ mod tests {
         assert_eq!(ctrl('w').as_deref(), Some("<C-w>"));
         let five = key_notation(KeyEvent::new(KeyCode::Char('5'), KeyModifiers::NONE));
         assert_eq!(five.as_deref(), Some("5"));
+    }
+
+    /// A terminal for the tests: what is written replayed onto a screen of
+    /// cells, as a terminal shows it. It knows what paw writes: the
+    /// cursor's moves, SGR, clearing; the rest is passed over.
+    struct Screen {
+        width: usize,
+        cells: Vec<(char, Pen)>,
+        at: (usize, usize),
+        pen: Pen,
+    }
+
+    const PLAIN: Pen = (Color::Default, Color::Default, 0);
+
+    fn wide(c: char) -> bool {
+        matches!(c as u32, 0x1100..=0x115F | 0x2E80..=0xA4CF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF | 0xFF00..=0xFF60)
+    }
+
+    impl Screen {
+        fn new(width: usize, height: usize) -> Screen {
+            Screen { width, cells: vec![(' ', PLAIN); width * height], at: (0, 0), pen: PLAIN }
+        }
+
+        fn feed(&mut self, bytes: &[u8]) {
+            let text = std::str::from_utf8(bytes).expect("UTF-8");
+            let mut chars = text.chars().peekable();
+            while let Some(c) = chars.next() {
+                if c == '\x1b' {
+                    if chars.next() != Some('[') {
+                        continue;
+                    }
+                    let mut params = String::new();
+                    let mut last = ' ';
+                    for n in chars.by_ref() {
+                        if ('@'..='~').contains(&n) {
+                            last = n;
+                            break;
+                        }
+                        params.push(n);
+                    }
+                    self.csi(&params, last);
+                    continue;
+                }
+                let (x, y) = self.at;
+                self.cells[y * self.width + x] = (c, self.pen);
+                if wide(c) {
+                    self.cells[y * self.width + x + 1] = ('\0', self.pen);
+                }
+                self.at.0 += if wide(c) { 2 } else { 1 };
+            }
+        }
+
+        fn csi(&mut self, params: &str, last: char) {
+            match last {
+                'H' => {
+                    let mut it = params.split(';').map(|p| p.parse::<usize>().unwrap_or(1));
+                    let (row, col) = (it.next().unwrap_or(1), it.next().unwrap_or(1));
+                    self.at = (col - 1, row - 1);
+                }
+                'J' if params == "2" => self.cells.fill((' ', PLAIN)),
+                'm' => {
+                    let numbers: Vec<u32> = params.split(';').map(|p| p.parse().unwrap_or(0)).collect();
+                    let mut it = numbers.into_iter();
+                    while let Some(n) = it.next() {
+                        let colour = |it: &mut std::vec::IntoIter<u32>| match it.next() {
+                            Some(5) => Color::Indexed(it.next().unwrap() as u8),
+                            Some(2) => Color::Rgb(it.next().unwrap() as u8, it.next().unwrap() as u8, it.next().unwrap() as u8),
+                            other => panic!("a colour of kind {other:?}"),
+                        };
+                        let pen = &mut self.pen;
+                        match n {
+                            0 => *pen = PLAIN,
+                            1 => pen.2 |= grid::BOLD,
+                            2 => pen.2 |= grid::DIM,
+                            3 => pen.2 |= grid::ITALIC,
+                            4 => pen.2 |= grid::UNDERLINE,
+                            7 => pen.2 |= grid::REVERSE,
+                            9 => pen.2 |= grid::STRIKE,
+                            22 => pen.2 &= !(grid::BOLD | grid::DIM),
+                            23 => pen.2 &= !grid::ITALIC,
+                            24 => pen.2 &= !grid::UNDERLINE,
+                            27 => pen.2 &= !grid::REVERSE,
+                            29 => pen.2 &= !grid::STRIKE,
+                            39 => pen.0 = Color::Default,
+                            49 => pen.1 = Color::Default,
+                            38 => pen.0 = colour(&mut it),
+                            48 => pen.1 = colour(&mut it),
+                            other => panic!("SGR {other}"),
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        /// Whether it shows `grid`, each cell with its style.
+        fn shows(&self, grid: &Grid) -> Result<(), String> {
+            for (i, cell) in grid.cells.iter().enumerate() {
+                if cell.ch == '\0' {
+                    continue;
+                }
+                let (ch, pen) = self.cells[i];
+                if (ch, pen) != (cell.ch, (cell.fg, cell.bg, cell.attrs)) {
+                    return Err(format!("cell {i}: {:?} shown as {:?}", (cell.ch, cell.fg, cell.bg, cell.attrs), (ch, pen)));
+                }
+            }
+            Ok(())
+        }
+    }
+
+    /// Frames as a view's would be: rows of text in a few styles, the
+    /// cursor's row and a meter changing from one to the next, with bold,
+    /// dim and the rest coming and going, and a wide character.
+    fn frames() -> Vec<Grid> {
+        let colours = [Color::Default, Color::Rgb(0x20, 0x24, 0x2d), Color::Rgb(0xe3, 0xcf, 0x4f), Color::Indexed(4), Color::Rgb(0x6f, 0xbf, 0x73)];
+        let mut seed = 7u32;
+        let mut next = move || {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            (seed >> 16) as usize
+        };
+        let (width, height) = (60u16, 12u16);
+        let mut out = Vec::new();
+        let mut grid = Grid::new(width, height);
+        for frame in 0..40 {
+            for _ in 0..if frame == 0 { 400 } else { 30 } {
+                let at = next() % grid.cells.len();
+                if grid.cells[at].ch == '\0' || grid.cells.get(at + 1).is_some_and(|c| c.ch == '\0') {
+                    continue;
+                }
+                grid.cells[at] = Cell {
+                    ch: ['a', 'b', '─', '▆', ' ', 'x'][next() % 6],
+                    fg: colours[next() % colours.len()],
+                    bg: colours[next() % colours.len()],
+                    attrs: (next() % 64) as u8 & if next() % 3 == 0 { 0xff } else { grid::BOLD | grid::DIM },
+                };
+            }
+            if frame % 7 == 0 {
+                let at = (frame as usize % 10) * 2 + width as usize;
+                grid.cells[at] = Cell { ch: '漢', ..Cell::default() };
+                grid.cells[at + 1] = Cell { ch: '\0', ..Cell::default() };
+            }
+            out.push(grid.clone());
+        }
+        out
+    }
+
+    /// What paw wrote before it sent only the changes: a reset, both
+    /// colours and every attribute at each change of style.
+    fn whole_pen(out: &mut Vec<u8>, _from: Option<Pen>, to: Pen) {
+        queue!(out, SetAttribute(Attribute::Reset), SetForegroundColor(term_color(to.0)), SetBackgroundColor(term_color(to.1))).unwrap();
+        for (bit, attribute) in [
+            (grid::BOLD, Attribute::Bold),
+            (grid::DIM, Attribute::Dim),
+            (grid::ITALIC, Attribute::Italic),
+            (grid::UNDERLINE, Attribute::Underlined),
+            (grid::REVERSE, Attribute::Reverse),
+            (grid::STRIKE, Attribute::CrossedOut),
+        ] {
+            if to.2 & bit != 0 {
+                queue!(out, SetAttribute(attribute)).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn only_what_changed_of_the_style_is_sent_and_the_screen_is_the_same() {
+        let frames = frames();
+        let (mut screen, mut whole) = (Screen::new(60, 12), Screen::new(60, 12));
+        let (mut bytes, mut whole_bytes) = (0, 0);
+        let mut shown: Option<&Grid> = None;
+        for (i, grid) in frames.iter().enumerate() {
+            let mut out = Vec::new();
+            write_cells(&mut out, shown, grid, &mut [], write_pen);
+            out.extend_from_slice(b"\x1b[0m");
+            screen.feed(&out);
+            bytes += out.len();
+            screen.shows(grid).unwrap_or_else(|err| panic!("frame {i}: {err}"));
+            let mut out = Vec::new();
+            write_cells(&mut out, shown, grid, &mut [], whole_pen);
+            out.extend_from_slice(b"\x1b[0m");
+            whole.feed(&out);
+            whole_bytes += out.len();
+            assert_eq!(screen.cells, whole.cells, "frame {i}: the same screen as before");
+            shown = Some(grid);
+        }
+        assert!(bytes * 10 < whole_bytes * 9, "{bytes} bytes against {whole_bytes}: a tenth fewer at least");
+    }
+
+    #[test]
+    fn a_change_of_pen_says_only_what_changed() {
+        let pen = |from: Option<Pen>, to: Pen| {
+            let mut out = Vec::new();
+            write_pen(&mut out, from, to);
+            String::from_utf8(out).unwrap()
+        };
+        let red = Color::Rgb(255, 0, 0);
+        assert_eq!(pen(None, (red, Color::Default, grid::BOLD)), "\x1b[0;1;38;2;255;0;0m", "from a pen not known, all after a reset");
+        assert_eq!(pen(Some((red, Color::Default, 0)), (red, Color::Indexed(4), 0)), "\x1b[48;5;4m", "the background alone");
+        assert_eq!(pen(Some((red, Color::Default, 0)), PLAIN), "\x1b[39m");
+        assert_eq!(pen(Some((red, red, grid::BOLD | grid::DIM)), (red, red, grid::DIM)), "\x1b[22;2m", "dim stays when bold ends: 22 ends both");
+        assert_eq!(pen(Some((red, red, grid::BOLD | grid::UNDERLINE)), (red, red, grid::ITALIC)), "\x1b[22;24;3m");
+        assert_eq!(pen(Some(PLAIN), PLAIN), "", "nothing for no change");
     }
 }
