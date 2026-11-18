@@ -5464,8 +5464,9 @@ function paw.plugins.add_dir(dir, name) end
 function paw.plugins.key_names(track) end
 
 --- What a device calls its keys, by pitch: a plugin that implements CLAP's
---- `note-name` (a drum kit's drums, a sampler's keyswitches). Empty for
---- the rest. Asked again after `M.names_ttl`.
+--- `note-name` (a drum kit's drums, a sampler's keyswitches), or a built-in
+--- device of `M.builtin_names` (the `drums` kit). Empty for the rest. Asked
+--- again after `M.names_ttl`.
 ---@param device any
 function paw.plugins.note_names(device) end
 

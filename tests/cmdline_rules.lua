@@ -10,6 +10,9 @@ local function start()
   paw.keymap.feed("<Esc><Esc>")
   while paw.ui.float do paw.ui.close() end
   paw.ui.focus("arrange")
+  -- The errors these tests make on purpose count as read when they end,
+  -- so that the key line of the tests after them is as it always is.
+  T.after(function() paw.emit("command.pre", { name = "messages", command = "messages", args = {} }) end)
 end
 
 local function message() return paw.ui.message and paw.ui.message.text or "" end

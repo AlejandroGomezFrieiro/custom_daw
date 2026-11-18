@@ -64,13 +64,33 @@ end
 
 local names = {}
 
+--- What the built-in devices call their keys, by kind: the pieces of the
+--- `drums` kit on the General MIDI drum notes (crates/paw-engine/src/devices/drums.rs).
+M.builtin_names = {
+  drums = {
+    [35] = "Kick 2", [36] = "Kick", [37] = "Rim", [38] = "Snare", [39] = "Clap", [40] = "Snare 2",
+    [41] = "Floor tom", [42] = "Closed hat", [43] = "Floor tom 2", [44] = "Pedal hat", [45] = "Low tom",
+    [46] = "Open hat", [47] = "Mid tom", [48] = "High-mid tom", [49] = "Crash", [50] = "High tom",
+    [51] = "Ride", [52] = "China", [53] = "Ride bell", [54] = "Tambourine", [55] = "Splash",
+    [56] = "Cowbell", [57] = "Crash 2", [59] = "Ride 2",
+  },
+}
+
 --- What a device calls its keys, by pitch: a plugin that implements CLAP's
---- `note-name` (a drum kit's drums, a sampler's keyswitches). Empty for
---- the rest. Asked again after `M.names_ttl`.
+--- `note-name` (a drum kit's drums, a sampler's keyswitches), or a built-in
+--- device of `M.builtin_names` (the `drums` kit). Empty for the rest. Asked
+--- again after `M.names_ttl`.
 function M.note_names(device)
   local now = api.now()
   local known = names[device]
-  if known and now - known.at < M.names_ttl then return known.names end
+  if known and (known.builtin or now - known.at < M.names_ttl) then return known.names end
+  -- A device keeps its kind: a built-in one is looked at once.
+  local ok_kind, d = pcall(api.device_get, device)
+  local builtin = ok_kind and d and M.builtin_names[d.kind]
+  if builtin then
+    names[device] = { at = now, names = builtin, builtin = true }
+    return builtin
+  end
   local ok, list = pcall(api.device_note_names, device)
   names[device] = { at = now, names = ok and list or {} }
   return names[device].names

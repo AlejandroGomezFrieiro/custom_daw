@@ -10,6 +10,9 @@ local function start()
   paw.keymap.feed("<Esc><Esc>")
   while paw.ui.float do paw.ui.close() end
   paw.ui.focus("arrange")
+  -- The errors these tests make on purpose count as read when they end,
+  -- so that the key line of the tests after them is as it always is.
+  T.after(function() paw.emit("command.pre", { name = "messages", command = "messages", args = {} }) end)
 end
 
 local function message() return paw.ui.message and paw.ui.message.text or "" end
@@ -140,6 +143,22 @@ test("g' asks for the marker's name and never makes one without, and the list of
   end
   keys("<CR>")
   eq(paw.cursor.beat, 64, "and Enter goes there")
+end)
+
+test("the piano roll names the rows of a track with the drums device: kick, snare, closed hat", function()
+  start()
+  local t = paw.add_track({ name = "Drums" })
+  t:add_device("drums")
+  local c = t:add_clip({ start = 0, length = 4 })
+  local roll = paw.ui.views.pianoroll
+  roll:edit(c)
+  T.after(function() roll.clip_id = nil paw.ui.hide("pianoroll") paw.ui.focus("arrange") end)
+  paw.ui.focus("pianoroll")
+  roll:set(38, 0)
+  local names = paw.plugins.key_names(t.id)
+  eq(names[36] .. "/" .. names[38] .. "/" .. names[42], "Kick/Snare/Closed hat", "the kit's pieces by pitch")
+  local screen = table.concat(api.ui_snapshot(120, 40), "\n")
+  eq(screen:find("Snare", 1, true) ~= nil and screen:find("Kick", 1, true) ~= nil, true, "the rows show them:\n" .. screen)
 end)
 
 test("a count before Alt-j and Alt-k moves the track that many places, and before & makes that many copies", function()

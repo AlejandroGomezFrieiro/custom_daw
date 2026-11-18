@@ -69,7 +69,8 @@ window. Without them, an editor is an empty black window.
   [The Lua interface](scripting.md)) is part of the note-on.
 - A plugin that names its keys (the CLAP `note-name` extension: the drums
   of a drum kit, the keyswitches of a sampler) shows the names on the keys
-  of the piano roll, and `K` says them.
+  of the piano roll, and `K` says them. The built-in `drums` kit names
+  its pieces the same way: Kick, Snare, Closed hat.
   `paw.plugins.note_names(device)` and `paw.api.device_note_names(device)`
   give them as `{ [pitch] = name }`.
 - For controllers, MIDI 2.0 and per-note expression, see

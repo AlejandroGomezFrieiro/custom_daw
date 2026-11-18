@@ -1393,7 +1393,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
   paw.plugins.add_dir(here .. "/result/lib/clap")   -- `here`: the extension's directory
   ```
 - `paw.plugins.key_names(track)`: The key names of all the devices of a track. When two devices name a key, the first in the chain wins.
-- `paw.plugins.note_names(device)`: What a device calls its keys, by pitch: a plugin that implements CLAP's `note-name` (a drum kit's drums, a sampler's keyswitches). Empty for the rest. Asked again after `M.names_ttl`.
+- `paw.plugins.note_names(device)`: What a device calls its keys, by pitch: a plugin that implements CLAP's `note-name` (a drum kit's drums, a sampler's keyswitches), or a built-in device of `M.builtin_names` (the `drums` kit). Empty for the rest. Asked again after `M.names_ttl`.
 - `paw.plugins.remove_dir(dir)`: Stop to find plugins in `dir`, and stop to offer the devices found there. The devices that exist continue to work.
 
 ## Module paw.qf
