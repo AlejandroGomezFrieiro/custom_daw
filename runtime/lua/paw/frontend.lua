@@ -1356,8 +1356,11 @@ function A.open_clip(id)
   for _, opener in ipairs(M.openers) do
     if opener(clip) then return end
   end
-  if clip.kind == "midi" and #together > 1 then return paw.roll_clips.open(together, id) end
-  if clip.kind == "midi" then paw.ui.views.pianoroll:edit(clip) end
+  if clip.kind ~= "midi" then return end
+  -- Opened by the pointer, the roll shows the clips whole where it can.
+  paw.ui.views.pianoroll.fit_next = true
+  if #together > 1 then return paw.roll_clips.open(together, id) end
+  paw.ui.views.pianoroll:edit(clip)
 end
 
 --- The record button. With nothing being recorded: arm the selected track

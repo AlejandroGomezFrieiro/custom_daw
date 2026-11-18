@@ -319,7 +319,7 @@ impl Shown {
             let cut = roles::rect_of(*cut, rect.min, cell);
             let role_painter = painter.with_clip_rect(cut.intersect(painter.clip_rect()));
             let salt = Id::unique(("scene-role", id, &node.key));
-            roles::paint(ui, &role_painter, salt, node, roles::rect_of(*at, rect.min, cell), cell.1, live);
+            roles::paint(ui, &role_painter, salt, node, roles::rect_of(*at, rect.min, cell), cell, live);
         }
         self.paint_over(ui.ctx(), &painter, rect.min, cell);
         self.pictures(ui, &painter, rect.min, cell, false);

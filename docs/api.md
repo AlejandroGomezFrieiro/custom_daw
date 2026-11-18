@@ -1246,7 +1246,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.panes.close(id)`: Close a pane's window, as `:close` in it would.
 - `paw.panes.focus(id)`: Give a pane's window the keyboard, as a click in it does.
 - `paw.panes.pointer(id, event, drawn)`: A pointer event in a pane, in pixels from its corner (as `paw.canvas.pointer` takes them): a press gives it the keyboard first. `drawn`, for a pane drawn in cells, says how: its `cell` and its size in them, `cols` and `rows`; it keeps the button held in a drag.
-- `paw.panes.state()`: Where everything goes in the main area, for a frontend's state: `panes`, each `{ win, view, kind ("native", "paint", "cells"), title, x, y, w, h, focused }`; `borders`, each `{ dir ("h": a rule between panes side by side, "v": one between panes one above another), x, y, length }`, by their place in the list; `tabs`, each `{ title }`, and `tab`, the current one; `top`, where the panes start under the row of tabs. Nil until the frontend has said how big its area is.
+- `paw.panes.state()`: Where everything goes in the main area, for a frontend's state: `panes`, each `{ win, view, kind ("native", "paint", "cells"), title, x, y, w, h, focused, titled }`; `borders`, each `{ dir ("h": a rule between panes side by side, "v": one between panes one above another), x, y, length }`, by their place in the list; `tabs`, each `{ title }`, and `tab`, the current one; `top`, where the panes start under the row of tabs. Nil until the frontend has said how big its area is.
 - `paw.panes.tab(i)`: A click on tab `i` goes to it.
 
 ## Module paw.params
@@ -1788,7 +1788,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.ui.strip(buf, x, y, w, h, opts)`: Keep an area of a buffer for pixels: see `Buf:strip`. Where it is kept is in `paw.ui.rects.surfaces`: `{ key, name, win, x, y, w, h, cell = { w, h }, under, draw, paint }` each, in cells of the screen (`name` the view that kept it, `win` the id of its window, `paint` for a view's whole drawing, `buf:surface`).
 - `paw.ui.surface(buf, x, y, w, h, name)`: Keep an area of a buffer for a view's pixels: see `Buf:surface`. A strip, kept for the view's window, whose drawing is the view's `paint`.
 - `paw.ui.theme(groups)`: Define many highlight groups at once.
-- `paw.ui.titlebar(buf, opts)`: Draw a one-row title bar along the top of a docked panel and return a buffer for the rest of it. `opts`: `name`, `pill` (`{ text, group }`, drawn ahead of the name), `context` (after the name), `right` (state, at the right end), `focused`. Focus shows as the whole bar in the accent colour, inverted.
+- `paw.ui.titlebar(buf, opts)`: Draw a one-row title bar along the top of a docked panel and return a buffer for the rest of it. `opts`: `name`, `pill` (`{ text, group }`, drawn ahead of the name), `context` (after the name), `right` (state, at the right end), `reserve` (columns kept free at the right end, for what the view puts there), `focused`. Focus shows as the whole bar in the accent colour, inverted.
 
   ```lua
   local body = paw.ui.titlebar(buf, { name = "Mixer", context = "5 tracks", focused = ctx.focused })

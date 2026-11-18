@@ -54,8 +54,8 @@ local function draw(self, buf)
   local eighths = paw.draw.g.eighths
   local top, rows, keys = g.head + g.rows, g.vel, g.keys
   local tw = buf.width - keys
-  buf:fill(0, top, buf.width, rows, " ", "VelocityLane")
-  buf:text(1, top + rows - 1, shown.short, "VelocityLane")
+  -- Its name at the left is the roll's (a button that chooses what it shows).
+  buf:fill(keys, top, tw, rows, " ", "VelocityLane")
   local lane = buf:sub(keys, top, tw, rows)
   local hue = paw.draw.track_hue(api.track_get(api.clip_get(clip.id).track))
   local list, value = {}, shown.kind == "bend" and 0 or nil

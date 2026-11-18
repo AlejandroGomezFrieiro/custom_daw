@@ -82,14 +82,13 @@ local function say(n, clip)
   return string.format("%s  %s  length %g", music.name(n.pitch), paw.time.format(clip.start + n.start), n.length)
 end
 
---- Draw notes where a gesture will put them, over the roll.
+--- Draw a note where a gesture will put it, over the roll: on the cells it
+--- rounds to in a terminal, with the pointer between them in a window.
 local function ghost(p, start, length, pitch)
-  local row = p.row(pitch)
-  if not row then return end
-  local x0 = p.x(start)
-  local w = math.max(1, p.x(start + length) - x0)
-  p.roll:fill(x0, row, w, 1, " ", "MouseGhost")
-  if w >= 4 then p.roll:text(x0 + 1, row, music.name(pitch):sub(1, w - 1), "MouseGhost") end
+  if not p.row(pitch) then return end
+  p.plane:mark("note", start, pitch, length, 1, {
+    ghost = true, style = "MouseGhost", label = music.name(pitch), color = paw.draw.track_colour(api.track_get(p.data.track)),
+  })
 end
 
 --- The notes a gesture on the note at `place` of clip `owner` takes
@@ -435,10 +434,28 @@ local function tool(self, e)
     paw.roll_clips.pick()
   elseif name == "zoom_in" or name == "zoom_out" then
     paw.opt.note_zoom = util.clamp(paw.opt.note_zoom * (name == "zoom_in" and math.sqrt(2) or 1 / math.sqrt(2)), 0.125, 64)
+  elseif name == "window" then
+    paw.commands.exec("view.window pianoroll")
+  elseif name == "close" then
+    A.close_roll()
   elseif name == "layer" and A[t.act] then
     A[t.act](clip.id)
   end
   api.ui_redraw()
+end
+
+--- The scroll bar through the pitches dragged: the pitches shown follow it.
+local function scrollbar(self, e)
+  if e.kind == "move" then return mouse.hint("drag to scroll through the pitches") end
+  if e.kind ~= "down" or e.button ~= "left" then return end
+  local g = self.geometry
+  local top = self.top
+  mouse.grab(e, {
+    drag = function(d)
+      self.top = util.clamp(top - math.floor(d.dy * 128 / g.rows + 0.5), g.rows - 1, 127)
+      self:follow()
+    end,
+  })
 end
 
 --- A chip a layer marked as a hit region `{ kind = "act", act, arg, tip }`:
@@ -454,6 +471,7 @@ end
 
 view.gestures = {
   ruler = pointer, keys = pointer, grid = pointer, note = pointer, velocity = pointer, tool = tool, act = chip,
+  scrollbar = scrollbar,
 }
 
 -- What a gesture under way draws: over the notes, under the cursor.

@@ -133,10 +133,16 @@ impl View {
             let win = pane["win"].as_i64().unwrap_or(0);
             let rect = pane_rect(pane).translate(area.min.to_vec2());
             let focused = pane["focused"] == true;
+            ui.painter().rect_filled(rect, CornerRadius::ZERO, t.surface);
+            // A view whose title row has its own buttons (the piano roll) is
+            // shown whole, edge to edge, under no title of the window's.
+            if pane["titled"] == true {
+                self.scene(ui, &win.to_string(), rect, rect);
+                continue;
+            }
             // A view in cells draws a title row of its own, which the
             // pane's title covers.
             let under = if kind == "paint" { 0.0 } else { cell_h };
-            ui.painter().rect_filled(rect, CornerRadius::ZERO, t.surface);
             let picture = Rect::from_min_max(pos2(rect.left() + PAD, rect.top() + HEADING - under), pos2(rect.right() - PAD, rect.bottom() - PAD));
             self.scene(ui, &win.to_string(), picture, rect);
             // The title over the top, over the picture's own title row.

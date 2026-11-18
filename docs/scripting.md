@@ -378,7 +378,12 @@ mark on the cells its edges round to; the window paints it where it is,
 between cells, and a press on the plane or on a mark in it comes with
 `e.at`, where in the domain it was. The piano roll's grid is one, its notes
 `note` roles on it (`label`, `style`, `color`, `velocity`, `selected`,
-`cursor`, `pending`).
+`cursor`, `pending`, `ghost`), beside it `keyboard`, `playhead` (bound to
+`position`) and `scrollbar`. A view whose title row has buttons of its own
+says `titled = true`, and a window then gives it no title of its own; a
+view whose only part that moves as the song plays is a bound role names it
+in `live_roles` (`{ "playhead" }`), and a window that paints it is sent no
+new scene while it plays. A `button` with `menu` opens one (a caret).
 
 ```lua
 local roll = buf:plane(5, 2, buf.width - 5, 20, {

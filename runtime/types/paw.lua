@@ -4948,7 +4948,7 @@ function paw.panes.pointer(id, event, drawn) end
 
 --- Where everything goes in the main area, for a frontend's state: `panes`,
 --- each `{ win, view, kind ("native", "paint", "cells"), title, x, y, w, h,
---- focused }`; `borders`, each `{ dir ("h": a rule between panes side by
+--- focused, titled }`; `borders`, each `{ dir ("h": a rule between panes side by
 --- side, "v": one between panes one above another), x, y, length }`, by
 --- their place in the list; `tabs`, each `{ title }`, and `tab`, the
 --- current one; `top`, where the panes start under the row of tabs. Nil
@@ -6932,7 +6932,8 @@ function paw.ui.theme(groups) end
 --- Draw a one-row title bar along the top of a docked panel and return a
 --- buffer for the rest of it. `opts`: `name`, `pill` (`{ text, group }`,
 --- drawn ahead of the name), `context` (after the name),
---- `right` (state, at the right end), `focused`. Focus shows as the whole
+--- `right` (state, at the right end), `reserve` (columns kept free at the
+--- right end, for what the view puts there), `focused`. Focus shows as the whole
 --- bar in the accent colour, inverted.
 ---   local body = paw.ui.titlebar(buf, { name = "Mixer", context = "5 tracks", focused = ctx.focused })
 ---@param buf any

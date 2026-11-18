@@ -8,7 +8,7 @@ local test, eq, fresh = T.test, T.eq, T.fresh
 local api = paw.api
 local roll = paw.ui.views.pianoroll
 
-local W, H, CELL = 120, 30, { w = 8, h = 16 }
+local W, H, CELL = 160, 30, { w = 8, h = 16 }
 
 -- What the window's watcher keeps of a drag under way.
 local held = {}
@@ -87,7 +87,7 @@ test("the roll's scene: its grid a plane, each note on it a role, and a row of t
   eq(api.json_encode(note.r), "[1.5,60,0.5,1]", "the note where it is in the plane's domain, between cells")
   eq(note.hit.clip .. " " .. note.hit.place, clip.id .. " 1", "named by its clip and place for the pointer")
   eq(note.props.label .. " " .. note.props.velocity, "C4 90", "with what a window paints it by")
-  eq(table.concat(tools, " "):find("quantize step list", 1, true) ~= nil, true, "the tools: " .. table.concat(tools, " "))
+  eq(table.concat(tools, " "):find("Quantize Step List", 1, true) ~= nil, true, "the tools: " .. table.concat(tools, " "))
 end)
 
 test("in a window a press on empty grid draws a note on the step under the pointer, and a drag draws it as long", function()
@@ -129,14 +129,15 @@ test("in a window the velocity strip is drawn on and a tool of the row is clicke
   local x0, x1 = at(60, 0.1), at(62, 1)
   drag(x0, top + 0.1, x1, top + 0.1)
   eq(clip:notes()[1].velocity > 110 and clip:notes()[2].velocity > 110, true, "both near the top")
-  -- The quantize button, where the row of tools has it.
+  -- The quantize button, at the right of the title row of a wide roll.
   local snap = api.ui_view_snapshot("pianoroll", W, H)
-  local row, text = snap.rows[2], ""
+  local row, text = snap.rows[1], ""
   for _, run in ipairs(row) do text = text .. run.text end
-  local col = text:find(" quantize ", 1, true)
-  eq(col ~= nil, true, "the row of tools: " .. text)
-  input("down", col + 2.5, 1.5)
-  input("up", col + 2.5, 1.5)
+  local col = text:find(" Quantize ", 1, true)
+  eq(col ~= nil, true, "the title row: " .. text)
+  local x = api.str_width(text:sub(1, col - 1)) + 2.5
+  input("down", x, 0.5)
+  input("up", x, 0.5)
   eq(notes_of(clip), "60@0+1 62@1+1", "the notes quantized")
 end)
 
@@ -159,19 +160,118 @@ test("a right click in a window on empty grid opens the grid's menu, which the w
   eq(require("paw.menu").shown(), nil, "the window letting go of it lets go of it here too")
 end)
 
-test("the roll's row of tools works from the terminal too", function()
+test("the roll's row of tools works from the terminal too, under the title of a narrow roll", function()
   local clip = opened({ { pitch = 60, start = 0.1, length = 1 } })
   paw.ui.show("pianoroll")
   paw.ui.focus("pianoroll")
-  api.ui_snapshot(W, 40)
+  api.ui_snapshot(90, 40)
   local rect
   for _, r in ipairs(paw.ui.rects) do if r.name == "pianoroll" then rect = r end end
-  local snap = api.ui_snapshot(W, 40)
+  local snap = api.ui_snapshot(90, 40)
   local text = snap[rect.y + 2]
-  local col = text and text:find("quantize", 1, true)
+  local col = text and text:find("Quantize", 1, true)
   eq(col ~= nil, true, "the row under the title: " .. tostring(text))
   local x = paw.api.str_width(text:sub(1, col - 1)) + 1
   paw.ui.mouse({ kind = "down", x = x, y = rect.y + 1, button = "left", mods = "" })
   paw.ui.mouse({ kind = "up", x = x, y = rect.y + 1, button = "left", mods = "" })
   eq(notes_of(clip), "60@0+1", "quantized")
+end)
+
+--- The nodes of the roll's scene a window that paints the roll's roles
+--- is sent, by role (`role` nil for every node).
+local function nodes_of(role)
+  api.scene_forget(0)
+  api.scene_roles(0, { "note", "button", "keyboard", "playhead", "scrollbar" })
+  local patch = redraw()
+  local out = {}
+  for _, n in ipairs(patch.set) do
+    if role == nil or n.role == role then out[#out + 1] = n end
+  end
+  return out
+end
+
+test("a wide roll's title row holds its tools as buttons, and a window gives it no title of its own", function()
+  opened()
+  local buttons = {}
+  for _, n in ipairs(nodes_of("button")) do if n.r[2] == 0 then buttons[#buttons + 1] = n.props.label end end
+  local said = table.concat(buttons, " ")
+  eq(said:find("Tracks Grid 1/16 Snap Note 1/16 Quantize Step List", 1, true) ~= nil, true, "in the title row: " .. said)
+  eq(said:find("Window x", 1, true) ~= nil, true, "with its own window and close: " .. said)
+  paw.ui.show("pianoroll")
+  -- As a window's main area is: put back after, with the panel it shows.
+  local devices = paw.ui.visible("devices")
+  T.after(function()
+    paw.panes.area(0, 0)
+    if not devices then paw.ui.hide("devices") end
+  end)
+  paw.panes.area(1500, 900)
+  local titled
+  for _, p in ipairs(paw.panes.state().panes) do if p.view == "pianoroll" then titled = p.titled end end
+  eq(titled, true, "the window shows its title row")
+end)
+
+test("the keyboard is a role naming the cursor's key, and the octaves' Cs in cells", function()
+  opened()
+  local keys = nodes_of("keyboard")[1]
+  eq(keys ~= nil and keys.props.top .. " " .. keys.props.cursor, "72 60", "from the top row, the cursor on C4")
+  eq(keys.hit.kind, "keys", "and the pointer's")
+  local snap = api.ui_view_snapshot("pianoroll", W, H)
+  local text = ""
+  for _, row in ipairs(snap.rows) do for _, run in ipairs(row) do text = text .. run.text end end
+  eq(text:find("C4", 1, true) ~= nil and text:find("C5", 1, true) ~= nil, true, "the cursor's key and a C named in cells")
+end)
+
+test("past the clip the grid goes on, shaded, with its lines", function()
+  opened()
+  local g = roll.geometry
+  local snap = api.ui_view_snapshot("pianoroll", W, H)
+  local text = ""
+  for _, run in ipairs(snap.rows[g.head + 3]) do text = text .. run.text end
+  -- Two bars of the clip at eight columns a beat end at column 64.
+  local past = text:sub(-30)
+  eq(past:find(paw.draw.g.bar, 1, true) ~= nil or past:find(paw.draw.g.beat, 1, true) ~= nil, true, "lines past the end: " .. past)
+end)
+
+test("the playhead is a role bound to the song's position, and a window that paints it is sent no new scene as the song plays", function()
+  opened()
+  local head = nodes_of("playhead")[1]
+  eq(head ~= nil and head.bind, "position", "bound to the position")
+  eq(head.props.at, nil, "which the window takes from the live values")
+  eq(head.props.per, 8, "at the roll's columns a beat")
+  eq(roll.live_roles[1], "playhead", "the roll says it is what moves on its own")
+end)
+
+test("in a window a scroll bar dragged scrolls the pitches", function()
+  opened()
+  local bar
+  for _, n in ipairs(nodes_of("scrollbar")) do if n.props.axis == "y" then bar = n end end
+  eq(bar ~= nil and bar.props.total, 128, "a bar down the right, over every pitch")
+  local top = roll.top
+  local x, y = bar.r[1] + 0.5, bar.r[2] + 2.5
+  drag(x, y, x, y + 4)
+  eq(roll.top < top, true, "dragged down, lower pitches: " .. top .. " to " .. roll.top)
+end)
+
+test("in a window a note being dragged is shown where the pointer is, between cells", function()
+  local _, at = opened({ { pitch = 60, start = 0, length = 1 } })
+  local x, y = at(60, 0.5)
+  input("down", x, y)
+  input("move", x + 3, y)
+  input("move", x + 6, y)
+  local ghost
+  for _, n in ipairs(nodes_of("note")) do if n.props.ghost then ghost = n end end
+  input("up", x + 6, y)
+  eq(ghost ~= nil and ghost.r[1], 0.75, "six units on is three quarters of a beat")
+end)
+
+test("the velocity strip's name is a button that opens the menu of what it shows", function()
+  opened()
+  local name
+  for _, n in ipairs(nodes_of("button")) do if n.hit and n.hit.kind == "velocity" then name = n end end
+  eq(name ~= nil and name.props.label, "Velocity", "what it shows")
+  input("down", name.r[1] + 1.5, name.r[2] + 0.5)
+  input("up", name.r[1] + 1.5, name.r[2] + 0.5)
+  local items = require("paw.menu").shown()
+  eq(items ~= nil and items[2].label, "Pitch wheel", "a menu of what it can show")
+  paw.frontend.act.menu_dismiss()
 end)

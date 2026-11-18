@@ -95,7 +95,7 @@ local function cells(width, height)
   local shot = api.ui_view_snapshot("pianoroll", width, height)
   local roll = paw.ui.views.pianoroll
   local at = function(beat, pitch)
-    local x = 5 + math.floor((beat - roll.scroll) * paw.opt.note_zoom + 0.5)
+    local x = roll.geometry.keys + math.floor((beat - roll.scroll) * paw.opt.note_zoom + 0.5)
     -- Under the title, the chord row when it shows, and the ruler.
     local y = (roll.head or 2) + roll.top - pitch
     for _, run in ipairs(shot.rows[y + 1] or {}) do

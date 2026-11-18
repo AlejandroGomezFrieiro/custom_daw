@@ -241,12 +241,14 @@
   a hit region costs a turn of the kernel for each move, also over
   `--connect`.
 - The window's piano roll is the terminal's, laid out in cells: a row a
-  pitch at the window's cell (Alt and the wheel no longer make the rows
-  taller), no scroll bars, the tracks near the roll in the `:roll.tracks`
-  list rather than a side panel, a suggestion's alternatives shown with
-  `Alt-1`…`Alt-9` rather than chips to click; while a note is dragged it
-  stays where it was and a ghost in cells shows where it goes, as in the
-  terminal.
+  pitch at the window's cell (Alt and the wheel do not make the rows
+  taller: a taller row would be two cells, in the terminal too, which the
+  roll does not do yet), the tracks near the roll in the `:roll.tracks`
+  list rather than a side panel beside it, a suggestion's alternatives
+  shown with `Alt-1`…`Alt-9` rather than chips to click. It opens at the
+  roll's zoom (`note_zoom`), not fitted to the clip, so short notes are
+  too narrow for their names until zoomed in. While a note is dragged it
+  stays where it was and a copy of it follows the pointer.
 - The window's mixer is the terminal's, laid out in cells: its switches
   are a cell wide, and its devices have rows of their own only when it is
   at least twenty rows tall (in the window's usual height they fold into
