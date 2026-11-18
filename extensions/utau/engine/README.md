@@ -5,9 +5,7 @@ OpenUtau.Core (phonemizers, resamplers, DiffSinger and the other renderers)
 that the extension talks to over a Unix socket (`lua/utau/proto.lua` on
 this side, `PawUtau.Protocol` on that one).
 
-- It began as the engine of an earlier project of the same author
-  (openutau_reaper_editor, commit `4690898e`), MIT licensed (`LICENSE`), and
-  is now the extension's own, changed with it.
+- It is MIT licensed (`LICENSE`).
 - It is built against OpenUtau at `bc194b6fe4897427a73066390b286e11205fd10f`,
   which the top flake takes as its `openutau` input. OpenUtau is MIT licensed
   (its `LICENSE.txt`, kept in the build's source); the `libworldline.so` it

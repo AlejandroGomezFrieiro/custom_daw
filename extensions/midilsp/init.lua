@@ -1,8 +1,7 @@
--- MIDI LSP for paw: the language server for music from openutau_reaper_editor
--- (projects/midi-lsp), plugged into `paw.lsp` as any server is. This file is
--- its configuration and nothing more: where the engine is, how to start it,
--- its settings as commands, and a list of what every server says. See
--- README.md.
+-- MIDI LSP for paw: a language server for music, plugged into `paw.lsp` as
+-- any server is. This file is its configuration and nothing more: where the
+-- engine is, how to start it, its settings as commands, and a list of what
+-- every server says. See README.md.
 paw.option.define("midilsp_cmd", "")        -- the engine to run; empty: $MIDI_LSP_ENGINE, else reaper-midi-lsp on PATH
 paw.option.define("midilsp_suggest", true)  -- also start the engine's suggestion role, for completion
 paw.option.define("midilsp_autostart", true) -- start when loaded, if the engine is found
