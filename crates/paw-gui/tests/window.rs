@@ -1333,7 +1333,7 @@ fn an_idle_window_with_kernel_panes_and_a_window_of_a_view_asks_for_nothing() {
     w.type_text(":qf.window");
     w.key("Return");
     w.expect("the list in a window of its own", "#paw.canvas.windows() == 1");
-    w.expect("both sent as scenes", "#paw.scene.watchers()[1].windows == 2");
+    w.expect("all three sent as scenes, the arrange view too", "#paw.scene.watchers()[1].windows == 3");
     w.find_text("dB", 0);
     let idle = w.settled_cpu_percent(5.0);
     assert!(idle.last() < Some(&5.0), "the idle window uses {idle:.1?}% of a core");

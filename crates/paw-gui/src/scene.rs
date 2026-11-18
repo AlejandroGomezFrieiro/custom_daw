@@ -78,6 +78,10 @@ pub struct Scenes {
     /// The clip a drag in the arrange view moves, while the pointer is
     /// over the session view's slots, where letting go puts it.
     pub dragged_clip: Option<i64>,
+    /// The window the pointer was over last frame, and this frame: the
+    /// kernel is told when it leaves one, for the hint it gave there.
+    hovered: Option<String>,
+    hovering: Option<String>,
     /// Drawings sent by their content key, fetched once.
     blobs: HashMap<String, Value>,
     /// The window's cell, once measured: the kernel is told it then.
@@ -412,6 +416,9 @@ impl View {
         let cell = self.scenes.cell();
         self.scenes.seen.insert(id.to_string());
         self.scenes.placed.insert(id.to_string(), rect);
+        if ui.rect_contains_pointer(clip) {
+            self.scenes.hovering = Some(id.to_string());
+        }
         let size = [rect.width().max(0.0) / cell.0, rect.height().max(0.0) / cell.1];
         if self.scenes.told.get(id) != Some(&size) {
             self.scenes.told.insert(id.to_string(), size);
@@ -471,6 +478,12 @@ impl View {
     /// the kernel is told (a size of nothing), so that it keeps nothing of
     /// them either.
     pub fn scenes_done(&mut self) {
+        let hovering = self.scenes.hovering.take();
+        if let Some(left) = std::mem::replace(&mut self.scenes.hovered, hovering.clone())
+            && Some(&left) != hovering.as_ref()
+        {
+            self.call_later("scene.input", json!([left, { "kind": "leave" }]));
+        }
         let seen = std::mem::take(&mut self.scenes.seen);
         self.scenes.placed.retain(|id, _| seen.contains(id));
         let gone: Vec<String> = self.scenes.told.keys().filter(|id| !seen.contains(*id)).cloned().collect();

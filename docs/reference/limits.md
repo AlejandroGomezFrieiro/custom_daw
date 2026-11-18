@@ -311,6 +311,8 @@ gets the function.
     of each track over its clips.
   - A take that records does not show as a red box that grows with the
     playhead.
+  - A take lane shows the name of each take, not its notes or its
+    waveform.
   - The bar numbers, the names on the ruler and the text in the headers
     are in cells. The clips, the bar lines, the curves and the playhead
     are where they are, between cells. At a zoom that is not a whole

@@ -11,7 +11,7 @@
 //! fetches it after the frame (`View::clip_pictures`).
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use egui::{Align2, Color32, CornerRadius, Painter, Rect, Shape, Stroke, StrokeKind, TextureHandle, Ui, pos2, vec2};
 use paw_scene::Node;
@@ -33,12 +33,13 @@ struct Want {
     notches: Vec<f32>,
 }
 
-/// The pictures inside clips by clip, with the key each was made for; and
-/// those asked for this frame.
+/// The pictures inside clips by clip, with the key each was made for;
+/// those asked for this frame, and the clips painted in it.
 #[derive(Default)]
 struct Pictures {
     made: HashMap<i64, (String, Option<TextureHandle>)>,
     wanted: Vec<Want>,
+    painted: HashSet<i64>,
 }
 
 thread_local! {
@@ -186,6 +187,7 @@ fn picture(props: &Value, midi: bool, length: f32, width: f32) -> Option<Texture
     let key = if midi { key.to_string() } else { format!("{key}@{points}") };
     PICTURES.with(|p| {
         let mut p = p.borrow_mut();
+        p.painted.insert(id);
         let made = p.made.get(&id).cloned();
         if made.as_ref().is_some_and(|(k, _)| *k == key) {
             return made.and_then(|(_, t)| t);
@@ -328,9 +330,14 @@ impl View {
     }
 
     /// Fetch what clips' painters asked for in the frame, and draw them
-    /// again with it.
+    /// again with it; let go of the pictures of clips not painted in it.
     pub fn clip_pictures(&mut self, ctx: &egui::Context) {
-        let wanted = PICTURES.with(|p| std::mem::take(&mut p.borrow_mut().wanted));
+        let wanted = PICTURES.with(|p| {
+            let mut p = p.borrow_mut();
+            let painted = std::mem::take(&mut p.painted);
+            p.made.retain(|id, _| painted.contains(id));
+            std::mem::take(&mut p.wanted)
+        });
         if wanted.is_empty() {
             return;
         }

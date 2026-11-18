@@ -288,6 +288,11 @@ end
 --- frontend keeps). True when it takes the event.
 function M.input(client, id, view, win, event, held)
   local kind = event.kind
+  -- The pointer left the window: what the status line said of it goes.
+  if kind == "leave" then
+    if not paw.mouse.gesture() then paw.mouse.hint(nil) end
+    return true
+  end
   local mods = (event.ctrl and "C" or "") .. (event.alt and "A" or "") .. (event.shift and "S" or "")
   local x, y = tonumber(event.x) or 0, tonumber(event.y) or 0
   if kind == "move" or kind == "up" then

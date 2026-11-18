@@ -372,7 +372,8 @@ path)`, or `paw.frontend.act.menu_dismiss()` when the user selects nothing.
 `scene.input` takes a pointer event as `paw.canvas.pointer` does. Its
 fields are `kind` (`down`, `up`, `move`, `hover`, `double` or `wheel`),
 `button`, `ctrl`, `shift`, `alt`, `dx` and `dy`. `x` and `y` are in units
-from the corner of the window.
+from the corner of the window. The kind `leave` tells that the pointer
+left the window. Then the status line stops to show the hint of the view.
 
 The kernel finds the hit region under the event in the scene that
 it sent (`paw_scene::Scene::hit`). It gives the event, in units, to the
