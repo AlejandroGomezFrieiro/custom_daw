@@ -273,16 +273,16 @@ test("a plugin that hangs in processing is ended and reported, the rest plays on
   paw.transport.stop()
 
   -- A render makes instances of its own, which hang too: it goes on without them.
-  local messages = #paw.ui.messages
   began = api.now()
   local info = render({ ["end"] = 8, tail = 0 })
   local took = api.now() - began
   eq(took < 5000, true, "the render waits for it once, briefly: " .. took .. " ms")
   eq(info.peak > 0.05, true, "and has the rest of the song")
   paw.flush()
+  -- By time, not by count: the list holds 500 messages at most.
   local said = false
-  for i = messages + 1, #paw.ui.messages do
-    if paw.ui.messages[i].text:find("stopped during the render", 1, true) then said = true end
+  for _, m in ipairs(paw.ui.messages) do
+    if m.time >= began and m.text:find("stopped during the render", 1, true) then said = true end
   end
   eq(said, true, "the render says what it left out")
 

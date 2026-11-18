@@ -149,8 +149,11 @@ paw.opt.pre_roll = 2               -- play two bars (and paw.opt.pre_roll_second
 
 **The tempo lane.** `paw.tempolane` is the row under the ruler that draws the
 tempo map: `show(on)`, `toggle()`, `shown()`, `range()` (the tempo at its bottom
-and top), and the edits a gesture makes, all through `paw.tempo`: `add(beat,
-bpm)`, `move(beat, to, bpm)`, `remove(beat)`, `ramp(beat)` and `draw(points)`.
+and top), and the edits a gesture makes: `add(beat, bpm)`, `move(beat, to,
+bpm)`, `remove(beat)`, `ramp(beat)` and `draw(points)`, each one undo step.
+They change the map through `paw.tempo`, which reads and sets it: `at(beat)`,
+`set(beat, bpm)`, `remove(beat)`, `points()`, `signatures()`,
+`set_signature(bar, num, den)`.
 
 **Automation.** `paw.lanes` shows lanes as rows of the arrange view:
 `paw.lanes.open(track)`, `toggle`, `is_open`, `lines()` (also
@@ -270,7 +273,19 @@ paw.on("clip.*", fn)   paw.on("*", fn)   paw.emit("my.event", { any = "data" })
 
 paw.opt.grid = 0.5                            -- see runtime/lua/paw/options.lua
 paw.option.define("my_option", 42)
+paw.option.define("lanes", 4, { min = 1, max = 16, integer = true })
+paw.option.define("look", "plain", { values = { "plain", "fancy" } })
 ```
+
+An option with a default takes values of the default's type, and the
+runtime's numbers stay in a range (`grid` from 1/128 to 64 beats,
+`velocity` 1 to 127): `paw.opt.grid = "abc"` is an error that says what
+`grid` takes, and `:set grid=abc` says it and leaves `grid` as it was.
+`paw.option.define`'s third argument says more: `min`, `max`, `integer`,
+`values` (the only strings or booleans it takes) and `type` (a list of
+types, for an option such as `track_height` that is a number or `"auto"`).
+`paw.option.check(name, value)` asks without setting. An option nobody
+defined takes anything.
 
 Change events are delivered when the current command or callback returns;
 `paw.flush()` delivers them at once. Each command or key press is one undo step.

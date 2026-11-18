@@ -681,6 +681,7 @@ M.ops = {
     local soft = curves.smooth(part, ctx.count or 1)
     for k = 1, #soft do points[a + k - 1] = soft[k] end
     write(t, points)
+    paw.notify(string.format("smoothed %d points", #list))
   end),
   quantize = on_region(function(t, points, list, _, _, s)
     if #list == 0 then return end

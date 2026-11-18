@@ -168,6 +168,16 @@ paw.state = setmetatable({}, {
   __newindex = function(_, key, value) api.state_set(key, value) end,
 })
 
+--- Say what the kernel warns of: a few at most, and how many more there
+--- are (in the log), when one edit warns of thousands of things.
+local function warn()
+  local list = api.warnings()
+  for i, warning in ipairs(list) do
+    if i <= 5 then paw.notify(warning, "warn") else api.log("[warn] " .. warning) end
+  end
+  if #list > 5 then paw.notify(string.format("and %d more warnings, in the log", #list - 5), "warn") end
+end
+
 -- Entry points the kernel calls. Not part of the scripting interface.
 local K = {}
 paw._kernel = K
@@ -243,7 +253,7 @@ function K.startup()
     end
     paw.snippet.load_dir(env.config_dir .. "/snippets", "config")
   end
-  for _, warning in ipairs(api.warnings()) do paw.notify(warning, "warn") end
+  warn()
   paw.emit("startup", {})
 end
 
@@ -282,11 +292,11 @@ local function settle()
     if #events == 0 then return end
     for _, event in ipairs(events) do
       if event.name == "changed" then
-        for _, warning in ipairs(api.warnings()) do paw.notify(warning, "warn") end
+        warn()
         api.ui_redraw()
       elseif event.name == "transport.record" then
         -- What starting a take has to say (a punch range already passed).
-        for _, warning in ipairs(api.warnings()) do paw.notify(warning, "warn") end
+        warn()
       end
       paw.emit(event.name, event.payload)
     end
@@ -318,17 +328,24 @@ end
 
 --- Calls from the control socket: `eval`, `cmd`, `keys`, what `paw.remote`
 --- offers a connection (`client` is its number), or any `paw.api` function.
-function K.rpc(method, params, client)
-  params = params or {}
+--- Each has the time limit a key has: the window's gestures come this way.
+local function rpc(method, params, client)
   local offered = paw.remote and paw.remote.methods[method]
   if offered then
     return offered(client or 0, unpack(params))
   elseif method == "eval" then
     local code = params[1]
-    local chunk = loadstring("return " .. code, "=rpc") or assert(loadstring(code, "=rpc"))
+    if type(code) ~= "string" then error("`eval` takes the code to run, as a string", 0) end
+    local chunk, err = loadstring("return " .. code, "=rpc")
+    if not chunk then chunk, err = loadstring(code, "=rpc") end
+    if not chunk then error(err, 0) end
     return chunk(unpack(params, 2))
   elseif method == "cmd" then
-    return paw.commands.exec(table.concat(params, " "))
+    local line = table.concat(params, " ")
+    -- Named by the line, as one typed after `:` is.
+    api.undo_label(nil)
+    api.undo_label(":" .. line)
+    return paw.commands.exec(line)
   elseif method == "keys" then
     return paw.keymap.feed(params[1])
   elseif method == "render" then
@@ -337,7 +354,12 @@ function K.rpc(method, params, client)
   elseif api[method] then
     return api[method](unpack(params))
   end
-  error("no method `" .. tostring(method) .. "`")
+  error("no method `" .. tostring(method) .. "`", 0)
+end
+
+function K.rpc(method, params, client)
+  if type(params) ~= "table" then params = { params } end
+  return paw.limit.call("the request `" .. tostring(method) .. "`", rpc, method, params, client)
 end
 
 --- A connection on the control socket closed.

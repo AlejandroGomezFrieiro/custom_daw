@@ -1,5 +1,13 @@
 # What is missing
 
+- Undo keeps a whole copy of each clip a step changed: one note changed in
+  a clip of 200,000 notes costs about 11 MB. The history keeps 1000 steps
+  and about 1 GB at most, letting its oldest steps go past that (and
+  saying so once); a clip's notes are not shared between steps in parts.
+  Neither limit is an option yet.
+- A MIDI clip's length is its own, as in REAPER: deleting its last notes
+  does not shorten it (`:clip.resize`, or dragging its end, does).
+
 - Harmony: chords are read per half beat, so a chord shorter than about a
   beat is taken for passing notes; the chords and the key are not shown in
   the arrange view's ruler (only over the piano roll); slash chords whose

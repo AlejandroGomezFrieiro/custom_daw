@@ -125,10 +125,21 @@ fn insert(notes: &mut Vec<Note>, note: Note) -> usize {
 
 impl Session {
     /// Add one note, and say where in the clip's notes it went.
-    pub fn clip_note_add(&mut self, id: Id, note: Note) -> Result<usize> {
+    pub fn clip_note_add(&mut self, id: Id, mut note: Note) -> Result<usize> {
         check_notes(std::slice::from_ref(&note))?;
-        notes_of(&self.project, id)?;
-        self.edit(|p| Ok(insert(notes_mut(p, id)?, note)))
+        // Named here, as `name_notes` would name it (the next free id), with
+        // one look at the ids and nothing made: adding notes one by one to a
+        // clip of many thousands stays quick.
+        let notes = notes_of(&self.project, id)?;
+        let (mut last, mut taken) = (0, false);
+        for other in notes {
+            last = last.max(other.id);
+            taken |= other.id == note.id;
+        }
+        if note.id == 0 || taken {
+            note.id = last + 1;
+        }
+        self.edit_named(|p| Ok(insert(notes_mut(p, id)?, note)))
     }
 
     /// Change one note, and say where it is afterwards: a note that starts
@@ -142,7 +153,7 @@ impl Session {
         change.apply(&mut note);
         let stays = order(before, &note) == Ordering::Equal;
         check_notes(std::slice::from_ref(&note))?;
-        self.edit(|p| {
+        self.edit_named(|p| {
             let notes = notes_mut(p, id)?;
             if stays {
                 notes[index] = note;
@@ -159,7 +170,7 @@ impl Session {
         if index >= count {
             return Err(no_note(id, index, count));
         }
-        self.edit(|p| {
+        self.edit_named(|p| {
             notes_mut(p, id)?.remove(index);
             Ok(())
         })

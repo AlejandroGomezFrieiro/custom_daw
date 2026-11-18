@@ -1127,6 +1127,14 @@ local function set_tracks(ctx, name, field, read)
   return ids
 end
 
+--- What muting or soloing came to: `muted 3 tracks`, and those that were
+--- so already, so that doing it twice does not say it did it twice.
+local function said(word, changed, total, what)
+  if changed == total then return word .. " " .. plural(total, what) end
+  if changed == 0 then return plural(total, what) .. (total == 1 and " was " or " were ") .. word .. " already" end
+  return string.format("%s %s (%d %s already)", word, plural(changed, what), total - changed, total - changed == 1 and "was" or "were")
+end
+
 local function mute_or_solo(ctx, field, on)
   local r = range_of(ctx, "track")
   local word = field == "mute" and (on == false and "unmuted" or "muted") or (on == false and "unsoloed" or "soloed")
@@ -1135,22 +1143,35 @@ local function mute_or_solo(ctx, field, on)
     if toggle then return not now end
     return on
   end
+  local function set(get, put, ids)
+    local changed = 0
+    for _, id in ipairs(ids) do
+      local now = get(id)
+      if value(now) ~= now then changed = changed + 1 end
+      put(id, value(now))
+    end
+    return changed
+  end
+  local function track_flag(id) return api.track_get(id)[field] end
+  local function set_track(id, to) api.track_set(id, field, to) end
   -- A stretch of time mutes the clips in it.
   if r.items or r.from then
     local clips = M.items(r, "clip")
     if #clips == 0 then
-      if r.items then return set_tracks(ctx, field, field, value) end
+      if r.items then
+        local ids = tracks_in(ctx, field)
+        return paw.notify(said(word, set(track_flag, set_track, ids), #ids, "track"))
+      end
       return paw.notify("no clips in " .. M.describe(r), "warn")
     end
     if field ~= "mute" then fail("clips are muted, not soloed: `solo` takes tracks") end
-    for _, item in ipairs(clips) do
-      local now = api.clip_get(item.clip.id).muted
-      api.clip_set(item.clip.id, "muted", value(now))
-    end
-    return paw.notify(word .. " " .. plural(#clips, "clip"))
+    local ids = {}
+    for i, item in ipairs(clips) do ids[i] = item.clip.id end
+    local changed = set(function(id) return api.clip_get(id).muted end, function(id, to) api.clip_set(id, "muted", to) end, ids)
+    return paw.notify(said(word, changed, #clips, "clip"))
   end
-  local ids = set_tracks(ctx, field, field, value)
-  paw.notify(word .. " " .. plural(#ids, "track"))
+  local ids = tracks_in(ctx, field)
+  paw.notify(said(word, set(track_flag, set_track, ids), #ids, "track"))
 end
 
 local function number_arg(ctx, name, example)
@@ -1482,7 +1503,7 @@ end
 
 --- Run a command line, as typed after `:`, with a range in front if it
 --- has one. A line with a range, or an Ex command, is one undo step named
---- after the line.
+--- after the line (a line typed after `:` always is).
 function M.exec(line, ctx)
   ctx = ctx or {}
   local range, rest, err = M.range(line)

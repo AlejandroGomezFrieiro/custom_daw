@@ -102,7 +102,8 @@ window's ruler as a band (`paw.frontend.bands`, under "Bands under the
 ruler").
 
 **Lua that runs away is stopped.** A key's handler, a command, an event
-handler, a timer or a view's drawing that runs for more than two seconds
+handler, a timer, a view's drawing or a request on the control socket
+(`paw ctl`, the window, the MCP server) that runs for more than two seconds
 without returning is stopped with an error that names it (`the key gZ (…)
 ran for more than 2 s without returning, and was stopped`), and the program
 carries on. `paw.opt.lua_limit` is the limit in milliseconds (0 for none).

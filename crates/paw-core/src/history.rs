@@ -13,12 +13,15 @@
 //!
 //! ## Pruning
 //!
-//! The tree keeps at most `limit` states. When a new state takes it past
-//! that, the oldest state is dropped that is not protected; its children hang
-//! from its parent instead, so undo from them jumps over the gap. Protected
-//! are the root (the project as it was opened), the current state, the state
-//! last saved, named states and states marked `keep`. If every state is
-//! protected the tree grows past the limit rather than drop one of them.
+//! The tree keeps at most `limit` states, and about `byte_limit` bytes of
+//! what they hold beyond what each shares with its parent (each state's
+//! `weight`, from the weigher the tree is given). When a new state takes it
+//! past either, the oldest state is dropped that is not protected; its
+//! children hang from its parent instead, so undo from them jumps over the
+//! gap. Protected are the root (the project as it was opened), the current
+//! state, the state last saved, named states and states marked `keep`. If
+//! every state is protected the tree grows past the limits rather than drop
+//! one of them.
 
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -51,6 +54,9 @@ pub struct State<T> {
     /// Never pruned.
     pub keep: bool,
     pub snapshot: T,
+    /// About how many bytes the snapshot holds that its parent's does not
+    /// share with it.
+    pub weight: usize,
 }
 
 pub struct History<T> {
@@ -63,7 +69,19 @@ pub struct History<T> {
     /// Saved while an edit was open: the next state made is the one saved.
     save_pending: bool,
     pending_label: Option<String>,
+    /// The open step has an edit.
+    step_edited: bool,
     pending_keys: Option<String>,
+    /// How much a snapshot holds that another does not share: see
+    /// [`History::weigh_with`].
+    weigh: fn(&T, &T) -> usize,
+    byte_limit: usize,
+    /// The weights of every state together.
+    bytes: usize,
+    /// States have been dropped since the last reset, and whether that has
+    /// been said.
+    pruned: bool,
+    pruned_said: bool,
 }
 
 impl<T: Clone> History<T> {
@@ -77,16 +95,59 @@ impl<T: Clone> History<T> {
             saved: None,
             save_pending: false,
             pending_label: None,
+            step_edited: false,
             pending_keys: None,
+            weigh: |_, _| 0,
+            byte_limit: usize::MAX,
+            bytes: 0,
+            pruned: false,
+            pruned_said: false,
         };
         history.reset(snapshot, time);
         history
+    }
+
+    /// Weigh states with `weigh(parent, state)`, the bytes `state` holds
+    /// that `parent` does not share with it, and keep them all together
+    /// under about `byte_limit`.
+    pub fn weigh_with(mut self, weigh: fn(&T, &T) -> usize, byte_limit: usize) -> Self {
+        self.weigh = weigh;
+        self.byte_limit = byte_limit;
+        self
+    }
+
+    /// The weights of every state together, in bytes.
+    pub fn bytes(&self) -> usize {
+        self.bytes
+    }
+
+    /// Whether states have been dropped to keep within the limits since the
+    /// tree was reset, the first time this is asked after they have been.
+    pub fn newly_pruned(&mut self) -> bool {
+        let new = self.pruned && !self.pruned_said;
+        self.pruned_said |= new;
+        new
+    }
+
+    /// Weigh a state again against its parent, after either changed.
+    fn reweigh(&mut self, id: StateId) {
+        let Some(state) = self.states.get(&id) else { return };
+        let weight = match state.parent.and_then(|p| self.states.get(&p)) {
+            Some(parent) => (self.weigh)(&parent.snapshot, &state.snapshot),
+            None => 0,
+        };
+        let state = self.states.get_mut(&id).unwrap();
+        self.bytes = self.bytes - state.weight + weight;
+        state.weight = weight;
     }
 
     /// Forget every state and start again from `snapshot`, which counts as
     /// saved. Ids keep counting up, so an old id never names a new state.
     pub fn reset(&mut self, snapshot: T, time: f64) {
         self.states.clear();
+        self.bytes = 0;
+        self.pruned = false;
+        self.pruned_said = false;
         let id = self.next;
         self.next += 1;
         self.states
@@ -110,6 +171,7 @@ impl<T: Clone> History<T> {
             name: None,
             keep: false,
             snapshot,
+            weight: 0,
         }
     }
 
@@ -156,6 +218,7 @@ impl<T: Clone> History<T> {
     /// the snapshot without being an edit.
     pub fn set_current_snapshot(&mut self, snapshot: T) {
         self.states.get_mut(&self.current).unwrap().snapshot = snapshot;
+        self.reweigh(self.current);
     }
 
     /// Whether the current state is the one last saved.
@@ -166,9 +229,23 @@ impl<T: Clone> History<T> {
     // --- labels ------------------------------------------------------------
 
     /// Name the command making the next state. The first one named wins,
-    /// so a command that runs others is the one remembered.
-    pub fn label(&mut self, text: String) {
-        self.pending_label.get_or_insert(text);
+    /// so a command that runs others is the one remembered. `None` takes
+    /// back a name given while the step has changed nothing yet, for what
+    /// comes next to name it (`3G` moved the cursor, then `dd` deleted: the
+    /// step is the delete).
+    pub fn label(&mut self, text: Option<String>) {
+        match text {
+            Some(text) => {
+                self.pending_label.get_or_insert(text);
+            }
+            None if !self.step_edited => self.pending_label = None,
+            None => {}
+        }
+    }
+
+    /// The open step has made an edit: its name can no longer be taken back.
+    pub fn edited(&mut self) {
+        self.step_edited = true;
     }
 
     /// The keys typed for the next state. The last ones given win.
@@ -179,6 +256,7 @@ impl<T: Clone> History<T> {
     /// Forget the labels gathered for a step that changed nothing.
     pub fn clear_labels(&mut self) {
         self.pending_label = None;
+        self.step_edited = false;
         self.pending_keys = None;
     }
 
@@ -192,10 +270,12 @@ impl<T: Clone> History<T> {
         let mut state = Self::state(id, Some(parent), time, snapshot);
         state.label = self.pending_label.take();
         state.keys = self.pending_keys.take();
+        self.clear_labels();
         self.states.insert(id, state);
         let p = self.states.get_mut(&parent).unwrap();
         p.children.push(id);
         p.redo = Some(id);
+        self.reweigh(id);
         self.current = id;
         if std::mem::take(&mut self.save_pending) {
             self.saved = Some(id);
@@ -237,6 +317,7 @@ impl<T: Clone> History<T> {
         let state = self.states.get_mut(&self.current).unwrap();
         state.snapshot = snapshot;
         state.time = time;
+        self.reweigh(self.current);
         self.clear_labels();
     }
 
@@ -369,7 +450,7 @@ impl<T: Clone> History<T> {
     }
 
     fn prune(&mut self) {
-        while self.states.len() > self.limit {
+        while self.states.len() > self.limit || self.bytes > self.byte_limit {
             let Some(id) = self
                 .states
                 .values()
@@ -379,15 +460,20 @@ impl<T: Clone> History<T> {
                 return;
             };
             self.remove(id);
+            self.pruned = true;
         }
     }
 
     /// Drop one state that is not the root, hanging its children from its parent.
     fn remove(&mut self, id: StateId) {
         let state = self.states.remove(&id).unwrap();
+        self.bytes -= state.weight;
         let parent_id = state.parent.expect("the root is never removed");
         for child in &state.children {
             self.states.get_mut(child).unwrap().parent = Some(parent_id);
+            // What it shared with the state dropped it may not share with
+            // its new parent.
+            self.reweigh(*child);
         }
         let parent = self.states.get_mut(&parent_id).unwrap();
         let at = parent.children.iter().position(|c| *c == id).unwrap();
@@ -581,6 +667,26 @@ mod tests {
     }
 
     #[test]
+    fn states_are_kept_within_a_number_of_bytes_and_that_is_said_once() {
+        let mut t = T::new(100);
+        t.h = History::new("root".into(), 1000.0, 100).weigh_with(|_, s: &String| s.len(), 10);
+        t.edit("aaaa");
+        t.edit("bbbb");
+        assert_eq!(t.h.bytes(), 8);
+        assert!(!t.h.newly_pruned());
+        t.edit("cccc");
+        assert_eq!(t.h.len(), 3, "the oldest step went to stay within 10 bytes");
+        assert_eq!(t.h.bytes(), 8);
+        assert!(t.h.newly_pruned(), "and that is said");
+        t.edit("dddd");
+        assert!(!t.h.newly_pruned(), "once");
+        t.h.undo();
+        assert_eq!(t.at(), "cccc");
+        t.h.reset("new".into(), 2000.0);
+        assert_eq!(t.h.bytes(), 0);
+    }
+
+    #[test]
     fn saved_state_and_labels() {
         let mut t = T::new(100);
         assert!(t.h.at_saved());
@@ -595,13 +701,20 @@ mod tests {
         // Saved in the middle of an edit: the state it becomes is the saved one.
         t.h.mark_saved(true);
         assert!(!t.h.at_saved());
-        t.h.label("clip.add".into());
-        t.h.label("clip.set".into());
+        // A name taken back before anything changed gives way to the next;
+        // after an edit it stays.
+        t.h.label(Some("motion".into()));
+        t.h.label(None);
+        t.h.label(Some("clip.add".into()));
+        t.h.edited();
+        t.h.label(None);
+        t.h.label(Some("clip.set".into()));
         t.h.keys("x".into());
         let b = t.edit("b");
         assert!(t.h.at_saved());
         let state = t.h.get(b).unwrap();
         assert_eq!(state.label.as_deref(), Some("clip.add"));
+
         assert_eq!(state.keys.as_deref(), Some("x"));
         t.h.clear_labels();
         let c = t.edit("c");

@@ -245,6 +245,7 @@ Stop half way through a sequence and the keys that can follow are listed.
 | --- | --- |
 | `<Tab>` `<C-w>w` | next window |
 | `<C-w>p` | back to the window that had the keyboard before (out of R, say) |
+| `<C-^>` | show again what this window showed before (`:b #`) |
 | `,m` `,d` `,p` `,l` | mixer, device panel, piano roll, session view |
 | `E` | in R: the clip's notes and controller moves as a list to change in place |
 | `<C-w>c` `<C-w>o` | close this window, close every other window |

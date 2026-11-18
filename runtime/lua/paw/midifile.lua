@@ -627,6 +627,9 @@ function M.open(path)
   local file, why = M.read(path)
   if not file then error(why, 0) end
   local parts = M.parts(file)
+  -- A file cut short or damaged reads as one with nothing in it: the
+  -- project open stays open.
+  if #parts == 0 then error("there are no notes in it", 0) end
   paw.api.project_new()
   paw.api.project_set("name", stem(path))
   put_tempo_map(file, 0)

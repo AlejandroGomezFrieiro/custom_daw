@@ -153,15 +153,18 @@ function M.commands(command)
   command("tempo", function(ctx)
     local a = ctx.args
     local bpm = tonumber(a[1])
-    if a.by then bpm = paw.project.tempo + a.by end
-    if not bpm then
+    if a.by then bpm = paw.project.tempo + (tonumber(a.by) or 0 / 0) end
+    if not bpm and a[1] == nil and a.by == nil then
       local beat = paw.cursor.beat
       return paw.notify(string.format("tempo is %g bpm at the start, %g at the cursor (%s)", paw.project.tempo, M.at(beat), where(beat)))
     end
-    bpm = math.max(1, math.min(999, bpm))
+    if not bpm or not (bpm >= 1 and bpm <= 999) then
+      error(string.format("a tempo is from 1 to 999 bpm, not %s", a.by and tostring(bpm) or tostring(a[1])), 0)
+    end
     local at = a.at or (a[2] == "at" and (a[3] or "cursor")) or ((a[2] == "here" or a[2] == "cursor") and "cursor")
     if not at then
       paw.project.tempo = bpm
+      paw.notify(string.format("%g bpm", bpm))
     else
       local beat = M.place(at)
       api.tempo_set(beat, bpm)

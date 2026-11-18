@@ -135,7 +135,7 @@ leaves insert mode. See [harmony.md](harmony.md).
 | `gs` `gp` `gL` `gm`, `Shift-Enter` | playhead to the start, to the cursor; loop on or off; metronome; play from the cursor |
 | `gM` `gI`, `zt` `zT` | count a bar in before recording or not; punch recording on or off (on a selection, punch over it); show or hide the track's take lanes (see below for comping with the mouse), the tempo lane under the ruler |
 | `:preroll 2`, `:tempo.move 9` | play two bars (`3s`: seconds) before the punch in when recording from a stop; move the tempo change at the cursor to bar 9 |
-| `u` `Ctrl-r` | undo, redo, saying what: `undid Delete the clip` (each step is named by the key or command that made it) |
+| `u` `Ctrl-r` | undo, redo, saying what: `undid Delete the clip` (each step is named by the key or command that changed something, not by a motion before it, and a line typed after `:` by the line; a value set to what it already is makes no step). Going back in time across branches, `g-` `g+` `:earlier 2m` `:later 5`, comes with the undotree extension |
 | `zi` `zo`, `zz` `zh` `zl`, `[g` `]g` | zoom; centre the cursor, scroll; finer or coarser grid |
 | `Tab` `Ctrl-w w`, `Ctrl-w c`, `Ctrl-w o` | next window; close this window; close every other window (see Windows, buffers and tabs below) |
 | `Ctrl-w +` `Ctrl-w -`, `Ctrl-w =` | taller or shorter window (in a panel whose height is an option, `mixer_height`, that option); windows of equal size. With the arrange view the only window: taller or shorter tracks, and track height back to automatic, fitting the tracks to the screen |
@@ -587,6 +587,7 @@ left and above).
 | `:sp roll`, `:vs roll` | split the window, one above the other or side by side, showing a buffer; without a name, the same buffer as in Vim: a list edited as text shows in both windows, the arrange view's new window shows the piano roll and the roll's the arrange view, and any other view (one window at a time) leaves an empty window that says so (`Ctrl-w s`, `Ctrl-w v`); `:vnew` and `Ctrl-w n` always open an empty one |
 | `:e roll`, `:b roll` `:b 3`, `:bn` `:bp` | show a buffer in this window, by name or number (a buffer's or a view's name, or an address such as `paw://tracks`, is looked for before a file, and only a file is asked about unsaved work: `:e song.json`, `:e song.mid`, `:e take.wav`; a folder is listed as a [file buffer](#files)); the next and previous buffer |
 | `:ls`, `:bd roll` | list the buffers; close every window of one |
+| `Ctrl-^`, `:b #` | show again what this window showed before (back from `paw://tracks` to the arrange view, say) |
 | `:close` `Ctrl-w c`, `:q` `Ctrl-w q`, `:only` `Ctrl-w o` | close the window; close it, or in the last window quit (asking about unsaved changes as before); close every other window |
 | `Ctrl-w h` `j` `k` `l`, `Ctrl-w w` `W`, `Ctrl-w p` | the window left, below, above, right (a count goes further); the next and previous window; the window that had the keyboard before |
 | `Ctrl-w H` `J` `K` `L`, `Ctrl-w x`, `Ctrl-w r` `R` | move the window to the far left, bottom, top, right; exchange it with the next; rotate the windows of its row or column |
@@ -1221,9 +1222,9 @@ query or a CSS selector finds nodes in a tree:
 :query clip:has(note[vel>120])                 clips with a very loud note
 ```
 
-The tree: the project holds its tracks (a group holds its members),
-markers and regions; a track holds its clips, devices and automation
-lanes; a MIDI clip holds its notes and controller moves; a lane holds its
+The tree: the project holds its tracks (a group holds its members; in a
+tab narrowed to a group, `:narrow`, only that group's), markers and
+regions; a track holds its clips, devices and automation lanes; a MIDI clip holds its notes and controller moves; a lane holds its
 points. A step names a kind, `track` `group` `clip` `note` `cc` `device`
 `lane` `point` `marker` `region` (or `*`, any), then tests in brackets.
 `a > b` is a `b` right inside an `a`, `a b` one anywhere inside it, `,`

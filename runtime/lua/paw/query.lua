@@ -63,10 +63,11 @@ local function try(fn, ...)
 end
 
 --- The tracks of the project as a tree: the ones in no group, and each
---- group's members, in the order of the track list.
+--- group's members, in the order of the track list. In a tab narrowed to a
+--- group, that group's tracks, as Ex ranges see them.
 local function track_tree(cache)
   if cache.tracks then return cache.tracks end
-  local ids = api.track_list()
+  local ids = paw.scope and paw.scope.tracks() or api.track_list()
   local data, members, top = {}, {}, {}
   for _, id in ipairs(ids) do data[id] = api.track_get(id) end
   for _, id in ipairs(ids) do

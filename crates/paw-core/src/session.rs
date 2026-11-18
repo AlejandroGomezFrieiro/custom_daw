@@ -51,6 +51,14 @@ mod watch;
 mod write;
 
 const UNDO_LIMIT: usize = 1000;
+/// And at most about this many bytes of what its steps changed: a step that
+/// changes one note of a clip of 200,000 keeps a copy of that clip.
+const UNDO_BYTES: usize = 1 << 30;
+
+/// An undo tree for a project, from `project` on.
+fn new_history(project: Project) -> History<Project> {
+    History::new(project, history::now(), UNDO_LIMIT).weigh_with(Project::weight_over, UNDO_BYTES)
+}
 const FILE_VERSION: u32 = 1;
 /// More points than any screen has columns.
 const MAX_PEAKS: usize = 1 << 16;
@@ -474,6 +482,25 @@ fn de_meta(key: &str, value: Value) -> Result<Map<String, Value>> {
     }
 }
 
+/// Whether `key` of a view already holds `value`: setting it would change
+/// nothing, and makes no undo step. Numbers are compared as numbers.
+fn holds(view: &Result<Value>, key: &str, value: &Value) -> bool {
+    fn same(a: &Value, b: &Value) -> bool {
+        match (a, b) {
+            (Value::Number(a), Value::Number(b)) => a.as_f64() == b.as_f64(),
+            (Value::Array(a), Value::Array(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(a, b)| same(a, b))
+            }
+            (Value::Object(a), Value::Object(b)) => {
+                a.len() == b.len() && a.iter().all(|(k, v)| b.get(k).is_some_and(|w| same(v, w)))
+            }
+            _ => a == b,
+        }
+    }
+    view.as_ref()
+        .is_ok_and(|view| view.get(key).is_some_and(|old| same(old, value)))
+}
+
 fn de<T: DeserializeOwned>(key: &str, value: Value) -> Result<T> {
     serde_json::from_value(value).map_err(|err| anyhow!("bad value for `{key}`: {err}"))
 }
@@ -485,7 +512,7 @@ impl Session {
         let mut session = Self {
             synced: project.clone(),
             checkpoint: project.clone(),
-            history: History::new(project.clone(), history::now(), UNDO_LIMIT),
+            history: new_history(project.clone()),
             project,
             dirty: false,
             touched: false,
@@ -552,10 +579,21 @@ impl Session {
     /// first, then change). It then makes no undo step and does not mark the
     /// project modified, so that the next undo undoes the last real edit.
     pub fn edit<R>(&mut self, f: impl FnOnce(&mut Project) -> Result<R>) -> Result<R> {
-        let result = f(&mut self.project);
+        let result = self.edit_named(f);
         if result.is_ok() {
             // A note is named as it is made, so that it can be addressed at once.
             self.project.name_notes(&self.synced);
+        }
+        result
+    }
+
+    /// An edit that leaves every note with an id of its own, so that nothing
+    /// need be named after it: one note added, changed or removed, which on
+    /// a clip of many thousands would otherwise cost a look at all of them.
+    pub fn edit_named<R>(&mut self, f: impl FnOnce(&mut Project) -> Result<R>) -> Result<R> {
+        let result = f(&mut self.project);
+        if result.is_ok() {
+            self.history.edited();
             self.dirty = true;
             self.touched = true;
             self.edits += 1;
@@ -667,6 +705,12 @@ impl Session {
         let previous = std::mem::replace(&mut self.checkpoint, self.project.clone());
         self.history.set_current_snapshot(previous);
         let state = self.history.push(self.checkpoint.clone(), history::now());
+        if self.history.newly_pruned() {
+            self.warnings.push(format!(
+                "the undo history keeps {UNDO_LIMIT} steps and {} MB at most: its oldest steps are let go",
+                UNDO_BYTES >> 20
+            ));
+        }
         self.last_sweep = moved.map(|key| (key, Instant::now(), state));
         self.trim_audio_now_and_then();
     }
@@ -696,6 +740,9 @@ impl Session {
     }
 
     pub fn project_set(&mut self, key: &str, value: Value) -> Result<()> {
+        if holds(&Ok(self.project_view()), key, &value) {
+            return Ok(());
+        }
         self.edit(|p| {
             match key {
                 "name" => p.name = de(key, value)?,
@@ -742,7 +789,7 @@ impl Session {
         let fresh = Project::default();
         let history = std::mem::replace(
             &mut self.history,
-            History::new(fresh.clone(), history::now(), UNDO_LIMIT),
+            new_history(fresh.clone()),
         );
         self.shelf = Some(Shelf {
             project: self.project.clone(),
@@ -1071,6 +1118,9 @@ impl Session {
     }
 
     pub fn track_set(&mut self, id: Id, key: &str, value: Value) -> Result<()> {
+        if holds(&self.track_view(id), key, &value) {
+            return Ok(());
+        }
         if let (true, Some(track), Some(to)) = (
             matches!(key, "volume" | "pan"),
             self.project.track(id),
@@ -2159,6 +2209,9 @@ impl Session {
     }
 
     pub fn clip_set(&mut self, id: Id, key: &str, value: Value) -> Result<()> {
+        if holds(&self.clip_view(id), key, &value) {
+            return Ok(());
+        }
         // Another file for an audio clip (another take) has to be one that
         // can be read, before the clip is changed.
         let new_file = match (key, value.as_str()) {
@@ -2431,6 +2484,9 @@ impl Session {
     }
 
     pub fn lane_set(&mut self, id: Id, key: &str, value: Value) -> Result<()> {
+        if holds(&self.lane_view(id), key, &value) {
+            return Ok(());
+        }
         self.edit(|p| {
             let l = p.lane_mut(id).with_context(|| format!("no lane {id}"))?;
             match key {

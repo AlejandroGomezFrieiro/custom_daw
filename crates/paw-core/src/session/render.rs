@@ -33,6 +33,10 @@ use crate::measure::analysis::Analyzer;
 use crate::model::{MASTER_ID, Project};
 use crate::sync::{LiveDevices, Mapper, SyncCtx, sync};
 
+/// Seconds a render goes on after its end at most: ten minutes is more
+/// than any reverb or delay rings for.
+const MAX_TAIL: f64 = 600.0;
+
 /// A kind of file a render can write.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
@@ -375,6 +379,9 @@ impl Session {
         let end = opts.end.unwrap_or_else(|| project.end());
         if !opts.start.is_finite() || !end.is_finite() || !opts.tail.is_finite() {
             bail!("a render needs a finite start, end and tail");
+        }
+        if opts.tail > MAX_TAIL {
+            bail!("a render's tail is at most {MAX_TAIL} seconds, not {}", opts.tail);
         }
         if end <= opts.start {
             bail!(

@@ -235,7 +235,8 @@ function A.paste(value, before, count)
       end
     end
     if first then cursor.set_track(first) end
-    return
+    local n = #value.tracks * (count or 1)
+    return paw.notify(n == 1 and "pasted 1 track" or "pasted " .. n .. " tracks")
   elseif value.kind ~= "range" then
     return paw.notify("that register holds " .. value.kind .. ", which does not go on the timeline", "warn")
   end
@@ -271,6 +272,9 @@ function A.paste(value, before, count)
   end
   cursor.set_beat(start)
   last_paste = { row = row, beat = start, finish = at, edits = api.project_get().edits }
+  -- Said, so that what the screen said of the yank before is not taken
+  -- for what the paste did.
+  paw.notify(string.format("pasted %g beats", value.length * (count or 1)))
 end
 
 --- Move the clips that start in a region by `by` beats.
@@ -500,9 +504,14 @@ function R.paste(target, value, pitch, beat, into)
   end
   -- Room for the whole stretch that was yanked, not only the notes in it.
   if value.shape ~= "line" and adds[into] then finish[into] = math.max(finish[into], beat - into.offset + value.length) end
+  local pasted = 0
   for _, part in ipairs(parts) do
-    if adds[part] then put(part.clip, adds[part], finish[part]) end
+    if adds[part] then
+      put(part.clip, adds[part], finish[part])
+      pasted = pasted + #adds[part]
+    end
   end
+  paw.notify(pasted == 1 and "pasted 1 note" or "pasted " .. pasted .. " notes")
   return value.shape == "line" and beat or beat + value.length
 end
 

@@ -865,9 +865,27 @@ function M.mouse(event)
   paw.mouse.done(event)
 end
 
+-- The timer that takes the message shown off the screen, while one is due:
+-- one for any number of messages, so that a flood of them stays cheap.
+local clearing
+
+local function clear_later(ms)
+  clearing = paw.defer(function()
+    clearing = nil
+    local message = M.message
+    if not message then return end
+    local left = message.time + paw.opt.message_time - api.now()
+    if left > 0 then return clear_later(left) end
+    M.message = nil
+    api.ui_redraw()
+  end, ms)
+end
+
 --- Show a message. `level` is "info" (default), "warn" or "error".
 function M.notify(text, level)
-  text, level = tostring(text), level or "info"
+  -- What the kernel refused, as it said it, without the prefix its errors
+  -- carry through Lua.
+  text, level = tostring(text):gsub("runtime error: ", ""), level or "info"
   local message = { text = text, level = level, time = api.now() }
   M.messages[#M.messages + 1] = message
   if #M.messages > 500 then table.remove(M.messages, 1) end
@@ -876,12 +894,7 @@ function M.notify(text, level)
   -- frontend shows `M.message` like the command line does.
   if not api.ui_attached() then io.stderr:write(text, "\n") end
   M.message = message
-  paw.defer(function()
-    if M.message == message then
-      M.message = nil
-      api.ui_redraw()
-    end
-  end, paw.opt.message_time)
+  if not clearing then clear_later(paw.opt.message_time) end
   api.ui_redraw()
 end
 
