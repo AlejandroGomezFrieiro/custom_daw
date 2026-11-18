@@ -3,7 +3,7 @@
 <!-- tags: render rendering export stems bounce render-tags -->
 
 A render writes the song, a part of it, or its tracks to sound files. For
-the steps, see [How to render a song](../how-to/render-a-song.md) and
+the steps, see [How to export a song as WAV, FLAC or MP3](../how-to/export-a-song.md) and
 [How to render stems](../how-to/render-stems.md).
 
 ## Commands

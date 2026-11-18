@@ -33,7 +33,6 @@ writers of extensions come after them.
 - [How to connect a MIDI keyboard](how-to/connect-a-midi-keyboard.md): check that paw sees it, and play an instrument
 - [How to use your own plugins](how-to/use-your-own-plugins.md): CLAP, VST3, LV2, where paw looks, Windows plugins through yabridge
 - [How to map a MIDI controller](how-to/map-a-midi-controller.md)
-- [How to work on paw from another computer](how-to/work-from-another-computer.md): attach over the network or SSH, send files, hear the sound
 
 ### Tracks and instruments
 
@@ -62,7 +61,10 @@ writers of extensions come after them.
 
 ### Record
 
-- [How to record an audio take](how-to/record-an-audio-take.md)
+- [How to record a guitar or a bass](how-to/record-a-guitar-or-a-bass.md): the instrument input, the level, the tuner, a take
+- [How to record vocals with a count-in and a click](how-to/record-vocals-with-a-count-in-and-a-click.md)
+- [How to record MIDI from a keyboard](how-to/record-midi-from-a-keyboard.md): a take, a take merged into a clip, a take over a loop
+- [How to use the metronome](how-to/use-the-metronome.md): the click, the count-in
 - [How to record takes over a loop and comp them](how-to/record-takes-and-comp.md)
 - [How to punch in over a part](how-to/punch-in-over-a-part.md)
 - [How to set the recording offset](how-to/set-the-recording-offset.md)
@@ -70,24 +72,37 @@ writers of extensions come after them.
 
 ### Mix
 
+- [How to set levels and pan, and keep the master out of the red](how-to/set-levels-and-pan.md)
+- [How to add an effect and change its settings](how-to/add-an-effect.md): EQ, compressor, reverb, delay, presets
+- [How to send several tracks to one reverb](how-to/send-several-tracks-to-one-reverb.md)
+- [How to check the mix](how-to/check-the-mix.md): meters, loudness, mono
+- [How to freeze a heavy track](how-to/freeze-a-heavy-track.md)
 - [How to duck a track under the kick](how-to/duck-a-track-under-the-kick.md)
 - [How to write automation with the faders](how-to/write-automation-with-the-faders.md)
-- [How to freeze a heavy track](how-to/freeze-a-heavy-track.md)
 
 ### Render and share
 
-- [How to render a song](how-to/render-a-song.md)
+- [How to export a song as WAV, FLAC or MP3](how-to/export-a-song.md): where the file goes, tags
+- [How to export part of the song or a loop](how-to/export-part-of-the-song.md)
 - [How to render stems](how-to/render-stems.md)
+- [How to export MIDI for another program](how-to/export-midi.md)
+- [How to open a REAPER project, and save one for REAPER](how-to/open-a-reaper-project.md)
 
 ### Projects and files
 
+- [How to save, back up and open projects](how-to/save-and-open-projects.md): recent projects, safety copies
+- [How to import audio and MIDI files](how-to/import-audio-and-midi-files.md): commands, the file manager, a drop on the graphical window
+- [How to make and use track templates](how-to/use-track-templates.md)
 - [How to relink lost media](how-to/relink-missing-media.md)
 
 ### When something goes wrong
 
-- [How to recover lost work](how-to/recover-lost-work.md)
+- [How to fix no sound](how-to/fix-no-sound.md)
+- [How to fix crackles and dropouts](how-to/fix-crackles-and-dropouts.md)
+- [How to deal with a plugin that crashes or hangs](how-to/deal-with-a-plugin-that-crashes.md)
 - [How to open a project without its plugins](how-to/open-a-project-without-its-plugins.md)
 - [How to fix a plugin editor that does not work](how-to/fix-a-plugin-editor.md)
+- [How to recover lost work](how-to/recover-lost-work.md)
 
 ### For developers and extensions
 
@@ -101,10 +116,11 @@ writers of extensions come after them.
 - [How to write a device in Lua](how-to/write-a-device-in-lua.md)
 - [How to write a language server](how-to/write-a-language-server.md)
 - [How to give an extension an editor in the graphical window](how-to/add-an-editor-to-the-window.md)
-- [How to drive paw from an agent](how-to/drive-paw-from-an-agent.md): let an agent that writes code, or an assistant, edit a project
-- [How to run the graphical window against a kernel on another machine](how-to/run-the-window-against-a-remote-kernel.md)
 - [How to run the graphical window without a graphics card](how-to/run-the-window-without-a-graphics-card.md)
+- [How to run the graphical window against a kernel on another machine](how-to/run-the-window-against-a-remote-kernel.md)
 - [How to run the tests](how-to/run-the-tests.md): the Lua suite, the Rust tests, the tests of the graphical window
+- [How to drive paw from an agent](how-to/drive-paw-from-an-agent.md): let an agent that writes code, or an assistant, edit a project
+- [How to work on paw from another computer](how-to/work-from-another-computer.md): attach over the network or SSH, send files, hear the sound
 
 ## Reference
 
