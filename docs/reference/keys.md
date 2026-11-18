@@ -495,13 +495,13 @@ You edit a score of several tracks (`:help notation-scores`) where you read
 it. Each staff is a line, and every key writes to the track of the staff
 under the cursor.
 
-| Command | Shows |
+| Shows | Command |
 | --- | --- |
-| `:score` | the tracks of the tab (or every track) |
-| `:score Strings` | a group |
-| `:score selection` | the selected tracks of the arrange view |
-| `gT` | the tracks over the time of the clip |
-| `:score.check`, `zp` | the pages to check before export. This is the one view that you cannot edit. |
+| the tracks of the tab (or every track) | `:score` |
+| a group | `:score Strings` |
+| the selected tracks of the arrange view | `:score selection` |
+| the tracks over the time of the clip | `gT` |
+| the pages to check before export. This is the one view that you cannot edit. | `:score.check`, `zp` |
 
 | In a score | Keys |
 | --- | --- |
@@ -520,15 +520,15 @@ in the colors of their tracks.
 
 The full score and the parts (`:help notation-parts`) are on `\P`:
 
-| Keys | Shows or does |
+| Shows or does | Keys |
 | --- | --- |
-| `\Ps` | the score |
-| `\Pc` | the condensed score (two players to a staff) |
-| `\Pp` | the part of this track (letters typed in a transposed part are the written notes) |
-| `\Pn` `\PN` | the next and the previous part |
-| `\Po` | the clip alone |
-| `\Pb` `\Pj` | a system break in the part |
-| `\Pe` | export (`:part.export parts.pdf all`) |
+| the score | `\Ps` |
+| the condensed score (two players to a staff) | `\Pc` |
+| the part of this track (letters typed in a transposed part are the written notes) | `\Pp` |
+| the next and the previous part | `\Pn` `\PN` |
+| the clip alone | `\Po` |
+| a system break in the part | `\Pb` `\Pj` |
+| export (`:part.export parts.pdf all`) | `\Pe` |
 
 In the piano roll, the notes of the other tracks show behind, in their
 colors (as the visible tracks of REAPER). `]t` `[t` make the next or the
