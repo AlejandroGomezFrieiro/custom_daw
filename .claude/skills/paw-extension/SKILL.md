@@ -23,6 +23,12 @@ the source of truth; this page is the map):
   `runtime/lua/paw/keyrule.lua` — the key rule your keys must follow.
 - A bundled extension close to what you want, as a model (below).
 
+The manual's contents are `docs/README.md`, by kind (tutorials, how-to,
+reference, explanation); pages move there as they are reworked, so find a
+page through it. `docs/reference/limits.md` says what paw does not do yet:
+take out what your extension adds. An extension's README follows
+`.claude/skills/diataxis-docs/SKILL.md` (sections by kind, in ASD-STE100).
+
 ## Rules that are not optional
 
 1. **MIDI and the project are the truth.** An extension never owns clip data.
