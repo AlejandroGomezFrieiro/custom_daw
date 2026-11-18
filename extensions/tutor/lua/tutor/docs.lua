@@ -26,26 +26,26 @@ end
 function M.lesson(n, lesson, lessons)
   local out = { GENERATED, "", string.format("# Lesson %d: %s", n, lesson.title), "" }
   local function add(line) out[#out + 1] = line end
-  add(string.format("*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor %d`.*", n))
+  add(string.format("*This lesson takes about ten minutes. To do it in paw, type `:ext.load tutor`, then `:tutor %d`.*", n))
   add("")
   if lesson.intro then add(paragraphs(lesson.intro)) add("") end
   if lesson.idea then add("## The idea") add("") add(paragraphs(lesson.idea)) add("") end
   if lesson.vim then add("## If you know Vim") add("") add(paragraphs(lesson.vim)) add("") end
   add("## Steps")
   add("")
-  add("The tutor opens a practice project made for this lesson and checks each step as you do it.")
+  add("The tutor opens a practice project for this lesson. It checks each step when you do it.")
   add("")
   for i, step in ipairs(lesson.steps) do
     add(string.format("%d. %s", i, step.say))
     if step.hint then add("   - *Hint:* " .. step.hint) end
     if step.unchecked then
-      add("   - *The tutor cannot check this step* (" .. step.unchecked:gsub("%.$", "") .. "); `,hn` goes on.")
+      add("   - *The tutor cannot check this step* (" .. step.unchecked:gsub("%.$", "") .. "). `,hn` moves to the next step.")
     elseif step.done then
       add("   - ✓ " .. step.done)
     end
   end
   add("")
-  if lesson.outro then add("## What you did") add("") add(lesson.outro) add("") end
+  if lesson.outro then add("## What we did") add("") add(lesson.outro) add("") end
   local nav = {}
   if lessons[n - 1] then nav[#nav + 1] = string.format("Previous: [%s](%s)", lessons[n - 1].title, M.file(n - 1, lessons[n - 1])) end
   nav[#nav + 1] = "[All lessons](README.md)"
@@ -58,21 +58,22 @@ function M.index(lessons)
   local out = { GENERATED, "", "# The course", "" }
   local function add(line) out[#out + 1] = line end
   add(paragraphs([[
-A course for the first days with paw, by doing. Each lesson takes about ten
-minutes, opens a small practice project of its own, and ends with something you
-made or changed and can hear. The same lessons run inside paw, where the
-tutor says what to do next and notices when you have done it:]]))
+In this course, we use paw to make and change small songs. Each lesson
+takes about ten minutes and opens a small practice project of its own. At the
+end of each lesson, we hear what we made or changed. The same lessons run in
+paw. There, the tutor tells you what to do next and sees when you do it. To
+load the tutor, add this line to your configuration:]]))
   add("")
   add("```lua")
   add('paw.ext.load("extensions/tutor")   -- in ~/.config/paw/init.lua, or link the directory into ~/.config/paw/extensions')
   add("```")
   add("")
   add(paragraphs([[
-then `:tutor` in paw. These pages are made from the tutor's own lessons, so
-the two say the same. [keys.md](../../reference/keys.md) is a page of keys to keep beside the
-keyboard.]]))
+Then type `:tutor` in paw. The tutor makes these pages from its lessons, so
+the pages and the tutor give the same steps. [keys.md](../../reference/keys.md)
+is a page of keys to keep near the keyboard.]]))
   add("")
-  add("| | Lesson | What it teaches |")
+  add("| | Lesson | What we do |")
   add("| --- | --- | --- |")
   for n, lesson in ipairs(lessons) do
     local first = (lesson.outro or ""):gsub("|", "\\|")
@@ -80,12 +81,12 @@ keyboard.]]))
   end
   add("")
   add(paragraphs([[
-Lessons 1 to 4 are the ground: the screen, moving, making tracks and notes. 5
-to 8 are the grammar that the rest of paw is made of. 9 to 13 are the
-studio: devices, mixing, looping, recording, saving and rendering. 14 to 16 are
-about finding your own way: finding any key, making paw yours, and the
-extensions. 17 edits by line, as Vim's Ex does: ranges of bars and tracks,
-`:s` and `:g`.]]))
+Lessons 1 to 4 are the base: the screen, the cursor, and how to make tracks
+and notes. Lessons 5 to 8 are the grammar of the keys,
+which all of paw uses. Lessons 9 to 13 are the studio: devices, the mix, loops,
+recordings, and how to save and render. Lessons 14 to 16 help you find keys,
+make paw your own, and use the extensions. Lesson 17 edits by line, as Ex
+does in Vim: ranges of bars and tracks, `:s` and `:g`.]]))
   return table.concat(out, "\n") .. "\n"
 end
 

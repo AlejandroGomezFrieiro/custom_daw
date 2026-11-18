@@ -3,22 +3,29 @@ return {
   id = "grammar-notes",
   title = "The same grammar on notes",
   intro = [[
-Everything from the last lesson works in the piano roll, with notes in place of
-clips and pitches in place of tracks. `w` goes to the next note, so `dw`
-deletes up to it; `in` is the note under the cursor, `ic` the notes that
-sound together there, `ie` every note of the clip; `dd` deletes a whole row, which here is every note of one pitch; `.`
-repeats; `y` and `p` copy.
+In this lesson, we change a short riff in the piano roll with the grammar of
+lesson 5.
 
-The clip `riff` is open in the piano roll: C D E G E D C, a beat each.]],
+All the keys of the last lesson work in the piano roll. Notes take the place
+of clips, and pitches take the place of tracks. `w` goes to the next note, so
+`dw` deletes up to it. `in` is the note under the cursor. `ic` is the notes
+that sound together at the cursor, and `ie` is all the notes of the clip. 
+
+`dd` deletes a whole row, which is all the notes of one pitch. `.` repeats,
+and `y` and `p` copy.
+
+The clip `riff` is open in the piano roll. Its notes are C D E G E D C, each
+one beat long.]],
   idea = [[
-Learn the grammar once, use it everywhere: the operators are the same (`d` `y`
-`c` `>` `<` `=` `gl`), the motions are the same keys (`w` `b` `e` `0` `$` `W`
-`B`, `j` `k` by pitch), and the text objects are `in` (note), `ib` (bar) and
-`ie` (the whole clip; `ic` is the chord). A note belongs to the stretch it starts in, so `dw`
-from the middle of a gap deletes nothing.]],
+Learn the grammar one time and use it in each view. The operators are the
+same (`d` `y` `c` `>` `<` `=` `gl`). The motions are the same keys (`w` `b`
+`e` `0` `$` `W` `B`, and `j` `k` by pitch). The text objects are `in` (the
+note), `ib` (the bar), `ie` (the whole clip) and `ic` (the chord). A note is
+part of the range where it starts. So `dw` from the middle of a gap deletes
+nothing.]],
   vim = [[
-`in` stands where `iw` would. `dd` takes a whole row, which is a pitch.
-`/d4` searches for a pitch by name, `n` goes on to the next.]],
+`in` has the place of `iw`. `dd` selects a whole row, which is a pitch. `/d4`
+finds a pitch by its name, and `n` goes to the next match.]],
   setup = function(look)
     paw.project.tempo = 100
     local drums = paw.add_track({ name = "Drums", volume = -4 })
@@ -35,65 +42,65 @@ from the middle of a gap deletes nothing.]],
   end,
   steps = {
     {
-      say = "The cursor is on the first note. `w` goes to the next note, wherever its pitch is. Press `w` twice.",
+      say = "The cursor is on the first note. `w` goes to the next note, at any pitch. Press `w` two times.",
       keys = { "w", "w" },
       check = function() local roll = paw.ui.views.pianoroll return roll.beat == 2 and roll.pitch == 64 end,
-      done = "On E4, the third note.",
+      done = "The cursor is on E4, the third note.",
     },
     {
       say = "`dw` deletes from the cursor up to the next note. Press `dw`.",
       keys = { "dw" },
       check = function(_, look) return not look.melody(look.clip("Lead")):find("64@2+", 1, true) end,
-      done = "E4 is gone; the cursor stays in the gap.",
+      done = "E4 is deleted. The cursor stays in the gap.",
     },
     {
-      say = "Press `w` to go to G4, and `.` to delete it the same way.",
+      say = "Press `w` to go to G4. Press `.` to delete it in the same way.",
       keys = { "w", "." },
       check = function(_, look) return look.melody(look.clip("Lead")) == "60@0+1 62@1+1 64@4+1 62@5+1 60@6+1" end,
-      done = "`.` repeated `dw` from the new place.",
-      hint = "From inside a gap `dw` reaches the next note's start, and a note belongs to where it starts, so nothing goes. Go onto a note first.",
+      done = "`.` repeated `dw` from the new position.",
+      hint = "In a gap, `dw` goes up to the start of the next note. A note is part of the range where it starts, so `dw` deletes nothing. Go onto a note first.",
     },
     {
-      say = "Press `u` twice to have both notes back.",
+      say = "Press `u` two times to bring back the two notes.",
       keys = { "u", "u" },
       check = function(ctx, look) return look.ran(ctx, "undo") and look.melody(look.clip("Lead")) == "60@0+1 62@1+1 64@2+1 67@3+1 64@4+1 62@5+1 60@6+1" end,
-      done = "The riff is whole again.",
+      done = "The riff is complete again.",
     },
     {
-      say = "`in` is the note under the cursor. `>in` moves it a step later, and the cursor goes with it. Press `>in`, then `.`.",
+      say = "`in` is the note under the cursor. `>in` moves it one step later, and the cursor moves with it. Press `>in`, then `.`.",
       keys = { ">in", "." },
       check = function(_, look) return look.melody(look.clip("Lead")):find("67@3.5+1", 1, true) ~= nil end,
-      done = "G4 is two steps late now: a little push before the beat.",
-      hint = "The cursor must be on G4 (beat 4). `u` takes back a move that went wrong.",
+      done = "G4 is two steps late now. It gives a small push before the beat.",
+      hint = "The cursor must be on G4 (beat 4). If a move is wrong, press `u`.",
     },
     {
-      say = "`yie` yanks every note of the clip. Then `$` goes to the end of the clip and `p` pastes them there. Press `yie`, `$`, `p`.",
+      say = "`yie` copies all the notes of the clip. `$` goes to the end of the clip, and `p` pastes the notes there. Press `yie`, `$` and `p`.",
       keys = { "yie", "$", "p" },
       check = function(_, look) return #look.clip("Lead"):notes() == 14 end,
-      done = "The riff twice, and the clip grew to hold it.",
+      done = "The riff plays two times, and the clip became longer to hold it.",
     },
     {
-      say = "`c` changes: `cin` deletes the note under the cursor and starts insert mode in its place. Press `^` (the first note), `cin`, then `7k` and `4l`, and `<Esc>`.",
+      say = "`c` changes. `cin` deletes the note under the cursor and starts insert mode at its position. Press `^` (the first note) and `cin`. Then press `7k`, `4l` and `<Esc>`.",
       keys = { "^", "cin", "7k", "4l", "<Esc>" },
       check = function(_, look)
         local m = look.melody(look.clip("Lead"))
         return m:find("^67@0%+1") ~= nil and not m:find("^60@0") and paw.keymap.mode == "n"
       end,
       done = "The riff starts on G now.",
-      hint = "`7k` moves the new note up to G, `4l` makes it a beat long.",
+      hint = "`7k` moves the new note up to G, and `4l` makes it one beat long.",
     },
     {
-      say = "`/` searches: `/d4` and `<CR>` go to the next D4. Then `dd` deletes every note of that pitch. Press `/d4`, `<CR>`, `dd`.",
+      say = "`/` finds a pitch: `/d4` and `<CR>` go to the next D4. Then `dd` deletes all the notes of that pitch. Press `/d4`, `<CR>` and `dd`.",
       keys = { "/d4", "<CR>", "dd" },
       check = function(_, look) return not look.melody(look.clip("Lead")):find("62@", 1, true) end,
-      done = "No D4 left anywhere in the clip.",
+      done = "The clip has no D4 now.",
     },
     {
-      say = "Press `<C-w>p` to go back to the arrange view and `<Space>` to listen; `<Space>` stops.",
+      say = "Press `<C-w>p` to return to the arrange view. Press `<Space>` to listen, and `<Space>` to stop.",
       keys = { "<C-w>p", "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look) return look.focused() == "arrange" and look.played(ctx) end,
-      done = "Your changed riff.",
+      done = "Your changed riff plays.",
     },
   },
-  outro = "`dw`, `.`, `>in`, `yie` `p`, `cin`, `dd` and `/`: the grammar of lesson 5, on notes.",
+  outro = "We used the grammar of lesson 5 on notes: `dw`, `.`, `>in`, `yie` `p`, `cin`, `dd` and `/`.",
 }

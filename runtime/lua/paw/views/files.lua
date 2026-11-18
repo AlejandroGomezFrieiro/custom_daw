@@ -63,7 +63,7 @@ function M.buffer_name(dir, tree)
   return (tree and "paw://tree" or "paw://files") .. normalize(dir)
 end
 
---- Whether a path is a folder.
+--- True if a path is a folder.
 function M.is_dir(path)
   local stat = api.fs_stat(resolve(path))
   return stat ~= nil and stat.dir
@@ -439,7 +439,7 @@ local function follow()
   end
 end
 
---- Start watching the cursor, once a files buffer exists.
+--- Start to watch the cursor, when a files buffer exists.
 function M.watch()
   if watching then return end
   watching = paw.every(100, follow)

@@ -199,9 +199,9 @@ end
 --- Whether the expression matches anywhere in `s`.
 function Regex:test(s) return self:find(s) ~= nil end
 
---- Make an expression ready to match. Raises an error that says what is
---- wrong with it. `opts.case` true matches case, false ignores it; by
---- default lower case ignores it.
+--- Make an expression ready to match. If it is not correct, raise an error
+--- that tells the problem. `opts.case` true matches case, and false ignores
+--- case. By default, an expression in lowercase ignores case.
 function M.compile(text, opts)
   text = tostring(text or "")
   local fold

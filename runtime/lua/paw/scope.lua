@@ -38,9 +38,8 @@ function M.current(tab)
   if id and exists(id) and groups.is_group(id) then return id end
 end
 
---- Whether a track is inside a scope (the current one by default): the
---- group itself or any track in it, however deep. Every track is, with no
---- scope.
+--- True if a track is inside a scope (the current scope by default): the
+--- group itself or a track in it, at any depth. With no scope, all tracks are inside.
 function M.contains(track, scope)
   scope = scope or M.current()
   if not scope then return true end
@@ -52,8 +51,8 @@ function M.contains(track, scope)
   return false
 end
 
---- The tracks a scope (the current one by default) holds, in the order of
---- the track list; every track, with no scope.
+--- The tracks of a scope (the current scope by default), in the order of
+--- the track list. With no scope, all tracks.
 function M.tracks(scope)
   scope = scope or M.current()
   local list = api.track_list()
@@ -82,8 +81,8 @@ function M.find(which)
   return partial or nil
 end
 
---- The group a track stands for when narrowing: itself if it is one, else
---- the group it is in.
+--- The group of a track when you narrow: the track itself if it is a group.
+--- If not, the group that contains it.
 function M.group_at(track)
   track = id_of(track)
   if not track then return nil end
@@ -101,9 +100,9 @@ local function cursor_inside()
   if not (at and M.contains(at)) then paw.cursor.set_track(scope) end
 end
 
---- Open a tab narrowed to a group, after the current one, with the same
---- windows, and go to it; a tab already narrowed to it is gone to instead.
---- Returns the tab.
+--- Open a tab narrowed to a group, after the current tab, with the same
+--- windows, and go to it. If a tab is already narrowed to the group, paw
+--- goes to that tab. Returns the tab.
 function M.narrow(group)
   local id = M.find(group)
   if not id then error(group == nil and "not in a group" or ("no group `" .. tostring(group) .. "`"), 0) end
@@ -122,8 +121,8 @@ function M.narrow(group)
   return t
 end
 
---- Leave the current tab's scope: the tab closes and the one it was
---- narrowed from comes back (or the tab stays, wide, when it is the last).
+--- Leave the scope of the current tab. The tab closes and the tab that it
+--- was narrowed from shows again. When it is the last tab, it stays, wide.
 function M.widen()
   local u = paw.ui
   local t = L.tab()
@@ -186,10 +185,10 @@ local function held_dir()
   return dir
 end
 
---- The parts of the rest of the song that can be frozen for a scope: the
---- tracks outside it at the top of their branch (a whole group, not its
---- members), not one the scope's sound passes through (its groups, and a
---- bus its sends reach), and not empty.
+--- The parts of the rest of the song that paw can freeze for a scope. These
+--- are the tracks outside it at the top of their branch (a whole group, not
+--- its members). They are not the tracks that the sound of the scope goes
+--- through (its groups, and a bus that its sends reach). They are not empty.
 function M.rest_parts(scope)
   scope = scope or M.current()
   if not scope then return {} end
@@ -246,9 +245,9 @@ local function render_part(id)
   end
 end
 
---- Tell the engine what the rest of the song does for a scope: the one of
---- the tab in front, which the last seat to change tabs (a terminal or a
---- window) chose.
+--- Tell the engine what the rest of the song does for a scope. This is the
+--- scope of the tab in front, which the last seat to change tabs (a
+--- terminal or a window) selected.
 function M.apply(scope)
   if scope ~= nil and not exists(scope) then scope = nil end
   applied.scope = scope

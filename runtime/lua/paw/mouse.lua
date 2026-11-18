@@ -38,9 +38,10 @@ local M = {
 local state = {}
 paw.seats.keep("mouse", function() return state end, function(s) state = s end, function() return {} end)
 
---- Whether a press is the second of a double click: the same button on the
---- same cell soon after the first, which was not itself a second. A
---- window's pointer, in fractions of a cell, counts by the cell it is in.
+--- True if a press is the second press of a double click. That is the same
+--- button on the same cell soon after the first press, which was not a
+--- second press itself. For the pointer of a window, in fractions of a
+--- cell, the cell that contains it counts.
 local function mark_double(event)
   if event.kind ~= "down" then return end
   local now, last = api.now(), state.last
@@ -52,7 +53,7 @@ local function mark_double(event)
 end
 M.mark_double = mark_double
 
---- Whether the modifiers of an event hold `letter` ("C", "A" or "S").
+--- True if the modifiers of an event contain `letter` ("C", "A" or "S").
 function M.has(event, letter)
   return (event.mods or ""):find(letter, 1, true) ~= nil
 end
@@ -66,11 +67,11 @@ function M.mode(event)
 end
 
 --- Hold the pointer from a press (`down`, as the view got it) until its
---- button is let go: every drag goes to `handlers.drag(e)` and the release
---- to `handlers.up(e)`, wherever the pointer is, with `x` and `y` relative to
---- the view the press was in, `dx` and `dy` the cells from the press, and
---- `moved` whether it has left the cell it went down on. A press of another
---- button meanwhile calls `handlers.cancel()` and ends the gesture.
+--- button is released. Each drag goes to `handlers.drag(e)` and the release
+--- to `handlers.up(e)`, at any pointer position. `x` and `y` are relative
+--- to the view of the press, and `dx` and `dy` are the cells from the press.
+--- `moved` tells if the pointer left the cell of the press. A press of a
+--- different button calls `handlers.cancel()` and stops the gesture.
 function M.grab(down, handlers)
   state.gesture = {
     handlers = handlers, button = down.button, x0 = down.x, y0 = down.y,
@@ -111,8 +112,8 @@ local function feed_gesture(event)
   api.ui_redraw()
 end
 
---- Say what is under the pointer, or what it would do, on the status line;
---- nil says nothing. A view calls it as the pointer moves over it.
+--- Show on the status line what is under the pointer, or what it would do.
+--- nil shows nothing. A view calls it while the pointer moves over it.
 function M.hint(text)
   state.hinted = true
   if text ~= state.hint then
@@ -150,8 +151,8 @@ function M.take(event)
   return false
 end
 
---- Give an event in a view's own cells to the view, for a view drawn in a
---- window of its own (`paw.canvas.pointer`): a gesture under way has it
+--- Give an event in the cells of a view to the view, for a view drawn in a
+--- separate window (`paw.canvas.pointer`). A gesture in progress gets it
 --- first, as in the terminal.
 function M.to_view(view, event)
   event.mods = event.mods or ""
@@ -165,16 +166,16 @@ function M.to_view(view, event)
   if view.on_mouse then view:on_mouse(paw.util.merge(event, { view_x = 0, view_y = 0 })) end
 end
 
---- Called by `paw.ui.mouse` for the view an event goes to: over the
---- pixels the view shows (`buf:surface`), the event goes to the view's
---- `pointer` as a window gives it (`paw.canvas`), in pixels of its drawing:
---- where the terminal reports the pointer in pixels, exactly; elsewhere at
---- the middle of the cell. `kind` is "down", "up", "move" (a button held),
---- "hover", "double" (after the second press) or "wheel" (`dx`, `dy`); the
---- modifiers are `ctrl`, `shift` and `alt`; `col`, `row` are the screen
---- cell under the pointer, where a menu opens. A drag and its release go to
---- the surface the press was on, wherever the pointer has gone. True when
---- the event went there.
+--- `paw.ui.mouse` calls this for the view that gets an event. Over the
+--- pixels that the view shows (`buf:surface`), the event goes to the
+--- `pointer` function of the view, in pixels of its drawing. A window gives
+--- it the same way (`paw.canvas`). Where the terminal reports the pointer in pixels,
+--- the position is exact. In other terminals, it is the middle of the cell.
+--- `kind` is "down", "up", "move" (with a button held), "hover", "double"
+--- (after the second press) or "wheel" (`dx`, `dy`). The modifiers are
+--- `ctrl`, `shift` and `alt`. `col` and `row` are the screen cell under the
+--- pointer, where a menu opens. A drag and its release go to the surface of
+--- the press, at any pointer position. True when the event went there.
 function M.to_surface(target, event)
   -- A view's own drawing (`buf:surface`) in the window the event is in, or
   -- for a drag the one the press was on; a strip drawn by a view under its
@@ -254,8 +255,8 @@ function M.on_grid(x, scroll, zoom, grid)
   return math.floor(beat / grid + 1e-6) * grid
 end
 
---- A wheel event as a step: 1 down or right, -1 up or left, and whether it
---- goes sideways.
+--- A wheel event as a step: 1 down or right, -1 up or left. The second
+--- value tells if it goes to the side.
 function M.wheel(event)
   local kind = event.kind
   if kind == "scroll_down" then return 1, false end

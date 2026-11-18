@@ -40,7 +40,7 @@ local function choose(clip, places)
   api.ui_redraw()
 end
 
---- Whether a move is of the strip's kind.
+--- True if a move is of the kind of the strip.
 function M.is(control, kind, number)
   return control.type == kind and control.key == nil and (kind ~= "cc" or control.number == number)
 end
@@ -118,9 +118,9 @@ function M.clear(clip)
   choose(clip, {})
 end
 
---- Move the chosen moves `dbeat` later and `dfraction` of the strip's
---- height up. The first of them lands on the grid unless `free`; the rest
---- keep their distance from it, and none leaves the clip or the strip.
+--- Move the selected moves `dbeat` later and `dfraction` of the height of
+--- the strip up. The first move goes onto the grid unless `free`. The other
+--- moves keep their distance from it. No move leaves the clip or the strip.
 function M.move(clip, dbeat, dfraction, free)
   local places = M.chosen(clip)
   if #places == 0 then return 0 end
@@ -159,10 +159,10 @@ function M.remove(clip)
   return #places
 end
 
---- Draw a straight line of moves of the strip's kind from `beat0` at
---- height `f0` to `beat1` at `f1`: it replaces the moves of that kind
---- between, one to each step of the grid (each 32nd of a beat when `free`),
---- both ends included. The new moves are then the chosen ones.
+--- Draw a straight line of moves of the kind of the strip, from `beat0` at
+--- height `f0` to `beat1` at `f1`. It replaces the moves of that kind
+--- between them, with one move on each step of the grid (each 32nd of a
+--- beat when `free`), with the two ends. The new moves are then selected.
 function M.line(clip, kind, number, beat0, f0, beat1, f1, free)
   if beat0 > beat1 then beat0, f0, beat1, f1 = beat1, f1, beat0, f0 end
   local c = paw.clip(clip)

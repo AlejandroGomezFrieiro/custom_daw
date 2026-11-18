@@ -22,11 +22,12 @@ function M.missing() return api.media_missing() end
 --- Every file the project plays: `{ path, missing, inside }`.
 function M.list() return api.media_list() end
 
---- Point the clips that play `from` at the file `to`, and look beside it
---- for the other missing files. One undo step. Returns `{ clips, found, missing }`.
+--- Make the clips that play `from` play the file `to`, and find the other
+--- files that paw cannot find in the folder of `to`. One undo step. Returns
+--- `{ clips, found, missing }`.
 function M.relink(from, to) return api.media_relink(from, to) end
 
---- Look for every missing file in a directory tree. One undo step.
+--- Find in a directory tree each file that paw cannot find. One undo step.
 --- Returns `{ found, missing }`.
 function M.search(dir) return api.media_search(dir) end
 
@@ -39,7 +40,7 @@ local function still(result)
   return n == 0 and "nothing is missing now" or string.format("%d still missing", n)
 end
 
---- Choose a file for a missing one, or a directory to search for them all.
+--- Select a file for a file that paw cannot find, or a directory where paw finds all of them.
 function M.relink_pick()
   local missing = api.media_missing()
   if #missing == 0 then return paw.notify("no media is missing") end
@@ -117,9 +118,9 @@ function M.reverse(clip) return api.clip_reverse(type(clip) == "table" and clip.
 --- Returns the new gain.
 function M.normalize(clip, level) return api.clip_normalize(type(clip) == "table" and clip.id or clip, level) end
 
---- Join audio clips of one track into one clip playing a new file: the clips
---- given, or with one, it and every audio clip touching or overlapping it.
---- Returns { id, file, glued }.
+--- Join audio clips of one track into one clip that plays a new file. With
+--- a list, join the given clips. With one clip, join it and each audio clip
+--- that touches or overlaps it. Returns { id, file, glued }.
 function M.glue(clips)
   local ids = {}
   for i, c in ipairs(type(clips) == "table" and clips.id == nil and clips or { clips }) do

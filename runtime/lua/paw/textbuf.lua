@@ -255,18 +255,19 @@ end
 
 -- Kinds -------------------------------------------------------------------------------
 
---- Make a kind of text buffer, shown for the names its `pattern` matches
---- (`paw://` and the rest). See docs/scripting.md. A kind with `readonly`
---- (what to say when a change is tried) cannot be changed; `gutter = false`
---- leaves out the line numbers; `static` is not read again when the project
---- changes; `paint(canvas, x, y, text, kind, width, row, buf)` draws a line
---- in place of the plain colouring.
+--- Make a kind of text buffer. It shows for the names that its `pattern`
+--- matches (`paw://` and the others). See `docs/scripting.md`. A kind with
+--- `readonly` (the message for a change) cannot change. `gutter = false`
+--- removes the line numbers. paw does not read a `static` kind again when
+--- the project changes. `paint(canvas, x, y, text, kind, width, row, buf)`
+--- draws a line in place of the usual colors.
 ---   paw.textbuf.kind("clips", { pattern = "^paw://clips$", read = ..., format = ..., parse = ..., plan = ... })
---- A kind has what a buffer type has beside the text: `keymaps`, `motions`,
---- `textobjects`, `operators` (see `paw.layout.powers`; their `ctx` has
---- `buf`, `kind`, `args`, `target`), `describe(ctx)` for `K` and
---- `status(ctx, line)` for the status line's `view` component; its keys are
---- in key scope `textbuf.<name>`, before the text's own.
+--- A kind also has the fields of a buffer type, next to the text:
+--- `keymaps`, `motions`, `textobjects` and `operators` (see
+--- `paw.layout.powers`. Their `ctx` has `buf`, `kind`, `args` and `target`).
+--- `describe(ctx)` is for `K`, and `status(ctx, line)` is for the `view`
+--- component of the status line. Its keys are in key scope
+--- `textbuf.<name>`, before the keys of the text.
 function M.kind(name, spec)
   spec.name = name
   spec.pattern = spec.pattern or ("^paw://" .. name:gsub("%p", "%%%0") .. "$")
@@ -295,8 +296,8 @@ local function kind_of(target)
 end
 M.kind_of = kind_of
 
---- Lay cells out in columns: each as wide as its widest, two spaces apart,
---- trailing blanks dropped.
+--- Put cells in columns. Each column is as wide as its widest cell, with
+--- two spaces between columns. paw removes the spaces at the end.
 function M.align(rows)
   local widths = {}
   for _, cells in ipairs(rows) do
@@ -433,8 +434,8 @@ function M.reload(buf)
   api.ui_redraw()
 end
 
---- After the project changed: an unmodified buffer is read again; a
---- modified one is marked as being behind it.
+--- Call it after the project changed. paw reads an unmodified buffer again.
+--- paw marks a modified buffer as older than the project.
 function M.sync(buf)
   local st = buf.state
   if st.kind.static then return end
@@ -471,8 +472,8 @@ local function parse(buf, text)
   return fields, err
 end
 
---- Whether two fields' values are the same: numbers within rounding,
---- tables field by field.
+--- True if the values of two fields are the same: numbers within a small tolerance,
+--- and tables field by field.
 local function same(a, b)
   if a == b then return true end
   if type(a) ~= "table" or type(b) ~= "table" then
@@ -490,9 +491,10 @@ end
 
 M.same = same
 
---- What the lines say to do, against what they were read from: lines that
---- do not read, things deleted, changed (with the fields that changed),
---- copied, added, and whether the things kept are in another order.
+--- The changes that the lines ask for, compared with the data that paw
+--- read. These are the lines that paw cannot read, and the items deleted,
+--- changed (with the fields that changed), copied and added. It also tells if the kept items
+--- are in a different order.
 function M.changes(buf)
   local st = buf.state
   local out = { deleted = {}, changed = {}, copied = {}, added = {}, lines = {}, errors = {}, moved = false }
@@ -992,9 +994,9 @@ local function begin_insert(win, buf, block)
   api.ui_redraw()
 end
 
---- Enter insert mode at the cursor of the current window. `how`: "i"
---- before the cursor, "a" after it, "I" at the first character that is not
---- a space, "A" at the end, "o" on a new line below, "O" above.
+--- Start insert mode at the cursor of the current window. `how` is "i"
+--- before the cursor, "a" after it, or "I" at the first character that is
+--- not a space. It is "A" at the end, "o" on a new line below, or "O" above.
 function M.insert(how, opts)
   local win, buf, t, s = here()
   if not win then return end
@@ -1117,8 +1119,8 @@ M.ops.swapcase = case_op(swapcase)
 -- Numbers: Ctrl-a and Ctrl-x -----------------------------------------------------------
 
 --- Add `n` to the number at or after column `col` of a text, up to column
---- `limit`: a sign before it counts, and so do decimals, which it keeps.
---- Returns the new text and the column of the number's last character.
+--- `limit`. A sign before it counts. Decimals also count, and paw keeps
+--- them. Returns the new text and the column of the last character of the number.
 function M.add_number(text, col, n, limit)
   local cs = chars(text)
   -- Back to the start of the number under the cursor, if on one.
@@ -1689,8 +1691,8 @@ end
 
 paw.ui.view("textbuf.plan", confirm)
 
---- `:w` in a text buffer: the plan, to confirm; with `force` even when the
---- project changed since the buffer was read.
+--- `:w` in a text buffer: the plan, to confirm. With `force`, also when the
+--- project changed after paw read the buffer.
 function M.write(buf, force)
   local st = buf.state
   M.sync(buf)

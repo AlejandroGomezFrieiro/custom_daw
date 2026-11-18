@@ -54,8 +54,8 @@ local function fail(text, ...) error(string.format(text, ...), 0) end
 
 M.views = {}
 
---- Say how a view of your own maps its columns to the song's beats and
---- which clips it edits, for ranges: see docs/scripting.md.
+--- Tell how a view of your own maps its columns to the beats of the song,
+--- and which clips it edits, for ranges. See `docs/scripting.md`.
 function M.view(name, spec) M.views[name] = spec end
 
 local function roll() return paw.ui.views.pianoroll end
@@ -349,9 +349,9 @@ local function time_range(s, i)
   return { from = from, to = to, single = single }, j
 end
 
---- Split a range off the front of a command line: the range, and the
---- rest. Nil for the range when there is none; an error message as the
---- third value instead of the rest when the range names nothing.
+--- Split a range from the start of a command line. Returns the range and
+--- the rest. The range is nil when there is no range. When the range names
+--- nothing, the third value is an error message, and there is no rest.
 function M.range(line)
   local ok, r, rest = pcall(function()
     local i = line:match("^%s*()")

@@ -75,8 +75,10 @@ local function restyle(close, style)
   return sorted(p)
 end
 
---- How far voices move from `a` to `b`: voice by voice when they have as
---- many, else each note to the nearest of the other chord, both ways, halved.
+--- How far voices move from `a` to `b`. When the chords have the same number
+--- of voices, it measures voice by voice. If not, it measures each note to
+--- the nearest note of the other chord, in the two directions, and halves
+--- the sum.
 function M.distance(a, b)
   if not a or not b or #a == 0 or #b == 0 then return 0 end
   local x, y = sorted({ unpack(a) }), sorted({ unpack(b) })
@@ -97,7 +99,7 @@ function M.distance(a, b)
   return (near(x, y) + near(y, x)) / 2
 end
 
---- Every voicing of the chord within the options' range, `{ pitches, style }`.
+--- Each voicing of the chord in the range of the options, `{ pitches, style }`.
 function M.candidates(tones, opts)
   opts = opts or {}
   local low, high = opts.low or 48, opts.high or 84
@@ -117,12 +119,12 @@ function M.candidates(tones, opts)
   return out
 end
 
---- The best voicing of `tones` (pitch classes, root first). Options: `low`,
---- `high` (48 and 84), `count` (voices; the tones' number), `style`
---- ("smooth"), `prev` and `next` (pitches of the chords around it, to lead
---- from and into), `bass` (the pitch class that must be lowest), `center`
---- (a pitch to stay near when there is no chord before). Nil when nothing
---- fits the range.
+--- The best voicing of `tones` (pitch classes, root first). The options are
+--- `low` and `high` (48 and 84), `count` (the number of voices, by default
+--- the number of tones) and `style` ("smooth"). `prev` and `next` are the
+--- pitches of the chords around it, to lead from and into. `bass` is the
+--- pitch class that must be the lowest. `center` is a pitch to stay near
+--- when there is no chord before. Nil when nothing fits the range.
 function M.voice(tones, opts)
   opts = opts or {}
   local list = M.candidates(tones, opts)

@@ -196,9 +196,10 @@ end
 -- name, `fn(uri, parts)` giving a target as above, or nil to leave it.
 M.providers = {}
 
---- Make curves of addresses of your own: `fn(uri, parts)` returns a target
---- with `points`, `write`, `name`, `format`, `lo`, `hi` and the rest, or nil
---- to leave the address to the others (docs/scripting.md, Curves).
+--- Make curves of your own addresses. `fn(uri, parts)` returns a target
+--- with `points`, `write`, `name`, `format`, `lo`, `hi` and the other
+--- fields, or nil to let other providers have the address
+--- (`docs/scripting.md`, Curves).
 function M.provide(name, fn) M.providers[name] = fn end
 
 --- The curve at an address, or nil and why not.
@@ -233,7 +234,7 @@ function M.target(uri)
   return t
 end
 
---- Whether a text names a curve: an address `target` can read.
+--- True if a text names a curve: an address that `target` can read.
 function M.is_curve(uri)
   local p = paw.address.parse(uri)
   return p ~= nil and (p.kind == "lane" or p.kind == "param" or p.kind == "control" or p.kind == "tempo")
@@ -290,8 +291,8 @@ local function sorted(points)
 end
 M.sorted = sorted
 
---- Points made fit for a curve: sorted, and every stretch of a shape it
---- does not have written out as short pieces of one it has.
+--- Points made ready for a curve: sorted. Each range with a shape that the
+--- curve does not have becomes short pieces of a shape that it has.
 function M.fit(t, points)
   points = sorted(points)
   local out = {}
@@ -317,7 +318,7 @@ function M.fit(t, points)
 end
 
 --- Replace the points from beat `from` to beat `to` (both included) with
---- `new`, keeping the rest: what drawing over a stretch does.
+--- `new`, and keep the other points. paw does this when you draw over a range.
 function M.splice(points, from, to, new)
   local out = {}
   for _, q in ipairs(points) do
@@ -371,8 +372,8 @@ function M.thin(points, tolerance, frac)
   return out
 end
 
---- Softer moves: each value the mean of its own and its neighbours',
---- `times` over. The first and the last stay where they are.
+--- Softer moves: each value becomes the mean of its value and the values
+--- next to it, `times` times. The first and the last value do not change.
 function M.smooth(points, times)
   local out = {}
   for i, q in ipairs(points) do out[i] = M.copy(q) end
@@ -386,7 +387,7 @@ function M.smooth(points, times)
   return out
 end
 
---- Points moved onto the grid; of two that land on one step the later stays.
+--- Points moved onto the grid. When two points go to one step, the later point stays.
 function M.quantize(points, grid)
   local out, at = {}, {}
   for _, q in ipairs(points) do

@@ -124,8 +124,8 @@ function M.step(id, by)
   return M.select(id, (active - 1 + by) % n + 1)
 end
 
---- Keep what the clip plays as a take and carry on in a copy of it, which
---- becomes the one that plays: for trying a variation. Returns its number.
+--- Keep the sound of the clip as a take, and continue in a copy of it. The
+--- copy becomes the take that plays. Use it to try a variation. Returns its number.
 function M.new(id, name)
   local c = api.clip_get(id)
   local takes = M.of(c)
@@ -148,8 +148,8 @@ function M.new(id, name)
   return #list
 end
 
---- Throw a take away: the playing one by default, and then the one before
---- it plays. With one left, the clip is a clip without takes again.
+--- Discard a take: by default the take that plays. Then the take before it
+--- plays. With one take left, the clip becomes a clip without takes again.
 function M.remove(id, index)
   local c = api.clip_get(id)
   local takes = M.of(c)
@@ -175,8 +175,8 @@ function M.keep(id)
   if M.of(c) then write(id, c, nil) end
 end
 
---- Every take as a clip of its own, on new tracks below the clip's track,
---- one each; the clip is left with the take that plays. Returns the tracks.
+--- Each take as a separate clip, on new tracks below the track of the clip,
+--- one take on each track. The clip keeps the take that plays. Returns the tracks.
 function M.explode(id)
   local c = api.clip_get(id)
   local takes = M.of(c)
@@ -205,12 +205,12 @@ function M.explode(id)
   return out
 end
 
---- The takes that go with a piece of a clip, from beat `from` to `to` of
---- the timeline: what a cut gives each side. Sound keeps its entries as
---- they are (the piece's own offset says where it is in them); notes are
---- those of the stretch, counted from the piece's start. Nil for a clip
---- without takes. The notes of a looped clip all go with every piece,
---- moved by `shift` as the piece's own are (see `paw.stretch.moved`).
+--- The takes of a piece of a clip, from beat `from` to `to` of the
+--- timeline: what a cut gives to each side. Sound keeps its entries as they
+--- are (the offset of the piece tells where it is in them). Notes are those
+--- of the range, counted from the start of the piece. Nil for a clip
+--- without takes. All notes of a looped clip go with each piece, moved by
+--- `shift` as the notes of the piece are (see `paw.stretch.moved`).
 function M.piece(c, from, to, shift)
   local takes = M.of(c)
   if not takes then return nil end
@@ -284,9 +284,10 @@ function M.badge(c)
 end
 
 --- What take `index` of a clip plays, as the clip would have it if that
---- take were chosen: `{ file, offset, gain }` for sound, the offset where
---- the clip's start falls in the file; `{ notes, controls }` for notes,
---- counted from the clip's start. The playing take is the clip's own.
+--- take were selected. For sound, it is `{ file, offset, gain }`, with the
+--- offset of the start of the clip in the file. For notes, it is
+--- `{ notes, controls }`, counted from the start of the clip. The take that
+--- plays is the content of the clip.
 function M.content(clip, index)
   local c = type(clip) == "table" and clip or api.clip_get(clip)
   local takes = M.of(c)
@@ -451,9 +452,9 @@ local function join(a, b)
   api.clip_remove(b.id)
 end
 
---- Join the pieces of a track that carry straight on from one another (see
---- `continues`), among those reaching from beat `from` to `to`, the ones
---- touching either end included. Returns how many joins were made.
+--- Join the pieces of a track that continue exactly from one another (see
+--- `continues`). This applies to the pieces from beat `from` to `to`, with
+--- the pieces that touch each end. Returns the number of joins.
 function M.join_pieces(track, from, to)
   local joins = 0
   local again = true
@@ -473,12 +474,12 @@ function M.join_pieces(track, from, to)
   return joins
 end
 
---- Make take `take` play on a track from beat `from` to `to`: every clip
---- there with that many takes is cut at both ends where it reaches across
---- them, take `take` is chosen for each piece in between, and pieces side
---- by side that then play the same take are joined again where that is
---- exact (`M.join_pieces`). Clips without takes are left alone. Returns how
---- many pieces were given the take, or 0 when no clip there has it.
+--- Make take `take` play on a track from beat `from` to `to`. paw cuts
+--- each clip there with that number of takes at the two ends where it goes
+--- across them. paw selects take `take` for each piece between them. Then
+--- it joins again the adjacent pieces that play the same take, where that
+--- is exact (`M.join_pieces`). Clips without takes do not change. Returns
+--- the number of pieces that got the take, or 0 when no clip there has it.
 function M.comp(track, take, from, to)
   take = math.floor(take)
   from, to = math.max(0, math.min(from, to)), math.max(from, to)
@@ -520,8 +521,8 @@ local function piece_at(track, take, beat)
 end
 
 --- Make take `take` play in the piece of a track at `beat`, and join it to
---- its neighbours where that is exact. Returns the clip, or nil if there is
---- no piece there with such a take.
+--- the pieces next to it where that is exact. Returns the clip, or nil if
+--- no piece there has such a take.
 function M.choose_at(track, take, beat)
   local c = piece_at(track, math.floor(take), beat)
   if not c then return nil end
@@ -553,7 +554,7 @@ end
 
 local function id_of(track) return type(track) == "table" and track.id or track end
 
---- Whether a track shows its take lanes.
+--- True if a track shows its take lanes.
 function M.lanes_shown(track)
   return lanes_open[id_of(track)] == true
 end
@@ -564,14 +565,14 @@ function M.show_lanes(track, on)
   save_lanes()
 end
 
---- Show a track's take lanes, or hide them; returns whether they show.
+--- Show the take lanes of a track, or hide them. Returns true if they show.
 function M.toggle_lanes(track)
   M.show_lanes(track, not M.lanes_shown(track))
   return M.lanes_shown(track)
 end
 
---- How many take lanes a track shows: as many as the most takes any of its
---- clips has, none while they are hidden or no clip has takes.
+--- The number of take lanes that a track shows: the highest number of takes
+--- of its clips. None while they are hidden or when no clip has takes.
 function M.lane_count(track)
   local id = id_of(track)
   if not lanes_open[id] then return 0 end

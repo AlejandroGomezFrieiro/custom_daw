@@ -30,12 +30,12 @@ local function set_meta(id, key, value)
   api.track_set(id, "meta", m)
 end
 
---- Whether a track is a VCA.
+--- True if a track is a VCA.
 function M.is_vca(track)
   return meta(id_of(track)).vca == true
 end
 
---- The VCAs a track is in (their ids), in the order it was put in them.
+--- The VCAs of a track (their ids), in the order in which paw put the track in them.
 function M.of(track)
   local out = {}
   for _, id in ipairs(meta(id_of(track)).vcas or {}) do

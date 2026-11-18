@@ -41,7 +41,7 @@ end)
 --- A plain table with every field of the track, read once.
 function Track:get() return api.track_get(self.id) end
 
---- Whether the track is still in the project.
+--- True if the track is still in the project.
 function Track:exists() return (pcall(api.track_get, self.id)) end
 
 --- Take the track out of the project, with its clips and devices.
@@ -86,7 +86,7 @@ function Track:clips()
   return out
 end
 
---- The clip covering `beat`, if any. The later clip wins where two overlap.
+--- The clip that covers `beat`, if any. Where two clips overlap, the later clip wins.
 function Track:clip_at(beat)
   local found
   for _, clip in ipairs(api.clip_list(self.id)) do
@@ -202,7 +202,7 @@ function M.restore_track(snap, index)
   return track
 end
 
---- Copy the track with its devices, clips and automation, placing the copy after it.
+--- Copy the track with its devices, clips and automation, and put the copy after it.
 function Track:duplicate()
   local snap = self:snapshot()
   snap.name = snap.name .. " copy"
@@ -231,8 +231,9 @@ function Track:automate(target)
   return self:lane(target) or wrap(Lane, api.lane_add(self.id, { target = target }))
 end
 
---- What "volume" or "pan" is at a beat while playing: the lane's value when
---- one is on, else the track's own.
+--- The value of "volume" or "pan" at a beat while the song plays. This is
+--- the value of the lane when the lane is on. If not, it is the value of
+--- the track.
 function Track:value_at(target, beat)
   local lane = self:lane(target)
   local value = lane and lane.enabled and api.lane_value_at(lane.id, beat)
@@ -255,7 +256,7 @@ end)
 --- Everything about the device as plain data (`paw.api.device_get`).
 function Device:get() return api.device_get(self.id) end
 
---- Whether the device is still in the project.
+--- True if the device is still in the project.
 function Device:exists() return (pcall(api.device_get, self.id)) end
 
 --- Take the device off its track.
@@ -289,8 +290,8 @@ function Device:info()
   end
 end
 
---- The device as plain data, for `paw.restore_device`. A plugin is captured
---- by its state, which holds more than its parameters do.
+--- The device as plain data, for `paw.restore_device`. For a plugin, the
+--- data contains its state, which holds more than its parameters.
 function Device:snapshot()
   local d = self:get()
   local state = api.device_state(self.id)
@@ -303,34 +304,35 @@ function Device:snapshot()
   }
 end
 
---- Play the device's output pair `pair` (2 and on: the first plays on its
---- own track) into a track, or nowhere with nil. `device.outputs` is a table
---- of pair number to track id; `device.ports.outputs` names the pairs.
+--- Play the output pair `pair` of the device (2 and more: the first pair
+--- plays on its own track) into a track, or nowhere with nil.
+--- `device.outputs` is a table of pair number to track id.
+--- `device.ports.outputs` names the pairs.
 function Device:set_output(pair, track)
   require("paw.routes").set_output(self.id, pair, id_of(track))
   return self
 end
 
---- Listen to another track's sound as the device's side-chain: a
---- compressor on the bass ducks under the kick with `comp:set_sidechain(kick)`.
---- `{ pre = true }` takes it before that track's fader, pan and mute; nil
---- (or no track) takes the side-chain away. `device.sidechain` is the
---- track's id.
+--- Listen to the sound of a different track as the side-chain of the
+--- device. With `comp:set_sidechain(kick)`, a compressor on the bass ducks
+--- under the kick. `{ pre = true }` takes the sound before the fader, pan
+--- and mute of that track. nil (or no track) removes the side-chain.
+--- `device.sidechain` is the id of the track.
 function Device:set_sidechain(track, opts)
   api.device_set(self.id, "sidechain", id_of(track))
   api.device_set(self.id, "sidechain_pre", track ~= nil and opts ~= nil and opts.pre == true)
   return self
 end
 
---- Show the plugin's own window. `device.editor` is "open", "closed", or nil
---- for devices that have none.
---- Start the device again: for a plugin that stopped working (`stopped`
---- says why) or never loaded. It comes back with the state the project last
---- had of it.
+--- Show the window of the plugin. `device.editor` is "open", "closed", or
+--- nil for devices that have no window.
+--- Start the device again: for a plugin that stopped (`stopped` tells why)
+--- or did not load. It returns with the last state of it in the project.
 function Device:restart() return api.device_restart(self.id) end
 
---- Set the device offline: not made at all (no process for a plugin),
---- passed over, its state and parameters kept as they are; or back online.
+--- Set the device offline, or online again. An offline device is not made
+--- (a plugin has no process), and the chain passes over it. Its state and
+--- parameters do not change.
 function Device:set_offline(on) api.device_set(self.id, "offline", on ~= false) end
 
 --- Show the plugin's own window.
@@ -375,8 +377,8 @@ function Device:automate(param)
     or wrap(Lane, api.lane_add(api.device_get(self.id).track, { target = "param", device = self.id, param = param }))
 end
 
---- What a parameter is at a beat while playing: the lane's value when one is
---- on, else the device's own.
+--- The value of a parameter at a beat while the song plays. This is the
+--- value of the lane when the lane is on. If not, it is the value of the device.
 function Device:value_at(param, beat)
   local lane = self:lane(param)
   local value = lane and lane.enabled and api.lane_value_at(lane.id, beat)
@@ -400,7 +402,7 @@ end)
 --- Everything about the clip as plain data (`paw.api.clip_get`).
 function Clip:get() return api.clip_get(self.id) end
 
---- Whether the clip is still in the project.
+--- True if the clip is still in the project.
 function Clip:exists() return (pcall(api.clip_get, self.id)) end
 
 --- Take the clip out of its track.
@@ -409,14 +411,13 @@ function Clip:remove() api.clip_remove(self.id) end
 --- The track the clip is on.
 function Clip:track() return wrap(Track, api.clip_get(self.id).track) end
 
---- The notes of a MIDI clip: a list of { pitch, start, length, velocity },
---- with `start` in beats from the start of the clip, `meta`, a table of
---- extension data such as a lyric, on notes that have any, and `attr`, the
---- MIDI 2.0 attribute of the note's start (`{ type, data }`, see
---- `paw.attr`), on notes that have one.
+--- The notes of a MIDI clip: a list of { pitch, start, length, velocity }.
+--- `start` is in beats from the start of the clip. A note can have `meta`,
+--- a table of extension data such as a lyric. A note can also have `attr`,
+--- the MIDI 2.0 attribute of its note-on (`{ type, data }`, see `paw.attr`).
 ---
---- With a range, only the notes sounding within it, and as a second value
---- the place of each in the whole list, for `set_note` and `remove_note`:
+--- With a range, only the notes that sound in it. The second value is then
+--- the place of each note in the whole list, for `set_note` and `remove_note`:
 ---   local notes, at = clip:notes({ from = 4, to = 8, low = "C3", high = "C5" })
 function Clip:notes(range)
   if range and (range.low or range.high) then
@@ -425,14 +426,14 @@ function Clip:notes(range)
   return api.clip_notes(self.id, range)
 end
 
---- The note on a pitch sounding at a beat of the clip, and its place among
---- the clip's notes; nothing when there is none.
+--- The note on a pitch that sounds at a beat of the clip, and its place in
+--- the notes of the clip. Nothing when there is no such note.
 function Clip:note_at(pitch, beat) return api.clip_note_at(self.id, music.pitch(pitch), beat) end
 
---- Change one note, named by its place among the clip's notes (from 1),
---- without touching the others: `clip:set_note(3, { length = 2 })`. Returns
---- the note's place afterwards, since notes stay in the order they start.
---- `attr = false` takes its attribute away.
+--- Change one note, by its place in the notes of the clip (from 1). The
+--- other notes do not change: `clip:set_note(3, { length = 2 })`. Returns
+--- the new place of the note, because notes stay in the order of their
+--- start. `attr = false` removes its attribute.
 function Clip:set_note(index, fields)
   if fields.pitch then fields = paw.util.merge(fields, { pitch = music.pitch(fields.pitch) }) end
   return api.clip_note_set(self.id, index, fields)
@@ -452,22 +453,23 @@ function Clip:edit_notes(edit)
   api.clip_notes_edit(self.id, { set = set, remove = edit.remove or {}, add = M.notes(edit.add or {}) })
 end
 
---- The waveform of an audio clip: `n` { min, max, rms } entries, each
---- covering an equal part of what the clip plays, scaled by its gain: how
---- far the wave reaches each way (-1 to 1) and how loud it is there. Cached,
---- so drawing code can ask for it every frame.
+--- The waveform of an audio clip: `n` { min, max, rms } entries. Each entry
+--- covers an equal part of the sound of the clip, scaled by its gain. It
+--- gives how far the wave goes each way (-1 to 1) and how loud it is there.
+--- paw keeps the result, so the code that draws can ask for it each frame.
 function Clip:peaks(n) return api.clip_peaks(self.id, n) end
 
 --- Replace every note of the clip with `notes` (as `add_note` takes each).
 function Clip:set_notes(notes) api.clip_set_notes(self.id, M.notes(notes)) end
 
---- What the clip does besides notes: controller moves, the pitch wheel,
---- pressure and program changes, each `{ start, type, value }` with `start`
---- in beats from the start of the clip. `type` is "cc" (with `number`),
---- "bend" (-1 to 1), "pressure", "registered" or "assignable" (with `bank`
---- and `index`), or "program" (with `program` and maybe `bank`); values run
---- from 0 to 1 at any resolution. With `key` a move belongs to the note on
---- that key alone, as in MIDI 2.0: its own bend, pressure or controller.
+--- The events of the clip that are not notes: controller moves, the pitch
+--- wheel, pressure and program changes. Each is `{ start, type, value }`,
+--- with `start` in beats from the start of the clip. `type` is "cc" (with
+--- `number`), "bend" (-1 to 1), "pressure", "registered" or "assignable"
+--- (with `bank` and `index`), or "program" (with `program` and maybe
+--- `bank`). Values go from 0 to 1 at any resolution. With `key`, a move is
+--- for the note on that key only, as in MIDI 2.0: its own bend, pressure
+--- or controller.
 function Clip:controls() return api.clip_controls(self.id) end
 
 ---   clip:set_controls({ { start = 0, type = "cc", number = 64, value = 1 },
@@ -527,7 +529,7 @@ class(Lane, "Lane", api.lane_get, api.lane_set)
 --- Everything about the lane as plain data (`paw.api.lane_get`).
 function Lane:get() return api.lane_get(self.id) end
 
---- Whether the lane is still in the project.
+--- True if the lane is still in the project.
 function Lane:exists() return (pcall(api.lane_get, self.id)) end
 
 --- Take the lane away, and the automation in it.
@@ -543,14 +545,15 @@ function Lane:points() return api.lane_points(self.id) end
 --- also be written { beat = 0, value = -60 }.
 function Lane:set_points(points) api.lane_set_points(self.id, M.points(points)) end
 
---- Add a point, replacing any at the same beat. The value is in the target's
---- own units: dB for volume, -1 to 1 for pan, the parameter's range otherwise.
+--- Add a point. It replaces a point at the same beat. The value is in the
+--- units of the target: dB for volume and -1 to 1 for pan. For a parameter,
+--- it is in the range of the parameter.
 function Lane:add(beat, value) api.lane_add_point(self.id, beat, value) end
 
 --- Remove every point of the lane.
 function Lane:clear() api.lane_set_points(self.id, {}) end
 
---- The value at a beat, whether or not the lane is on. Nil without points.
+--- The value at a beat, when the lane is on and when it is off. Nil without points.
 function Lane:value_at(beat) return api.lane_value_at(self.id, beat) end
 
 -- Module ---------------------------------------------------------------------

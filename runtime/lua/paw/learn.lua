@@ -53,7 +53,7 @@ end
 -- every clip (`track` or none).
 local triggers = { launch = true, scene = true, stop = true }
 
---- Whether a target is pressed rather than moved.
+--- True if you press a target, and do not move it.
 function M.is_trigger(target) return triggers[target.target] == true end
 
 --- What a binding moves, as text: "Lead › volume", "Lead › Filter › Cutoff".
@@ -251,7 +251,7 @@ function M.start(target)
   paw.notify("learn: move a knob or fader of the controller for " .. M.target_name(target) .. " (`:learn.cancel` gives up)")
 end
 
---- Stop waiting for a controller to learn.
+--- Stop the wait for a controller to learn.
 function M.cancel()
   if M.learning then paw.notify("learn: given up") end
   M.learning = nil

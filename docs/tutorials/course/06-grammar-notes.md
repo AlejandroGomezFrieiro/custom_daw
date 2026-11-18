@@ -2,48 +2,52 @@
 
 # Lesson 6: The same grammar on notes
 
-*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 6`.*
+*This lesson takes about ten minutes. To do it in paw, type `:ext.load tutor`, then `:tutor 6`.*
 
-Everything from the last lesson works in the piano roll, with notes in place of clips and pitches in place of tracks. `w` goes to the next note, so `dw` deletes up to it; `in` is the note under the cursor, `ic` the notes that sound together there, `ie` every note of the clip; `dd` deletes a whole row, which here is every note of one pitch; `.` repeats; `y` and `p` copy.
+In this lesson, we change a short riff in the piano roll with the grammar of lesson 5.
 
-The clip `riff` is open in the piano roll: C D E G E D C, a beat each.
+All the keys of the last lesson work in the piano roll. Notes take the place of clips, and pitches take the place of tracks. `w` goes to the next note, so `dw` deletes up to it. `in` is the note under the cursor. `ic` is the notes that sound together at the cursor, and `ie` is all the notes of the clip.
+
+`dd` deletes a whole row, which is all the notes of one pitch. `.` repeats, and `y` and `p` copy.
+
+The clip `riff` is open in the piano roll. Its notes are C D E G E D C, each one beat long.
 
 ## The idea
 
-Learn the grammar once, use it everywhere: the operators are the same (`d` `y` `c` `>` `<` `=` `gl`), the motions are the same keys (`w` `b` `e` `0` `$` `W` `B`, `j` `k` by pitch), and the text objects are `in` (note), `ib` (bar) and `ie` (the whole clip; `ic` is the chord). A note belongs to the stretch it starts in, so `dw` from the middle of a gap deletes nothing.
+Learn the grammar one time and use it in each view. The operators are the same (`d` `y` `c` `>` `<` `=` `gl`). The motions are the same keys (`w` `b` `e` `0` `$` `W` `B`, and `j` `k` by pitch). The text objects are `in` (the note), `ib` (the bar), `ie` (the whole clip) and `ic` (the chord). A note is part of the range where it starts. So `dw` from the middle of a gap deletes nothing.
 
 ## If you know Vim
 
-`in` stands where `iw` would. `dd` takes a whole row, which is a pitch. `/d4` searches for a pitch by name, `n` goes on to the next.
+`in` has the place of `iw`. `dd` selects a whole row, which is a pitch. `/d4` finds a pitch by its name, and `n` goes to the next match.
 
 ## Steps
 
-The tutor opens a practice project made for this lesson and checks each step as you do it.
+The tutor opens a practice project for this lesson. It checks each step when you do it.
 
-1. The cursor is on the first note. `w` goes to the next note, wherever its pitch is. Press `w` twice.
-   - ✓ On E4, the third note.
+1. The cursor is on the first note. `w` goes to the next note, at any pitch. Press `w` two times.
+   - ✓ The cursor is on E4, the third note.
 2. `dw` deletes from the cursor up to the next note. Press `dw`.
-   - ✓ E4 is gone; the cursor stays in the gap.
-3. Press `w` to go to G4, and `.` to delete it the same way.
-   - *Hint:* From inside a gap `dw` reaches the next note's start, and a note belongs to where it starts, so nothing goes. Go onto a note first.
-   - ✓ `.` repeated `dw` from the new place.
-4. Press `u` twice to have both notes back.
-   - ✓ The riff is whole again.
-5. `in` is the note under the cursor. `>in` moves it a step later, and the cursor goes with it. Press `>in`, then `.`.
-   - *Hint:* The cursor must be on G4 (beat 4). `u` takes back a move that went wrong.
-   - ✓ G4 is two steps late now: a little push before the beat.
-6. `yie` yanks every note of the clip. Then `$` goes to the end of the clip and `p` pastes them there. Press `yie`, `$`, `p`.
-   - ✓ The riff twice, and the clip grew to hold it.
-7. `c` changes: `cin` deletes the note under the cursor and starts insert mode in its place. Press `^` (the first note), `cin`, then `7k` and `4l`, and `<Esc>`.
-   - *Hint:* `7k` moves the new note up to G, `4l` makes it a beat long.
+   - ✓ E4 is deleted. The cursor stays in the gap.
+3. Press `w` to go to G4. Press `.` to delete it in the same way.
+   - *Hint:* In a gap, `dw` goes up to the start of the next note. A note is part of the range where it starts, so `dw` deletes nothing. Go onto a note first.
+   - ✓ `.` repeated `dw` from the new position.
+4. Press `u` two times to bring back the two notes.
+   - ✓ The riff is complete again.
+5. `in` is the note under the cursor. `>in` moves it one step later, and the cursor moves with it. Press `>in`, then `.`.
+   - *Hint:* The cursor must be on G4 (beat 4). If a move is wrong, press `u`.
+   - ✓ G4 is two steps late now. It gives a small push before the beat.
+6. `yie` copies all the notes of the clip. `$` goes to the end of the clip, and `p` pastes the notes there. Press `yie`, `$` and `p`.
+   - ✓ The riff plays two times, and the clip became longer to hold it.
+7. `c` changes. `cin` deletes the note under the cursor and starts insert mode at its position. Press `^` (the first note) and `cin`. Then press `7k`, `4l` and `<Esc>`.
+   - *Hint:* `7k` moves the new note up to G, and `4l` makes it one beat long.
    - ✓ The riff starts on G now.
-8. `/` searches: `/d4` and `<CR>` go to the next D4. Then `dd` deletes every note of that pitch. Press `/d4`, `<CR>`, `dd`.
-   - ✓ No D4 left anywhere in the clip.
-9. Press `<C-w>p` to go back to the arrange view and `<Space>` to listen; `<Space>` stops.
-   - ✓ Your changed riff.
+8. `/` finds a pitch: `/d4` and `<CR>` go to the next D4. Then `dd` deletes all the notes of that pitch. Press `/d4`, `<CR>` and `dd`.
+   - ✓ The clip has no D4 now.
+9. Press `<C-w>p` to return to the arrange view. Press `<Space>` to listen, and `<Space>` to stop.
+   - ✓ Your changed riff plays.
 
-## What you did
+## What we did
 
-`dw`, `.`, `>in`, `yie` `p`, `cin`, `dd` and `/`: the grammar of lesson 5, on notes.
+We used the grammar of lesson 5 on notes: `dw`, `.`, `>in`, `yie` `p`, `cin`, `dd` and `/`.
 
 Previous: [The grammar: operators, motions, text objects](05-grammar.md) · [All lessons](README.md) · Next: [Visual mode: select, then act](07-visual.md)

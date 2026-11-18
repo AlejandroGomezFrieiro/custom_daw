@@ -29,7 +29,7 @@ local M = {}
 
 M.extensions = { "mid", "midi", "smf", "kar" }
 
---- Whether a path names a MIDI file, by its ending.
+--- True if a path names a MIDI file, from its file ending.
 function M.is_midi_file(path)
   local ext = (tostring(path):match("%.([^./]+)$") or ""):lower()
   for _, known in ipairs(M.extensions) do
@@ -283,8 +283,8 @@ local function settle(list)
   return out
 end
 
---- Read the bytes of a Standard MIDI File. Returns, in ticks (`ppq` to a
---- beat) from the start:
+--- Read the bytes of a Standard MIDI File. Returns, in ticks (`ppq` for
+--- each beat) from the start:
 ---
 ---   { format, ppq, length,
 ---     tracks = { { name, instrument, length,
@@ -293,13 +293,13 @@ end
 ---     tempos = { { tick, bpm } }, signatures = { { tick, num, den } },
 ---     markers = { { tick, text } }, skipped = { [what] = count } }
 ---
---- Channels count from 0. A control's `type` is "cc" (with `number`),
---- "bend" (0 to 16383, 8192 in the middle), "pressure" (with `key` for a
---- single note's) or "program" (with `program`); values are as in the
---- file. Format 2 files (independent patterns) are read as one track after
---- another. A file timed in frames of SMPTE time code is read as if at 120
---- beats a minute, which is what its seconds are then. Returns nil and a
---- reason when it is not a MIDI file.
+--- Channels count from 0. The `type` of a control is "cc" (with `number`),
+--- "bend" (0 to 16383, 8192 in the middle), "pressure" (with `key` for the
+--- pressure of one note) or "program" (with `program`). Values are as in
+--- the file. paw reads format 2 files (independent patterns) as one track
+--- after the other. paw reads a file timed in frames of SMPTE time code at
+--- 120 beats a minute, because its seconds are then correct. Returns nil
+--- and a reason when it is not a MIDI file.
 function M.parse(data)
   -- A RIFF MIDI file (.rmi) holds a plain one.
   if data:sub(1, 4) == "RIFF" and data:sub(9, 12) == "RMID" then
@@ -430,9 +430,10 @@ local function encode_track(track, conductor)
   return "MTrk" .. u32(#chunk) .. chunk
 end
 
---- Bytes of a Standard MIDI File from the shape `parse` returns (`format`
---- 0 or 1, `ppq`, `tracks`, and `tempos`, `signatures`, `markers`, which go
---- in the first track). Ticks may be fractions; they are rounded.
+--- The bytes of a Standard MIDI File from the shape that `parse` returns
+--- (`format` 0 or 1, `ppq`, `tracks`, and `tempos`, `signatures` and
+--- `markers`, which go in the first track). Ticks can be fractions. paw
+--- rounds them.
 function M.encode(file)
   local tracks = file.tracks or {}
   if #tracks == 0 then tracks = { {} } end
@@ -446,9 +447,9 @@ end
 
 -- From a file to tracks and clips -----------------------------------------------
 
---- What goes on one track: { name, channel, drums, notes, controls }, in
---- ticks. A format 0 file's one track is split by channel; any other
---- track with notes is one part. With `merge`, everything is one part.
+--- The data for one track: { name, channel, drums, notes, controls }, in
+--- ticks. paw splits the one track of a format 0 file by channel. Each
+--- other track with notes is one part. With `merge`, all is one part.
 function M.parts(file, merge)
   local parts = {}
   local function part(name, notes, controls)
@@ -620,9 +621,9 @@ local function notes_in(parts)
   return n
 end
 
---- Open a MIDI file as a new project with no file of its own (see the top
---- of this file). Returns { tracks, notes, skipped }; errors when the file
---- cannot be read, leaving the open project alone.
+--- Open a MIDI file as a new project with no file (see the top of this
+--- file). Returns { tracks, notes, skipped }. If paw cannot read the file,
+--- it raises an error, and the open project does not change.
 function M.open(path)
   local file, why = M.read(path)
   if not file then error(why, 0) end
@@ -642,11 +643,12 @@ function M.open(path)
   return { tracks = tracks, notes = notes_in(parts), skipped = M.skipped_text(file) }
 end
 
---- Bring a MIDI file into the project: its parts on new tracks below the
---- cursor's, at the cursor (or `opts.start`); with `opts.track`, all of it
---- as one clip on that track instead. The tempo map is left alone unless
---- `opts.tempo`, which puts the file's from where it starts on, and its
---- markers are added. Returns { tracks, clips, notes, skipped }.
+--- Import a MIDI file into the project. Its parts go on new tracks below
+--- the track of the cursor, at the cursor (or `opts.start`). With
+--- `opts.track`, all of it goes as one clip on that track. The tempo map
+--- does not change, unless `opts.tempo`. Then the tempo map of the file
+--- applies from its start. paw adds the markers of the file. Returns
+--- { tracks, clips, notes, skipped }.
 function M.import(path, opts)
   opts = opts or {}
   local file, why = M.read(path)
@@ -745,8 +747,8 @@ local function export_track(track, only)
 end
 
 --- Write a format 1 MIDI file with the tempo map, time signatures and
---- markers: of the whole project, of `opts.tracks` (tracks or ids), or of
---- `opts.clips` (ids) alone. Returns how many notes went in.
+--- markers. It contains the whole project, `opts.tracks` (tracks or ids),
+--- or only `opts.clips` (ids). Returns the number of notes written.
 function M.export(path, opts)
   opts = opts or {}
   local tracks, only = {}, nil

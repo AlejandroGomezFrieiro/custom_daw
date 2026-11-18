@@ -66,17 +66,17 @@ local function limited(name, call, fn, ...)
   return result
 end
 
---- Call `fn(...)` under the time limit for Lua (`paw.opt.lua_limit`): a
---- call that runs too long is stopped and reported as `name`; errors are
---- reported, not raised. Returns what `fn` returned.
+--- Call `fn(...)` under the time limit for Lua (`paw.opt.lua_limit`). paw
+--- stops a call that runs too long, and reports it as `name`. paw reports
+--- errors and does not raise them. Returns the results of `fn`.
 function M.guard(name, fn, ...)
   if deadline or (paw.opt.lua_limit or 0) <= 0 then return paw.try(fn, ...) end
   return unpack(limited(name, paw.try, fn, ...))
 end
 
 --- Call `fn(...)` with the time limit as `guard` does, but give its error
---- to the caller instead of reporting it: for a call whose caller is told
---- what went wrong, such as a request on the control socket.
+--- to the caller and do not report it. Use it for a call whose caller must
+--- know the problem, for example a request on the control socket.
 function M.call(name, fn, ...)
   if deadline or (paw.opt.lua_limit or 0) <= 0 then return fn(...) end
   local result = limited(name, pcall, fn, ...)
@@ -95,16 +95,16 @@ function M.named(name, fn, ...)
   return unpack(result)
 end
 
---- Give the running call more time, as `:lua` does: `ms` from now.
+--- Give the current call more time, as `:lua` does: `ms` from now.
 function M.extend(ms)
   if deadline then set(math.max(deadline, api.now() + ms)) end
 end
 
---- Mark a function that is not the runtime's own. Where the limit reaches
---- into compiled code this does nothing. Where it does not, the function
---- and every function made inside it are kept out of the JIT compiler, so
---- that the limit can stop their loops (unless the limit is turned off with
---- `paw.opt.lua_limit = 0` before the code is loaded).
+--- Mark a function that the runtime did not write. Where the limit can stop
+--- compiled code, this does nothing. Where it cannot, the JIT compiler does
+--- not compile the function and each function made inside it. So the
+--- limit can stop their loops (unless `paw.opt.lua_limit = 0` disables the
+--- limit before paw loads the code).
 function M.untrusted(fn)
   if not async and type(fn) == "function" and jit and jit.off and (paw.opt.lua_limit or 0) > 0 then
     jit.off(fn, true)

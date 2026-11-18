@@ -268,8 +268,8 @@ local function brief(desc)
   return (desc:match("^[^\n]*"):gsub(":? `.*$", ""))
 end
 
---- The list of candidates, over the bottom of the screen just above the
---- command line, starting under the word they complete.
+--- The list of candidates, over the bottom of the screen immediately above
+--- the command line. It starts below the word that they complete.
 function M.draw_popup(buf)
   local a = active
   local at = anchored(a)
@@ -418,11 +418,12 @@ function M.read_value(text, now, parse)
   return parse((text:gsub("^=%s*", "")))
 end
 
---- Ask for an exact value on the command line: a number, `+2` and `-3` to
---- step from the value now, `=-6` for a value below zero.
+--- Ask for an exact value on the command line: a number, or `+2` and `-3`
+--- to change the current value by steps. `=-6` gives a value below zero.
 ---   paw.ui.ask_value({ label = "Volume", now = -8, unit = "dB", min = -60, max = 12 }, function(v) ... end)
---- Options: `show(value)` for how the value now is written, `parse(text)`
---- for reading one absolute value, `min` and `max` to keep it within.
+--- The options are `show(value)`, which writes the current value,
+--- `parse(text)`, which reads one absolute value, and `min` and `max`, the
+--- limits of the value.
 function M.ask_value(opts, set)
   local now = opts.now
   local shown = opts.show and opts.show(now) or (string.format("%g", now) .. (opts.unit and opts.unit ~= "" and " " .. opts.unit or ""))

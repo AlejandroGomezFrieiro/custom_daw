@@ -61,7 +61,7 @@ function M.ids()
   return out
 end
 
---- Whether a clip is one of the editable ones.
+--- True if a clip is one of the editable clips.
 function M.editable(id)
   for _, other in ipairs(M.ids()) do
     if other == id then return true end
@@ -115,8 +115,8 @@ end
 
 -- Which clips -----------------------------------------------------------------
 
---- Edit these clips together, `active` (or the first of them) taking new
---- notes. Clips that are not MIDI are left out.
+--- Edit these clips together. `active` (or the first of them) gets the new
+--- notes. paw does not use clips that are not MIDI.
 function M.open(ids, active)
   local list = {}
   for _, id in ipairs(ids) do
@@ -132,15 +132,16 @@ function M.open(ids, active)
   changed()
 end
 
---- Edit the active clip alone: what opening a clip does.
+--- Edit the active clip alone. This is what paw does when you open a clip.
 function M.only()
   if #others == 0 then return end
   others = {}
   changed()
 end
 
---- Make a clip the active one. One that is not editable yet takes the old
---- active clip's place in the set; the cursor stays where it is in the song.
+--- Make a clip the active clip. A clip that is not editable yet takes the
+--- place of the old active clip in the set. The cursor stays at its
+--- position in the song.
 function M.activate(id)
   local view = roll()
   local old, new = midi(view.clip_id), midi(id)
@@ -175,8 +176,8 @@ function M.cycle(n)
   end
 end
 
---- Add a clip to the editable set, or take it out. Taking out the active
---- clip makes the next one active; the last one stays.
+--- Add a clip to the editable set, or remove it. If you remove the active
+--- clip, the next clip becomes active. The last clip stays.
 function M.toggle(id)
   if not midi(id) then return end
   local ids = M.ids()
@@ -227,9 +228,9 @@ function M.notes(range, parts)
   return out
 end
 
---- The note of an editable clip on `pitch` sounding at roll beat `beat`,
---- the active clip's first: the note (in the roll's beats), its place and
---- its part.
+--- The note of an editable clip on `pitch` that sounds at roll beat `beat`,
+--- the active clip first. Returns the note (in the beats of the roll), its
+--- place and its part.
 function M.note_at(pitch, beat, parts)
   for _, part in ipairs(parts or M.parts()) do
     local note, place = part.clip:note_at(pitch, beat - part.offset)
@@ -246,10 +247,10 @@ local function is_drums(track)
   return type(track.meta) == "table" and track.meta.drums ~= nil
 end
 
---- The tracks whose notes could show behind the roll's: every track (of
---- the scope, in a narrowed tab) but the active clip's, with MIDI clips.
---- `{ id, name, color, drums, on }`
---- each, `on` saying whether its notes show.
+--- The tracks whose notes can show behind the notes of the roll. These are
+--- the tracks with MIDI clips (of the scope, in a narrowed tab), but not the
+--- track of the active clip. `{ id, name, color, drums, on }` each. `on`
+--- tells if its notes show.
 function M.tracks()
   local a = midi(M.active())
   if not a then return {} end
@@ -287,19 +288,19 @@ function M.tracks()
   return out
 end
 
---- Show a track's notes behind the roll's, or not; nil goes back to what
---- `paw.opt.roll_context` says.
+--- Show the notes of a track behind the notes of the roll, or not. nil
+--- returns to the value of `paw.opt.roll_context`.
 function M.show_track(id, on)
   shown[id] = on
   changed()
 end
 
---- The context notes: those of the active clip's track's other clips and
---- of the shown tracks' clips (not the editable ones) that sound within the
---- editable clips' stretch, in the roll's beats:
---- `{ pitch, start, length, velocity, clip, track, color }` each, at most
---- `paw.opt.roll_context_max` of them. Kept until the project, the set of
---- clips or the toggles change.
+--- The context notes, in the beats of the roll. These are the notes of the
+--- other clips of the active clip's track, and of the clips of the shown
+--- tracks (not the editable clips), that sound in the range of the editable
+--- clips. Each is `{ pitch, start, length, velocity, clip, track, color }`,
+--- at most `paw.opt.roll_context_max` of them. paw keeps them until the
+--- project, the set of clips or the toggles change.
 function M.context()
   local a = midi(M.active())
   if not a then return {} end
@@ -339,7 +340,7 @@ function M.context()
   return out
 end
 
---- The context note on `pitch` sounding at roll beat `beat`, if any.
+--- The context note on `pitch` that sounds at roll beat `beat`, if any.
 function M.context_at(pitch, beat)
   for _, n in ipairs(M.context()) do
     if n.pitch == pitch and beat >= n.start - EPS and beat < n.start + n.length - EPS then return n end
@@ -347,8 +348,8 @@ function M.context_at(pitch, beat)
 end
 
 --- The pitches that sound at roll beat `beat`, in the editable clips and
---- the context, lowest first; and the chord they make, by name, when
---- `paw.harmony` is there to say.
+--- the context, lowest first. The second value is the name of the chord
+--- that they make, when `paw.harmony` can tell it.
 function M.sounding(beat)
   local set, out = {}, {}
   for _, n in ipairs(M.notes({ from = beat, to = beat + EPS })) do set[n.pitch] = true end
@@ -397,10 +398,10 @@ local function clip_of(track, at)
   return best
 end
 
---- Make the track `n` places after the active clip's among those the roll
---- shows (before it with a negative `n`) the active one: its clip under
---- the cursor takes new notes, and the old one's notes show behind. With
---- `wrap` it goes round. False when the roll shows no other track.
+--- Make active the track `n` places after the track of the active clip, in
+--- the tracks that the roll shows (before it with a negative `n`). Its clip
+--- under the cursor gets the new notes. The notes of the old clip show
+--- behind. With `wrap`, it goes round. False when the roll shows no other track.
 function M.step_track(n, wrap)
   local view, list = roll(), M.visible()
   local a = midi(M.active())
@@ -423,10 +424,10 @@ end
 
 -- Choosing --------------------------------------------------------------------
 
---- Every clip near the roll, as rows for a list: each shown track (`kind`
---- "track", `on` whether its notes show) and under it its MIDI clips that
---- reach into the roll's stretch (`kind` "clip", `on` whether editable,
---- `active`). The active clip's track comes first, with its clips.
+--- Each clip near the roll, as rows for a list. Each shown track is a row
+--- (`kind` "track", `on` tells if its notes show). Under it are its MIDI
+--- clips in the range of the roll (`kind` "clip", `on` tells if it is
+--- editable, `active`). The track of the active clip is first, with its clips.
 function M.rows()
   local a = midi(M.active())
   if not a then return {} end
@@ -450,9 +451,9 @@ function M.rows()
   return out
 end
 
---- `:roll.tracks`: a list of the tracks near the roll, Enter showing or
---- hiding each one's notes, and of their clips, Enter adding each to the
---- editable set or taking it out.
+--- `:roll.tracks`: a list of the tracks near the roll and of their clips.
+--- On a track, Enter shows or hides its notes. On a clip, Enter adds it to
+--- the editable set or removes it.
 function M.pick()
   if not M.active() then return paw.notify("open a clip in the piano roll first", "warn") end
   local function line(row)

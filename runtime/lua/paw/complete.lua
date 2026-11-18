@@ -264,8 +264,7 @@ end
 
 -- Requests --------------------------------------------------------------------
 
---- Drop the request being answered, telling the sources that still owe
---- an answer.
+--- Cancel the current request, and tell this to the sources that did not answer yet.
 function M.cancel()
   local r = request
   if not r then return end
@@ -364,7 +363,7 @@ function M.request(trigger)
   return r.id
 end
 
---- Whether a request is waiting for answers.
+--- True if a request waits for answers.
 function M.pending()
   return request ~= nil
 end
@@ -401,11 +400,11 @@ local function places_of(notes, named)
   return out
 end
 
---- Write the alternative that shows into the clip, as one edit: all of it,
---- or with `next_only` the notes of its first onset alone (a note, or the
---- notes of a chord that start together), keeping the rest showing. The
---- cursor goes to where the accepted part ends. Returns whether anything
---- was written.
+--- Write the alternative that shows into the clip, as one edit. Write all
+--- of it, or with `next_only` only the notes of its first onset (a note, or
+--- the notes of a chord that start together). The rest continues to show.
+--- The cursor goes to the end of the accepted part. Returns true if it
+--- wrote notes.
 function M.accept(next_only)
   local cur = M.current()
   if not cur then return false end
@@ -476,9 +475,9 @@ end
 
 -- Audition --------------------------------------------------------------------
 
---- Play the alternative that shows through the clip's track, starting a
---- bar before it with the notes already there, without changing the
---- project. Not while the transport runs.
+--- Play the alternative that shows through the track of the clip. It starts
+--- one bar before it, with the notes that are there, and the project does
+--- not change. Not while the transport runs.
 function M.audition()
   local cur = M.current()
   if not cur then return end

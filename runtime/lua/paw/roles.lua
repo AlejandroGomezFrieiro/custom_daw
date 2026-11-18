@@ -42,11 +42,11 @@ local M = {
 local hits, drawing = {}, nil
 paw.seats.keep("roles", function() return hits end, function(h) hits = h end, function() return {} end)
 
---- Define a role: `spec.cells(buf, props, ctx)` draws it in cells (it is
---- required: the terminal comes first); `spec.props` names its props and
---- what they hold, for documentation and `paw.ui.roles`; `spec.bound` the
---- props a frontend takes from the live value instead when the mark is
---- bound to one, which are not sent to it.
+--- Define a role. `spec.cells(buf, props, ctx)` draws it in cells. It is
+--- necessary, because the terminal comes first. `spec.props` names its
+--- props and their contents, for documentation and `paw.ui.roles`.
+--- `spec.bound` is the props that a frontend takes from the live value when
+--- the mark is bound to one. paw does not send these props.
 function M.define(name, spec)
   if type(name) ~= "string" or name == "" then error("a role needs a name", 2) end
   if type(spec) ~= "table" or type(spec.cells) ~= "function" then error("role " .. name .. ": cells(buf, props, ctx) draws it", 2) end
@@ -280,11 +280,12 @@ function M.pointer(view, name, event)
   return M.gesture(view, e)
 end
 
---- A pointer event from a frontend that is sent scenes (paw/scene.lua),
---- in units of its window `id`, over the view `view` (its window of the
---- layout `win`, if any): on a hit region of the scene it was sent, to the
---- region's gesture, with `x` and `y` in units; a drag begun there goes on
---- in units (`held`, what the frontend's watcher keeps). True when taken.
+--- A pointer event from a frontend that gets scenes (paw/scene.lua), in
+--- units of its window `id`, over the view `view` (its window of the
+--- layout `win`, if any). On a hit region of the scene, the event goes to
+--- the gesture of the region, with `x` and `y` in units. A drag that
+--- started there continues in units (`held`, which the watcher of the
+--- frontend keeps). True when it takes the event.
 function M.input(client, id, view, win, event, held)
   local kind = event.kind
   local mods = (event.ctrl and "C" or "") .. (event.alt and "A" or "") .. (event.shift and "S" or "")

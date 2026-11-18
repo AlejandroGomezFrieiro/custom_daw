@@ -26,13 +26,13 @@ local function new(x, y, width, height, cx, cy, cw, ch)
   return setmetatable({ x = x, y = y, width = width, height = height, cx = cx, cy = cy, cw = cw, ch = ch }, Buf)
 end
 
---- The buffer covering a whole screen of the given size.
+--- The buffer that covers a whole screen of the given size.
 function Buf.root(width, height)
   return new(0, 0, width, height, 0, 0, width, height)
 end
 
 --- Write `text` at column `x`, row `y` of this buffer in highlight group
---- `style`, clipped to it; returns the columns written.
+--- `style`, clipped to the buffer. Returns the number of columns written.
 function Buf:text(x, y, text, style)
   return grid_text(self.x + x, self.y + y, text, style, self.cx, self.cy, self.cw, self.ch)
 end
@@ -42,28 +42,29 @@ function Buf:fill(x, y, w, h, char, style)
   grid_fill(self.x + x, self.y + y, w, h, char, style, self.cx, self.cy, self.cw, self.ch)
 end
 
---- Keep an area for the pixels of a view that paints (`name`, the view
---- being drawn by default), where the terminal shows images: its `paint`
---- draws there at the terminal's cell size, after the screen is drawn.
---- The cells are left blank. False where the terminal shows cells only,
---- for the view to draw them instead:
+--- Keep an area for the pixels of a view that paints (`name`, by default
+--- the view that paw draws), where the terminal shows images. Its `paint`
+--- draws there at the cell size of the terminal, after paw draws the
+--- screen. The cells stay blank. False where the terminal shows only cells.
+--- Then the view draws them:
 ---   if buf:surface(0, 1, buf.width, buf.height - 1) then return end
 function Buf:surface(x, y, w, h, name)
   return paw.ui.surface(self, x, y, w, h, name)
 end
 
---- Keep an area for pixels drawn by `opts.draw(g, px)`, where the terminal
---- shows images: `g` a painter of `paw.canvas`, `px` `{ w, h, cell = { w,
---- h }, fg, bg, view }`, the strip's size and the terminal's cell in pixels and
---- its colours, and for a strip partly off its window the part that shows
---- (`view`: x, y, w, h). Called once the screen is drawn. `opts.key` names the
---- strip (images are kept by it: put the window's id in it for a view
---- that can be in two windows; the view and its window by default).
---- With `opts.under`, the cells the view draws there stay, above the
---- picture (its cursor, labels, the playhead); else they are left blank.
+--- Keep an area for pixels that `opts.draw(g, px)` draws, where the
+--- terminal shows images. `g` is a painter of `paw.canvas`. `px` is
+--- `{ w, h, cell = { w, h }, fg, bg, view }`: the size of the strip, the
+--- cell of the terminal in pixels, and its colors. For a strip that is
+--- partly off its window, `view` is the part that shows (x, y, w, h). paw
+--- calls it after it draws the screen. `opts.key` names the strip, and paw
+--- keeps images by this name. For a view that can be in two windows, put
+--- the id of the window in it. The default is the view and its window.
+--- With `opts.under`, the cells that the view draws there stay above the
+--- picture (its cursor, labels, the playhead). If not, they are blank.
 --- False where there are no pixels (`paw.opt.graphics` off, a terminal
---- without images, tmux, or one that cannot put text over an image under
---- it), for the view to draw cells there instead:
+--- without images, tmux, or a terminal that cannot put text over an image).
+--- Then the view draws cells there:
 ---   local pictured = plot:strip(0, 0, plot.width, plot.height, {
 ---     key = "curve:" .. win.id, under = true,
 ---     draw = function(g, px) paw.plot.curve(g, px, { ... }) end,
@@ -72,10 +73,10 @@ function Buf:strip(x, y, w, h, opts)
   return paw.ui.strip(self, x, y, w, h, opts)
 end
 
---- Mark a role (paw/roles.lua) over an area: drawn there with the role's
---- cells in a terminal, painted as what it is by a frontend that knows it.
---- `props.hit` makes it a hit region, `props.bind` ties it to a live value.
---- Returns the buffer of the area.
+--- Mark a role (paw/roles.lua) over an area. A terminal draws the cells of
+--- the role there. A frontend that knows the role paints it as what it is.
+--- `props.hit` makes it a hit region, and `props.bind` ties it to a live
+--- value. Returns the buffer of the area.
 ---   buf:mark("fader", 4, 2, 3, 12, { at = 0.8, hit = { kind = "fader", track = id } })
 function Buf:mark(role, x, y, w, h, props)
   return paw.roles.mark(self, role, x, y, w, h, props)
@@ -87,11 +88,11 @@ function Buf:hit(x, y, w, h, action)
   paw.roles.hit(self, x, y, w, h, action)
 end
 
---- A plane over an area (paw/roles.lua, "Planes"): what is marked in it is
---- placed by a domain of its own along each axis, `opts.x` and `opts.y`
---- (`{ domain, from, per }`: `per` cells a unit of the domain, `from` at
---- the area's edge); a terminal shows it on the cells it rounds to, a
---- window where it is.
+--- A plane over an area (paw/roles.lua, "Planes"). Each axis of the plane
+--- has its own domain, `opts.x` and `opts.y` (`{ domain, from, per }`):
+--- `per` is the cells for one unit of the domain, and `from` is the value at
+--- the edge of the area. A terminal shows a mark on the cells it rounds to.
+--- A window shows it at its exact position.
 ---   local roll = buf:plane(5, 2, 60, 20, { key = "roll", x = { domain = "beat", from = 0, per = 4 },
 ---     y = { domain = "pitch", from = 73, per = -1 }, hit = { kind = "grid" } })
 ---   roll:mark("note", 1.5, 60, 0.5, 1, { label = "C4" })
@@ -99,9 +100,10 @@ function Buf:plane(x, y, w, h, opts)
   return paw.roles.plane(self, x, y, w, h, opts)
 end
 
---- Buffers side by side across this one, a width each from the left with
---- `gap` columns between (0 by default); a width of "*" takes what the
---- others leave. What does not fit is left out.
+--- Buffers side by side across this buffer, each with a width from the
+--- left, with `gap` columns between them (0 by default). A width of "*"
+--- takes the space that the others leave. paw does not make the buffers
+--- that do not fit.
 ---   local name, body = buf:columns({ 12, "*" })
 function Buf:columns(widths, gap)
   gap = gap or 0

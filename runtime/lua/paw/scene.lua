@@ -81,12 +81,12 @@ local function push(client, all)
   end)
 end
 
---- The values a frontend moves bound nodes by (see crates/paw-scene's
---- `bind`): the playhead, the clock, the engine's load, and each track's
---- meter, its loudest of late, its clip light and its input, by track id;
---- rounded to what a frontend can show, so that an idle program has
---- nothing new to say (the load as `paw.audio.load` gives it, as
---- `frontend.watch` sends it). Each call gives them as they are then.
+--- The values that move the bound nodes of a frontend (see the `bind` of
+--- crates/paw-scene). These are the playhead, the clock and the load of the
+--- engine. For each track id, they are the meter, the recent peak, the clip
+--- light and the input. paw rounds them to what a frontend can show. So a program that
+--- does nothing has no new data to send (the load is as `paw.audio.load`
+--- gives it, as `frontend.watch` sends it). Each call gives the current values.
 local function live()
   local t, e = api.transport_get(), api.engine_get()
   local meters, peaks, clips, inputs, levels = {}, {}, {}, {}, paw.audio.levels()
@@ -127,8 +127,8 @@ local function retime()
   timer = next(watchers) and paw.every(33, tick) or nil
 end
 
---- After a turn of the kernel: the windows whose drawing may have changed
---- are pushed now, not at the next tick.
+--- Call it after a turn of the kernel. paw pushes now, not at the next
+--- tick, the windows whose drawing can be different.
 function M.turn()
   if not next(watchers) then return end
   local redraws = api.ui_redraws()
@@ -216,7 +216,7 @@ paw.remote.methods["scene.blob"] = function(client, key)
   return api.scene_blob(client, key)
 end
 
---- A connection closed or stopped watching: nothing more is kept for it.
+--- A connection closed or stopped to watch. paw keeps no more data for it.
 function M.closed(client)
   if not watchers[client] then return end
   watchers[client] = nil
@@ -224,8 +224,8 @@ function M.closed(client)
   retime()
 end
 
---- Who is watching: `{ client, windows }` each, `windows` the names of
---- those it has said the size of.
+--- The watchers: `{ client, windows }` each. `windows` is the names of the
+--- windows whose size it gave.
 function M.watchers()
   local out = {}
   for client, w in pairs(watchers) do

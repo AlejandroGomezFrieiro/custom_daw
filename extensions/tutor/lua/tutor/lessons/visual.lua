@@ -3,24 +3,28 @@ return {
   id = "visual",
   title = "Visual mode: select, then act",
   intro = [[
-Sometimes it is easier to see what you are about to change before you change
-it. Visual mode turns that round: first select, with the motions you know, then
-press an operator, and it acts on the selection.
+In this lesson, we select clips and tracks first, and then we delete, copy,
+mute and transpose them.
 
-`v` selects a stretch of time (and `j` `k` stretch it across tracks), `V` whole
-tracks, and in the piano roll `<C-v>` a rectangle of pitches and time. The
-three tracks here have four one-bar clips each.]],
+Sometimes you want to see the items before you change them. Visual mode
+changes the order. First, select with the motions that you know. Then press
+an operator, and it does its action on the selection.
+
+`v` selects a range of time, and `j` `k` extend it across tracks. `V` selects
+whole tracks. In the piano roll, `<C-v>` selects a rectangle of pitches and
+time. Each of the three tracks here has four clips of one bar.]],
   idea = [[
-In visual mode motions stretch the selection, `o` jumps to its other end, and an
-operator (`d` `y` `c` `>` `<` `gc` `gl`) or one of the selection keys acts on it:
-`x` delete, `p` replace it with the register, `~` mute, `J` join clips,
-`<C-a>` `<C-x>` transpose (with a count: `12<C-a>` an octave). `gv` selects the
-last selection again. `<Esc>` leaves without doing anything.]],
+In visual mode, the motions extend the selection, and `o` goes to its other
+end. An operator (`d` `y` `c` `>` `<` `gc` `gl`) or a selection key does an
+action on it. `x` deletes, `p` replaces it with the register, `~` mutes, `J`
+joins clips, and `<C-a>` `<C-x>` transpose. With a count, `12<C-a>` transposes
+one octave. `gv` selects the last selection again. `<Esc>` leaves visual mode
+and does nothing.]],
   vim = [[
-`v` `V` `<C-v>`, `o`, `gv` and operators on a selection are Vim's. A count
-typed in visual mode before `>` `<` or `<C-a>` is the amount, as in Vim.
-In the arrange view `v` stretched with `j` `k` is already a block of time on
-some tracks; `V` whole tracks are Vim's whole lines.]],
+`v` `V` `<C-v>`, `o`, `gv` and operators on a selection are from Vim. In
+visual mode, a count before `>` `<` or `<C-a>` is the amount, as in Vim. In
+the arrange view, `v` with `j` `k` is already a block of time on some tracks.
+`V` selects whole tracks, as Vim selects whole lines.]],
   setup = function(look)
     paw.project.tempo = 100
     local function track(name, device, params, make)
@@ -38,7 +42,7 @@ some tracks; `V` whole tracks are Vim's whole lines.]],
   at = function() paw.cursor.set_track(paw.track("Drums")) end,
   steps = {
     {
-      say = "Press `v` to start selecting (the status line says VISUAL), then `W` to stretch the selection over the first bar.",
+      say = "Press `v` to start a selection. The status line shows VISUAL. Then press `W` to extend the selection over the first bar.",
       keys = { "v", "W" },
       check = function()
         local s = paw.keymap.selection()
@@ -47,85 +51,85 @@ some tracks; `V` whole tracks are Vim's whole lines.]],
       done = "The first bar of Drums is selected.",
     },
     {
-      say = "`j` stretches it down to the next track. Press `j`.",
+      say = "`j` extends the selection down to the next track. Press `j`.",
       keys = { "j" },
       check = function()
         local s = paw.keymap.selection()
         return s and s.r0 == 1 and s.r1 == 2 and s.c1 == 4
       end,
-      done = "The first bar of Drums and Bass.",
+      done = "The first bar of Drums and Bass is selected.",
     },
     {
-      say = "Now act on it: `x` deletes the selection. Press `x`.",
+      say = "Now do an action on the selection: `x` deletes it. Press `x`.",
       keys = { "x" },
       check = function(_, look) return look.names("Drums") == "d2 d3 d4" and look.names("Bass") == "b2 b3 b4" end,
-      done = "Deleted from both tracks, and back in NORMAL.",
+      done = "The clips are deleted from the two tracks, and the mode is NORMAL again.",
     },
     {
-      say = "Press `u` to undo it.",
+      say = "Press `u` to undo the delete.",
       keys = { "u" },
       check = function(ctx, look) return look.ran(ctx, "undo") and look.names("Drums") == "d1 d2 d3 d4" and look.names("Bass") == "b1 b2 b3 b4" end,
-      done = "Back.",
+      done = "The clips are back.",
     },
     {
-      say = "`V` selects whole tracks. Press `V`, `j` to take Drums and Bass, and `y` to yank (copy) them.",
+      say = "`V` selects whole tracks. Press `V`. Press `j` to select Drums and Bass. Press `y` to yank (copy) them.",
       keys = { "V", "j", "y" },
       check = function()
         local r = paw.keymap.getreg()
         return r and r.kind == "tracks" and #r.tracks == 2 and paw.keymap.mode == "n"
       end,
-      done = "Two tracks are in the register.",
-      hint = "`<Esc>` leaves visual mode if it went wrong; then `gg` and start again.",
+      done = "The register contains two tracks.",
+      hint = "If the selection is wrong, press `<Esc>` to leave visual mode. Then press `gg` and start again.",
     },
     {
-      say = "`G` goes to the last track and `p` pastes the tracks below it. Press `G`, then `p`.",
+      say = "`G` goes to the last track, and `p` pastes the tracks below it. Press `G`, then `p`.",
       keys = { "G", "p" },
       check = function() return #paw.tracks() == 5 end,
-      done = "Five tracks: copies of Drums and Bass at the bottom.",
+      done = "There are five tracks. The copies of Drums and Bass are at the bottom.",
     },
     {
-      say = "Press `u` to take the copies away again.",
+      say = "Press `u` to remove the copies.",
       keys = { "u" },
       check = function(ctx, look) return look.ran(ctx, "undo") and #paw.tracks() == 3 end,
-      done = "Three tracks.",
+      done = "There are three tracks again.",
     },
     {
-      say = "`gv` selects what was selected last: the two tracks. Press `gv`, then `~` to mute them.",
+      say = "`gv` selects the last selection again: the two tracks. Press `gv`, then `~` to mute them.",
       keys = { "gv", "~" },
       check = function(_, look) return look.track("Drums").mute and look.track("Bass").mute end,
-      done = "Drums and Bass are muted: their `M` flags are lit. On whole tracks `~` mutes the tracks; on a stretch of time, the clips in it.",
+      done = "Drums and Bass are muted, and their `M` flags are lit. On whole tracks, `~` mutes the tracks. On a range of time, it mutes the clips in the range.",
     },
     {
       say = "Press `gv` and `~` again to unmute them.",
       keys = { "gv", "~" },
       check = function(ctx, look) return look.became(ctx, "unmuted", not look.track("Drums").mute and not look.track("Bass").mute) end,
-      done = "`~` switches muting on and off.",
+      done = "`~` mutes and unmutes.",
     },
     {
-      say = "In the piano roll too. Press `3G` to go to Keys and `<CR>` to open its first clip.",
+      say = "Visual mode also works in the piano roll. Press `3G` to go to Keys. Press `<CR>` to open its first clip.",
       keys = { "3G", "<CR>" },
       check = function(_, look)
         local _, clip = look.roll()
         return look.focused() == "pianoroll" and clip and clip.name == "k1"
       end,
-      done = "The A minor chord of `k1`.",
+      done = "The piano roll shows the A minor chord of `k1`.",
     },
     {
-      say = "`v` selects a stretch of time at every pitch. Press `v`, then `12<C-a>` to move everything that starts in it up an octave.",
+      say = "`v` selects a range of time at all pitches. Press `v`. Then press `12<C-a>` to move all notes that start in the range up one octave.",
       keys = { "v", "12<C-a>" },
       check = function(_, look)
         local _, clip = look.roll()
         return clip and look.melody(clip) == "69@0+4 72@0+4 76@0+4" and paw.keymap.mode == "n"
       end,
-      done = "The chord is an octave higher. A count in visual mode is how much.",
-      hint = "Type 1, 2, then Ctrl and a, while the status line still says VISUAL.",
+      done = "The chord is one octave higher. In visual mode, a count gives the amount.",
+      hint = "Type 1, 2, then Ctrl and a, while the status line shows VISUAL.",
     },
     {
-      say = "Press `<C-w>p` to go back to the arrange view, and `<Space>` to listen; `<Space>` stops.",
+      say = "Press `<C-w>p` to return to the arrange view. Press `<Space>` to listen, and `<Space>` to stop.",
       keys = { "<C-w>p", "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look) return look.focused() == "arrange" and look.played(ctx) end,
-      done = "The first chord rings out an octave up.",
+      done = "The first chord sounds one octave higher.",
     },
   },
-  outro = "`v` and `V` with motions, then `x` `y` `~` or a count and `<C-a>`; `gv` to select again; the same in the piano roll.",
+  outro = "We selected with `v`, `V` and motions, then used `x`, `y`, `~` or a count and `<C-a>`. `gv` selected again, also in the piano roll.",
 }

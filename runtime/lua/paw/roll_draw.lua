@@ -45,8 +45,7 @@ local function origin()
   return clip and clip.start
 end
 
---- Whether a note is being drawn: insert mode in the piano roll, the
---- drawing kind.
+--- True if you draw a note now: insert mode in the piano roll, the kind that draws.
 function M.active()
   return session ~= nil and paw.keymap.mode == "i"
 end
@@ -135,9 +134,9 @@ local function put()
   }
 end
 
---- Keep the note and go on to the next: "legato" where it ends, "rest" a
---- step (or the count's steps) after that, "chord" at the same start and as
---- long.
+--- Keep the note and go to the next note. "legato" starts it at the end,
+--- "rest" one step (or count steps) after the end, and "chord" at the same
+--- start and with the same length.
 function M.next(how)
   if not session then return end
   sync()
@@ -238,8 +237,8 @@ function M.keys_once()
   keys_once = true
 end
 
---- From drawing to the piano keys without leaving insert mode: what was
---- drawn is written, and the letters are notes from now on.
+--- Change from drawing to the piano keys and stay in insert mode. paw
+--- writes the drawn notes, and the letters are notes from now on.
 function M.to_keys()
   if not session then return end
   M.finish()
@@ -306,8 +305,8 @@ function M.status()
   return "drawing " .. M.describe() .. " · l h longer, shorter · Enter next · Esc writes"
 end
 
---- The notes drawn and kept so far, as "60@1+0.5 64@1+0.5" in the roll's
---- beats; and the one being drawn, "67@1.5+0".
+--- The notes that you drew and kept, as "60@1+0.5 64@1+0.5" in the beats of
+--- the roll. The second value is the note that you draw now, "67@1.5+0".
 function M.text()
   if not session then return "", nil end
   sync()

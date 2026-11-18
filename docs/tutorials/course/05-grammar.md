@@ -2,54 +2,62 @@
 
 # Lesson 5: The grammar: operators, motions, text objects
 
-*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 5`.*
+*This lesson takes about ten minutes. To do it in paw, type `:ext.load tutor`, then `:tutor 5`.*
 
-This is the heart of paw. Most editing is a short sentence: an operator (what to do) followed by a motion or a text object (what to do it to). `d` is delete, `w` is "to the next clip", so `dw` deletes up to the next clip. `ic` is "the clip I am in", so `dic` deletes this clip. A count says how many: `d2W` deletes two bars. Typing the operator twice takes whole tracks: `dd`. And `.` repeats the last change wherever the cursor is now.
+In this lesson, we delete, mute and loop clips with short commands. Then we repeat them with `.`.
 
-In this practice project the Beat track has four clips: kick, snare, fill, crash. Bass plays under them.
+This grammar is the center of paw. Most edits are a short sentence: an operator (the action), then a motion or a text object (the item). `d` is delete and `w` is "to the next clip", so `dw` deletes up to the next clip. `ic` is "the clip under the cursor", so `dic` deletes this clip.
+
+A count gives the quantity: `d2W` deletes two bars. The operator two times selects whole tracks: `dd`. `.` repeats the last change at the cursor.
+
+In this practice project, the Beat track has four clips: kick, snare, fill and crash. Bass plays below them.
 
 ## The idea
 
-Operators: `d` delete, `y` yank (copy), `c` change, `>` `<` move later and earlier, `=` snap to the grid, `gc` mute, `gl` loop. Motions: every key from lesson 2. Text objects: `ic` the clip, `ac` the clip and the gap after it, `ib` the bar, `il` the loop, `it` everything on the track, `ie` the entire project. Learn a few of each and you know their products: six operators and ten motions are sixty commands.
+The operators are `d` delete, `y` yank (copy) and `c` change. `>` `<` move later and earlier, `=` snaps to the grid, `gc` mutes and `gl` loops. The motions are all the keys from lesson 2.
+
+The text objects are `ic` the clip and `ac` the clip with the gap after it. `ib` is the bar, `il` the loop, `it` all of the track and `ie` the project. Learn some of each, and you know all their combinations. Six operators and ten motions make sixty commands.
 
 ## If you know Vim
 
-This is Vim's grammar, unchanged: operator, count, motion or text object; the operator twice for whole lines (tracks); `.` with a new count. `gc` is commenting out, here muting. `gl` (loop) is new. `c` empties the stretch and opens a fresh clip in insert mode.
+This is the grammar of Vim, with no change: an operator, a count, and a motion or a text object. The operator two times selects whole lines, which are tracks here. `.` accepts a new count.
+
+In Vim, `gc` changes lines to comments. Here it mutes. `gl` (loop) is new. `c` makes the range empty and opens a new clip in insert mode.
 
 ## Steps
 
-The tutor opens a practice project made for this lesson and checks each step as you do it.
+The tutor opens a practice project for this lesson. It checks each step when you do it.
 
-1. The cursor is at the start of `kick`. `d` is the delete operator and `w` the motion to the next clip: press `dw`.
-   - *Hint:* After `d` the status line says PENDING: the operator waits for its motion. `<Esc>` cancels it.
-   - ✓ `kick` is gone: `dw` deleted from the cursor to where `snare` starts.
+1. The cursor is at the start of `kick`. `d` is the delete operator and `w` is the motion to the next clip. Press `dw`.
+   - *Hint:* After `d`, the status line shows PENDING: the operator waits for its motion. `<Esc>` cancels it.
+   - ✓ `kick` is deleted. `dw` deleted from the cursor to the start of `snare`.
 2. Press `u` to bring it back.
-   - ✓ All four clips again.
-3. A text object names a thing instead of a movement: `ic` is the clip under the cursor. Press `w` to go to `snare`, then `dic`.
-   - ✓ `dic`: delete in clip. A gap is left where `snare` was.
-4. `.` repeats the last change. Press `w` to go to `fill`, then `.` to delete it too.
-   - ✓ `.` did `dic` again, on the clip under the cursor now.
-5. Undo both: press `u` twice.
-   - ✓ Back to four clips.
+   - ✓ The track has its four clips again.
+3. A text object names an item, not a movement. `ic` is the clip under the cursor. Press `w` to go to `snare`, then press `dic`.
+   - ✓ `dic` means "delete in clip". There is a gap where `snare` was.
+4. `.` repeats the last change. Press `w` to go to `fill`. Then press `.` to delete it too.
+   - ✓ `.` did `dic` again, on the clip that is under the cursor now.
+5. Undo the two changes: press `u` two times.
+   - ✓ The track has four clips again.
 6. A count goes with the motion: `d2W` deletes two bars from the cursor. Press `0`, then `d2W`.
-   - ✓ Two bars of Beat deleted; Bass is untouched, since the operator works on the cursor's track.
-7. Press `u` to undo that.
-   - ✓ Restored.
-8. Other operators take the same motions and objects. `gc` mutes: press `gcic` to mute `kick`.
-   - ✓ `kick` is muted (greyed). `gcic` again would unmute it.
-9. Press `w` to go to `snare` and `.` to mute it the same way.
-   - ✓ `.` repeats any change: deleting, muting, moving.
-10. Typed twice, an operator takes whole tracks: `dd` deletes a track. Press `j` to go to Bass, then `dd`.
-   - ✓ The Bass track is gone, and it is in the register.
-11. `p` puts what was deleted back after the cursor: for a track, below it. Press `p`.
-   - ✓ Bass is back, with its synth and clip. Deleting is cutting.
-12. `gl` is the loop operator. Go up to Beat with `k`, put the cursor on `snare` with `0` and `w`, then press `glic`.
-   - ✓ The loop is the snare clip: the ruler shows it.
-13. Unmute `snare` with `gcic`, and press `<Space>` to hear the loop; `<Space>` stops.
-   - ✓ The snare bar and the bass, round and round.
+   - ✓ Two bars of Beat are deleted. Bass did not change, because the operator works on the track of the cursor.
+7. Press `u` to undo that change.
+   - ✓ The two bars are back.
+8. Other operators accept the same motions and objects. `gc` mutes. Press `gcic` to mute `kick`.
+   - ✓ `kick` is muted and gray. `gcic` again unmutes it.
+9. Press `w` to go to `snare`. Press `.` to mute it in the same way.
+   - ✓ `.` repeats each type of change: delete, mute and move.
+10. An operator two times selects whole tracks: `dd` deletes a track. Press `j` to go to Bass, then press `dd`.
+   - ✓ The Bass track is deleted, and paw keeps it in the register.
+11. `p` puts the deleted item after the cursor. A track goes below the cursor. Press `p`.
+   - ✓ Bass is back, with its synth and its clip. So a delete is also a cut.
+12. `gl` is the loop operator. Press `k` to go up to Beat. Press `0` and `w` to put the cursor on `snare`. Then press `glic`.
+   - ✓ The loop is the snare clip. The ruler shows it.
+13. Press `gcic` to unmute `snare`. Press `<Space>` to hear the loop. `<Space>` stops.
+   - ✓ The snare bar and the bass play again and again.
 
-## What you did
+## What we did
 
-Operator plus motion (`dw`, `d2W`), operator plus text object (`dic`, `gcic`, `glic`), twice for tracks (`dd`), and `.` to repeat.
+We used operators with motions (`dw`, `d2W`) and with text objects (`dic`, `gcic`, `glic`), `dd` for tracks, and `.` to repeat.
 
-Previous: [The piano roll and entering notes](04-pianoroll.md) · [All lessons](README.md) · Next: [The same grammar on notes](06-grammar-notes.md)
+Previous: [The piano roll and insert mode](04-pianoroll.md) · [All lessons](README.md) · Next: [The same grammar on notes](06-grammar-notes.md)

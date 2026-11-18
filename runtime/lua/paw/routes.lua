@@ -60,11 +60,12 @@ function M.reaching(into)
   return walk(back, into)
 end
 
---- Whether `from`'s sound reaches `into`.
+--- True if the sound of `from` goes to `into`.
 function M.feeds(from, into) return M.reached(from)[into] == true end
 
---- The tracks a device can listen to, `{ id, name }` each in the order of
---- the track list: not its own, not the master, and none its own feeds.
+--- The tracks that a device can listen to, `{ id, name }` each, in the
+--- order of the track list. Its own track, the master and the tracks that
+--- its track feeds are not in the list.
 function M.sidechain_sources(device)
   local track = api.device_get(device).track
   local reached = M.reached(track)
@@ -75,8 +76,8 @@ function M.sidechain_sources(device)
   return out
 end
 
---- What a device listens to, as text: the track's name, with "pre" when
---- taken before its fader; nil without one.
+--- What a device listens to, as text: the name of the track, with "pre"
+--- when it takes the sound before the fader. Nil if it listens to nothing.
 function M.sidechain_text(d)
   if not d.sidechain then return nil end
   local ok, t = pcall(api.track_get, d.sidechain)
@@ -104,9 +105,9 @@ function M.set_sidechain(device, track, pre)
   paw.device(device):set_sidechain(track_of(track), { pre = pre })
 end
 
---- A device's output pairs: `{ pair, name, target, target_name }` each,
---- the main one (pair 1, on its own track) first; empty for a device with
---- one pair.
+--- The output pairs of a device: `{ pair, name, target, target_name }`
+--- each, the main pair (pair 1, on its own track) first. Empty for a
+--- device with one pair.
 function M.outputs(device)
   local d = api.device_get(device)
   local out = {}
@@ -132,11 +133,11 @@ function M.set_output(device, pair, track)
 end
 
 --- Make a track for each output pair of a device that plays nowhere yet,
---- named after the pair, and route the pair there. The new tracks and the
---- device's own are put in a group (or the group the device's track is
---- already in), since the device's track cannot be the group itself: its
---- pairs feed the new tracks, which would then feed it back. Returns the
---- new tracks.
+--- with the name of the pair, and send the pair there. paw puts the new
+--- tracks and the track of the device in a group (or in the group of the
+--- track of the device). The track of the device cannot be the group,
+--- because its pairs feed the new tracks, which would then feed it again.
+--- Returns the new tracks.
 function M.spread(device)
   local d = api.device_get(device)
   local made = {}
@@ -297,10 +298,11 @@ function M.midi_out_text(t)
   return out.port .. (out.channel and " · channel " .. out.channel or "") .. (form and " · " .. form or "")
 end
 
---- Send a track's MIDI to the port named `name` (or a part of its name;
---- "none" for none), on `channel` (1 to 16; nil for each message's own), in
---- `form` where the port takes no MIDI 2.0 (a key of `M.midi_out_forms`; nil
---- keeps the one it has), MPE with `members` channels (nil for 15).
+--- Send the MIDI of a track to the port named `name` (or a part of its
+--- name, "none" for none). `channel` is 1 to 16, or nil for the channel of
+--- each message. `form` applies where the port does not accept MIDI 2.0
+--- (a key of `M.midi_out_forms`, nil keeps the current form). MPE uses
+--- `members` channels (nil for 15).
 function M.set_midi_out(track, name, channel, form, members)
   if name == "none" or name == "" then return api.track_set(track, "midi_output", nil) end
   local was = api.track_get(track).midi_output or {}

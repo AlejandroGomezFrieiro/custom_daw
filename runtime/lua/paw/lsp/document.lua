@@ -21,7 +21,7 @@ function M.clip_of(uri) return tonumber(tostring(uri):match("^paw://clip/(%d+)$"
 --- Beats as ticks of `M.PPQ` a beat, the language server's unit.
 local function tick(beats) return math.floor(beats * M.PPQ + 0.5) end
 
---- Whether a track plays drums: a drum map on it (extensions/drums keeps
+--- True if a track plays drums: it has a drum map (extensions/drums keeps
 --- one in `meta.drums`), or a name such as "Drums", "Kit" or "Perc".
 function M.is_drums(track)
   if type(track.meta) == "table" and track.meta.drums then return true end
@@ -136,9 +136,10 @@ local function cc_lanes(c)
   return out
 end
 
---- Something that changes whenever what would be sent about a clip does,
---- and is cheap to make: its notes, where it is, the tracks around it, the
---- tempo map and the key. Nil when the clip is gone.
+--- A value that changes each time the data that paw would send about a clip
+--- changes, and that is fast to make. It contains the notes of the clip,
+--- its position, the tracks around it, the tempo map and the key. Nil when
+--- the clip does not exist.
 function M.key_of(id)
   local ok, c = pcall(api.clip_get, id)
   if not ok or c.kind ~= "midi" then return nil end

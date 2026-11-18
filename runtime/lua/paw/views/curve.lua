@@ -122,11 +122,11 @@ end
 
 local function in_span(q, from, to) return q.beat >= from - EPS and q.beat <= to + EPS end
 
---- The plot in pixels (a strip under the cells, `buf:strip`): the grid,
---- the curve and the area under it, through `paw.plot`. A value is as high
---- as the middle of the dot the cells would put it in (`s.sub` dots a
---- cell down, as `paw.opt.curve_glyphs` has them), so that the points and
---- the cursor, drawn in cells over it, sit on the line.
+--- The plot in pixels (a strip below the cells, `buf:strip`): the grid, the
+--- curve and the area below it, through `paw.plot`. A value is as high as
+--- the middle of the dot where the cells would put it (`s.sub` dots for
+--- each cell, as `paw.opt.curve_glyphs` sets them). So the points and the
+--- cursor, which paw draws in cells over it, are on the line.
 function M.picture(g, px, t, points, s)
   local track = t.track and api.track_get(t.track) or { master = true }
   local dot = px.cell.h / (s.sub or 4)
@@ -337,10 +337,11 @@ end
 
 -- Opening -----------------------------------------------------------------------------
 
---- Show a curve: in the window that shows it already, else in a new window
---- split below the current one (beside it with `opts.vertical`), or in
---- this window with `opts.here`. With `opts.window` in a graphical
---- frontend's window of its own. `opts.beat` puts the cursor there.
+--- Show a curve. It shows in the window that shows it already. If not, it
+--- shows in a new window split below the current window (to the side with
+--- `opts.vertical`), or in this window with `opts.here`. With `opts.window`,
+--- it shows in a separate window of a graphical frontend. `opts.beat` puts
+--- the cursor there.
 function M.open(uri, opts)
   opts = opts or {}
   local t, why = curves.target(uri)
@@ -374,10 +375,11 @@ function M.open(uri, opts)
   return win
 end
 
---- The curve of what the cursor is on in the focused view: a lane row or
---- the tempo lane in the arrange view, a parameter in the device panel, the
---- strip's controller in the piano roll (with `note`, that of the note
---- under the cursor alone). Nil and why not when it is on none.
+--- The curve of the item under the cursor in the focused view. In the
+--- arrange view, it is a lane row or the tempo lane. In the device panel,
+--- it is a parameter. In the piano roll, it is the controller of the strip
+--- (with `note`, only that of the note under the cursor). Nil and the
+--- reason when there is none.
 function M.under_cursor(note)
   local focused = paw.ui.focused
   if focused == "curve" then
@@ -453,8 +455,8 @@ function M.climb(n)
   api.ui_redraw()
 end
 
---- To the next point (`dir` 1) or the one before, `n` times; the cursor
---- takes its value.
+--- Go to the next point (`dir` 1) or the previous point, `n` times. The
+--- cursor takes its value.
 function M.to_point(dir, n)
   local win, _, s, points = here()
   if not win then return end
@@ -795,10 +797,10 @@ local function gen_write(first)
   api.ui_redraw()
 end
 
---- Make a wave over a stretch of the curve, from beat `from` to `to`:
---- `wave` by name or number in `paw.curves.waves`; `opts.rate` and
---- `opts.depth` as numbers or places in their lists. The choices can then
---- be stepped through until `<C-y>` or `<Esc>` keeps them.
+--- Make a wave over a range of the curve, from beat `from` to `to`. `wave`
+--- is a name or a number in `paw.curves.waves`. `opts.rate` and
+--- `opts.depth` are numbers or places in their lists. You can then step
+--- through the choices until `<C-y>` or `<Esc>` keeps them.
 function M.generate(wave, from, to, opts)
   opts = opts or {}
   local win, t, _, points = here()
@@ -832,7 +834,7 @@ function M.gen_step(by)
   gen_write(false)
 end
 
---- Choose the next shape (`by` 1) or the one before (-1) while generating.
+--- Select the next shape (`by` 1) or the previous shape (-1) while you generate a wave.
 function M.gen_next(by)
   if not gen then return end
   gen.choice = (gen.choice - 1 + by) % #CHOICES + 1
@@ -1034,9 +1036,9 @@ end
 
 -- Automating a parameter ------------------------------------------------------------------
 
---- Automate a device's parameter: make its lane with a first point at the
---- value it has, at the arrange cursor's beat, show the track's lanes as
---- rows with the cursor on the new one, and say so.
+--- Automate a parameter of a device. paw makes its lane, with a first point
+--- at its current value at the beat of the arrange cursor. paw shows the
+--- lanes of the track as rows, with the cursor on the new lane, and tells you.
 function M.automate(device_id, key)
   local d = api.device_get(device_id)
   local info

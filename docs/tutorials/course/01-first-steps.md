@@ -1,50 +1,56 @@
 <!-- Made by extensions/tutor/make-docs.lua from the tutor's lessons. Do not edit: change the lesson and run it again. -->
 
-# Lesson 1: First steps: the screen, playing, quitting
+# Lesson 1: First steps: the screen, play and quit
 
-*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 1`.*
+*This lesson takes about ten minutes. To do it in paw, type `:ext.load tutor`, then `:tutor 1`.*
 
-paw is driven from the keyboard. Everything on the screen is a view: the arrange view in the middle has a row per track and time running to the right, the status line at the bottom says which mode you are in (`NORMAL` now), and the line below it is where commands are typed and messages appear. This panel at the bottom is the tutor: it says what to do and notices when you have done it.
+In this lesson, we play a short song, change its tempo and quit paw.
 
-Keys are written as Vim writes them: `j` is the j key, `J` is shift and j, `<C-r>` is Ctrl and r, `<CR>` is Enter, `<Esc>` is Escape, `<Space>` the space bar, `<BS>` Backspace. `gs` means g, then s.
+You use paw from the keyboard. Each part of the screen is a view. The arrange view in the middle has one row for each track, and time goes to the right. The status line at the bottom shows the current mode (`NORMAL` now). Below it, you type commands and paw shows messages.
+
+The panel at the bottom is the tutor. It tells you what to do, and it sees when you do it.
+
+The keys have the names that Vim gives them. `j` is the j key and `J` is Shift and j. `<C-r>` is Ctrl and r. `<CR>` is Enter, `<Esc>` is Escape, `<Space>` is the space bar and `<BS>` is Backspace. `gs` is g, then s.
 
 ## The idea
 
-Nothing here needs the mouse. A key either does something at once (`<Space>` plays) or starts something that more keys finish (`:` starts a command line, `g` starts two-key commands such as `gs`). If you are ever unsure what state you are in, `<Esc>` gets you back to normal mode, and `?` lists the keys that work where you are.
+You do not need the mouse. Some keys do an action immediately: `<Space>` plays. Other keys start an action that more keys complete. `:` starts a command line. `g` starts commands of two keys, for example `gs`.
+
+If you do not know the current state, press `<Esc>` to return to normal mode. `?` shows the keys of the current view.
 
 ## If you know Vim
 
-`:q`, `ZZ` and `ZQ` mean what they mean in Vim, and `:w` saves. `:` takes commands by name (`:tempo 120`), and Ex commands over bars and tracks (`:5,8d`, `:%s/c4/d4/g`): lesson 17.
+`:q`, `ZZ` and `ZQ` do the same as in Vim, and `:w` saves. `:` accepts commands by name (`:tempo 120`). It also accepts Ex commands over bars and tracks (`:5,8d`, `:%s/c4/d4/g`). Lesson 17 shows them.
 
 ## Steps
 
-The tutor opens a practice project made for this lesson and checks each step as you do it.
+The tutor opens a practice project for this lesson. It checks each step when you do it.
 
 1. This short song has three tracks: Drums, Bass and Keys. Press `<Space>` to play it.
-   - *Hint:* `<Space>` is the space bar. Watch the ▶ in the status line and the playhead moving across the clips.
-   - ✓ It plays, round and round: the loop is on (the status line says `loop`).
+   - *Hint:* `<Space>` is the space bar. Look at the ▶ in the status line and at the playhead, which moves across the clips.
+   - ✓ The song plays again and again, because the loop is on. The status line shows `loop`.
 2. Press `<Space>` again to stop.
-   - ✓ Stopped. The playhead stays where it stopped.
-3. `gs` puts the playhead back at the start: press `g`, then `s`.
-   - *Hint:* Type the two keys one after the other, not together.
-   - ✓ The playhead is at the start: the clock in the status line says 1.1.00 (bar 1, beat 1).
-4. The highlighted track header is the cursor. `j` moves it down a track and `k` up. Press `j` twice to reach Keys.
-   - *Hint:* If you went past it, `k` goes back up.
+   - ✓ The song stops. The playhead stays where it stopped.
+3. `gs` moves the playhead to the start. Press `g`, then `s`.
+   - *Hint:* Press the two keys one after the other, not together.
+   - ✓ The playhead is at the start. The clock in the status line shows 1.1.00 (bar 1, beat 1).
+4. The highlighted track header is the cursor. `j` moves it down one track and `k` moves it up. Press `j` two times to go to Keys.
+   - *Hint:* If the cursor is below Keys, press `k` to move it up.
    - ✓ The cursor is on Keys.
-5. `?` lists every key that works in the view you are in. Press `?`, type `mute` to narrow the list down, then press `<Esc>` to close it.
-   - *Hint:* Typing narrows the list; `<Esc>` closes it.
-   - ✓ That list is always there when you forget a key; `<CR>` (Enter) on a line runs its key.
-6. `:` opens the command line at the bottom. Type `:tempo 130` and press `<CR>` (Enter) to speed the song up.
-   - *Hint:* Type the colon too. `<Esc>` abandons a command line you have started; `<BS>` on an empty one closes it.
-   - ✓ 130 beats per minute: the status line shows it.
-7. Press `<Space>` to hear it faster, and `<Space>` to stop.
-   - ✓ Faster.
-8. To quit paw, type `:q` and `<CR>` (or `ZQ`; `ZZ` saves first). Do it now: the tutor keeps your place, and `:tutor` next time brings you to lesson 2.
-   - *Hint:* If you would rather not quit now, `,hn` goes on to lesson 2.
-   - ✓ Quitting.
+5. `?` shows each key of the current view. Press `?`. Type `mute` to make the list shorter. Then press `<Esc>` to close it.
+   - *Hint:* The text that you type makes the list shorter. `<Esc>` closes the list.
+   - ✓ Use this list when you forget a key. `<CR>` (Enter) on a line does the action of its key.
+6. `:` opens the command line at the bottom. Type `:tempo 130` and press `<CR>` (Enter). The song becomes faster.
+   - *Hint:* Type the colon too. `<Esc>` cancels a command line. `<BS>` on an empty command line closes it.
+   - ✓ The tempo is 130 beats per minute. The status line shows it.
+7. Press `<Space>` to hear the faster song. Then press `<Space>` to stop it.
+   - ✓ The song is faster.
+8. To quit paw, type `:q` and `<CR>`. `ZQ` also quits, and `ZZ` saves before it quits. Quit now. The tutor keeps your place, and `:tutor` starts lesson 2 next time.
+   - *Hint:* If you do not want to quit now, press `,hn` to start lesson 2.
+   - ✓ paw quits.
 
-## What you did
+## What we did
 
-You have played a song, moved the cursor, used the command line and seen where to find every key.
+We played a song, moved the cursor, used the command line and found the list of all the keys.
 
-[All lessons](README.md) · Next: [Moving around, and why keys change meaning](02-moving.md)
+[All lessons](README.md) · Next: [Move the cursor, and keys that change meaning](02-moving.md)

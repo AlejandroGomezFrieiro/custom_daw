@@ -1,49 +1,55 @@
 <!-- Made by extensions/tutor/make-docs.lua from the tutor's lessons. Do not edit: change the lesson and run it again. -->
 
-# Lesson 11: Looping, marks and finding your way
+# Lesson 11: Loops, marks and jumps
 
-*About ten minutes. In paw, load the tutor with `:ext.load tutor`, then `:tutor 11`.*
+*This lesson takes about ten minutes. To do it in paw, type `:ext.load tutor`, then `:tutor 11`.*
 
-Working on a part means hearing it over and over: the loop. It can be switched on and off, set to any stretch with the `gl` operator, and shown on the ruler. And in a long song you need to get about quickly: search clips and tracks by name with `/`, leave marks with `m` and come back to them with `'`, and go back to where you were before a jump.
+In this lesson, we loop the chorus of a song with a click. Then we jump between marks and loop two bars of the verse.
+
+When you work on a part, you hear it again and again: this is the loop. You can enable and disable the loop, and set it with the `gl` operator. The ruler shows it.
+
+In a long song, you must move quickly. `/` finds clips and tracks by name. `m` sets a mark and `'` returns to it. Other keys return to the position before a jump.
 
 This song has an intro, a verse and a chorus.
 
 ## The idea
 
-`gL` loop on and off, `gl` + motion or object sets the loop (`glic`, `gl2W`), `il` is the loop as a text object (`yil`, `dil`). `gm` is the metronome, `gs` the playhead to the start and `gp` to the cursor. `ma` marks a place, `'a` goes back to it, `''` back to before the last jump, `<C-o>` `<C-i>` back and forward through jumps. `/name` finds a clip or track, `n` `N` the next and previous match, `*` the next clip with the same name.
+`gL` enables and disables the loop. `gl` with a motion or an object sets the loop (`glic`, `gl2W`). `il` is the loop as a text object (`yil`, `dil`). `gm` is the metronome. `gs` moves the playhead to the start and `gp` moves it to the cursor.
+
+`ma` sets a mark and `'a` returns to it. `''` returns to the position before the last jump. `<C-o>` `<C-i>` move back and forward through jumps. `/name` finds a clip or a track. `n` `N` go to the next and the previous match. `*` goes to the next clip with the same name.
 
 ## If you know Vim
 
-Marks, `''`, `<C-o>` `<C-i>`, `/` `n` `N` and `*` are Vim's. Marks belong to a view (the arrange view and the piano roll have their own) and follow their track when tracks move. `:marks` lists them.
+Marks, `''`, `<C-o>` `<C-i>`, `/` `n` `N` and `*` are from Vim. Each view has its own marks: the arrange view has some and the piano roll has others. When a track moves, its marks move with it. `:marks` shows them.
 
 ## Steps
 
-The tutor opens a practice project made for this lesson and checks each step as you do it.
+The tutor opens a practice project for this lesson. It checks each step when you do it.
 
-1. `gL` switches looping on and off; the status line's `loop` lights up and the ruler shows the loop. Press `gL`.
-   - ✓ Looping is on, over the first two bars.
-2. `/` finds a clip or track by name. Type `/chorus` and press `<CR>`.
-   - ✓ On the chorus. `n` would go on to the next match (the chorus of Bass).
+1. `gL` enables and disables the loop. The `loop` in the status line comes on, and the ruler shows the loop. Press `gL`.
+   - ✓ The loop is on, over the first two bars.
+2. `/` finds a clip or a track by its name. Type `/chorus` and press `<CR>`.
+   - ✓ The cursor is on the chorus. `n` goes to the next match, the chorus of Bass.
 3. `gl` is the loop operator. Press `glic` to loop the clip under the cursor.
    - ✓ The chorus is the loop.
-4. `gm` switches the metronome (click) on. Press `gm`, then `gp` (the playhead to the cursor) and `<Space>`; `<Space>` stops.
-   - ✓ The chorus with a click.
-5. Press `gm` to switch the click off again.
-   - ✓ No click.
+4. `gm` enables the metronome (the click). Press `gm`. Then press `gp` to move the playhead to the cursor, and `<Space>` to play. `<Space>` stops.
+   - ✓ The chorus played with a click.
+5. Press `gm` to disable the click.
+   - ✓ The click is off.
 6. `ma` sets mark a at the cursor. Press `ma`.
-   - ✓ Mark a is on the chorus. `:marks` lists marks.
-7. Go somewhere else with `G` (the last track) and `0` (the start), then press `'a` to jump back to the mark.
+   - ✓ Mark a is on the chorus. `:marks` shows the marks.
+7. Move to a different position: press `G` (the last track) and `0` (the start). Then press `'a` to jump to the mark.
    - *Hint:* `'` is the apostrophe key.
-   - ✓ Back on the chorus of Drums.
-8. `''` goes back to where you jumped from. Press `''`.
-   - ✓ On Lead at the start, where you were before `'a`. `''` again would go back to the chorus; `<C-o>` goes further back.
-9. `gl` takes motions too: press `3|` to go to bar 3, then `gl2W` to loop two bars from there.
-   - ✓ The first two bars of the verse are the loop.
-10. Listen: `gp` and `<Space>`; `<Space>` stops.
-   - ✓ Two bars of the verse, round and round.
+   - ✓ The cursor is on the chorus of Drums again.
+8. `''` returns to the position before the jump. Press `''`.
+   - ✓ The cursor is at the start of Lead, where it was before `'a`. `''` again returns to the chorus. `<C-o>` goes further back.
+9. `gl` also accepts motions. Press `3|` to go to bar 3. Then press `gl2W` to loop two bars from there.
+   - ✓ The loop is the first two bars of the verse.
+10. Listen. Press `gp` and `<Space>`. `<Space>` stops.
+   - ✓ Two bars of the verse play again and again.
 
-## What you did
+## What we did
 
-`gL`, `glic` and `gl2W` for the loop, `gm` for the click, `/` to find, `ma` `'a` `''` to come and go.
+We set the loop with `gL`, `glic` and `gl2W`, and the click with `gm`. We used `/` to find, and `ma` `'a` `''` to jump.
 
-Previous: [Mixing: faders, pan, buses, sends, automation](10-mixing.md) · [All lessons](README.md) · Next: [Recording audio and MIDI](12-recording.md)
+Previous: [The mix: faders, pan, buses, sends, automation](10-mixing.md) · [All lessons](README.md) · Next: [Record audio and MIDI](12-recording.md)

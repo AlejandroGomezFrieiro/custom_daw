@@ -2,32 +2,32 @@
 
 # The course
 
-A course for the first days with paw, by doing. Each lesson takes about ten minutes, opens a small practice project of its own, and ends with something you made or changed and can hear. The same lessons run inside paw, where the tutor says what to do next and notices when you have done it:
+In this course, we use paw to make and change small songs. Each lesson takes about ten minutes and opens a small practice project of its own. At the end of each lesson, we hear what we made or changed. The same lessons run in paw. There, the tutor tells you what to do next and sees when you do it. To load the tutor, add this line to your configuration:
 
 ```lua
 paw.ext.load("extensions/tutor")   -- in ~/.config/paw/init.lua, or link the directory into ~/.config/paw/extensions
 ```
 
-then `:tutor` in paw. These pages are made from the tutor's own lessons, so the two say the same. [keys.md](../../reference/keys.md) is a page of keys to keep beside the keyboard.
+Then type `:tutor` in paw. The tutor makes these pages from its lessons, so the pages and the tutor give the same steps. [keys.md](../../reference/keys.md) is a page of keys to keep near the keyboard.
 
-| | Lesson | What it teaches |
+| | Lesson | What we do |
 | --- | --- | --- |
-| 1 | [First steps: the screen, playing, quitting](01-first-steps.md) | You have played a song, moved the cursor, used the command line and seen where to find every key. |
-| 2 | [Moving around, and why keys change meaning](02-moving.md) | Motions by step, clip, bar and track, with counts; and the same keys meaning other things in visual mode and in the piano roll. |
-| 3 | [Tracks, clips and notes](03-making.md) | You made a track, gave it a name and an instrument, entered notes, repeated and deleted clips, and undid a change. |
-| 4 | [The piano roll and entering notes](04-pianoroll.md) | You moved by pitch and time, added and changed a note in normal mode, and drew a line and a chord in insert mode. |
-| 5 | [The grammar: operators, motions, text objects](05-grammar.md) | Operator plus motion (`dw`, `d2W`), operator plus text object (`dic`, `gcic`, `glic`), twice for tracks (`dd`), and `.` to repeat. |
-| 6 | [The same grammar on notes](06-grammar-notes.md) | `dw`, `.`, `>in`, `yie` `p`, `cin`, `dd` and `/`: the grammar of lesson 5, on notes. |
-| 7 | [Visual mode: select, then act](07-visual.md) | `v` and `V` with motions, then `x` `y` `~` or a count and `<C-a>`; `gv` to select again; the same in the piano roll. |
-| 8 | [Yank, paste, registers and macros](08-registers.md) | `yic` and `p` with counts, named registers, `:registers`, `2u`, and a macro recorded with `qq` and played with `@q` and `@@`. |
-| 9 | [Devices, parameters and plugins](09-devices.md) | The device panel, choosing and changing parameters, adding and bypassing a device, and where plugins' windows open. |
-| 10 | [Mixing: faders, pan, buses, sends, automation](10-mixing.md) | The mixer's faders, pan, solo and mute; a bus with `:track.output`; a send; volume automation with `A`. |
-| 11 | [Looping, marks and finding your way](11-loops.md) | `gL`, `glic` and `gl2W` for the loop, `gm` for the click, `/` to find, `ma` `'a` `''` to come and go. |
-| 12 | [Recording audio and MIDI](12-recording.md) | `I` for the input, `r` to arm, `R` to record, `<Space>` to stop: an audio take and a MIDI take. |
-| 13 | [Saving and rendering](13-saving.md) | `:w` to save, `[+]` for unsaved changes, `:render name.wav tail=2` to make a file, `:messages` for what was said. |
-| 14 | [Finding any command or key](14-finding.md) | Key hints, `?`, `:commands`, Tab on the command line, `,,` and the `,f` pickers, and `K`. |
-| 15 | [Making it your own: options, keys, commands](15-your-own.md) | An option, a mapping and a command, made live with `:lua`, and where to keep them. |
-| 16 | [The bundled extensions](16-extensions.md) | pattern, musicops, sections, undotree, mixdiag, rpp and utau: each one thing. Their READMEs have the rest. |
-| 17 | [Ranges, :s and :g: editing by line](17-ranges.md) | `:2,3d`, `:t2 4d`, `:t* volume -3`, `:%s/c4/d4/g` and `:g/name:b/mute`: a range, then a command, each one undo step. |
+| 1 | [First steps: the screen, play and quit](01-first-steps.md) | We played a song, moved the cursor, used the command line and found the list of all the keys. |
+| 2 | [Move the cursor, and keys that change meaning](02-moving.md) | We moved by steps, clips, bars and tracks, with counts. The same keys had other meanings in visual mode and in the piano roll. |
+| 3 | [Tracks, clips and notes](03-making.md) | We made a track and gave it a name and an instrument. We added notes, repeated and deleted clips, and undid a change. |
+| 4 | [The piano roll and insert mode](04-pianoroll.md) | We moved by pitch and by time, and changed a note in normal mode. Then we drew a line and a chord in insert mode. |
+| 5 | [The grammar: operators, motions, text objects](05-grammar.md) | We used operators with motions (`dw`, `d2W`) and with text objects (`dic`, `gcic`, `glic`), `dd` for tracks, and `.` to repeat. |
+| 6 | [The same grammar on notes](06-grammar-notes.md) | We used the grammar of lesson 5 on notes: `dw`, `.`, `>in`, `yie` `p`, `cin`, `dd` and `/`. |
+| 7 | [Visual mode: select, then act](07-visual.md) | We selected with `v`, `V` and motions, then used `x`, `y`, `~` or a count and `<C-a>`. `gv` selected again, also in the piano roll. |
+| 8 | [Yank, paste, registers and macros](08-registers.md) | We used `yic` and `p` with counts, named registers, `:registers` and `2u`. We recorded a macro with `qq` and played it with `@q` and `@@`. |
+| 9 | [Devices, parameters and plugins](09-devices.md) | We used the device panel to select and change parameters. We added and bypassed a device, and found where plugin windows open. |
+| 10 | [The mix: faders, pan, buses, sends, automation](10-mixing.md) | We used the faders, pan, solo and mute of the mixer. We made a bus with `:track.output`, a send, and volume automation with `A`. |
+| 11 | [Loops, marks and jumps](11-loops.md) | We set the loop with `gL`, `glic` and `gl2W`, and the click with `gm`. We used `/` to find, and `ma` `'a` `''` to jump. |
+| 12 | [Record audio and MIDI](12-recording.md) | We selected an input with `I`, armed with `r`, recorded with `R` and stopped with `<Space>`. We made an audio take and a MIDI take. |
+| 13 | [Save and render](13-saving.md) | We saved with `:w`, saw `[+]` for changes that are not saved, rendered with `:render name.wav tail=2` and read `:messages`. |
+| 14 | [Find a command or a key](14-finding.md) | We used key hints, `?`, `:commands`, Tab on the command line, `,,`, the `,f` pickers and `K`. |
+| 15 | [Make paw your own: options, keys, commands](15-your-own.md) | We made an option, a mapping and a command with `:lua`, and found where to keep them. |
+| 16 | [The bundled extensions](16-extensions.md) | We tried one feature of pattern, musicops, sections, undotree, mixdiag, rpp and utau. Their READMEs tell the rest. |
+| 17 | [Ranges, :s and :g: edit by line](17-ranges.md) | We used `:2,3d`, `:t2 4d`, `:t* volume -3`, `:%s/c4/d4/g` and `:g/name:b/mute`: a range, then a command, one undo step for each. |
 
-Lessons 1 to 4 are the ground: the screen, moving, making tracks and notes. 5 to 8 are the grammar that the rest of paw is made of. 9 to 13 are the studio: devices, mixing, looping, recording, saving and rendering. 14 to 16 are about finding your own way: finding any key, making paw yours, and the extensions. 17 edits by line, as Vim's Ex does: ranges of bars and tracks, `:s` and `:g`.
+Lessons 1 to 4 are the base: the screen, the cursor, and how to make tracks and notes. Lessons 5 to 8 are the grammar of the keys, which all of paw uses. Lessons 9 to 13 are the studio: devices, the mix, loops, recordings, and how to save and render. Lessons 14 to 16 help you find keys, make paw your own, and use the extensions. Lesson 17 edits by line, as Ex does in Vim: ranges of bars and tracks, `:s` and `:g`.

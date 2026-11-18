@@ -69,7 +69,7 @@ function M.expand(lhs)
     :gsub("<[Ll]eader>", function() return paw.opt.leader end))
 end
 
---- Split `gg<C-x>` into { "g", "g", "<C-x>" }, expanding `<leader>` and `<localleader>`.
+--- Split `gg<C-x>` into { "g", "g", "<C-x>" }, and expand `<leader>` and `<localleader>`.
 function M.parse(lhs)
   local keys = {}
   local expanded = M.expand(lhs)
@@ -165,11 +165,12 @@ end
 --- `ctx` has `count`, `register` and, for mappings made with `char = true`,
 --- the key typed after the mapping as `char`.
 ---
---- Options: `mode` (one or a list, default "n"), `view`, `desc`;
---- `motion = true` for a mapping that only moves the cursor, which makes it
---- work in visual mode and after an operator as well; `linewise = true` for a
---- motion across rows; `jump = true` to remember where the cursor was for
---- `<C-o>`; `repeatable = false` to keep `.` from repeating it.
+--- The options are `mode` (one mode or a list, default "n"), `view` and
+--- `desc`. `motion = true` is for a mapping that only moves the cursor.
+--- Such a mapping also works in visual mode and after an operator.
+--- `linewise = true` is for a motion across rows. `jump = true` keeps the
+--- position of the cursor for `<C-o>`. With `repeatable = false`, `.` does
+--- not repeat the mapping.
 function M.set(lhs, rhs, opts)
   opts = opts or {}
   local default = opts.motion and { "n", "x", "o" } or { "n" }
@@ -190,10 +191,10 @@ function M.set(lhs, rhs, opts)
   end
 end
 
---- Name a prefix that only leads to more keys, so that the hints after it
---- say `+mixer` where they would say how many keys are behind it.
+--- Give a name to a prefix that only leads to more keys. The hints after it
+--- then show `+mixer`, not the number of keys after it.
 ---   paw.keymap.group("<leader>x", "mix checks")
---- With `opts.view` the name holds only while that view has focus.
+--- With `opts.view`, the name applies only while that view has focus.
 function M.group(prefix, name, opts)
   local scope = opts and opts.view or "global"
   groups[scope] = groups[scope] or {}
@@ -226,8 +227,8 @@ function M.del(lhs, opts)
   if scope then scope[table.concat(M.parse(lhs))] = nil end
 end
 
---- Call `fn(map, mode, scope, keys)` for every mapping, in no order, `keys`
---- run together as `put` takes them: `every` without the sorting.
+--- Call `fn(map, mode, scope, keys)` for each mapping, in no order, with
+--- `keys` joined as `put` takes them. It is `every` without the sort.
 function M.each(fn)
   for mode, by_scope in pairs(maps) do
     for scope, by_keys in pairs(by_scope) do
@@ -236,9 +237,10 @@ function M.each(fn)
   end
 end
 
---- Put a mapping back as `map` (one `every` gave), or remove it with nil,
---- by its mode, scope and keys run together (`table.concat(map.keys)`):
---- what unloading an extension does with the keys it mapped.
+--- Put a mapping back as `map` (a mapping that `every` gave), or remove it
+--- with nil. The mapping is found by its mode, scope and joined keys
+--- (`table.concat(map.keys)`). An extension that unloads does this with
+--- the keys that it mapped.
 function M.put(mode, scope, keys, map)
   maps[mode] = maps[mode] or {}
   maps[mode][scope] = maps[mode][scope] or {}
@@ -277,10 +279,10 @@ local function revert(entry)
   entry.covered = nil
 end
 
---- A mapping as it was before the rule: made when `paw.opt.keys` is
---- "classic", now or later, over the mapping the rule gives the same keys,
---- and taken away again when the option changes back. A false `rhs` takes
---- the keys away instead.
+--- A mapping as it was before the key rule. paw makes it when
+--- `paw.opt.keys` is "classic", now or later. It goes over the mapping that
+--- the rule gives the same keys. paw removes it again when the option
+--- changes back. A false `rhs` removes the keys.
 ---   paw.keymap.classic("j", "track.volume by=-1", { view = "mixer", desc = "Volume down 1 dB" })
 function M.classic(lhs, rhs, opts)
   local entry = { lhs, rhs, opts or {} }
@@ -329,7 +331,7 @@ function M.every()
   return out
 end
 
---- Whether a mapping is also made, with the same keys and scope, in `mode`.
+--- True if a mapping with the same keys and scope is also made in `mode`.
 function M.has(mode, map)
   local scope = maps[mode] and maps[mode][map.scope]
   return scope ~= nil and scope[table.concat(map.keys)] ~= nil
@@ -347,7 +349,7 @@ local function stop_timer()
   end
 end
 
---- Change mode. Leaving visual mode closes the selection; `gv` reopens it.
+--- Change mode. When visual mode stops, the selection closes. `gv` opens it again.
 function M.set_mode(mode)
   if mode == "v" then mode = "x" end
   local old = M.mode
@@ -388,8 +390,8 @@ local function first_row(g, reg)
   return g.down == -1 and reg.r1 or reg.r0
 end
 
---- Start selecting from the cursor: "v" a stretch of time, "V" whole rows,
---- "b" a rectangle. The same kind again leaves visual mode.
+--- Start a selection from the cursor: "v" a range of time, "V" whole rows,
+--- "b" a rectangle. The same kind again stops visual mode.
 function M.visual_start(kind)
   local g = grid()
   if not g then return paw.notify("nothing to select in this view", "warn") end
@@ -447,11 +449,11 @@ end
 
 local ranged   -- the region `:'<,'>` names while its command runs
 
---- The region selected in the focused view, or nil outside visual mode. From
---- the cursor to where the selection began, both ends included when the
---- view says how far the thing under the cursor reaches (`grid.extent`);
---- a selection that has not been stretched yet covers one grid step.
---- While a command runs with `:'<,'>`, the selection it names.
+--- The region selected in the focused view, or nil outside visual mode. It
+--- goes from the cursor to the start of the selection. Both ends are
+--- included when the view tells the size of the item under the cursor
+--- (`grid.extent`). A selection that did not grow covers one grid step.
+--- While a command runs with `:'<,'>`, it is the selection that the command names.
 function M.selection()
   if ranged then return ranged end
   local v, g = M.visual, grid()
@@ -483,10 +485,10 @@ end
 
 -- Registers -------------------------------------------------------------------
 
---- Put a value in a register: the unnamed one, and `name` if given. With
---- `yank` and no name it also goes to `"0`, which deleting never touches.
---- A value is a table with a `kind`; what else it holds is up to whoever
---- yanks and pastes it. `"_` discards.
+--- Put a value in a register: the unnamed register, and `name` if given.
+--- With `yank` and no name, it also goes to `"0`, which a delete never
+--- changes. A value is a table with a `kind`. The code that yanks and
+--- pastes it decides what else it contains. `"_` discards.
 function M.setreg(value, name, yank)
   if name == "_" then return end
   registers['"'] = value
@@ -535,7 +537,7 @@ function M.push_jump()
   if #list > 100 then table.remove(list, 1) end
 end
 
---- Go back (or with a negative `n` forward again) through the places jumped from.
+--- Return through the places of the jumps (with a negative `n`, go forward again).
 function M.jump(n)
   local g, list = grid(), jumps[paw.ui.focused]
   if not (g and list) or #list == 0 then return end
@@ -591,8 +593,8 @@ function M.mark(name)
   marks[paw.ui.focused][name] = position(g)
 end
 
---- Move to a mark; `'` or a backtick as the name goes back to where the last
---- jump came from, and `.` goes to where the last edit was.
+--- Move to a mark. With `'` or a backtick as the name, return to the start
+--- of the last jump. With `.`, go to the place of the last edit.
 function M.goto_mark(name)
   local g = grid()
   if not g then return end
@@ -797,10 +799,11 @@ local function run(map, char)
   return exec(map, ctx)
 end
 
---- Where mappings are looked up, first to last: the part of the focused
---- view the cursor is in, if the view has such parts (`view:subscope()`,
---- such as "arrange.lane" on an automation lane row, or a list of them,
---- first first), the view, then everywhere.
+--- Where paw finds mappings, first to last. First comes the part of the
+--- focused view that has the cursor, if the view has such parts
+--- (`view:subscope()`). For example, "arrange.lane" on an automation lane
+--- row, or a list of parts, the first part first. Then comes the view,
+--- then all views.
 local function scopes()
   local name = paw.ui.focused
   local view = name and paw.ui.views[name]
@@ -871,14 +874,14 @@ end
 -- Changes made outside the project that `.` repeats too: a text buffer's.
 local text_changes = 0
 
---- Note a change that is not an edit of the project (a text buffer's
---- lines), so that `.` repeats the command that made it.
+--- Record a change that is not an edit of the project (the lines of a text
+--- buffer). Then `.` repeats the command that made it.
 function M.changed() text_changes = text_changes + 1 end
 
 local after   -- { fn, armed }: to run once the next whole command is done
 
---- Run `fn` once the next whole command has been typed and done, as
---- insert mode's Ctrl-o goes back to insert mode after one command.
+--- Run `fn` after paw gets and does the next whole command. Insert mode uses
+--- it for Ctrl-o, to return to insert mode after one command.
 function M.after_next(fn) after = { fn = fn } end
 
 --- Once a command is complete, remember it for `.` if it changed the project.
@@ -1024,7 +1027,7 @@ handle = function(key)
   end
 end
 
---- Handle one key as if it were typed. The kernel calls this; scripts use `feed`.
+--- Handle one key as if the user typed it. The kernel calls this. Scripts use `feed`.
 function M.dispatch(key)
   if macro and depth == 0 then macro.keys[#macro.keys + 1] = key end
   if not track.keys then track.keys, track.edits, track.texts = {}, api.project_get().edits, text_changes end
@@ -1071,8 +1074,8 @@ function M.feed(keys)
   end
 end
 
---- Type keys from inside a mapping, the way `:normal` does: they run as
---- part of the command that is running, not as a command of their own.
+--- Type keys from inside a mapping, as `:normal` does. The keys run as a
+--- part of the current command, not as a separate command.
 function M.normal(keys)
   return replay(M.parse(keys))
 end
@@ -1108,7 +1111,7 @@ function M.recording()
   return macro and macro.name
 end
 
---- Play the keys in a register `n` times; `@` as the name plays the last one again.
+--- Play the keys in a register `n` times. `@` as the name plays the last register again.
 function M.play(name, n)
   if name == "@" then name = last_macro end
   local value = name and registers[name:lower()]
@@ -1124,7 +1127,7 @@ end
 
 -- What to show --------------------------------------------------------------------
 
---- What has been typed towards a command, for display: `"a2d3`.
+--- The keys typed for a command that is not complete, for display: `"a2d3`.
 function M.pending()
   local out = ""
   if op then out = (op.register and '"' .. op.register or "") .. (op.count or "") .. op.map.lhs end
@@ -1139,8 +1142,8 @@ function M.group_name(keys)
   end
 end
 
---- The keys that can follow what has been typed, once the typist has paused:
---- a list of { key, desc }, and a title. Nil when there is nothing to offer.
+--- The keys that can come after the typed keys, when the user stops to
+--- type: a list of { key, desc }, and a title. Nil when there is nothing to show.
 function M.hints()
   if not hint_at or api.now() < hint_at then return nil end
   local seq, found = table.concat(pending), {}

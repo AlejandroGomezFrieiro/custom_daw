@@ -17,8 +17,8 @@ local M = { checks = {} }
 local LEVELS = { ok = "OK", info = "INFO", warn = "WARN", error = "ERROR" }
 local STYLES = { ok = "DiffAdd", info = "Normal", warn = "Warn", error = "Error" }
 
---- Register a check under `name`, replacing one of that name. `fn(h)`
---- reports through `h`; `opts.desc` says in a few words what it checks.
+--- Register a check under `name`. It replaces a check with the same name.
+--- `fn(h)` reports through `h`. `opts.desc` tells in a few words what it checks.
 function M.register(name, fn, opts)
   assert(type(name) == "string" and type(fn) == "function", "usage: paw.health.register(name, function(h) ... end)")
   M.checks[name] = { name = name, fn = fn, desc = opts and opts.desc, ext = paw.commands.owner() }

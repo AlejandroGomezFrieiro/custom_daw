@@ -24,8 +24,8 @@ end
 
 local changes = {}  -- what this turn has edited so far: { name, payload }
 
---- Count an event delivered this turn towards the turn's edit. Undo, redo
---- and opening a project are not edits (`restored`).
+--- Count an event of this turn as a part of the edit of the turn. Undo,
+--- redo and the open of a project are not edits (`restored`).
 function M.note(name, payload)
   if EDITS[name] and not payload.restored then changes[#changes + 1] = { name = name, payload = payload } end
 end
@@ -72,9 +72,9 @@ local function region_key(r)
   return string.format("%s %s %s %s %s %s", tostring(r.view), r.kind, r.r0, r.r1, r.c0, r.c1)
 end
 
---- What is selected now: the visual selection of the focused view, the
---- clips chosen with the pointer and the chosen notes of the clips the
---- piano roll edits.
+--- The current selection: the visual selection of the focused view and the
+--- clips selected with the pointer. Also the selected notes of the clips that
+--- the piano roll edits.
 function M.selection()
   local region = paw.keymap.selection()
   local clips = paw.frontend.chosen_clips()

@@ -101,8 +101,8 @@ end
 --- (a measurement that has ended) an extension calls `paw.frontend.refresh()`.
 M.bands = {}
 
---- Have the frontend fetch the project's state again, though nothing in the
---- project has changed: for what an extension adds to it.
+--- Make the frontend get the state of the project again, when nothing in the
+--- project changed. This is for data that an extension adds to the state.
 function M.refresh()
   M.revision = M.revision + 1
   api.ui_redraw()
@@ -118,8 +118,8 @@ local function band_entries(index)
   return type(entries) == "table" and entries or {}
 end
 
---- The bands that have entries, as rows from 0 under the marker band:
---- `{ rows, entries }`, each entry with its `row`, its `band` and `index`
+--- The bands that have entries, as rows from 0 below the marker band:
+--- `{ rows, entries }`. Each entry has its `row`, its `band` and `index`
 --- (for `act.band`), `beat`, `length`, `name`, `color`, `active` and `hint`.
 function M.band_state()
   local out, rows = {}, 0
@@ -139,9 +139,10 @@ function M.band_state()
   return { rows = rows, entries = out }
 end
 
---- The candidates a prompt offers, as the terminal lists them above the
---- line: the ones in view around the one chosen, `{ label, desc }`, with
---- `chosen` the place of the one chosen among them (0 for none).
+--- The candidates of a prompt, as the terminal shows them above the line.
+--- These are the candidates in view around the selected one, as
+--- `{ label, desc }`. `chosen` is the place of the selected candidate among
+--- them (0 for none).
 function M.completions(prompt)
   local all = prompt.matches
   if not all or #all == 0 then return nil end
@@ -264,8 +265,8 @@ local function modal()
   return out
 end
 
---- The floating window that is open (help, a list, a picker), drawn as
---- text `width` columns wide: its title and its lines. Nil when there is none.
+--- The float that is open (help, a list, a picker), drawn as text `width`
+--- columns wide: its title and its lines. Nil when there is none.
 function M.float(width, height)
   if not paw.ui.float then return nil end
   local lines = api.ui_snapshot(width, height)
@@ -302,8 +303,8 @@ function M.lane_name(lane)
   return device.name .. " · " .. tostring(lane.param)
 end
 
---- A clip's takes as its take lanes show them: `{ name, key }` each, `key`
---- changing exactly when what the take plays does. Nil for a clip
+--- The takes of a clip as its take lanes show them: `{ name, key }` each.
+--- `key` changes exactly when the sound of the take changes. Nil for a clip
 --- without takes, which has nothing in the lanes.
 function M.take_rows(clip)
   local takes = paw.takes.of(clip)
@@ -325,11 +326,12 @@ function M.take_rows(clip)
   return out
 end
 
---- What take `take` of a clip plays, for the picture in its take lane: a
---- waveform as `M.peaks` gives one at `points` points for sound, the notes
---- as `M.preview` gives them for MIDI, repeated as a looped clip repeats.
---- The playing take's waveform is the clip's own, stretched; another's is
---- its file squeezed or spread in time as far as the clip stretches it.
+--- What take `take` of a clip plays, for the picture in its take lane. For
+--- sound, this is a waveform as `M.peaks` gives it, at `points` points. For
+--- MIDI, it is the notes as `M.preview` gives them. It repeats as a looped
+--- clip repeats. The waveform of the take that plays is the waveform of the
+--- clip, stretched. The waveform of a different take is its file, made
+--- shorter or longer in time as the clip stretches it.
 function M.take_preview(id, take, points)
   local ok, clip = pcall(api.clip_get, id)
   if not ok then return {} end
@@ -413,8 +415,9 @@ function M.vca_words(id)
   return table.concat(names, ", ")
 end
 
---- What a graphical frontend is told: transport, tracks, clips, devices and
---- the modal state, as plain data; `known` lists what it already has.
+--- The data that paw sends to a graphical frontend: transport, tracks,
+--- clips, devices and the modal state, as plain data. `known` is a list of
+--- the data that the frontend has already.
 function M.state(known)
   M.polled = api.now() -- someone is looking: see `paw.fx.interactive`
   local t, e = api.transport_get(), api.engine_get()
@@ -618,12 +621,12 @@ end
 
 paw.option.define("native_dialogs", true) -- the window opens the desktop's file dialogs, not the kernel's list
 
---- What the window needs to open the desktop's own file dialog: `native`,
---- whether to (the option, and the dialogs shown are the kernel's own when
---- the window is turned off), `dir`, where to start (where a file was last
---- chosen, else beside the project, else home: as the list picker does),
---- `name`, the project's file name, for "Save as", and `render`, the endings a render
---- can write.
+--- The data that the window needs to open the file dialog of the desktop.
+--- `native` tells if it must use that dialog (the option). When it is off,
+--- the dialogs are those of the kernel. `dir` is the folder to start in. It
+--- is the folder of the last selected file, or of the project, or home, as
+--- in the list picker. `name` is the file name of the project, for
+--- "Save as". `render` is the file endings that a render can write.
 function M.dialog_info()
   local p = api.project_get()
   local dir = paw.state.pick_dir or (p.path and p.path:match("^(.*)/[^/]+$")) or os.getenv("HOME") or "/"
@@ -637,16 +640,17 @@ function M.dialog_info()
   return { native = paw.opt.native_dialogs and true or false, dir = dir, name = name, render = render }
 end
 
---- Whether closing now would lose anything: { modified, name, path }.
+--- Tells if paw would lose data if it closes now: { modified, name, path }.
 function M.closing()
   local p = api.project_get()
   return { modified = paw.project.unsaved(), name = p.name, path = p.path }
 end
 
---- What the render dialog starts from: the file a render would go to, the
---- ranges that can be rendered (`{ name, label }`: the song, the loop, the
---- selection, every region), the engine's sample rate, and which lossy
---- formats ffmpeg can make here (`formats`: `{ mp3 = true, ogg = false, ... }`).
+--- The start values of the render dialog. These are the file that a render
+--- would write, and the ranges that paw can render (`{ name, label }`: the
+--- song, the loop, the selection, each region). They are also the sample
+--- rate of the engine, and the lossy formats that ffmpeg can make here
+--- (`formats`: `{ mp3 = true, ogg = false, ... }`).
 function M.render_dialog()
   local t = api.transport_get()
   local ranges = { { name = "song", label = "The whole song" } }
@@ -671,10 +675,11 @@ function M.render_dialog()
   }
 end
 
---- The menu of a track's input: the choices of `paw.audio.choices` under
---- their headings, `audio`, `midi` and `channel`, and where the track sends
---- MIDI, `midi_out`, `midi_out_channel` and `midi_out_form`, each a list of
---- `{ label, checked }`. `act.choose_input` takes one by heading and place.
+--- The menu of the input of a track: the choices of `paw.audio.choices`
+--- under their headings, `audio`, `midi` and `channel`. It also gives the
+--- MIDI output of the track: `midi_out`, `midi_out_channel` and
+--- `midi_out_form`. Each is a list of `{ label, checked }`.
+--- `act.choose_input` takes one by heading and place.
 function M.input_menu(track)
   local out = {
     audio = {}, midi = {}, channel = {}, midi_out = {}, midi_out_channel = {}, midi_out_form = {},
@@ -738,10 +743,10 @@ function M.engine_menu()
 end
 
 --- The waveform of an audio clip at `points` points (`M.peak_points`
---- without), as one flat list { min1, max1, rms1, min2, max2, rms2, ... }:
---- how far the wave reaches each way and how loud it is, which is its body.
---- Kept out of `state`, which is sent again whenever the cursor moves, so
---- that a frontend fetches each waveform once for each width it draws at.
+--- without), as one flat list { min1, max1, rms1, min2, max2, rms2, ... }.
+--- It gives how far the wave goes each way and how loud it is, which is its
+--- body. It is not in `state`, which paw sends again each time the cursor
+--- moves. So a frontend gets each waveform only one time for each width.
 function M.peaks(clip, points)
   local flat = {}
   points = paw.util.clamp(math.floor(points or M.peak_points), 8, 4096)
@@ -1886,9 +1891,10 @@ function A.remove_send(track, index)
   api.track_set(track, "sends", sends)
 end
 
---- The menu of a device's side-chain: "None" first, then the tracks it
---- can listen to, then whether it is taken before their fader; each
---- `{ label, checked }`. `act.choose_sidechain` takes one by place.
+--- The menu of the side-chain of a device: "None" first, then the tracks
+--- that it can listen to. The last item tells if it takes the sound before
+--- their fader. Each is `{ label, checked }`.
+--- `act.choose_sidechain` takes one by place.
 function M.sidechain_menu(device)
   local d = api.device_get(device)
   local out = { { label = "None: its own input", checked = d.sidechain == nil } }
@@ -1899,11 +1905,11 @@ function M.sidechain_menu(device)
   return out
 end
 
---- The menu of a device's further output pairs: for each, `{ label,
---- choices }`, where the label names the pair and where it plays and the
---- choices (`{ label, checked }`) are "Nowhere" and the tracks it can play
---- into. `act.route_pair` takes one; `act.spread_outputs` makes a track
---- for each pair that plays nowhere.
+--- The menu of the other output pairs of a device. For each pair, it gives
+--- `{ label, choices }`. The label names the pair and where it plays. The
+--- choices (`{ label, checked }`) are "Nowhere" and the tracks that it can
+--- play into. `act.route_pair` takes one. `act.spread_outputs` makes a
+--- track for each pair that plays nowhere.
 function M.outputs_menu(device)
   local out = {}
   local d = api.device_get(device)
@@ -2095,8 +2101,8 @@ function M.choose_notes(clip, places)
   api.ui_redraw()
 end
 
---- The places of the chosen notes of `clip`, in order; none if the clip's
---- notes have changed under them.
+--- The places of the selected notes of `clip`, in order. None if the notes
+--- of the clip changed after the selection.
 function M.chosen_notes(clip)
   local entry = chosen[clip]
   if not entry or entry.stamp ~= stamp_of(clip) then return {} end
@@ -2605,7 +2611,7 @@ end
 -- on when the last of them is let go.
 local stepping = { on = false, held = {}, entered = false }
 
---- Whether step input (notes entered from a MIDI keyboard) is on.
+--- True if step input (notes from a MIDI keyboard) is on.
 function M.step_input() return stepping.on end
 
 function A.toggle_step_input()
@@ -2829,11 +2835,11 @@ end
 -- them: rows from 0, tracks by their place among the drawn ones from 0.
 
 --- What each drawn track (`ids`, the master last) plays from its slots, by
---- place: `slot` and `queued` are rows or -1, `stopping` and `back` say a
---- stop or a return to the timeline is queued, `stopped` that it plays
---- nothing, `progress` how far round its loop the clip is (0 to 1), and
---- `recording` the row being recorded into or -1. Empty while nothing is
---- launched or recorded anywhere.
+--- place. `slot` and `queued` are rows or -1. `stopping` and `back` tell
+--- that a stop or a return to the timeline is in the queue. `stopped` tells
+--- that the track plays nothing. `progress` is the position of the clip in
+--- its loop (0 to 1). `recording` is the row that records, or -1. The
+--- result is empty while no slot plays or records.
 function M.launch_state(ids)
   local state, rec = paw.launcher.state(), paw.launcher.recording
   if not next(state) and not rec then return {} end

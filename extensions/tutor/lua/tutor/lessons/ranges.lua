@@ -1,28 +1,38 @@
 -- Lesson 17: Ex lines, ranges of time and tracks, `:s` and `:g`.
 return {
   id = "ranges",
-  title = "Ranges, :s and :g: editing by line",
+  title = "Ranges, :s and :g: edit by line",
   intro = [[
-Operators and visual mode act where the cursor is. The command line can act
-anywhere at once: a range in front of a command says where, as in Vim's Ex,
-with bars for lines. `:2,3d` empties bars 2 and 3, `:t2 4d` bar 4 of track 2
-alone, `:%s/c4/d4/g` makes every C4 of the song a D4.
+In this lesson, we change bars, tracks and notes of a song from the command
+line.
 
-The three tracks here have four one-bar clips each. Watch the right end of the
-command line while you type: it says what the line would do, and the views
-light it up, before anything changes.]],
+Operators and visual mode do their action at the cursor. The command line can
+do an action at many places at the same time. A range before a command gives
+the places, as in the Ex of Vim, with bars for lines. `:2,3d` makes bars 2
+and 3 empty. `:t2 4d` makes only bar 4 of track 2 empty. `:%s/c4/d4/g`
+changes each C4 of the song to a D4.
+
+Each of the three tracks here has four clips of one bar. While you type, look
+at the right end of the command line. It shows what the line will do, and
+the views highlight the items, before paw changes them.]],
   idea = [[
-A range is of time (`5,8` bars, `5.3` a beat, `%` all, `.` the cursor's bar,
-`$` the last, `'a,'b` marks, `'<,'>` the selection, `.+4` offsets), of
-tracks (`t2,t4`, `t*`, `t/Drums/`), or both (`:t2 5,8d`). Commands: `d` `y`
-`co` `m` `>` `<` `j`, `mute` `solo` `volume` `pan`, `transpose` `quantize`,
-`normal`, `s` and `g`. A pattern names notes or clips by their fields: `c4`,
-`vel>100`, `len<1/8`, `name:Verse`. Each line is one undo step.]],
+A range can be of time. `5,8` is bars and `5.3` is a beat. `%` is all, `.`
+is the bar of the cursor and `$` is the last bar. `'a,'b` is marks, `'<,'>`
+is the selection and `.+4` is an offset. It can be of tracks (`t2,t4`, `t*`, `t/Drums/`), or of the two
+(`:t2 5,8d`).
+
+The commands are `d` `y` `co` `m` `>` `<` `j`, `mute` `solo` `volume` `pan`,
+`transpose` `quantize`, `normal`, `s` and `g`. A pattern selects notes or
+clips by their fields: `c4`, `vel>100`, `len<1/8`, `name:Verse`. Each line is
+one undo step.]],
   vim = [[
-Ranges, `:d` `:y` `:co` `:m` `:>` `:j` `:normal`, `:s` with `g`, `c` and `n`,
-`:&`, `:g` and `:v` are Vim's, with a bar where Vim has a line; `inccommand`
-is Neovim's. Without `g` only the first match in each bar changes, as in Vim
-only the first on each line. Vim's `:t` is not here: `t` starts tracks.]],
+Ranges, `:d` `:y` `:co` `:m` `:>` `:j` and `:normal` are from Vim. `:s`
+with `g`, `c` and `n`, `:&`, `:g` and `:v` are also from Vim. A bar is in
+place of a line. `inccommand` is from Neovim.
+
+Without `g`, only the first
+match in each bar changes. In Vim, only the first match on each line changes. paw does not
+have the `:t` of Vim, because `t` starts a range of tracks.]],
   setup = function(look)
     paw.project.tempo = 100
     local function track(name, device, params, make)
@@ -40,19 +50,19 @@ only the first on each line. Vim's `:t` is not here: `t` starts tracks.]],
   at = function() paw.cursor.set_track(paw.track("Drums")) end,
   steps = {
     {
-      say = "Type `:2,3d` (bars 2 to 3, delete). Before Enter, see the right end of the line say `bars 2–3` and the ruler shade them; then press `<CR>`.",
+      say = "Type `:2,3d` (bars 2 to 3, delete). Before you press Enter, look at the right end of the line: it shows `bars 2–3`, and the ruler shades them. Then press `<CR>`.",
       keys = { ":2,3d", "<CR>" },
       check = function(_, look) return look.names("Drums") == "d1 d4" and look.names("Keys") == "k1 k4" end,
-      done = "Bars 2 and 3 are empty on every track, and what was there is in the register.",
+      done = "Bars 2 and 3 are empty on all tracks. The register contains the deleted clips.",
     },
     {
-      say = "The whole line is one change: press `u`.",
+      say = "The whole line is one change. Press `u`.",
       keys = { "u" },
       check = function(ctx, look) return look.ran(ctx, "undo") and look.names("Drums") == "d1 d2 d3 d4" end,
-      done = "Back, in one step.",
+      done = "The bars are back, in one step.",
     },
     {
-      say = "Tracks go first: `:t2 4d` empties bar 4 of track 2, Bass, alone. Type it and press `<CR>`.",
+      say = "The tracks come first: `:t2 4d` makes only bar 4 of track 2, Bass, empty. Type it and press `<CR>`.",
       keys = { ":t2 4d", "<CR>" },
       check = function(_, look) return look.names("Bass") == "b1 b2 b3" and look.names("Drums") == "d1 d2 d3 d4" end,
       done = "Only Bass lost its last bar.",
@@ -61,16 +71,16 @@ only the first on each line. Vim's `:t` is not here: `t` starts tracks.]],
       say = "Press `u` again.",
       keys = { "u" },
       check = function(ctx, look) return look.ran(ctx, "undo") and look.names("Bass") == "b1 b2 b3 b4" end,
-      done = "Back.",
+      done = "The bar is back.",
     },
     {
-      say = "`t*` is every track. Turn them all down 3 dB: `:t* volume -3`, then `<CR>`.",
+      say = "`t*` is all the tracks. Make them all 3 dB quieter: type `:t* volume -3`, then press `<CR>`.",
       keys = { ":t* volume -3", "<CR>" },
       check = function(_, look) return look.track("Keys").volume == -13 and look.track("Drums").volume == -7 end,
-      done = "Every fader went down 3 dB; `=-6` would have set them all to -6 dB.",
+      done = "Each fader went down by 3 dB. `=-6` sets them all to -6 dB.",
     },
     {
-      say = "Now `:s`. Type `:%s/c4/d4/g`: the line counts the C4s of the song, and the clips that hold them light up. Press `<CR>`.",
+      say = "Now we use `:s`. Type `:%s/c4/d4/g`. The line counts the C4 notes of the song, and the clips that contain them are highlighted. Press `<CR>`.",
       keys = { ":%s/c4/d4/g", "<CR>" },
       check = function(_, look)
         local c4, d4 = 0, 0
@@ -81,15 +91,15 @@ only the first on each line. Vim's `:t` is not here: `t` starts tracks.]],
         end
         return c4 == 0 and d4 == 4
       end,
-      done = "Every C4 is a D4. `%` was the whole song, `g` every match in each bar.",
-      hint = "`<Esc>` leaves the line without changing anything; then `:` and type it again.",
+      done = "Each C4 is a D4 now. `%` was the whole song, and `g` was each match in each bar.",
+      hint = "`<Esc>` leaves the line and changes nothing. Then type `:` and the command again.",
     },
     {
-      say = "`:g` runs a command on every match. Mute the Bass clips by name: `:g/name:b/mute`, then `<CR>`.",
+      say = "`:g` runs a command on each match. Mute the Bass clips by their name: type `:g/name:b/mute`, then press `<CR>`.",
       keys = { ":g/name:b/mute", "<CR>" },
       check = function(_, look) return look.layout("Bass"):gsub("[^m]", "") == "mmmm" end,
-      done = "All four Bass clips are muted. `:g/vel>100/` with no command puts the matches in the quickfix list, for `]q`.",
+      done = "The four Bass clips are muted. `:g/vel>100/` with no command puts the matches in the quickfix list, for `]q`.",
     },
   },
-  outro = "`:2,3d`, `:t2 4d`, `:t* volume -3`, `:%s/c4/d4/g` and `:g/name:b/mute`: a range, then a command, each one undo step.",
+  outro = "We used `:2,3d`, `:t2 4d`, `:t* volume -3`, `:%s/c4/d4/g` and `:g/name:b/mute`: a range, then a command, one undo step for each.",
 }

@@ -23,8 +23,8 @@ local function save()
   api.ui_redraw()
 end
 
---- Id of the track the cursor is on, falling back to the first track when
---- that track is gone. Nil when the project has no tracks.
+--- The id of the track of the cursor, or of the first track when that track
+--- does not exist now. Nil when the project has no tracks.
 function M.track_id()
   if track_id and pcall(api.track_get, track_id) and track_id ~= 0 then return track_id end
   track_id = api.track_list()[1]
@@ -54,8 +54,8 @@ function M.row()
   end
 end
 
---- The automation lane row the cursor is on: a lane of the cursor track
---- shown as a row (see `paw.lanes`), or nil when it is on the track itself.
+--- The automation lane row of the cursor: a lane of the cursor track that
+--- shows as a row (see `paw.lanes`). Nil when the cursor is on the track.
 function M.lane_id()
   if not lane_id then return nil end
   local id = M.track_id()
@@ -79,8 +79,8 @@ function M.set_track(track, lane)
   save()
 end
 
---- Move by rows. In normal mode the rows of open automation lanes count;
---- after an operator or in a selection only tracks do, as for `dj`.
+--- Move by rows. In normal mode, the rows of open automation lanes count.
+--- After an operator or in a selection, only tracks count, as for `dj`.
 function M.move_track(delta)
   if paw.lanes.any_open() and paw.keymap.mode == "n" then
     local lines = paw.groups.rows({ lanes = true })

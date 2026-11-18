@@ -400,7 +400,7 @@ function M.active()
   return active
 end
 
---- End the active snippet, keeping what it wrote.
+--- Stop the active snippet, and keep the notes that it wrote.
 function M.finish()
   if not active then return end
   local name = active.name
@@ -435,8 +435,8 @@ local function signature(notes)
   return table.concat(out, " ")
 end
 
---- Go to the next choice (`dir` 1) or the one before (-1). False when no
---- snippet is active, so that the key can do what it otherwise does.
+--- Go to the next choice (`dir` 1) or the previous choice (-1). False when
+--- no snippet is active. Then the key can do its usual action.
 function M.jump(dir)
   local state = M.active()
   if not state then return false end
@@ -515,7 +515,7 @@ local function previewed(name)
   return p.results[name]
 end
 
---- Lines describing what a snippet would write here.
+--- Lines that tell what a snippet would write here.
 function M.describe_preview(spec, opts, result, why)
   local lines = { { text = spec.name, style = "Title" }, spec.desc ~= "" and spec.desc or nil }
   if result == nil and why == nil then result, why = run(spec, opts or {}, {}) end
@@ -553,8 +553,8 @@ function M.describe_preview(spec, opts, result, why)
   return lines, result
 end
 
---- Open the picker of the snippets offered in the focused view; Enter
---- expands the one chosen, `count` times.
+--- Open the picker of the snippets of the focused view. Enter expands the
+--- selected snippet `count` times.
 function M.pick(opts)
   opts = opts or {}
   local view = paw.ui.focused
@@ -626,8 +626,9 @@ function M.pick(opts)
   })
 end
 
---- The notes the snippet under the picker's selection would write, in the
---- clip's beats, for drawing; nil when no picker of snippets is open.
+--- The notes that the snippet under the selection of the picker would
+--- write, in the beats of the clip, to draw them. Nil when no picker of
+--- snippets is open.
 function M.preview_marks(clip_id)
   local state = M.previewing and paw.pick.state()
   local item = state and state.title == "Snippets" and state.item
@@ -639,10 +640,10 @@ function M.preview_marks(clip_id)
   return out
 end
 
---- Paint the piano roll's snippet layer (order 40, see
---- `views/pianoroll.lua`): the active snippet's notes marked and its span
---- along the bottom with what Tab and `<C-n>` work on; what the picker
---- would write, as ghosts.
+--- Paint the snippet layer of the piano roll (order 40, see
+--- `views/pianoroll.lua`). It marks the notes of the active snippet, and
+--- shows its range along the bottom with the items of Tab and `<C-n>`. It
+--- shows the notes that the picker would write as ghosts.
 function M.paint(p)
   local roll, glyphs = p.roll, paw.draw.g
   for _, n in ipairs(M.preview_marks(p.clip.id) or {}) do

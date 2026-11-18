@@ -7,23 +7,26 @@ return {
   id = "extensions",
   title = "The bundled extensions",
   intro = [[
-Much of what paw can do comes in extensions: directories of Lua in
-`extensions/` beside the program, which use the same `paw` module as your
-`init.lua`. Seven come with it besides the tutor. This lesson loads each for this session with
-`:tutor.try` and tries one thing in it; to have one always, link its directory
-into `~/.config/paw/extensions`.
+In this lesson, we load seven of the extensions that come with paw, and we
+try one feature of each.
 
-Each extension's README.md says everything it does. Their keys live under
-their own prefixes: `]s` `[s` and `,S` (sections), `gz` (musicops), `,t`
-(pattern), `,x` and `]d` `[d` (mixdiag), `,u` `g-` `g+` (undotree), `,v`
-(utau).]],
+Extensions give much of what paw can do. An extension is a folder of Lua in
+`extensions/` next to the program. It uses the same `paw` module as your
+`init.lua`. `:tutor.try` loads an extension for this session only. To load an
+extension each time, link its folder into `~/.config/paw/extensions`.
+
+The README.md of each extension tells all that it does. Each extension has
+its keys under its own prefix. These are `]s` `[s` and `,S` (sections), `gz`
+(musicops) and `,t` (pattern). They are also `,x` and `]d` `[d` (mixdiag),
+`,u` `g-` `g+` (undotree) and `,v` (utau).]],
   idea = [[
 An extension adds commands, keys, text objects, operators and views with the
-calls of lesson 15, so what it adds obeys the grammar you know: sections are
-text objects (`dis`, `yis`), musicops are operators (`gzkip`), and `.`, counts
-and macros work with them.]],
+functions of lesson 15. So its additions obey the grammar that you know.
+Sections are text objects (`dis`, `yis`), and musicops are operators
+(`gzkip`). `.`, counts and macros work with them.]],
   vim = [[
-`:tutor.try name` is like `:packadd`. `:extensions` lists what is loaded.]],
+`:tutor.try name` is like `:packadd`. `:extensions` shows the loaded
+extensions.]],
   setup = function(look)
     paw.project.tempo = 100
     local drums = paw.add_track({ name = "Drums", volume = -6 })
@@ -39,24 +42,24 @@ and macros work with them.]],
   },
   steps = {
     {
-      say = "pattern writes drum parts as text. Type `:tutor.try pattern` and `<CR>`, then `:pattern.set bd*2 [~ sn]` and `<CR>`: a new clip on Drums plays it.",
+      say = "pattern writes drum parts as text. Type `:tutor.try pattern` and `<CR>`. Then type `:pattern.set bd*2 [~ sn]` and `<CR>`. A new clip on Drums plays the pattern.",
       keys = { ":tutor.try pattern", "<CR>", ":pattern.set bd*2 [~ sn]", "<CR>" },
       check = function(_, look)
         local clip = look.clips("Drums")[1]
         return loaded("pattern") and clip and #clip:notes() > 0
       end,
-      done = "Kick, kick, rest, snare, as a clip. `,tt` edits the text of the clip under the cursor.",
+      done = "The clip plays kick, kick, rest, snare. `,tt` edits the text of the clip under the cursor.",
     },
     {
-      say = "musicops adds musical operators under `gz`. Type `:tutor.try musicops` and `<CR>`, press `j` to go to Keys, and `gzkic` to move every note of the clip a step up the scale.",
+      say = "musicops adds musical operators under `gz`. Type `:tutor.try musicops` and `<CR>`. Press `j` to go to Keys. Press `gzkic` to move each note of the clip one step up the scale.",
       keys = { ":tutor.try musicops", "<CR>", "j", "gzkic" },
       check = function(_, look)
         return loaded("musicops") and look.melody(look.clip("Keys")) == "62@0+1 64@1+1 65@2+1 69@3+1 65@4+1 64@5+1 62@6+2"
       end,
-      done = "D E F A F E D: the tune moved within C major. `gzh` humanizes, `gzs` strums, and `.` repeats any of them.",
+      done = "The tune is D E F A F E D now. It moved in C major. `gzh` humanizes, `gzs` strums, and `.` repeats them.",
     },
     {
-      say = "sections names the parts of a song. Type `:tutor.try sections` and `<CR>`, then `,Sa`, type `Verse` and `<CR>` to mark a section at the cursor.",
+      say = "sections gives names to the parts of a song. Type `:tutor.try sections` and `<CR>`. Press `,Sa`, type `Verse` and press `<CR>` to mark a section at the cursor.",
       keys = { ":tutor.try sections", "<CR>", ",Sa", "Verse", "<CR>" },
       check = function()
         if not loaded("sections") then return false end
@@ -64,45 +67,45 @@ and macros work with them.]],
           if s.name == "Verse" then return true end
         end
       end,
-      done = "Verse is on the ruler. `is` is now a text object: `yis` yanks the section on every track, `]s` goes to the next.",
+      done = "Verse shows on the ruler. `is` is now a text object: `yis` yanks the section on all tracks, and `]s` goes to the next section.",
     },
     {
-      say = "undotree shows every state the project has been in. Type `:tutor.try undotree` and `<CR>`, press `,uu` to open the undo tree, look, and `q` to close it.",
+      say = "undotree shows each state of the project. Type `:tutor.try undotree` and `<CR>`. Press `,uu` to open the undo tree. Look at it, then press `q` to close it.",
       keys = { ":tutor.try undotree", "<CR>", ",uu", "q" },
       check = function(ctx, look)
         if look.float() == "undotree" then ctx.seen = true end
         return loaded("undotree") and ctx.seen and not look.float()
       end,
-      done = "Nothing undone is lost: `g-` and `g+` walk through time across branches.",
+      done = "paw keeps each change that you undo. `g-` and `g+` move through time, across branches.",
     },
     {
-      say = "mixdiag measures the mix and lists problems. Type `:tutor.try mixdiag` and `<CR>`, then press `,xa` to measure the song.",
+      say = "mixdiag measures the mix and shows problems. Type `:tutor.try mixdiag` and `<CR>`. Then press `,xa` to measure the song.",
       keys = { ":tutor.try mixdiag", "<CR>", ",xa" },
       check = function(ctx, look) return loaded("mixdiag") and look.ran(ctx, "mix.analyze") end,
-      done = "It measures in the background; the message line gives the loudness when it is done, and `,xx` lists what it found.",
+      done = "mixdiag measures in the background. The message line shows the loudness when it is complete, and `,xx` shows the problems that it found.",
     },
     {
-      say = "rpp opens and writes REAPER projects. Type `:tutor.try rpp` and `<CR>`, then `:rpp.export tutor-song.rpp` and `<CR>`; a list of what REAPER cannot take opens, and `q` closes it.",
+      say = "rpp opens and writes REAPER projects. Type `:tutor.try rpp` and `<CR>`. Then type `:rpp.export tutor-song.rpp` and `<CR>`. A list of the items that REAPER cannot use opens. Press `q` to close it.",
       keys = { ":tutor.try rpp", "<CR>", ":rpp.export tutor-song.rpp", "<CR>", "q" },
       check = function(ctx, look) return loaded("rpp") and look.ran(ctx, "rpp.export") and not look.float() end,
-      done = "tutor-song.rpp is in the folder you started from. The built-in devices stay behind, as the list said.",
+      done = "tutor-song.rpp is in the folder where you started paw. As the list told you, the file does not contain the built-in devices.",
     },
     {
-      say = "utau sings notes with lyrics through OpenUtau's engines. Type `:tutor.try utau` and `<CR>`, press `o` for a new track, then type `:utau.voice` and `<CR>` to make it a vocal track.",
+      say = "utau sings notes with lyrics through the engines of OpenUtau. Type `:tutor.try utau` and `<CR>`. Press `o` to add a track. Then type `:utau.voice` and `<CR>` to make it a vocal track.",
       keys = { ":tutor.try utau", "<CR>", "o", ":utau.voice", "<CR>" },
       check = function(_, look)
         for _, t in ipairs(paw.tracks()) do
           if look.device(t, "lua:utau") then return loaded("utau") end
         end
       end,
-      done = "A vocal track. It sings once `paw-utau-engine` and a voicebank are installed (see extensions/utau/README.md); `,v` then adds a vocal track and asks for its singer in one go.",
+      done = "The track is a vocal track. It sings when you install `paw-utau-engine` and a voicebank (see extensions/utau/README.md). Then `,v` adds a vocal track and asks for its singer in one step.",
     },
     {
-      say = "Listen to the pattern and the tune: `gs`, `<Space>`, and `<Space>` to stop.",
+      say = "Listen to the pattern and the tune. Press `gs` and `<Space>`, and `<Space>` to stop.",
       keys = { "gs", "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look) return look.ran(ctx, "transport.start") and look.played(ctx) end,
-      done = "That is the course.",
+      done = "You hear the drum pattern and the tune that musicops changed.",
     },
   },
-  outro = "pattern, musicops, sections, undotree, mixdiag, rpp and utau: each one thing. Their READMEs have the rest.",
+  outro = "We tried one feature of pattern, musicops, sections, undotree, mixdiag, rpp and utau. Their READMEs tell the rest.",
 }

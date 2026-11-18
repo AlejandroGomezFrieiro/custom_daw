@@ -53,7 +53,7 @@ end
 
 local function copy(value) return paw.seats.copy(value) end
 
---- A new window showing `view`, with fields such as `size` or `hidden`.
+--- A new window that shows `view`, with fields such as `size` or `hidden`.
 function M.leaf(view, fields)
   next_win = next_win + 1
   local win = { view = view, id = next_win, opts = {}, state = {} }
@@ -78,7 +78,7 @@ M.homes.mixer = { side = "bottom", weight = 0.5, min = 14, index = 3 }
 
 -- The tree ----------------------------------------------------------------------
 
---- Whether a node takes room: a window that is not hidden, or a node with one.
+--- True if a node takes space: a window that is not hidden, or a node with such a window.
 local function shown(node)
   if node.hidden then return false end
   if node.view then return true end
@@ -108,7 +108,7 @@ function M.windows(root, all)
   return out
 end
 
---- The split holding `target` in the tree under `node`, and its place there.
+--- The split that contains `target` in the tree under `node`, and its place there.
 local function parent_of(node, target)
   for i, child in ipairs(node) do
     if child == target then return node, i end
@@ -285,9 +285,9 @@ function M.buf_create(type_name, target)
   return buf
 end
 
---- The type and buffer a name stands for: a buffer's name or number, a
---- view's name or short name (`roll`), or a type with a target
---- (`type://target`). Nil when it names nothing.
+--- The type and the buffer of a name. The name is the name or the number of
+--- a buffer, or the name or the short name of a view (`roll`). It can also
+--- be a type with a target (`type://target`). Nil when the name is not known.
 function M.resolve(name)
   if name == nil then return nil end
   local number = tonumber(name)
@@ -432,25 +432,28 @@ paw.on("project.loaded", function() M.drop_dead() end)
 
 -- Buffer types ----------------------------------------------------------------
 
---- Make a buffer type. See docs/scripting.md.
+--- Make a buffer type. See `docs/scripting.md`.
 ---   paw.buftype("notes", { create = function(target) return {} end, render = function(win, canvas, ctx) end })
---- Fields: `create(target, buf)` gives the buffer's state; `render(win,
---- canvas, ctx)` draws (`ctx.buf` is the buffer, `win.state` the window's
---- own); `on_key(win, key)` for keys with no mapping; `on_mouse(win,
---- event)`; `title(buf)`; `bufname(target, buf)`; `options` (the buffer's
---- to start with); `listed` (false keeps its buffers off `:ls`, and forgets
---- each once no window shows it); `delete(buf)`; `time` (see `timebind`);
---- `claims(name)`, whether a name is a target of the type's by its form
---- (`:vs paw://lane/3`); `window()`, the window to draw when none in the
---- tabs shows the type (one in a graphical frontend's window of its own).
---- Key mappings for its windows are mapped with `{ view = name }`.
+--- The fields are these. `create(target, buf)` gives the state of the
+--- buffer. `render(win, canvas, ctx)` draws (`ctx.buf` is the buffer, and
+--- `win.state` is the state of the window). `on_key(win, key)` gets keys
+--- with no mapping. Also `on_mouse(win, event)`, `title(buf)` and
+--- `bufname(target, buf)`. `options` is the options of the buffer at the
+--- start. `listed` false keeps its buffers off `:ls`, and forgets each
+--- buffer when no window shows it. Also `delete(buf)` and `time` (see
+--- `timebind`). `claims(name)` tells if a name is a target of the type by
+--- its form (`:vs paw://lane/3`). `window()` is the window to draw when no
+--- window in the tabs shows the type (one in a separate window of a
+--- graphical frontend). Map keys for its windows with `{ view = name }`.
 ---
---- Everything a view can do, per window: `grid(win)` (the cursor the keymap
---- moves, as a view's `grid`), `describe(win)` (what `K` says), `status(win,
---- ctx)` (the status line's `view` component), `subscope(win)`,
---- `paint(win, g, ctx)` and `pointer(win, e)` (pixels in a graphical
---- frontend), `help`, and what `paw.layout.powers` maps: `keymaps`, `motions`,
---- `textobjects`, `operators`, whose functions get `ctx.win` and `ctx.buf`.
+--- A type can also do all that a view can do, for each window. `grid(win)`
+--- is the cursor that the keymap moves, as the `grid` of a view.
+--- `describe(win)` is the text of `K`. `status(win, ctx)` is the `view`
+--- component of the status line. Also `subscope(win)`, `paint(win, g, ctx)`
+--- and `pointer(win, e)` (pixels in a graphical frontend), and `help`. It
+--- can also have the fields that `paw.layout.powers` maps: `keymaps`,
+--- `motions`, `textobjects` and `operators`. Their functions get `ctx.win`
+--- and `ctx.buf`.
 function M.buftype(name, def)
   def.name = name
   M.types[name] = def
@@ -513,15 +516,15 @@ function M.buftype(name, def)
   return def
 end
 
---- Map what `def` declares in key scope `scope` (a view's name, or a part
---- of one: see `paw.keymap.scopes`), so that a buffer type or a kind of
---- text buffer says its keys where it is made:
+--- Map the items that `def` declares in key scope `scope` (the name of a
+--- view, or a part of a view: see `paw.keymap.scopes`). So a buffer type
+--- or a kind of text buffer declares its keys where it is made:
 ---   keymaps     = { ["<localleader>r"] = fn or "command line" or { fn, desc = "...", mode = ... } }
 ---   motions     = { ["]p"] = fn }      -- also after operators and in visual mode
 ---   textobjects = { ip = fn }          -- fn(ctx) returns a region
 ---   operators   = { gq = fn }          -- fn(region, ctx)
---- `wrap(fn)`, if given, makes each function what the keymap calls, to add
---- to its `ctx` (the first argument).
+--- `wrap(fn)`, if given, makes each function that the keymap calls. It can
+--- add to the `ctx` of the function (the first argument).
 function M.powers(scope, def, wrap)
   local keymap = paw.keymap
   wrap = wrap or function(fn) return fn end
@@ -573,8 +576,9 @@ local function first_window(root)
   end
 end
 
---- The window the keyboard is in, in the current tab: the last one entered,
---- or the window of the focused view when focus was given by its name.
+--- The window that has the keyboard, in the current tab. This is the last
+--- window entered, or the window of the focused view when paw gave focus by
+--- the name of the view.
 function M.current()
   local u, t = ui(), tab()
   local win = t.win and M.find_id(t.layout, t.win)
@@ -671,7 +675,7 @@ function M.reveal(name, go)
   return win
 end
 
---- Hide a view's windows in every tab. Returns whether one was on screen.
+--- Hide the windows of a view in each tab. Returns true if one was on the screen.
 function M.conceal(name)
   local was = false
   for _, t in ipairs(ui().tabs) do
@@ -694,9 +698,9 @@ local function focusable_windows()
 end
 M.focusable_windows = focusable_windows
 
---- Close a window: a view's keeps its place, hidden; any other goes. The
---- last window of a tab closes the tab; the last of all does not close.
---- Returns whether it closed.
+--- Close a window. The window of a view keeps its place, hidden. Other
+--- windows go. The last window of a tab closes the tab. The last window of
+--- all does not close. Returns true if it closed.
 function M.close(win)
   local u, t = ui(), tab()
   win = win or M.current()
@@ -928,9 +932,9 @@ function M.move_to_edge(edge)
   api.ui_redraw()
 end
 
---- Exchange the current window with the next one beside it (the one
---- before, when it is the last), or the `count`th, within their row or
---- column; the next may be a split of several.
+--- Exchange the current window with the next window next to it, or with the
+--- `count`th, in their row or column. When it is the last window, use the
+--- previous window. The next window can be a split of several windows.
 function M.exchange(count)
   local t = tab()
   local cur = M.current()
@@ -1047,8 +1051,8 @@ function M.set_size(node, axis, size)
 end
 
 --- The border between two windows at a cell of an arrangement
---- (`paw.ui.arrange`): the rule between windows side by side, or the top
---- row of a window below another.
+--- (`paw.ui.arrange`). This is the rule between windows side by side, or
+--- the top row of a window below a different window.
 function M.border_at(rects, x, y)
   for _, b in ipairs(rects.borders or {}) do
     if b.dir == "h" and x == b.x and y >= b.y and y < b.y + b.h then return b end
@@ -1058,8 +1062,8 @@ function M.border_at(rects, x, y)
   end
 end
 
---- Move a border to where the pointer is: the one of the two sides that
---- has a size of its own keeps one, else the first side gets one.
+--- Move a border to the position of the pointer. If one of the two sides
+--- has its own size, it keeps a size. If not, the first side gets a size.
 function M.drag_border(border, rects, x, y)
   local nodes = rects.nodes or {}
   local a, b = nodes[border.a], nodes[border.b]
@@ -1108,8 +1112,9 @@ function M.maximize()
   return true
 end
 
---- Make a tab, after the current one, and go to it. It shows a buffer (a
---- view's name, or `buf`) or the window `win`; an empty window without.
+--- Make a tab after the current tab, and go to it. It shows a buffer (the
+--- name of a view, or `buf`) or the window `win`. Without them, it shows an
+--- empty window.
 function M.tab_new(name, view, win)
   local u = ui()
   local buf
@@ -1169,7 +1174,7 @@ function M.tab_step(n)
   M.tab_go((u.tab - 1 + n) % #u.tabs + 1)
 end
 
---- Close tab `i` (the current one); the last tab does not close.
+--- Close tab `i` (the current tab). The last tab does not close.
 function M.tab_close(i)
   local u = ui()
   i = i or u.tab
@@ -1192,7 +1197,7 @@ end
 
 -- Saved layouts -------------------------------------------------------------------
 
---- A tree of windows as plain data, for `paw.layouts` and saving.
+--- A tree of windows as plain data, for `paw.layouts` and to save.
 local function export(node)
   local out = { size = node.size, weight = node.weight, min = node.min }
   if node.view then
@@ -1356,7 +1361,7 @@ function M.time_lead()
   return lead, followers
 end
 
---- After the leading window is drawn: the others take its time.
+--- Call it after paw draws the main window. The other windows take its time.
 function M.time_follow(lead, win)
   local u = ui()
   local left, zoom = u.views[lead.view]:time_axis({ win = lead })

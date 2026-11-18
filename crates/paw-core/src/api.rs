@@ -625,9 +625,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn project_set(lua, sh, (key, value) => (String, LuaValue)) {
             sh.session.borrow_mut().project_set(&key, from_lua(lua, value)?).lua()
         }
-        // Put the open project aside, undo history and all, and open an empty
-        // scratch one; `project_unshelve` brings the first back exactly as it
-        // was. For checks that need tracks of their own (extensions/doctor).
+        // Put the open project aside, with its undo history, and open an empty
+        // project. `project_unshelve` brings the first project back exactly as it
+        // was. For checks that need their own tracks (extensions/doctor).
         fn project_shelve(_, sh, () => ()) { sh.session.borrow_mut().project_shelve().lua() }
         fn project_unshelve(_, sh, () => ()) { sh.session.borrow_mut().project_unshelve().lua() }
         fn project_shelved(_, sh, () => ()) { Ok(sh.session.borrow().project_shelved()) }
@@ -635,8 +635,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().project_new();
             Ok(())
         }
-        // `opts.plugins_offline` opens it with every plugin offline;
-        // `opts.offline` lists devices (by id) to open offline.
+        // `opts.plugins_offline` opens it with all plugins offline.
+        // `opts.offline` is a list of devices (by id) to open offline.
         fn project_load(lua, sh, (path, opts) => (String, LuaValue)) {
             let mut session = sh.session.borrow_mut();
             session.set_open_opts(options(lua, opts)?);
@@ -644,9 +644,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             session.set_open_opts(Default::default());
             loaded.lua()
         }
-        // Write the project as it is now to another file, leaving alone where
-        // it is saved and whether it counts as changed. `note` is kept in the
-        // file under `recovery`.
+        // Write the project as it is now to a different file. The path of the
+        // project and its modified flag do not change. The file keeps `note`
+        // under `recovery`.
         fn project_backup(lua, sh, (path, note) => (String, LuaValue)) {
             let note: Value = from_lua(lua, note)?;
             sh.session.borrow_mut().project_backup(Path::new(&path), note).lua()
@@ -690,8 +690,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().track_set(id, &key, value).lua()
         }
         fn track_meter(_, sh, id => Id) { Ok(sh.session.borrow().meter(id)) }
-        // The milliseconds a note with `attr` on the track is moved by its
-        // attribute map (below 0: earlier); 0 without one.
+        // The milliseconds that the attribute map of the track moves a note with
+        // `attr` (below 0: earlier). 0 when the track has no attribute map.
         fn track_attr_delay(lua, sh, (id, attr) => (Id, LuaValue)) {
             let attr = attr_from_lua(lua, attr)?.map_or(paw_engine::Attr::NONE, Into::into);
             sh.session.borrow().attr_delay(id, attr).lua()
@@ -726,25 +726,25 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn device_load(lua, sh, (id, load) => (Id, LuaValue)) {
             sh.session.borrow_mut().device_load(id, options(lua, load)?).lua()
         }
-        // A plugin's state, to pass as `state` when adding a copy of the device.
+        // The state of a plugin. Give it as `state` when you add a copy of the device.
         fn device_state(_, sh, id => Id) { sh.session.borrow_mut().device_state(id).lua() }
 
-        // Show or hide a plugin's own window; with no second argument, toggle it.
+        // Show or hide the window of a plugin. With no second argument, toggle it.
         fn device_editor(_, sh, (id, open) => (Id, Option<bool>)) {
             sh.session.borrow_mut().device_editor(id, open).lua()
         }
-        // Start a device again that stopped working (a plugin that crashed).
+        // Start again a device that stopped (a plugin that crashed).
         fn device_restart(_, sh, id => Id) { sh.session.borrow_mut().device_restart(id).lua() }
-        // Look into plugin files again (all, or those `name` matches),
-        // including ones passed over because they failed before. Returns
-        // notes on what could not be used, or nil without plugins.
+        // Examine the plugin files again (all, or those that `name` matches). This
+        // includes the files that failed before. Returns notes on the files that
+        // paw cannot use, or nil without plugins.
         fn plugins_rescan(_, sh, name => Option<String>) {
             Ok(sh.session.borrow_mut().registry.rescan(name.as_deref()))
         }
-        // Look for CLAP and VST3 plugins in one more directory from now on
-        // (an extension's own), and register those in it: `{ kinds, notes }`,
-        // the device kinds found there and what could not be used; nil
-        // where plugins cannot be looked for.
+        // Find CLAP and VST3 plugins in one more directory from now on (the
+        // directory of an extension), and register the plugins in it. Returns
+        // `{ kinds, notes }`: the device kinds found there and the files that paw
+        // cannot use. Returns nil where paw cannot find plugins.
         fn plugins_add_dir(lua, sh, dir => String) {
             let found = sh.session.borrow_mut().registry.add_dir(std::path::Path::new(&dir));
             match found {
@@ -752,9 +752,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                 None => Ok(LuaValue::Nil),
             }
         }
-        // Look in a directory added with `plugins_add_dir` no more, and make
-        // no more devices of `kinds`, those found there; devices already made
-        // go on.
+        // Stop to find plugins in a directory added with `plugins_add_dir`, and
+        // make no more devices of `kinds`, the kinds found there. Devices that
+        // exist continue to work.
         fn plugins_remove_dir(_, sh, (dir, kinds) => (String, Vec<String>)) {
             sh.session.borrow_mut().registry.remove_dir(std::path::Path::new(&dir), &kinds);
             Ok(())
@@ -768,13 +768,13 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             }
             Ok(table)
         }
-        // Add devices that fail on purpose (`test.panic`, `test.nan`), for
-        // testing what a bad device does to the rest.
+        // Add devices that fail on purpose (`test.panic`, `test.nan`). Tests use
+        // them to see what a bad device does to the other devices.
         fn test_devices(_, sh, () => ()) {
             paw_engine::guard::register_test_devices(&mut sh.session.borrow_mut().registry);
             Ok(())
         }
-        // Panic, as a bug in the program would: for testing what is kept.
+        // Panic, as a bug in the program does. Tests use it to see what paw keeps.
         fn test_panic(_, _sh, why => String) {
             if !why.is_empty() {
                 panic!("{why}");
@@ -784,15 +784,15 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // Make plugins apart from the main loop (true), or wait for each as
         // it is added (false, what scripts start with). Returns what it was.
         fn load_apart(_, sh, on => bool) { Ok(sh.session.borrow_mut().set_load_apart(on)) }
-        // A request to a device that takes data from scripts; bytes in, bytes out.
+        // A request to a device that accepts data from scripts. Bytes in, bytes out.
         fn device_call(lua, sh, (id, method, data) => (Id, String, Option<LuaString>)) {
             let data = data.as_ref().map(|d| d.as_bytes().to_vec()).unwrap_or_default();
             let answer = sh.session.borrow_mut().device_call(id, &method, &data).lua()?;
             lua.create_string(answer)
         }
-        // Data for every device of a kind, now and made later (a render's
-        // too); nil forgets the topic. Returns `{ { device, error } }` for
-        // those that refused it.
+        // Data for all devices of a kind, now and in the future (also the devices
+        // of a render). nil removes the topic. Returns `{ { device, error } }` for
+        // the devices that refused it.
         fn device_post(lua, sh, (kind, topic, data) => (String, String, Option<LuaString>)) {
             let data = data.as_ref().map(|d| d.as_bytes().to_vec());
             let refused = sh.session.borrow_mut().device_post(&kind, &topic, data.as_deref());
@@ -816,8 +816,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn media_dir(_, sh, () => ()) {
             Ok(sh.session.borrow().media_dir().to_string_lossy().into_owned())
         }
-        // The project's sound files (session/media.rs): what is missing,
-        // relinking, copying into the project's folder.
+        // The sound files of the project (session/media.rs): the files that paw
+        // cannot find, links to new paths, and copies into the folder of the project.
         fn media_list(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().media_list()) }
         // Long files are played from the disk: past how many megabytes of
         // decoded sound (0: never), and how many gigabytes of it are kept
@@ -880,9 +880,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         }
         fn clip_remove(_, sh, id => Id) { sh.session.borrow_mut().clip_remove(id).lua() }
 
-        // --- clip launching (session/launcher.rs) ---
-        // A clip goes into a slot with `clip_add(track, { slot = row, ... })`
-        // and is edited like any clip; `clip_set` also takes `row`,
+        // --- clip launcher (session/launcher.rs) ---
+        // A clip goes into a slot with `clip_add(track, { slot = row, ... })`.
+        // You edit it as a usual clip. `clip_set` also accepts `row`,
         // `quantize`, `mode` and `legato` for it.
         fn slot_list(lua, sh, track => Id) { to_lua(lua, &sh.session.borrow().slot_list(track).lua()?) }
         // Copy a clip into a row of a track's slots. Returns the copy's id.
@@ -895,25 +895,25 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn launch(lua, sh, list => LuaValue) {
             sh.session.borrow_mut().launch(from_lua(lua, list)?).lua()
         }
-        // What each track plays and has queued, as the engine last said.
+        // What each track plays and has in its queue, in the last report of the engine.
         fn launcher(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().launcher_view()) }
         fn clip_set(lua, sh, (id, key, value) => (Id, String, LuaValue)) {
             sh.session.borrow_mut().clip_set(id, &key, from_lua(lua, value)?).lua()
         }
-        // `n` { min, max } pairs covering what an audio clip plays.
+        // `n` { min, max } pairs for all of the sound that an audio clip plays.
         fn clip_peaks(lua, sh, (id, n) => (Id, usize)) {
             to_lua(lua, &sh.session.borrow_mut().clip_peaks(id, n).lua()?)
         }
-        // `n` { min, max, rms } covering `seconds` of any sound file from
-        // `offset` seconds: what a clip's other takes would play.
+        // `n` { min, max, rms } for `seconds` of a sound file from `offset`
+        // seconds: the sound that the other takes of a clip would play.
         fn media_peaks(lua, sh, (file, offset, seconds, n) => (String, f64, f64, usize)) {
             let peaks = sh.session.borrow_mut().media_peaks(file.as_ref(), offset, seconds, n).lua()?;
             to_lua(lua, &peaks)
         }
-        // A MIDI clip's notes, in the order they start. With a range
-        // `{ from, to, low, high }` (beats in the clip, pitches), only the
-        // notes sounding within it, and as a second value the place of each
-        // in the whole list.
+        // The notes of a MIDI clip, in the order of their start. With a range
+        // `{ from, to, low, high }` (beats in the clip, pitches), only the notes
+        // that sound in it. The second value is then the place of each note in
+        // the whole list.
         fn clip_notes(lua, sh, (id, range) => (Id, LuaValue)) {
             let session = sh.session.borrow();
             if range.is_nil() {
@@ -931,17 +931,17 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             }
             Ok(mlua::Variadic::from_iter([LuaValue::Table(notes), LuaValue::Table(places)]))
         }
-        // The note on `pitch` sounding at `beat`, and its place among the
-        // clip's notes; nothing when there is none.
+        // The note on `pitch` that sounds at `beat`, and its place in the notes of
+        // the clip. Nothing when there is no such note.
         fn clip_note_at(lua, sh, (id, pitch, beat) => (Id, u8, f64)) {
             Ok(match sh.session.borrow().clip_note_at(id, pitch, beat).lua()? {
                 Some((index, note)) => (Some(note_to_lua(lua, note)?), Some(index + 1)),
                 None => (None, None),
             })
         }
-        // One note at a time, named by its place among the clip's notes
-        // (from 1). Adding and changing return the note's place afterwards:
-        // notes stay in the order they start.
+        // One note at a time, by its place in the notes of the clip (from 1).
+        // The functions that add and change a note return its new place,
+        // because the notes stay in the order of their start.
         fn clip_note_add(lua, sh, (id, note) => (Id, LuaValue)) {
             let note: Note = from_lua(lua, note)?;
             Ok(sh.session.borrow_mut().clip_note_add(id, note).lua()? + 1)
@@ -1051,9 +1051,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn transport_record(_, sh, () => ()) { sh.session.borrow_mut().record().lua() }
 
         // --- audition (session/audition.rs) ---
-        // Edits that `trial_end(false)` throws away, the project put back as
-        // it was and the undo history untouched; `trial_end(true)` keeps
-        // them as one step.
+        // `trial_end(false)` discards the edits made after `trial_begin`. The
+        // project is then as it was and the undo history does not change.
+        // `trial_end(true)` keeps the edits as one step.
         fn trial_begin(_, sh, () => ()) { sh.session.borrow_mut().trial_begin().lua() }
         fn trial_end(_, sh, keep => Option<bool>) { Ok(sh.session.borrow_mut().trial_end(keep.unwrap_or(false))) }
         fn trial_active(_, sh, () => ()) { Ok(sh.session.borrow().trial_active()) }
@@ -1071,17 +1071,17 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
 
         // --- MIDI input ---
         fn midi_inputs(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().midi_inputs()) }
-        // A port of our own for other programs to send MIDI to; true from
-        // `midi_close_port` if there was one to take away.
+        // A port of paw that other programs can send MIDI to. `midi_close_port`
+        // returns true if there was such a port to remove.
         fn midi_open_port(_, sh, name => String) { sh.session.borrow_mut().midi_open_port(&name).lua() }
         fn midi_close_port(_, sh, name => String) { Ok(sh.session.borrow_mut().midi_close_port(&name)) }
         // --- MIDI output ---
         fn midi_outputs(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().midi_outputs()) }
-        // A port of our own for other programs to read MIDI from; true from
-        // `midi_close_output` if there was one to take away.
+        // A port of paw that other programs can read MIDI from. `midi_close_output`
+        // returns true if there was such a port to remove.
         fn midi_open_output(_, sh, name => String) { sh.session.borrow_mut().midi_open_output(&name).lua() }
         fn midi_close_output(_, sh, name => String) { Ok(sh.session.borrow_mut().midi_close_output(&name)) }
-        // Open only the ports matching these ids or names, or all of them with nil.
+        // Open only the ports that match these ids or names, or all of them with nil.
         fn midi_select(_, sh, which => Option<Vec<String>>) {
             sh.session.borrow_mut().midi_select(which);
             Ok(())
@@ -1105,8 +1105,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().midi_inject(kind, port.as_deref());
             Ok(())
         }
-        // A Universal MIDI Packet (one or two 32-bit words) as if from a MIDI
-        // 2.0 port. Returns whether it was a message the engine plays.
+        // A Universal MIDI Packet (one or two 32-bit words), as if from a MIDI
+        // 2.0 port. Returns true if the engine plays that message.
         fn midi_inject_ump(_, sh, words => Vec<u32>) {
             match ump::decode(&words) {
                 Some((_, kind)) => {
@@ -1129,13 +1129,13 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
 
         // --- engine ---
         fn engine_get(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().engine_info()) }
-        // Forget the processing times `engine_get().blocks` has recorded so far.
+        // Forget the process times that `engine_get().blocks` recorded until now.
         fn engine_reset_stats(_, sh, () => ()) {
             sh.session.borrow().engine_reset_stats();
             Ok(())
         }
-        // Play a track from a sound file for now, as if frozen, or live again
-        // with nil; the project is not changed (see `freeze.rs`).
+        // Play a track from a sound file for now, as if it is frozen, or live
+        // again with nil. The project does not change (see `freeze.rs`).
         fn engine_hold(_, sh, (track, file) => (Id, Option<String>)) {
             sh.session.borrow_mut().hold(track, file.map(PathBuf::from)).lua()
         }
@@ -1145,8 +1145,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().set_audible(tracks);
             Ok(())
         }
-        // Threads to process tracks on, counting the audio thread; 0 leaves
-        // it to the machine. `engine_get().threads` says how many are in use.
+        // The number of threads that process tracks, with the audio thread. 0
+        // lets paw select the number. `engine_get().threads` gives the number in use.
         fn engine_set_threads(_, sh, threads => usize) {
             sh.session.borrow_mut().set_threads(threads).lua()
         }
@@ -1174,19 +1174,19 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn audio_devices(lua, sh, () => ()) {
             to_lua(lua, &sh.session.borrow().audio_devices().lua()?)
         }
-        // Try to open the device that went away again; true once it is open.
+        // Try to open again the device that went away. Returns true when it is open.
         fn audio_reconnect(_, sh, () => ()) { sh.session.borrow_mut().audio_reconnect().lua() }
-        // `{ auto = false }` stops reopening a device that comes back by
-        // itself; `period` is how often to look for it, in milliseconds.
+        // With `{ auto = false }`, paw does not open again a device that returns
+        // by itself. `period` is the interval between checks, in milliseconds.
         fn audio_watch(lua, sh, opts => LuaValue) {
             let opts: AudioWatchOpts = options(lua, opts)?;
             let period = opts.period.map(|ms| Duration::from_secs_f64(ms.max(0.0) / 1000.0));
             sh.session.borrow_mut().set_audio_watch(opts.auto, period);
             Ok(())
         }
-        // The `test` backend's pretend device: `{ present = false }` unplugs
-        // it, `fail_after = n` unplugs it after n blocks of the next stream,
-        // `back_after = ms` plugs it in that long after it goes.
+        // The simulated device of the `test` backend. `{ present = false }`
+        // disconnects it. `fail_after = n` disconnects it after n blocks of the
+        // next stream. `back_after = ms` connects it again `ms` after it goes.
         fn audio_test_device(lua, _sh, opts => LuaValue) {
             let opts: TestDeviceOpts = options(lua, opts)?;
             paw_engine::backend::test_device::set(opts.present, opts.fail_after, opts.back_after);
@@ -1218,14 +1218,14 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             let opts: RenderOpts = options(lua, opts)?;
             to_lua(lua, &sh.session.borrow_mut().render(path.as_ref(), &opts).lua()?)
         }
-        // Start a render on a thread of its own; `render.progress` and then
-        // `render.done`, `render.failed` or `render.cancelled` follow.
+        // Start a render on a separate thread. Then the events `render.progress`
+        // and `render.done`, `render.failed` or `render.cancelled` come.
         fn render_start(lua, sh, (path, opts) => (String, LuaValue)) {
             let opts: RenderOpts = options(lua, opts)?;
             sh.session.borrow_mut().render_start(path.as_ref(), &opts).lua()
         }
         fn render_cancel(_, sh, () => ()) { Ok(sh.session.borrow_mut().render_cancel()) }
-        // The running render, `{ path, fraction, seconds, cancelling }`, or nil.
+        // The render that runs now, `{ path, fraction, seconds, cancelling }`, or nil.
         fn render_status(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().render_status()) }
 
         // --- undo ---
@@ -1235,8 +1235,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().checkpoint();
             Ok(())
         }
-        // Whether this turn's edits will close as a step, and putting back
-        // what they changed instead (`edit.before`, paw/hooks.lua).
+        // `undo_pending` is true if the edits of this turn will close as a step.
+        // `undo_discard` puts back what they changed, and no step closes
+        // (`edit.before`, paw/hooks.lua).
         fn undo_pending(_, sh, () => ()) { Ok(sh.session.borrow().undo_pending()) }
         fn undo_discard(_, sh, () => ()) { Ok(sh.session.borrow_mut().undo_discard()) }
         // Make the project as it is now the start of its undo history, and
@@ -1274,14 +1275,14 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn project_file_text(lua, _sh, value => LuaValue) {
             crate::session::project_file_text(from_lua(lua, value)?).lua()
         }
-        // Name the open step; the first name given wins. nil takes back a
-        // name given while the step has changed nothing yet.
+        // Give a name to the open step. The first name wins. nil removes a name
+        // given while the step changed nothing.
         fn undo_label(_, sh, text => Option<String>) {
             sh.session.borrow_mut().undo_label(text);
             Ok(())
         }
-        // The edits of this turn join undo state `id`, the current one,
-        // instead of making a step of their own: a snippet's choice changed.
+        // The edits of this turn join undo state `id`, the current one, and do
+        // not make a step of their own. For example, a snippet changed its choice.
         fn undo_join(_, sh, id => u64) { Ok(sh.session.borrow_mut().undo_join(id)) }
         fn undo_keys(_, sh, text => String) {
             sh.session.borrow_mut().undo_keys(text);
@@ -1317,8 +1318,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.cursor.set(x.zip(y).map(|(x, y)| (x.max(0.0) as u16, y.max(0.0) as u16)));
             Ok(())
         }
-        // Whether the terminal reports the pointer (`paw.opt.mouse`), for the
-        // screen being drawn.
+        // True if the terminal reports the pointer (`paw.opt.mouse`), for the
+        // screen that paw draws now.
         fn ui_mouse(_, sh, on => bool) {
             sh.grid.borrow_mut().mouse_off = !on;
             Ok(())
@@ -1347,10 +1348,10 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.dirty.set(true);
             Ok(())
         }
-        // Keep the cells (x, y, w, h), clipped to (cx, cy, cw, ch), for
-        // pixels under the name `key` (`buf:strip`), over the text or
-        // `under` it: returns the surface's number for `grid_surface_ops`,
-        // or nil when nothing of it is on the screen.
+        // Keep the cells (x, y, w, h), clipped to (cx, cy, cw, ch), for pixels
+        // under the name `key` (`buf:strip`), over the text or `under` it.
+        // Returns the number of the surface for `grid_surface_ops`, or nil when
+        // no part of it is on the screen.
         fn grid_surface(_, sh, (key, x, y, w, h, cx, cy, cw, ch, under) => (String, f64, f64, f64, f64, f64, f64, f64, f64, Option<bool>)) {
             let cell_px = sh.caps.borrow().get(&sh.seat.get()).map_or((0, 0), |c| c.cell);
             let clip = Rect { x: cell(cx), y: cell(cy), w: cell(cw), h: cell(ch) };
@@ -1391,9 +1392,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             }
         }
         // Write drawings (the operations of `paw.canvas.paint`) to a file:
-        // `format` "pdf" (a page for each), "svg" or "png" (the first).
-        // Each page is `{ ops, width, height }` in pixels; `scale` is points
-        // to a pixel in a PDF (0.75: 96 pixels to the inch).
+        // `format` "pdf" (one page for each drawing), "svg" or "png" (the first).
+        // Each page is `{ ops, width, height }` in pixels. `scale` is the points
+        // for one pixel in a PDF (0.75: 96 pixels to the inch).
         fn canvas_export(lua, _sh, (path, format, pages, scale) => (String, String, LuaValue, Option<f32>)) {
             let pages: Vec<Value> = lua.from_value(pages)?;
             let drawn: Vec<(paw_raster::Drawing, f32, f32)> = pages
@@ -1499,10 +1500,10 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             Ok(())
         }
         fn now(_, sh, () => ()) { Ok(sh.started.elapsed().as_secs_f64() * 1000.0) }
-        // The time limit on Lua (`paw.limit`): the function to call when a
-        // callback has overrun, and when the running one must have returned
-        // (on the clock of `now`; nil when it has). `limit_async` says
-        // whether an overrun is noticed inside compiled code as well.
+        // The time limit on Lua (`paw.limit`). The arguments are the function to
+        // call when a callback runs too long, and the time when the current
+        // callback must return (on the clock of `now`, nil when it returned).
+        // `limit_async` tells if paw finds an overrun inside compiled code too.
         fn limit_hook(lua, _sh, func => Function) { Watchdog::set_hook(lua, func) }
         fn limit_watch(_, sh, deadline => Option<f64>) {
             sh.watchdog.watch(deadline);
@@ -1512,9 +1513,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             std::thread::sleep(Duration::from_secs_f64(ms.max(0.0) / 1000.0));
             Ok(())
         }
-        // Let `ms` milliseconds pass with timers firing and events delivered,
-        // as they are between a person's key presses. `sleep` holds all of
-        // that up; a script that waits for something a timer does uses this.
+        // Let `ms` milliseconds pass. Timers fire and events come, as between the
+        // key presses of a person. `sleep` stops all of that. A script that waits
+        // for the result of a timer uses `wait`.
         fn wait(lua, sh, ms => f64) {
             let deadline = Instant::now() + Duration::from_secs_f64(ms.max(0.0) / 1000.0);
             let kernel: Table = lua.globals().get::<Table>("paw")?.get("_kernel")?;
@@ -1580,7 +1581,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn sock_listen(_, sh, path => String) { sh.io.borrow_mut().listen(path.into()).lua() }
         fn sock_connect(_, sh, path => String) { sh.io.borrow_mut().connect(path.into()).lua() }
         fn sock_accept(_, sh, id => u64) { sh.io.borrow_mut().accept(id).lua() }
-        // Bytes that have arrived, "" when none have, nil once the peer closed.
+        // The bytes that came, "" when none came, nil after the peer closed.
         fn sock_read(lua, sh, (id, max) => (u64, Option<usize>)) {
             match sh.io.borrow_mut().read(id, max.unwrap_or(1 << 20)).lua()? {
                 Some(bytes) => Ok(LuaValue::String(lua.create_string(bytes)?)),
@@ -1593,10 +1594,10 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             Ok(())
         }
 
-        // Connections on the control socket (crates/paw-core/src/rpc.rs):
-        // push an event to one (false when it has closed), list them, say
-        // which one's terminal the input being handled came from (0 for the
-        // program's own), and let a connection's terminal go.
+        // Connections on the control socket (crates/paw-core/src/rpc.rs). Push an
+        // event to one (false when it closed), list them, and tell the terminal
+        // of the input that paw handles now (0 for the terminal of paw). Also
+        // release the terminal of a connection.
         fn rpc_push(lua, sh, (client, event, payload) => (u64, String, LuaValue)) {
             let payload: Value = from_lua(lua, payload)?;
             Ok(sh.clients.push(client, &event, &payload))

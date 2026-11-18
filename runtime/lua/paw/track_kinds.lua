@@ -67,8 +67,8 @@ function M.list()
   return out
 end
 
---- The name of a track's kind: the one it keeps, else one whose `is`
---- claims it; nil for an ordinary track.
+--- The name of the kind of a track: the kind that it keeps. If not, a kind
+--- whose `is` claims it. Nil for a usual track.
 function M.of(which)
   local ok, t = pcall(function() return track_of(which):get() end)
   if not ok or not t or t.master then return nil end
@@ -100,8 +100,9 @@ function M.set(which, name, args)
   return track
 end
 
---- A new track of `name`'s kind: `opts.name` (else the kind's title
---- without "track"), `opts.index`; the rest goes to `create`.
+--- A new track of the kind `name`. `opts.name` is its name (if not given,
+--- the title of the kind without "track"), and `opts.index` its place. The
+--- other options go to `create`.
 function M.add(name, opts)
   opts = opts or {}
   local spec = M.kinds[name]

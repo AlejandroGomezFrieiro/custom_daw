@@ -6,11 +6,11 @@ local registry = {}
 
 --- Define or replace a command.
 ---   paw.command("track.mute", function(ctx) ... end, { desc = "Mute the track" })
---- The handler receives `ctx` with `ctx.args` (positional and named arguments)
---- and `ctx.count` (the number typed before a key mapping, or nil).
---- With `opts.raw` the command line passes its text unsplit as `ctx.args[1]`.
---- With `opts.range` it takes a range of bars in front (`:5,8name`) as
---- `ctx.range`; see Ranges below.
+--- The handler gets `ctx` with `ctx.args` (positional and named arguments)
+--- and `ctx.count` (the number typed before a key mapping, or nil). With
+--- `opts.raw`, the command line gives its text as one string in
+--- `ctx.args[1]`. With `opts.range`, it accepts a range of bars before it
+--- (`:5,8name`) as `ctx.range`. See Ranges below.
 function M.define(name, run, opts)
   assert(type(name) == "string" and type(run) == "function", "usage: paw.command(name, function, opts)")
   opts = opts or {}
@@ -18,8 +18,8 @@ function M.define(name, run, opts)
     ext = opts.ext or M.owner() }
 end
 
---- The extension being loaded, or whose code registers these commands and
---- keys later: what `:help` takes them to, and what unloading takes away.
+--- The extension that paw loads now, or whose code registers these commands
+--- and keys later. `:help` goes to its page for them, and an unload removes them.
 function M.owner()
   local ext = rawget(paw, "ext")
   if not ext then return nil end
@@ -48,14 +48,16 @@ function M.get(name)
   return registry[name]
 end
 
---- Put a command back as `spec` (one `get` or `list` gave), or remove it
---- with nil: what unloading an extension does with the commands it made.
+--- Put a command back as `spec` (a command that `get` or `list` gave), or
+--- remove it with nil. An extension that unloads does this with the
+--- commands that it made.
 function M.put(name, spec)
   registry[name] = spec
 end
 
---- Count a use of a command that was chosen by name (typed, or picked), so
---- that pickers can put what is used often first. Kept in `paw.state`.
+--- Count a use of a command selected by name (typed, or selected in a
+--- picker). Pickers then show the commands used most first. paw keeps the
+--- count in `paw.state`.
 function M.used(name)
   local spec = registry[name]
   name = spec and spec.alias_of or name
@@ -65,7 +67,7 @@ function M.used(name)
   paw.state.command_uses = uses
 end
 
---- How many times `used` has counted a command.
+--- The number of times that `used` counted a command.
 function M.uses(name)
   local uses = paw.state.command_uses
   return type(uses) == "table" and uses[name] or 0
@@ -107,7 +109,7 @@ function M.unknown(name)
   return "no command `" .. name .. "`" .. (#near > 0 and ": did you mean " .. table.concat(near, ", ") .. "?" or ": `,fc` or `:` and Tab find one")
 end
 
---- Run a command. `args` is a table of arguments; `ctx` adds fields such as `count`.
+--- Run a command. `args` is a table of arguments. `ctx` adds fields such as `count`.
 function M.run(name, args, ctx)
   local spec = registry[name]
   if not spec and type(name) == "string" then
@@ -189,9 +191,9 @@ end
 -- }` for `'<,'>`, while `paw.keymap.selection()` returns that region. A
 -- number right before a command without a range is its count: `:3snippet arp`.
 
---- Split a range off the front of a command line: the range, and the rest.
---- Nil for the range when there is none; an error message instead of the
---- rest when the range names nothing.
+--- Split a range from the start of a command line. Returns the range and
+--- the rest. The range is nil when there is no range. When the range names
+--- nothing, an error message replaces the rest.
 function M.range(line) return paw.ex.range(line) end
 
 --- Functions that may take a whole line before it is read as a command:

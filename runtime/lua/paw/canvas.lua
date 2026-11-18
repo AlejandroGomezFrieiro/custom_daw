@@ -285,12 +285,12 @@ end
 
 M.Painter = Painter
 
---- Show a view that paints in a graphical frontend and give it the
---- keyboard: docked, as the terminal shows it, when it has a place in the
---- layout (`paw.ui.dock`, or a window showing it); else, or with `window =
---- true`, in a window of its own. A view already in a window of its own
---- stays there. `opts`: `title`, `width`, `height` (what a window starts
---- at), `window`.
+--- Show a view that paints in a graphical frontend, and give it the
+--- keyboard. When the view has a place in the layout (`paw.ui.dock`, or a
+--- window that shows it), it is docked, as the terminal shows it. If not,
+--- or with `window = true`, it is in a separate window. A view that is
+--- already in a separate window stays there. `opts`: `title`, `width`,
+--- `height` (the start size of a window), `window`.
 function M.open(name, opts)
   local view = paw.ui.views[name]
   if not (view and view.paint) then error("no view `" .. tostring(name) .. "` that paints", 2) end
@@ -312,19 +312,21 @@ function M.open(name, opts)
   api.ui_redraw()
 end
 
---- Whether a graphical frontend shows a view: in a window of its own, or
---- docked where the seat's screen is a frontend's main area (one that has
---- said its size to `paw.panes`, or the instance's own with no terminal).
+--- True if a graphical frontend shows a view. The view is in a separate
+--- window, or docked where the screen of the seat is the main area of a
+--- frontend. That is a frontend that told its size to `paw.panes`, or the
+--- frontend of the instance when there is no terminal.
 function M.shown(name)
   if M.open_views[name] then return true end
   return paw.ui.visible(name) and (paw.panes.cells() ~= nil or not api.ui_attached())
 end
 
---- A view about to show in a window of its own leaves the layout, so as
---- not to show twice: its windows in the tabs close, keeping their place.
---- Returns the window that had the keyboard, to give it back to. A view a
---- frontend draws itself (the arrange view, the mixer...) stays where it is
---- as well: the window of its own is a second look at it.
+--- A view that will show in a separate window leaves the layout, so it does
+--- not show two times. Its windows in the tabs close and keep their place.
+--- Returns the window that had the keyboard, to give the keyboard back to
+--- it. A view that a frontend draws itself (the arrange view, the mixer and
+--- other views) also stays where it is. The separate window is a second
+--- view of it.
 function M.leave(name)
   local L = paw.layout
   local here, t = L.current(), L.tab()
@@ -346,9 +348,9 @@ function M.leave(name)
   end
 end
 
---- Give the keyboard back to the main window from a view in a window of
---- its own: to the window that had it before the view went there, else the
---- arrange view.
+--- Give the keyboard back to the main window from a view in a separate
+--- window. It goes to the window that had it before the view went there.
+--- If there is no such window, it goes to the arrange view.
 function M.back(name)
   local window = M.open_views[name]
   local L = paw.layout
@@ -368,13 +370,13 @@ end
 
 M.focus = focus
 
---- Show any view in a window of a graphical frontend (the focused one when
+--- Show a view in a window of a graphical frontend (the focused view when
 --- `name` is nil), and give it the keyboard. A view that paints is painted
---- (`M.open`); any other is drawn as the terminal draws it, in cells of the
---- window's monospace font, at whatever size the window has, with a line
---- under it for prompts, messages and its keys. A view floating over the
---- terminal's views moves into the window. `opts`: `title`, `width`,
---- `height` (in pixels).
+--- (`M.open`). Other views are drawn as the terminal draws them, in cells of
+--- the monospace font of the window, at the size of the window. A line
+--- below the view shows prompts, messages and its keys. A view that floats
+--- over the views of the terminal moves into the window. `opts`: `title`,
+--- `width`, `height` (in pixels).
 ---   paw.canvas.open_view("undotree")
 function M.open_view(name, opts)
   name = name or paw.ui.focused
@@ -420,9 +422,9 @@ function M.openable()
   return out
 end
 
---- Close a view's window of its own; the keyboard goes back to the main
---- window, where it was before. A view docked in the layout instead
---- closes its window there, as `:close` would.
+--- Close the separate window of a view. The keyboard returns to the main
+--- window, where it was before. For a view docked in the layout, its window
+--- there closes, as `:close` does.
 function M.close(name)
   if not M.open_views[name] then
     local win = paw.layout.find(paw.ui.layout, name)
@@ -436,10 +438,10 @@ function M.close(name)
   api.ui_redraw()
 end
 
---- Put a view in a window of its own back into the layout, with the
---- keyboard: where it was before it popped out, else where it docks, else
---- in a window split from the current one. What closing its window of its
---- own does; `Ctrl-w d` in it does the same.
+--- Put a view in a separate window back into the layout, with the keyboard.
+--- It goes where it was before it left the layout. If not, it goes where it
+--- docks. If not, it goes in a window split from the current window. paw
+--- does this when its separate window closes. `Ctrl-w d` in it does the same.
 function M.dock(name)
   name = name or paw.ui.focused
   if not M.open_views[name] then return end
@@ -470,14 +472,15 @@ function M.windows()
 end
 
 --- A view that draws cells, at a size in pixels: its snapshot
---- (`paw.api.ui_view_snapshot`) as runs of text, a run of one style each.
---- Drawn again only when a redraw has been asked for since, once a second
---- for what changes on its own (times), and on every call while playing;
---- `{ same = true }` when what it would draw is what it drew last.
---- `window` keeps what was drawn. The view in a window of its own has a
---- line under it for prompts, messages and the view's keys, unless the
---- frontend draws a status line there itself (`opts.status`). A graphical
---- frontend is sent its windows as scenes instead (`paw.ui.render_scene`).
+--- (`paw.api.ui_view_snapshot`) as runs of text, one style for each run.
+--- paw draws it again only after a request for a redraw. It also draws it
+--- one time each second for the parts that change by themselves (times),
+--- and on each call while the song plays. The result is `{ same = true }` when the drawing is
+--- the same as the last drawing. `window` keeps the last drawing. The view
+--- in a separate window has a line below it for prompts, messages and the
+--- keys of the view. This is not so when the frontend draws a status line
+--- there itself (`opts.status`). paw sends the windows of a graphical
+--- frontend as scenes (`paw.ui.render_scene`).
 function M.paint_cells(name, window, width, height, opts)
   local cell = M.cell
   window.cell = cell
@@ -619,19 +622,22 @@ end
 ---   { "g", x, y, size, codepoint, colour, font }   a music font's glyph
 ---   { "cut", x, y0, y1 }                           where a slice may end
 ---   { "layer", name }                              what follows is that layer
---- (attributes add up 1 bold, 4 italic, 8 underline, 32 strike), and the
---- window's title, which a view may change as it goes. `opts`: `cell`, the
---- size `{ w, h }` of a cell of the window's monospace font (or of the
---- terminal's, for a surface), `fresh` when the window has nothing yet,
---- `glyphs` when the frontend draws glyph ops itself (else they come as
---- paths, and the markers are left out), `surface` when the drawing goes
---- into a terminal's cells (the view leaves out what the terminal's own
---- bars show, and its background), `colors` `{ fg, bg }`, the terminal's,
---- and `bars` from a frontend that shows a view in a window of its own,
---- out of sight of its main window's bottom: the status line and the
---- command line are drawn under the view there. The view's `paint` is
---- given these in its context, as `cell`, `surface`, `fg` and `bg`. A view
---- that draws cells answers `{ same = true }` when nothing would change.
+--- The attributes are a sum of 1 bold, 4 italic, 8 underline and 32 strike.
+--- It also returns the title of the window, which a view can change.
+---
+--- The options are these. `cell` is the size `{ w, h }` of a cell of the
+--- monospace font of the window (or of the terminal, for a surface).
+--- `fresh` is true when the window has nothing yet. `glyphs` is true when
+--- the frontend draws glyph operations itself. If not, they come as paths,
+--- without the markers. `surface` is true when the drawing goes into the
+--- cells of a terminal. Then the view does not draw its background and the
+--- data that the bars of the terminal show. `colors` is `{ fg, bg }`, the
+--- colors of the terminal. `bars` comes from a frontend that shows a view
+--- in a separate window, away from the bottom of its main window. The view
+--- then draws the status line and the command line below it. The `paint`
+--- function of the view gets these in its context, as `cell`, `surface`,
+--- `fg` and `bg`. A view that draws cells gives `{ same = true }` when
+--- nothing changes.
 function M.paint(name, width, height, opts)
   local view = paw.ui.views[name]
   local window = M.open_views[name]
@@ -671,9 +677,9 @@ function M.paint(name, width, height, opts)
   return { title = window and window.title or name, ops = ops }
 end
 
---- The operations a function draws on a painter of `px.w` by `px.h`
---- pixels: what a strip shows (`buf:strip`). `draw(g, px)` is given the
---- painter and `px` itself; a failure is shown where it would have drawn.
+--- The operations that a function draws on a painter of `px.w` by `px.h`
+--- pixels: what a strip shows (`buf:strip`). `draw(g, px)` gets the painter
+--- and `px`. If it fails, the error shows where it would draw.
 ---   local ops = paw.canvas.draw(function(g, px) g:rect(0, 0, px.w, 2, { fill = "#ffffff" }) end, { w = 80, h = 40 })
 function M.draw(draw, px)
   local ops = {}
@@ -690,10 +696,10 @@ function M.draw(draw, px)
   return ops
 end
 
---- A pointer event in pixels as the terminal gives it to a view's
---- `on_mouse`: in cells, `kind` down, up, drag or scroll_up and so on,
---- `button`, and `mods` ("C", "A", "S"). Nil for what the terminal has no
---- word for (the second click of a double one comes as down and up).
+--- A pointer event in pixels as the terminal gives it to the `on_mouse` of
+--- a view. It is in cells, with `kind` down, up, drag, scroll_up and other
+--- kinds, `button`, and `mods` ("C", "A", "S"). Nil for an event that the terminal
+--- cannot tell (the second click of a double click comes as down and up).
 function M.cell_event(window, event, bare)
   local cell = window.cell or M.cell
   local kind = event.kind
@@ -723,8 +729,8 @@ function M.cell_event(window, event, bare)
 end
 
 --- Pass a pointer event from a frontend to a view, which then has the
---- keyboard: to its `pointer` in pixels, or for a view in cells to its
---- `on_mouse` as the terminal would.
+--- keyboard. It goes to its `pointer` function in pixels. For a view in
+--- cells, it goes to its `on_mouse` function, as from the terminal.
 function M.pointer(name, event)
   local view = paw.ui.views[name]
   if not view then return end
@@ -739,11 +745,11 @@ function M.pointer(name, event)
   api.ui_redraw()
 end
 
---- Keys typed in a view's window: they go to the key mappings with that
---- view focused (or to a prompt that is open), as typed in the terminal.
---- A view may give keys a meaning of its own in its window, as other programs
---- do (`view.window_keys`, such as Ctrl-A for choosing every note), where
---- the terminal keeps the one rule of every view.
+--- Keys typed in the window of a view. They go to the key mappings with
+--- that view focused (or to an open prompt), as when typed in the terminal.
+--- In its window, a view can give a key its own meaning, as other programs
+--- do (`view.window_keys`, for example Ctrl-A to select all notes). The
+--- terminal keeps the one rule of all views.
 function M.key(name, keys)
   local view = paw.ui.views[name]
   if view then focus(name) end

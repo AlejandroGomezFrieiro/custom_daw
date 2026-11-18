@@ -17,8 +17,8 @@
 local api = paw.api
 local M = {}
 
---- Every marker and region, in order of time: { id, beat, name, length, color }.
---- A region has a `length` in beats; a marker has none.
+--- Each marker and region, in order of time: { id, beat, name, length, color }.
+--- A region has a `length` in beats. A marker has no length.
 function M.list()
   local list = api.project_get().meta.markers
   if type(list) ~= "table" then return {} end
@@ -55,7 +55,7 @@ function M.label(marker)
   return "?"
 end
 
---- Add a marker at a beat; with `opts.length` a region from there. Returns it.
+--- Add a marker at a beat. With `opts.length`, add a region from there. Returns it.
 function M.add(beat, name, opts)
   opts = opts or {}
   assert(type(beat) == "number" and beat >= 0, "a marker is at a beat from 0 up")
@@ -68,8 +68,8 @@ function M.add(beat, name, opts)
   return marker
 end
 
---- The marker or region a number (its place in the song), an id given as
---- `{ id = n }`, or a name means; nil without one.
+--- The marker or region of a number (its place in the song), of an id
+--- given as `{ id = n }`, or of a name. Nil if there is none.
 function M.find(which)
   local list = M.list()
   if type(which) == "table" then

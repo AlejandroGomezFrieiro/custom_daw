@@ -40,12 +40,12 @@ paw.seats.keep("ui",
   end,
   function(_, _, _, _, tabs, tab) return "arrange", nil, nil, {}, paw.seats.copy(tabs), tab, nil end)
 
---- Register a view, replacing any view of the same name.
+--- Register a view. It replaces a view with the same name.
 ---   paw.ui.view("clock", { render = function(self, buf) buf:text(0, 0, os.date()) end })
 --- Optional fields: `focusable` (default true), `on_key(self, key)` for keys
---- with no mapping, `modal` (every key goes to `on_key`), `on_mouse(self, event)`,
+--- with no mapping, `modal` (each key goes to `on_key`), `on_mouse(self, event)`,
 --- `on_show(self)`, `on_hide(self)`. A view is a buffer type with one
---- buffer, named as the view or by `bufname`.
+--- buffer, with the name of the view or the name from `bufname`.
 function M.view(name, def)
   def.name = name
   M.views[name] = def
@@ -59,7 +59,7 @@ local function bar(name)
   end
 end
 
---- Whether a view is currently on screen.
+--- True if a view is on the screen now.
 function M.visible(name)
   if M.float and M.float.name == name then return true end
   for _, rect in ipairs(M.arrange()) do
@@ -86,7 +86,7 @@ function M.show(name)
   api.ui_redraw()
 end
 
---- Close a view's window, in every tab; it keeps its place for next time.
+--- Close the window of a view, in each tab. The view keeps its place for the next time.
 function M.hide(name)
   local node = bar(name)
   if node then
@@ -106,7 +106,7 @@ function M.hide(name)
   api.ui_redraw()
 end
 
---- Show the view `name` in its window, or hide it if it is showing.
+--- Show the view `name` in its window, or hide it if it shows now.
 function M.toggle(name)
   local win = L.find(M.layout, name)
   if (win and not win.hidden) or not (win or L.homes[name]) then
@@ -125,17 +125,17 @@ end
 
 --- Add a view to the layout along one side of the screen.
 ---   paw.ui.dock("clock", { side = "top", size = 5 })
---- `side` is "top", "bottom" (above the status line), "left" or "right" (beside
---- the arrange view). Without `size` the view shares the space left over.
---- Docking a view that is already in the layout moves it. Other tabs put
---- it in the same place when it is shown there.
+--- `side` is "top", "bottom" (above the status line), "left" or "right" (next to
+--- the arrange view). Without `size`, the view shares the space that is
+--- left. To dock a view that is already in the layout moves it. Other tabs
+--- put it in the same place when they show it.
 function M.dock(name, opts)
   L.dock(name, opts or {})
   api.ui_redraw()
 end
 
---- Give a view the keyboard, showing it first if it is hidden: the window
---- it is in, going to its tab if that is another.
+--- Give a view the keyboard, and show it first if it is hidden. The window
+--- that contains it gets the keys, and paw goes to the tab of that window.
 function M.focus(name)
   if not M.views[name] then error("no view `" .. tostring(name) .. "`", 2) end
   local win = L.reveal(name, true)
@@ -346,19 +346,20 @@ function M.place(root, x, y, w, h)
   return out
 end
 
---- The size of the screen in cells: the terminal's, or for the seat of a
---- graphical frontend that has said how big its main area is, that area's
---- (`paw.panes`), so that a split there is measured on what it shows.
+--- The size of the screen in cells. This is the size of the terminal. For
+--- the seat of a graphical frontend that told the size of its main area, it
+--- is the size of that area (`paw.panes`). So paw measures a split there
+--- on what it shows.
 function M.size()
   local cells = paw.panes and paw.panes.cells()
   if cells then return cells.w, cells.h end
   return api.ui_size()
 end
 
---- Where each visible view goes on a screen of the current size: a list of
---- `{ name, win, x, y, w, h }`, with the tab line along the top when there
---- is more than one tab. `.borders` holds the borders between windows and
---- `.nodes` where each node of the tree went, for resizing.
+--- The position of each visible view on a screen of the current size: a
+--- list of `{ name, win, x, y, w, h }`. The tab line is along the top when
+--- there is more than one tab. `.borders` contains the borders between
+--- windows, and `.nodes` the position of each node of the tree, to resize them.
 function M.arrange(width, height)
   if not width then width, height = M.size() end
   local out = { nodes = {}, borders = {}, floating = {} }
@@ -454,12 +455,12 @@ function M.box(buf, title, style)
   return buf:sub(1, 1, w - 2, h - 2)
 end
 
---- Draw a one-row title bar along the top of a docked panel and return a
---- buffer for the rest of it. `opts`: `name`, `pill` (`{ text, group }`,
---- drawn ahead of the name), `context` (after the name),
---- `right` (state, at the right end), `reserve` (columns kept free at the
---- right end, for what the view puts there), `focused`. Focus shows as the whole
---- bar in the accent colour, inverted.
+--- Draw a title bar of one row along the top of a docked panel, and return
+--- a buffer for the rest of it. `opts`: `name`, `pill` (`{ text, group }`,
+--- before the name), `context` (after the name), `right` (state, at the
+--- right end), `reserve` (columns to keep free at the right end, for the
+--- view's own items), `focused`. When the panel has focus, the whole bar is
+--- in the accent color, inverted.
 ---   local body = paw.ui.titlebar(buf, { name = "Mixer", context = "5 tracks", focused = ctx.focused })
 function M.titlebar(buf, opts)
   local g = paw.draw.g
@@ -712,10 +713,11 @@ function M.render_screen(buf)
   paint_surfaces()
 end
 
---- Draw one view by itself on a buffer of its own, as a window of a
---- graphical frontend shows it (see `paw.canvas.open_view`), or a pane of
---- its main area shows a window of the layout (`M.view_win`, while it is
---- drawn). Braille is drawn there as dots (`paw.canvas`), as the font has none.
+--- Draw one view alone on a buffer of its own. A window of a graphical
+--- frontend shows the result (see `paw.canvas.open_view`). A pane of its
+--- main area also shows a window of the layout this way (`M.view_win`,
+--- while paw draws it). Braille shows there as dots (`paw.canvas`),
+--- because the font has no braille.
 function M.render_view(name, buf)
   M.screen = false
   local view = M.views[name]
@@ -727,13 +729,15 @@ function M.render_view(name, buf)
   draw(view, buf, { focused = focused, x = 0, y = 0, win = win })
 end
 
---- Draw one view by itself as a scene for a graphical frontend (see
---- crates/paw-scene), `w` by `h` units big (fractions allowed), `cell` the
---- frontend's cell `{ w, h }` in pixels, `win` the window of the layout it
---- shows in, if any. What `render_view` writes in the whole cells is the
---- scene's runs and fills, and the strips the view keeps under them its
---- pictures; a view that paints is one picture of the whole. The scene
---- stays with the kernel for `paw.api.scene_end` to say what changed of it.
+--- Draw one view alone as a scene for a graphical frontend (see
+--- crates/paw-scene). The scene is `w` by `h` units (fractions are
+--- permitted). `cell` is the cell `{ w, h }` of the frontend in pixels, and
+--- `win` is the window of the layout that it shows in, if any.
+---
+--- The text that `render_view` writes in whole cells becomes the runs and
+--- fills of the scene. The strips that the view keeps under them become its
+--- pictures. A view that paints is one picture of the whole area. The kernel
+--- keeps the scene, and `paw.api.scene_end` tells what changed in it.
 function M.render_scene(name, w, h, cell, win)
   local view = M.views[name]
   api.scene_begin(w, h)
@@ -783,7 +787,7 @@ function M.draw_hints(buf)
   end
 end
 
---- Open a view in a box floating over the others. It takes the keyboard
+--- Open a view in a float over the other views. It takes the keyboard
 --- until `paw.ui.close()`.
 ---   paw.ui.open("help", { title = "Keys", width = 80, height = 30 })
 function M.open(name, opts)
@@ -794,7 +798,7 @@ function M.open(name, opts)
   api.ui_redraw()
 end
 
---- Close the floating window that has the keys, or a view's own window.
+--- Close the float that has the keys, or the window of a view.
 function M.close()
   if not M.float then
     -- A view drawn in a window of its own (`paw.canvas.open_view`) closes
@@ -868,10 +872,10 @@ local function route(event)
   if border and not paw.mouse.gesture() then hold_border(event, border, true) end
 end
 
---- Route a mouse event to the view under the pointer, with coordinates
---- relative to that view (and `view_x`, `view_y`, `w`, `h`, where the view
---- is), after what floats over the views and a gesture under way have had
---- it (`paw.mouse`).
+--- Send a mouse event to the view under the pointer, with coordinates
+--- relative to that view (and `view_x`, `view_y`, `w`, `h`, the position of
+--- the view). First, the floats over the views and a gesture in progress
+--- get it (`paw.mouse`).
 function M.mouse(event)
   if paw.mouse.take(event) then return end
   route(event)
@@ -929,9 +933,9 @@ api.hl_set = set
 
 --- Define a highlight group: a table of `fg`, `bg`, `bold`, `dim`, `italic`,
 --- `underline`, `reverse`, `strike`, or the name of a group to follow.
---- Colours are `#rrggbb`, or a number for one of the terminal's 256; on a
---- terminal without 24-bit colour each `#rrggbb` is shown as the nearest of
---- the 256.
+--- Colors are `#rrggbb`, or a number for one of the 256 colors of the
+--- terminal. On a terminal without 24-bit color, each `#rrggbb` shows as
+--- the nearest of the 256.
 function M.hl(name, def)
   set(name, def)
 end
@@ -941,7 +945,7 @@ function M.theme(groups)
   for name, def in pairs(groups) do set(name, def) end
 end
 
---- Set every group again: after `paw.opt.termcolors` has changed.
+--- Set each group again. Call it after `paw.opt.termcolors` changes.
 function M.recolour()
   truecolor = paw.draw.truecolor()
   for name, def in pairs(defined) do set(name, def) end
@@ -955,10 +959,10 @@ end)
 
 --- Ask for a line of text on the command line.
 ---   paw.ui.input({ prompt = "Name: ", text = "Bass" }, function(text) ... end)
---- The callback is not called when the prompt is cancelled. Options are
---- the command line's (`paw.views.cmdline.open`): `complete`, `history`,
---- `on_change` (live preview), `anchor` (draw it beside what it is about),
---- `on_key`.
+--- paw does not call the callback when the user cancels the prompt. The
+--- options are those of the command line (`paw.views.cmdline.open`):
+--- `complete`, `history`, `on_change` (live preview), `anchor` (draw it
+--- next to its subject), `on_key`.
 function M.input(opts, on_submit)
   require("paw.views.cmdline").open(opts, on_submit)
 end
@@ -974,9 +978,9 @@ M.redraw = api.ui_redraw
 
 M.layers = {}  -- view -> part -> { { name, order, paint } }
 
---- Draw `paint(ctx)` as a layer of a part of a view (`"arrange", "header"`),
---- replacing one of the same name (nil removes it). The view says what
---- `ctx` holds where it calls `paw.ui.paint`.
+--- Draw `paint(ctx)` as a layer of a part of a view (`"arrange", "header"`).
+--- It replaces a layer with the same name (nil removes it). The view tells
+--- what `ctx` contains where it calls `paw.ui.paint`.
 function M.layer(view, part, name, order, paint)
   M.layers[view] = M.layers[view] or {}
   local list = M.layers[view][part] or {}
@@ -1011,9 +1015,9 @@ function M.location(view)
   return loc and loc.at() or nil
 end
 
---- Go to a location in the view that shows it best (the piano roll for
---- notes, the device panel for devices and parameters, the arrange view for
---- tracks and time), focusing it.
+--- Go to a location in the view that shows it best, and focus that view.
+--- The piano roll shows notes, the device panel shows devices and
+--- parameters, and the arrange view shows tracks and time.
 function M.go(location)
   for _, name in ipairs({ "pianoroll", "devices", "arrange", "mixer" }) do
     local loc = M.locators[name]
@@ -1029,12 +1033,12 @@ end
 -- redraw on a timer while playing and for a moment after any activity.
 local active_until = 0
 
---- Keep the screen animating for a while, for instance after playing a note.
+--- Keep the screen animated for some time, for example after paw plays a note.
 function M.poke(ms)
   active_until = math.max(active_until, api.now() + (ms or 1500))
 end
 
---- Redraw at `paw.opt.fps` while playing or just after activity.
+--- Redraw at `paw.opt.fps` while the song plays or immediately after activity.
 function M.start_ticker()
   paw.every(1000 / paw.opt.fps, function()
     if api.ui_attached() and (api.transport_get().playing or api.now() < active_until) then api.ui_redraw() end

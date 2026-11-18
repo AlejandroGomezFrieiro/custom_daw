@@ -28,8 +28,8 @@ function M.file()
   return string.format("%s/%s-%08x.json", M.dir, name:gsub("[^%w%-_]", "_"), hash)
 end
 
---- Write a copy now, if the project has changed since the last one (or
---- `force`, as when a take begins). Returns the file written, or nil.
+--- Write a copy now, if the project changed after the last copy (or with
+--- `force`, as when a take starts). Returns the written file, or nil.
 function M.copy(force)
   local p = api.project_get()
   if not force and (not paw.project.unsaved() or p.edits == copied) then return nil end
@@ -76,10 +76,10 @@ function M.left_behind()
   return out
 end
 
---- Open a copy that was left behind, as the project it was a copy of.
---- `opts.as_path` opens it under that file name instead (a `.bak`, which is
---- kept); `opts.plugins_offline` opens it with every plugin offline, in case
---- one of them is what ended the session.
+--- Open a copy that a session left, as the project that it is a copy of.
+--- `opts.as_path` opens it under that file name (a `.bak`, which paw keeps).
+--- `opts.plugins_offline` opens it with all plugins offline, if a plugin
+--- possibly stopped the session.
 function M.recover(file, opts)
   opts = opts or {}
   if not paw.project.guard("recover", opts.force) then return end
@@ -96,8 +96,8 @@ local function readable(file)
   return handle ~= nil
 end
 
---- What can stand in for the project file `path` when it cannot be opened:
---- its `.bak` (the file as it was before the last save) and the newest
+--- The files that can replace the project file `path` when paw cannot open
+--- it. These are its `.bak` (the file before the last save) and the newest
 --- safety copy of it, newest first: { file, path, kind, time }.
 function M.alternatives(path)
   local out = {}
@@ -204,10 +204,10 @@ paw.on("exit", function()
   end
 end)
 
---- Recorded takes in the project's `media` directory that no clip refers
---- to and that were written after the project was last saved: what a
---- session that ended during or after a take, without saving, leaves.
---- (A take that was undone before a save is not one.) { file, name }.
+--- Recorded takes in the `media` directory of the project that no clip
+--- uses, written after the last save of the project. A session that
+--- stopped during or after a take, without a save, leaves them. A take that
+--- you undid before a save is not one of them. { file, name }.
 function M.orphan_takes()
   local path = api.project_get().path
   if not path then return {} end
@@ -256,8 +256,9 @@ function M.orphan_takes()
   return kept
 end
 
---- Bring an orphaned take in: on the track it was recorded for, if one has
---- the name it starts with, or on a new one, at the start of the song.
+--- Import an orphaned take. It goes on the track that it was recorded for,
+--- if a track has the name that it starts with. If not, it goes on a new
+--- track. It goes at the start of the song.
 function M.import_take(file)
   local name = file:match("([^/]+)%-take%d+[%-%d]*%.wav$")
   local track

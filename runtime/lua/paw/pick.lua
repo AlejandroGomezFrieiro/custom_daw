@@ -425,8 +425,8 @@ local function filter_entries(query, entries, mode)
   return out
 end
 
---- The items that match `query`, best first, each as { item, text, score };
---- `mode` as `paw.pick.match` takes it.
+--- The items that match `query`, best first, each as { item, text, score }.
+--- `mode` is as `paw.pick.match` takes it.
 ---   paw.pick.filter("bass", { "Bass", "Bass Synth", "Drums" })
 function M.filter(query, items, format, primary, mode)
   local out = {}
@@ -705,9 +705,9 @@ local function view_for(loc)
   return "arrange"
 end
 
---- Show a location: in place (`how` nil), or in a new window beside
---- ("vsplit"), below ("split") or in a new tab ("tab"), the view that
---- shows it best moving there. Returns whether there was somewhere to go.
+--- Show a location: in place (`how` nil), or in a new window to the side
+--- ("vsplit"), below ("split") or in a new tab ("tab"). The view that shows
+--- it best moves there. Returns true if there was a place to go.
 function M.show(loc, how)
   if type(loc) == "string" then loc = { uri = loc } end
   if not how then return paw.qf.go({ location = loc }) end
@@ -1217,16 +1217,17 @@ end
 
 M.sources = require("paw.pick.sources")(M)
 
---- Choose a file by walking directories:
+--- Select a file from a tree of directories:
 ---
 ---   paw.pick.file({ title = "Import audio", extensions = { "wav", "mp3" },
 ---                   on_choose = function(path) end })
 ---
---- Directories come first and are entered with Enter; `..` goes up; only
---- files with one of `extensions` are listed (all files without it). It
---- starts in `dir`, else where a file was last chosen, else beside the
---- project, else in the home directory. With `directory = true` the first
---- item chooses the directory being shown, and `on_choose` gets it.
+--- Directories come first, and Enter opens them. `..` goes up. The list
+--- shows only files with one of `extensions` (all files without it). It
+--- starts in `dir`. If not given, it starts where you last selected a file,
+--- then next to the project, then in the home directory. With
+--- `directory = true`, the first item selects the directory that shows,
+--- and `on_choose` gets it.
 function M.file(opts)
   local wanted
   if opts.extensions then

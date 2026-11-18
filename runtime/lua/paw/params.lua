@@ -10,7 +10,7 @@ local M = {}
 
 local LOG_UNITS = { Hz = true, ms = true, s = true, Q = true, [":1"] = true }
 
---- Whether the parameter moves on a log scale.
+--- True if the parameter moves on a log scale.
 function M.is_log(p)
   return LOG_UNITS[p.unit] and p.min > 0 and p.max / p.min >= 8 and #p.choices == 0
 end
@@ -135,9 +135,9 @@ function M.preset_value(p, value)
   return value
 end
 
---- Set a device to one of its kind's presets, by name.
---- The same as loading it with `paw.fx.load` (`:preset`): one undo step,
---- and the device then holds that preset.
+--- Set a device to one of the presets of its kind, by name. This is the
+--- same as a load with `paw.fx.load` (`:preset`): one undo step, and the
+--- device then has that preset.
 function M.apply(device, name)
   local id = type(device) == "table" and device.id or device
   local d = paw.api.device_get(id)

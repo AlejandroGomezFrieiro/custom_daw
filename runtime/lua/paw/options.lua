@@ -134,8 +134,8 @@ local function takes(name)
   return table.concat(words, ", or ")
 end
 
---- Whether `value` is one that option `name` takes: true, or nil and an
---- error that says what it takes. An option with no default takes anything.
+--- Tells if option `name` accepts `value`: true, or nil and an error that
+--- tells what it accepts. An option with no default accepts any value.
 function M.check(name, value)
   if defaults[name] == nil or value == nil then return true end
   local spec = specs[name] or {}
@@ -192,8 +192,8 @@ local opt = setmetatable({}, {
   end,
 })
 
---- Give an option a default, for extensions that add options of their own.
---- It then takes values of the default's type; `spec` says more:
+--- Give an option a default, for extensions that add their own options. The
+--- option then accepts values of the type of the default. `spec` adds more rules:
 ---   paw.option.define("lanes", 4, { min = 1, max = 16, integer = true })
 ---   paw.option.define("look", "plain", { values = { "plain", "fancy" } })
 ---   paw.option.define("size", "auto", { type = { "number", "string" }, min = 1, values = { "auto" } })
@@ -211,10 +211,10 @@ function M.definitions()
   return out
 end
 
---- Take an option's definition away, and the value set for it (an
---- extension that defined it was unloaded): `paw.opt[name]` is nil again.
---- With `was`, what `paw.option.definitions` gave before, that comes back
---- instead, and the value stays.
+--- Remove the definition of an option and its value (the extension that
+--- defined it unloaded). `paw.opt[name]` is nil again. With `was`, the
+--- value that `paw.option.definitions` gave before, that definition
+--- returns, and the value stays.
 function M.undefine(name, was)
   if was then
     defaults[name], specs[name], definitions[name] = was.default, was.spec, was

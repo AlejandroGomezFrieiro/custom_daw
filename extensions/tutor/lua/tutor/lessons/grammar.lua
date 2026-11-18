@@ -3,26 +3,35 @@ return {
   id = "grammar",
   title = "The grammar: operators, motions, text objects",
   intro = [[
-This is the heart of paw. Most editing is a short sentence: an operator
-(what to do) followed by a motion or a text object (what to do it to).
-`d` is delete, `w` is "to the next clip", so `dw` deletes up to the next clip.
-`ic` is "the clip I am in", so `dic` deletes this clip. A count says how many:
-`d2W` deletes two bars. Typing the operator twice takes whole tracks: `dd`.
-And `.` repeats the last change wherever the cursor is now.
+In this lesson, we delete, mute and loop clips with short commands. Then we
+repeat them with `.`.
 
-In this practice project the Beat track has four clips: kick, snare, fill, crash. Bass plays under them.]],
+This grammar is the center of paw. Most edits are a short sentence: an
+operator (the action), then a motion or a text object (the item). `d` is
+delete and `w` is "to the next clip", so `dw` deletes up to the next clip.
+`ic` is "the clip under the cursor", so `dic` deletes this clip.
+
+A count gives the quantity: `d2W` deletes two bars. The operator two times
+selects whole tracks: `dd`. `.` repeats the last change at the cursor.
+
+In this practice project, the Beat track has four clips: kick, snare, fill
+and crash. Bass plays below them.]],
   idea = [[
-Operators: `d` delete, `y` yank (copy), `c` change, `>` `<` move later and
-earlier, `=` snap to the grid, `gc` mute, `gl` loop. Motions: every key from
-lesson 2. Text objects: `ic` the clip, `ac` the clip and the gap after it, `ib`
-the bar, `il` the loop, `it` everything on the track, `ie` the entire project.
-Learn a few of each and you know their products: six operators and ten motions
-are sixty commands.]],
+The operators are `d` delete, `y` yank (copy) and `c` change. `>` `<` move
+later and earlier, `=` snaps to the grid, `gc` mutes and `gl` loops. The motions are
+all the keys from lesson 2.
+
+The text objects are `ic` the clip and `ac` the clip with the gap after it.
+`ib` is the bar, `il` the loop, `it` all of the track and `ie` the project.
+Learn some of each, and you know all their combinations. Six operators and
+ten motions make sixty commands.]],
   vim = [[
-This is Vim's grammar, unchanged: operator, count, motion or text object; the
-operator twice for whole lines (tracks); `.` with a new count. `gc` is
-commenting out, here muting. `gl` (loop) is new. `c` empties the stretch and
-opens a fresh clip in insert mode.]],
+This is the grammar of Vim, with no change: an operator, a count, and a
+motion or a text object. The operator two times selects whole lines, which
+are tracks here. `.` accepts a new count.
+
+In Vim, `gc` changes lines to comments. Here it mutes. `gl` (loop) is new.
+`c` makes the range empty and opens a new clip in insert mode.]],
   setup = function(look)
     paw.project.tempo = 104
     local beat = paw.add_track({ name = "Beat" })
@@ -38,89 +47,89 @@ opens a fresh clip in insert mode.]],
   at = function() paw.cursor.set_track(paw.track("Beat")) end,
   steps = {
     {
-      say = "The cursor is at the start of `kick`. `d` is the delete operator and `w` the motion to the next clip: press `dw`.",
+      say = "The cursor is at the start of `kick`. `d` is the delete operator and `w` is the motion to the next clip. Press `dw`.",
       keys = { "dw" },
       check = function(_, look) return look.names("Beat") == "snare fill crash" end,
-      done = "`kick` is gone: `dw` deleted from the cursor to where `snare` starts.",
-      hint = "After `d` the status line says PENDING: the operator waits for its motion. `<Esc>` cancels it.",
+      done = "`kick` is deleted. `dw` deleted from the cursor to the start of `snare`.",
+      hint = "After `d`, the status line shows PENDING: the operator waits for its motion. `<Esc>` cancels it.",
     },
     {
       say = "Press `u` to bring it back.",
       keys = { "u" },
       check = function(ctx, look) return look.ran(ctx, "undo") and look.names("Beat") == "kick snare fill crash" end,
-      done = "All four clips again.",
+      done = "The track has its four clips again.",
     },
     {
-      say = "A text object names a thing instead of a movement: `ic` is the clip under the cursor. Press `w` to go to `snare`, then `dic`.",
+      say = "A text object names an item, not a movement. `ic` is the clip under the cursor. Press `w` to go to `snare`, then press `dic`.",
       keys = { "w", "dic" },
       check = function(_, look) return look.names("Beat") == "kick fill crash" end,
-      done = "`dic`: delete in clip. A gap is left where `snare` was.",
+      done = "`dic` means \"delete in clip\". There is a gap where `snare` was.",
     },
     {
-      say = "`.` repeats the last change. Press `w` to go to `fill`, then `.` to delete it too.",
+      say = "`.` repeats the last change. Press `w` to go to `fill`. Then press `.` to delete it too.",
       keys = { "w", "." },
       check = function(_, look) return look.names("Beat") == "kick crash" end,
-      done = "`.` did `dic` again, on the clip under the cursor now.",
+      done = "`.` did `dic` again, on the clip that is under the cursor now.",
     },
     {
-      say = "Undo both: press `u` twice.",
+      say = "Undo the two changes: press `u` two times.",
       keys = { "u", "u" },
       check = function(ctx, look) return look.ran(ctx, "undo") and look.names("Beat") == "kick snare fill crash" end,
-      done = "Back to four clips.",
+      done = "The track has four clips again.",
     },
     {
       say = "A count goes with the motion: `d2W` deletes two bars from the cursor. Press `0`, then `d2W`.",
       keys = { "0", "d2W" },
       check = function(_, look) return look.names("Beat") == "fill crash" end,
-      done = "Two bars of Beat deleted; Bass is untouched, since the operator works on the cursor's track.",
+      done = "Two bars of Beat are deleted. Bass did not change, because the operator works on the track of the cursor.",
     },
     {
-      say = "Press `u` to undo that.",
+      say = "Press `u` to undo that change.",
       keys = { "u" },
       check = function(ctx, look) return look.ran(ctx, "undo") and look.names("Beat") == "kick snare fill crash" end,
-      done = "Restored.",
+      done = "The two bars are back.",
     },
     {
-      say = "Other operators take the same motions and objects. `gc` mutes: press `gcic` to mute `kick`.",
+      say = "Other operators accept the same motions and objects. `gc` mutes. Press `gcic` to mute `kick`.",
       keys = { "gcic" },
       check = function(_, look) local c = look.clip("Beat", "kick") return c and c.muted end,
-      done = "`kick` is muted (greyed). `gcic` again would unmute it.",
+      done = "`kick` is muted and gray. `gcic` again unmutes it.",
     },
     {
-      say = "Press `w` to go to `snare` and `.` to mute it the same way.",
+      say = "Press `w` to go to `snare`. Press `.` to mute it in the same way.",
       keys = { "w", "." },
       check = function(_, look) local c = look.clip("Beat", "snare") return c and c.muted end,
-      done = "`.` repeats any change: deleting, muting, moving.",
+      done = "`.` repeats each type of change: delete, mute and move.",
     },
     {
-      say = "Typed twice, an operator takes whole tracks: `dd` deletes a track. Press `j` to go to Bass, then `dd`.",
+      say = "An operator two times selects whole tracks: `dd` deletes a track. Press `j` to go to Bass, then press `dd`.",
       keys = { "j", "dd" },
       check = function(_, look) return look.track("Bass") == nil end,
-      done = "The Bass track is gone, and it is in the register.",
+      done = "The Bass track is deleted, and paw keeps it in the register.",
     },
     {
-      say = "`p` puts what was deleted back after the cursor: for a track, below it. Press `p`.",
+      say = "`p` puts the deleted item after the cursor. A track goes below the cursor. Press `p`.",
       keys = { "p" },
       check = function(ctx, look) return look.became(ctx, "back", look.track("Bass") ~= nil and #paw.tracks() == 2) end,
-      done = "Bass is back, with its synth and clip. Deleting is cutting.",
+      done = "Bass is back, with its synth and its clip. So a delete is also a cut.",
     },
     {
-      say = "`gl` is the loop operator. Go up to Beat with `k`, put the cursor on `snare` with `0` and `w`, then press `glic`.",
+      say = "`gl` is the loop operator. Press `k` to go up to Beat. Press `0` and `w` to put the cursor on `snare`. Then press `glic`.",
       keys = { "k", "0", "w", "glic" },
       check = function()
         return paw.transport.loop_enabled and paw.transport.loop_start == 4 and paw.transport.loop_end == 8
       end,
-      done = "The loop is the snare clip: the ruler shows it.",
+      done = "The loop is the snare clip. The ruler shows it.",
     },
     {
-      say = "Unmute `snare` with `gcic`, and press `<Space>` to hear the loop; `<Space>` stops.",
+      say = "Press `gcic` to unmute `snare`. Press `<Space>` to hear the loop. `<Space>` stops.",
       keys = { "gcic", "<Space>", { wait = 300 }, "<Space>" },
       check = function(ctx, look)
         local c = look.clip("Beat", "snare")
         return c and not c.muted and look.played(ctx)
       end,
-      done = "The snare bar and the bass, round and round.",
+      done = "The snare bar and the bass play again and again.",
     },
   },
-  outro = "Operator plus motion (`dw`, `d2W`), operator plus text object (`dic`, `gcic`, `glic`), twice for tracks (`dd`), and `.` to repeat.",
+  outro = "We used operators with motions (`dw`, `d2W`) and with text objects (`dic`, `gcic`, `glic`), `dd` for tracks, and `.` to repeat.",
 }
