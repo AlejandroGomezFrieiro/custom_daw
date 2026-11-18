@@ -24,26 +24,24 @@ end
 -- The mixer ------------------------------------------------------------------------------
 
 local mixer = paw.ui.views.mixer
-
--- The fader's travel, as the mixer draws it: most of it is the top twenty decibels.
-local function fader_position(volume) return util.clamp((volume + 60) / 66, 0, 1) ^ 2.5 end
-local function fader_volume(position) return util.clamp(position, 0, 1) ^ (1 / 2.5) * 66 - 60 end
-
-local flags = { "mute", "solo", "armed", "monitor" }
+local fader_position, fader_volume = mixer.fader_position, mixer.fader_volume
 
 local function draw_db(volume) return paw.draw.db_text(volume) .. " dB" end
 
-function mixer:on_mouse(e)
-  local g = self.geometry
-  if not (g and g.strips) then return end
-  -- Under the title bar, in the strips' own lines.
-  local x, y = e.x, e.y - 1
-  local s
-  for _, strip in ipairs(g.strips) do
-    if x >= strip.x and x < strip.x + strip.w then s = strip end
-  end
-  if not s then return end
-  local id = s.id
+--- Where the pointer is along a row of cells, from 0 at the first to 1 at
+--- the last: a terminal gives the cell, a window the point in it.
+local function along(e)
+  local at = e.x - e.rect.x - (e.fine and 0.5 or 0)
+  return util.clamp(at / math.max(1, e.rect.w - 1), 0, 1)
+end
+
+-- Every part of a strip (paw/views/mixer.lua marks them) answers the
+-- pointer the same in the terminal and in a window: the wheel moves the
+-- fader (with Shift, or sideways, the strips), a move says what is there, a
+-- right click opens the track's menu, a press puts the cursor on the track.
+local function strip_gesture(_, e)
+  local h = e.hit
+  local id = h.track
   local step, sideways = mouse.wheel(e)
   if step then
     if sideways or mouse.has(e, "S") then
@@ -65,38 +63,42 @@ function mixer:on_mouse(e)
     return mouse.grab(e, { up = function(u) if not u.moved then paw.ui.menu(menus.track(id), screen(e)) end end })
   end
   if e.button ~= "left" then return end
-  if y >= s.fader and y < s.fader + s.rows then
+  local kind = h.kind
+  if kind == "fader" then
     if e.double then return A.set_volume(id, 0) end
+    local rows = e.rect.h
     return drag(e, function() return fader_position(api.track_get(id).volume) end, function(start, d)
-      local per = (mouse.has(d, "S") and 0.25 or 1) / math.max(1, s.rows - 1)
+      local per = (mouse.has(d, "S") and 0.25 or 1) / math.max(1, rows - 1)
       A.set_volume(id, fader_volume(start - d.dy * per))
     end, id, "volume")
-  elseif y == s.vol then
+  elseif kind == "volume" then
     if e.double then return A.set_volume(id, 0) end
     return drag(e, function() return api.track_get(id).volume end, function(start, d)
       A.set_volume(id, start + d.dx * (mouse.has(d, "S") and 0.1 or 1))
     end, id, "volume")
-  elseif y == s.pan then
+  elseif kind == "pan" then
     if e.double then return A.set_pan(id, 0) end
-    local function pan_at(px) return util.clamp((px - s.x - 1) / math.max(1, s.pan_w - 1) * 2 - 1, -1, 1) end
-    if x > s.x and x <= s.x + s.pan_w then A.set_pan(id, pan_at(x)) end
-    return drag(e, function() return 0 end, function(_, d) A.set_pan(id, pan_at(d.x)) end, id, "pan")
-  elseif y == s.chips and id ~= 0 then
-    local gap = s.w >= 8 and 1 or 0
-    local i = (x - s.x - 1) / (1 + gap)
-    if i == math.floor(i) and flags[i + 1] then A.toggle(id, flags[i + 1]) end
-  elseif s.devices and y >= s.devices and y < s.devices + 3 then
-    local index = y - s.devices + 1
-    if (api.track_get(id).devices or {})[index] then A.pick_device(id, index) end
-  elseif s.sends and y >= s.sends and y < s.sends + 2 then
-    local index = y - s.sends + 1
-    local send = (api.track_get(id).sends or {})[index]
+    local rect, fine = e.rect, e.fine
+    local function pan_at(d) return along({ x = d.x, rect = rect, fine = fine }) * 2 - 1 end
+    A.set_pan(id, pan_at(e))
+    return drag(e, function() return 0 end, function(_, d) A.set_pan(id, pan_at(d)) end, id, "pan")
+  elseif kind == "flag" then
+    A.toggle(id, h.flag)
+  elseif kind == "insert" then
+    if (api.track_get(id).devices or {})[h.index] then A.pick_device(id, h.index) end
+  elseif kind == "send" then
+    local send = (api.track_get(id).sends or {})[h.index]
     if not send then return end
     return drag(e, function() return send.level end, function(start, d)
-      A.set_send(id, index, start + d.dx * (mouse.has(d, "S") and 0.1 or 1))
+      A.set_send(id, h.index, start + d.dx * (mouse.has(d, "S") and 0.1 or 1))
     end)
   end
 end
+
+mixer.gestures = {
+  strip = strip_gesture, fader = strip_gesture, volume = strip_gesture, pan = strip_gesture,
+  flag = strip_gesture, insert = strip_gesture, send = strip_gesture,
+}
 
 -- The device panel ---------------------------------------------------------------------
 

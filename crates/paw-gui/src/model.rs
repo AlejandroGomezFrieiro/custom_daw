@@ -103,12 +103,6 @@ impl PeakHold {
     pub fn moving(&self, levels: [f32; 2]) -> bool {
         self.level[0] > levels[0] + 1e-3 || self.level[1] > levels[1] + 1e-3
     }
-
-    /// The louder side's peak in dB, for a strip's readout.
-    pub fn text(&self) -> String {
-        let level = self.level[0].max(self.level[1]);
-        decibels(if level <= 0.0 { -60.0 } else { level * 66.0 - 60.0 })
-    }
 }
 
 /// A bar or beat line of the tempo map.
@@ -291,7 +285,6 @@ pub struct Track {
     pub color: Color32,
     /// What its sound goes through and where it goes, in a few words.
     pub chain: String,
-    pub inserts: Vec<String>,
     pub kind: String,
     pub volume: f32,
     pub pan: f32,
@@ -302,15 +295,10 @@ pub struct Track {
     pub input_label: String,
     pub monitor: bool,
     pub master: bool,
-    pub output: String,
-    /// Sends as (name, level in dB).
-    pub sends: Vec<(String, f32)>,
     pub depth: i64,
     pub group: bool,
     pub folded: bool,
     pub members: i64,
-    pub vca: bool,
-    pub vcas: String,
     pub automation: String,
     /// Where its row starts and how tall it is, in rows of the zoom's
     /// height; the part its clips take.
@@ -345,7 +333,6 @@ pub fn tracks(list: &Value) -> Vec<Track> {
                 name: text(&t["name"]),
                 color: colour(&t["color"]),
                 chain,
-                inserts: text(&t["chain"]).split(" › ").filter(|n| !n.is_empty()).map(String::from).collect(),
                 kind: text(&t["kind"]),
                 volume: number(&t["volume"]),
                 pan: number(&t["pan"]),
@@ -356,14 +343,10 @@ pub fn tracks(list: &Value) -> Vec<Track> {
                 input_label: text(&t["input_label"]),
                 monitor: flag(&t["monitor"]),
                 master: flag(&t["master"]),
-                output: t["output"].as_str().unwrap_or("Master").into(),
-                sends: rows(&t["sends"]).iter().map(|s| (text(&s["name"]), number(&s["level"]))).collect(),
                 depth: int(&t["depth"]),
                 group: flag(&t["group"]),
                 folded: flag(&t["folded"]),
                 members: int(&t["members"]),
-                vca: flag(&t["vca"]),
-                vcas: text(&t["vcas"]),
                 automation: t["automation"].as_str().unwrap_or("read").into(),
                 top,
                 size,
@@ -465,7 +448,6 @@ mod tests {
         assert!(!peak.clipped, "no light below 0 dB");
         peak.update([meter(1.0), 0.0], 0.1);
         assert!(peak.clipped, "the light comes on at 0 dB");
-        assert_eq!(peak.text(), "0.0", "the peak in dB");
         peak.update([0.0, 0.0], 10.0);
         assert!(peak.clipped, "and stays on");
     }

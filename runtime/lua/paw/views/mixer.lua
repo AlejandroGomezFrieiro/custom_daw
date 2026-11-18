@@ -27,8 +27,14 @@ end
 local marks = { 6, 0, -6, -12, -24, -48 }
 
 -- The fader's travel: most of it is the top twenty decibels, as on a desk.
+-- Where the cap is for a level, from 0 at the bottom to 1 at the top, and
+-- the level for a place.
+local function fader_position(volume) return util.clamp((volume + 60) / 66, 0, 1) ^ 2.5 end
+local function fader_volume(position) return util.clamp(position, 0, 1) ^ (1 / 2.5) * 66 - 60 end
+view.fader_position, view.fader_volume = fader_position, fader_volume
+
 local function fader_row(volume, rows)
-  return math.floor(util.clamp((volume + 60) / 66, 0, 1) ^ 2.5 * (rows - 1) + 0.5)
+  return math.floor(fader_position(volume) * (rows - 1) + 0.5)
 end
 view.fader_row = fader_row
 
@@ -42,14 +48,20 @@ local function above_fader(height)
 end
 
 -- `here` is the row the cursor is on, on the strip it is on (paw/mixer_rows.lua).
+-- Its parts are roles (paw/roles/widgets.lua) and hit regions, which the
+-- pointer works through `view.gestures` in a terminal and in a window.
 local function strip(buf, x, t, index, selected, height, sw, here)
   local g = draw.g
   local hue = draw.track_hue(t, index)
   local w = sw - 1
+  local id = t.id
   buf:fill(x, 0, w, height, " ", selected and "TrackHeaderSel" or "TrackHeader")
+  buf:hit(x, 0, w, height, { kind = "strip", track = id })
   -- The name on a plate in the track's colour, lit for the track the cursor is on.
-  buf:fill(x, 0, w, 1, " ", selected and hue.title_cur or hue.plate)
-  buf:text(x + 1, 0, util.fit(t.name, w - 1))
+  buf:mark("chip", x, 0, w, 1, {
+    text = t.name, style = selected and hue.title_cur or hue.plate, selected = selected,
+    color = draw.track_colour(t, index), number = index,
+  })
   -- What modules mark on the strip (`paw.ui.layer("mixer", "strip", ...)`).
   paw.ui.paint("mixer", "strip", { buf = buf, x = x, y = 0, width = w, height = height, track = t.id })
   -- Where each part is, for the pointer.
@@ -68,11 +80,14 @@ local function strip(buf, x, t, index, selected, height, sw, here)
   elseif height >= 20 then
     parts.devices = y
     for i = 1, 3 do
-      local id = (t.devices or {})[i]
-      local ok, d = id ~= nil, nil
-      if ok then ok, d = pcall(api.device_get, id) end
+      local device = (t.devices or {})[i]
+      local ok, d = device ~= nil, nil
+      if ok then ok, d = pcall(api.device_get, device) end
       if ok and d then
-        buf:text(x + 1, y, util.fit((d.bypass and g.bypass or " ") .. d.name, w - 1), d.bypass and "TrackIndex" or "TrackInfo")
+        buf:mark("button", x + 1, y, w - 1, 1, {
+          text = (d.bypass and g.bypass or " ") .. d.name, style = d.bypass and "TrackIndex" or "TrackInfo",
+          off = d.bypass, hit = { kind = "insert", track = id, index = i },
+        })
       else
         buf:text(x + 1, y, util.fit(i == 1 and g.dot or "", w - 1), "TrackIndex")
       end
@@ -93,7 +108,7 @@ local function strip(buf, x, t, index, selected, height, sw, here)
       if send then
         local okt, to = pcall(api.track_get, send.target)
         local text = g.send .. (okt and to.name:sub(1, 3) or "?") .. " " .. string.format("%g", math.floor(send.level + 0.5))
-        buf:text(x + 1, y, util.fit(text, w - 1), "TrackInfo")
+        buf:mark("button", x + 1, y, w - 1, 1, { text = text, style = "TrackInfo", hit = { kind = "send", track = id, index = i } })
       end
       y = y + 1
     end
@@ -125,34 +140,46 @@ local function strip(buf, x, t, index, selected, height, sw, here)
   -- Meters and fader, over what the rows under them leave.
   y = above_fader(height)
   local rows = math.max(1, height - y - 4)
-  local left, right = api.track_meter(t.id)
-  local hold = draw.hold("mix" .. t.id, math.max(left, right))
-  draw.vmeter(buf, x + 1, y, rows, left, hold)
-  draw.vmeter(buf, x + 2, y, rows, right, hold)
+  local left, right = api.track_meter(id)
+  local hold = draw.hold("mix" .. id, math.max(left, right))
+  -- The fader's rows, meters and all, are the fader's to the pointer.
+  buf:hit(x, y, w, rows, { kind = "fader", track = id })
+  buf:mark("meter", x + 1, y, 2, rows, { levels = { left, right }, hold = hold, bind = "meter:" .. id })
   local fx = x + math.floor(w / 2) + 1
-  local at = fader_row(t.volume, rows)
-  local zero = fader_row(0, rows)
-  buf:fill(fx, y, 1, rows, g.fader_rail, "FaderTrack")
-  buf:text(fx, y + rows - 1 - zero, g.zero, "FaderZero")
-  buf:text(fx - 1, y + rows - 1 - at, g.fader .. g.fader .. g.fader, selected and "FaderSel" or "Fader")
+  buf:mark("fader", fx - 1, y, 3, rows, {
+    at = fader_position(t.volume), zero = fader_position(0), value = t.volume, selected = selected,
+  })
   y = y + rows
   -- The loudest of late, then the fader, in dB.
   local db = 20 * math.log10(math.max(hold, 1e-6))
   local peak = db < -60 and "-inf" or string.format("%.1f", db)
-  buf:text(x + w - #peak, y, peak, db > -0.1 and "MeterHigh" or "TrackIndex")
+  buf:mark("label", x + w - #peak, y, #peak, 1, { text = peak, style = db > -0.1 and "MeterHigh" or "TrackIndex", tone = db > -0.1 and "meter_clip" or "text_3" })
   -- What modules label the strip with, on the peak's row (`paw.ui.layer("mixer", "strip_foot", ...)`).
-  paw.ui.paint("mixer", "strip_foot", { buf = buf, x = x + 1, y = y, width = w - 1, track = t.id })
+  paw.ui.paint("mixer", "strip_foot", { buf = buf, x = x + 1, y = y, width = w - 1, track = id })
   local vol = draw.db_text(t.volume)
-  buf:text(x + w - #vol, y + 1, vol, selected and "Bright" or "TrackInfo")
-  if not vca then draw.pan(buf, x + 1, y + 2, math.min(7, w - 1), t.pan or 0) end
-  parts.fader, parts.rows, parts.vol, parts.pan, parts.pan_w, parts.chips = y - rows, rows, y + 1, y + 2, math.min(7, w - 1), y + 3
+  buf:hit(x, y + 1, w, 1, { kind = "volume", track = id })
+  buf:mark("label", x + w - #vol, y + 1, #vol, 1, { text = vol, style = selected and "Bright" or "TrackInfo", tone = selected and "text" or "text_2" })
+  local pan_w = math.min(7, w - 1)
+  if not vca then
+    buf:mark("knob", x + 1, y + 2, pan_w, 1, { value = t.pan or 0, hit = { kind = "pan", track = id } })
+  end
+  parts.fader, parts.rows, parts.vol, parts.pan, parts.pan_w, parts.chips = y - rows, rows, y + 1, y + 2, pan_w, y + 3
+  local gap = w >= 8 and 1 or 0
+  local function switches(list)
+    for i, s in ipairs(list) do
+      buf:mark("switch", x + 1 + (i - 1) * (1 + gap), y + 3, 1, 1, {
+        letter = s[1], on = s[2] == true, style = s[3], tone = s[4], hit = { kind = "flag", track = id, flag = s[5] },
+      })
+    end
+  end
   if vca then
-    draw.chips(buf, x + 1, y + 3, { { "M", t.mute, "Mute" }, { "S", t.solo, "Solo" } }, w >= 8 and 1 or 0)
+    switches({ { "M", t.mute, "Mute", "mute", "mute" }, { "S", t.solo, "Solo", "solo", "solo" } })
     buf:text(x + 1, y + 2, "vca", "TrackIndex")
   elseif not t.master then
-    draw.chips(buf, x + 1, y + 3, {
-      { "M", t.mute, "Mute" }, { "S", t.solo, "Solo" }, { "R", t.armed, "Armed" }, { "I", t.monitor, "Monitor" },
-    }, w >= 8 and 1 or 0)
+    switches({
+      { "M", t.mute, "Mute", "mute", "mute" }, { "S", t.solo, "Solo", "solo", "solo" },
+      { "R", t.armed, "Armed", "rec", "armed" }, { "I", t.monitor, "Monitor", "play_on", "monitor" },
+    })
   else
     buf:text(x + 1, y + 3, "master", "TrackIndex")
   end

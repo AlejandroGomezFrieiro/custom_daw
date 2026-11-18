@@ -21,7 +21,8 @@ const FIXTURE: &str = include_str!("../tests/fixture.json");
 
 type Calls = Rc<RefCell<Vec<(String, Value)>>>;
 
-/// The scenes' patches a test has the stand-in kernel push.
+/// The scenes' patches a test has the stand-in kernel push; a value
+/// `{ "scene.live": ... }` among them is pushed as the live values.
 type Patches = Rc<RefCell<Vec<Value>>>;
 
 /// A kernel that answers from the fixture and keeps every call.
@@ -60,7 +61,17 @@ impl Kernel for Fake {
         false
     }
     fn patches(&mut self) -> Vec<Value> {
-        std::mem::take(&mut *self.patches.borrow_mut())
+        let mut patches = self.patches.borrow_mut();
+        let (live, rest): (Vec<Value>, Vec<Value>) = std::mem::take(&mut *patches).into_iter().partition(|p| p.get("scene.live").is_some());
+        *patches = live;
+        rest
+    }
+    fn live(&mut self) -> Option<Value> {
+        let mut patches = self.patches.borrow_mut();
+        let at = patches.iter().rposition(|p| p.get("scene.live").is_some())?;
+        let live = patches.remove(at)["scene.live"].take();
+        patches.retain(|p| p.get("scene.live").is_none());
+        Some(live)
     }
 }
 
@@ -697,41 +708,77 @@ fn the_loops_edges_drag_and_a_double_click_on_the_ruler_turns_it_on_or_off() {
 
 // ------------------------------------------------------------------ the mixer
 
-fn mixer_window() -> (Harness<'static, View>, Calls) {
-    window_with(|s| {
+/// A window with the piano roll's pane given to the mixer, which the kernel
+/// draws, and the patches it is sent.
+fn mixer_window() -> (Harness<'static, View>, Calls, Patches) {
+    window_and_patches(|s| {
         s["modal"]["panes"]["panes"][1]["view"] = json!("mixer");
+        s["modal"]["panes"]["panes"][1]["kind"] = json!("cells");
     })
 }
 
-#[test]
-fn a_strips_fader_pan_and_switches_take_the_pointer() {
-    let (mut h, calls) = mixer_window();
-    let fader = h.get_by_label("fader of B").rect();
-    drag(&mut h, pos2(fader.center().x, fader.bottom() - 30.0), pos2(fader.center().x, fader.top() + 40.0));
-    let args = act(&calls, "set_volume");
-    assert_eq!(args[0], 3);
-    assert!(num(&args[1]) > -5.0, "up is louder: {args:?}");
-    assert!(sent(&calls, "\"volume\""), "held while dragged, for automation by touch");
-    let pan = h.get_by_label("pan of B").rect().center();
-    drag(&mut h, pan, pan - vec2(0.0, 40.0));
-    assert!(num(&act(&calls, "set_pan")[1]) > 0.0, "up is to the right");
-    double_click(&mut h, pan);
-    assert_eq!(act(&calls, "set_pan"), [json!(3), json!(0.0)]);
-    for name in ["mute", "solo", "armed"] {
-        let at = h.get_by_label(&format!("{name} of C")).rect().center();
-        click(&mut h, at);
-        assert_eq!(act(&calls, "toggle"), [json!(5), json!(name)]);
-    }
+/// A strip of the mixer as the kernel sends it to a window that paints the
+/// widget roles (paw/views/mixer.lua): the roles without their cells, a
+/// fader with its hit region, a meter bound to its track's, a switch.
+fn strip_scene() -> paw_scene::Patch {
+    use paw_scene::{Kind, Node};
+    let mut scene = paw_scene::Scene::new([40.0, 14.0]);
+    (scene.fg, scene.bg) = ("#c9ced8".into(), "#101216".into());
+    let role = |key: &str, role: &str, rect, props: Value| Node::new(key, Kind::Role { role: role.into(), props }, rect);
+    scene.push(None, role("chip@4,1", "chip", [4.0, 1.0, 9.0, 1.0], json!({ "text": "B", "color": "#e0a050", "label": "strip of B" })));
+    let mut hit = Node::new("g@4,3", Kind::Group, [4.0, 3.0, 9.0, 8.0]);
+    hit.hit = Some(json!({ "kind": "fader", "track": 3 }));
+    scene.push(None, hit);
+    let mut meter = role("meter@5,3", "meter", [5.0, 3.0, 2.0, 8.0], json!({ "hold": 0 }));
+    meter.bind = Some("meter:3".into());
+    scene.push(None, meter);
+    scene.push(None, role("fader@8,3", "fader", [8.0, 3.0, 3.0, 8.0], json!({ "at": 0.5, "zero": 0.8, "label": "fader of B" })));
+    let mut mute = role("switch@5,12", "switch", [5.0, 12.0, 1.0, 1.0], json!({ "letter": "M", "on": true, "tone": "mute", "label": "mute of B" }));
+    mute.hit = Some(json!({ "kind": "flag", "track": 3, "flag": "mute" }));
+    scene.push(None, mute);
+    let mut patch = paw_scene::Scene::diff(&paw_scene::Scene::default(), &scene, "2");
+    patch.full = true;
+    patch
 }
 
 #[test]
-fn a_strips_name_chooses_its_track_and_a_right_click_opens_its_menu() {
-    let (mut h, calls) = mixer_window();
-    let plate = h.get_by_label("strip of C").rect().center();
-    click(&mut h, plate);
-    assert_eq!(act(&calls, "select")[0], 5);
-    right_click(&mut h, plate);
-    assert!(sent(&calls, "\"track\",[5]"));
+fn the_mixer_is_painted_from_its_scene_with_widgets_and_its_meters_move_with_the_live_values() {
+    let (mut h, calls, patches) = mixer_window();
+    let watch = calls.borrow().iter().find(|(m, _)| m == "scene.watch").map(|(_, p)| p[0].clone()).expect("scenes watched");
+    assert!(watch["live"] == true && watch["roles"].as_array().is_some_and(|r| r.contains(&json!("fader"))), "{watch}");
+    patches.borrow_mut().push(serde_json::to_value(strip_scene()).unwrap());
+    h.run_steps(2);
+    // Where the kernel laid each out: the pane's picture starts 6 in and a
+    // row over the title's foot (500 down the main area).
+    let cell = h.state().scenes.cell.unwrap();
+    let origin = pos2(6.0, AREA_TOP + 500.0 + 24.0 - cell.1);
+    let fader = h.get_by_label("fader of B").rect();
+    assert!((fader.left() - (origin.x + 8.0 * cell.0)).abs() < 0.5 && (fader.height() - 8.0 * cell.1).abs() < 0.5, "{fader:?}");
+    assert!(h.query_by_label("mute of B").is_some() && h.query_by_label("strip of B").is_some());
+    // A meter at full scale lights its clip mark, from the live values alone.
+    let clip = crate::theme::th().meter_clip;
+    let lit = |h: &Harness<View>| h.output().shapes.iter().any(|c| matches!(&c.shape, egui::Shape::Rect(r) if r.fill == clip));
+    assert!(!lit(&h), "nothing before the live values");
+    patches.borrow_mut().push(json!({ "scene.live": { "meters": { "3": [1.0, 0.2] } } }));
+    h.run_steps(2);
+    assert!(lit(&h), "the meter moved with scene.live");
+}
+
+#[test]
+fn a_drag_on_the_mixers_fader_goes_back_in_cells_with_fractions() {
+    let (mut h, calls, patches) = mixer_window();
+    patches.borrow_mut().push(serde_json::to_value(strip_scene()).unwrap());
+    h.run_steps(2);
+    calls.borrow_mut().clear();
+    let fader = h.get_by_label("fader of B").rect();
+    let cell = h.state().scenes.cell.unwrap();
+    drag(&mut h, fader.center(), fader.center() - vec2(0.0, 1.5 * cell.1));
+    let inputs: Vec<Value> = calls.borrow().iter().filter(|(m, _)| m == "scene.input").map(|(_, p)| p[1].clone()).collect();
+    let down = inputs.iter().find(|e| e["kind"] == "down").expect("the press passed on");
+    assert!((num(&down["x"]) - 9.5).abs() < 0.05 && (num(&down["y"]) - 7.0).abs() < 0.05, "the fader's middle in units: {down}");
+    let last = inputs.iter().rev().find(|e| e["kind"] == "move").expect("the drag passed on");
+    assert!((num(&last["y"]) - 5.5).abs() < 0.05, "a row and a half up, in fractions of a row: {last}");
+    assert!(inputs.iter().any(|e| e["kind"] == "up"));
 }
 
 // ---------------------------------------------------------------- the devices
@@ -810,7 +857,7 @@ fn what_the_window_writes_has_glyphs() {
         include_str!("dialogs.rs"),
         include_str!("headers.rs"),
         include_str!("menu.rs"),
-        include_str!("mixer.rs"),
+        include_str!("roles.rs"),
         include_str!("model.rs"),
         include_str!("panes.rs"),
         include_str!("roll.rs"),

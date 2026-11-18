@@ -27,6 +27,14 @@ macro_rules! palette {
             pub fn from_palette(palette: &Value) -> Theme {
                 Theme { $($name: palette[stringify!($name)].as_str().and_then(hex).unwrap_or(hex($hex).unwrap()),)* }
             }
+
+            /// A colour by its name in the palette (a scene's `tone`).
+            pub fn named(&self, name: &str) -> Option<Color32> {
+                match name {
+                    $(stringify!($name) => Some(self.$name),)*
+                    _ => None,
+                }
+            }
         }
     };
 }

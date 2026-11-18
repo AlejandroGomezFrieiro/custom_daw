@@ -17,7 +17,7 @@ use crate::client::Client;
 use crate::model::{self, Clip, Line, PeakHold, Track, flag, int, number, rows, text};
 use crate::pictures::Pictures;
 use crate::theme::th;
-use crate::{arrange, canvas, devices, dialogs, keys, menu, mixer, panes, portal, roll, scene, session};
+use crate::{arrange, canvas, devices, dialogs, keys, menu, panes, portal, roll, scene, session};
 
 /// What the window asks of a kernel: calls answered, and the state pushed.
 /// A client of a real kernel in the program; a stand-in in the tests.
@@ -31,6 +31,10 @@ pub trait Kernel {
     /// The scenes' patches pushed since the last time (`scene.patch`).
     fn patches(&mut self) -> Vec<Value> {
         Vec::new()
+    }
+    /// The live values last pushed, if new (`scene.live`).
+    fn live(&mut self) -> Option<Value> {
+        None
     }
 }
 
@@ -49,6 +53,9 @@ impl Kernel for Client {
     }
     fn patches(&mut self) -> Vec<Value> {
         std::mem::take(&mut self.patches)
+    }
+    fn live(&mut self) -> Option<Value> {
+        self.live.take()
     }
 }
 
@@ -146,7 +153,6 @@ pub struct View {
     pub show_automation: bool,
     pub arrange: arrange::Arrange,
     pub roll: roll::Roll,
-    pub mixer: mixer::Mixer,
     pub devices: devices::Devices,
     pub session: session::Session,
     pub panes: panes::Panes,
@@ -196,7 +202,6 @@ impl View {
             show_automation: false,
             arrange: arrange::Arrange::default(),
             roll: roll::Roll::default(),
-            mixer: mixer::Mixer::default(),
             devices: devices::Devices::default(),
             session: session::Session::default(),
             panes: panes::Panes::default(),
@@ -488,7 +493,6 @@ impl View {
                 "arrange" => self.draw_arrange(&mut child, rect),
                 "devices" => self.draw_devices(&mut child, rect),
                 "pianoroll" => self.draw_roll(&mut child, rect, false),
-                "mixer" => self.draw_mixer(&mut child, rect),
                 "session" => self.draw_session(&mut child, rect),
                 _ => {}
             }

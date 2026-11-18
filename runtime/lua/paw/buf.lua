@@ -5,6 +5,9 @@
 --   buf:sub(x, y, w, h)                a buffer for part of this one
 --   buf:surface(x, y, w, h, name)      keep an area for a view's pixels
 --   buf:strip(x, y, w, h, opts)        keep an area for pixels a function draws
+--   buf:mark(role, x, y, w, h, props)  a role there: a fader, a button (paw/roles.lua)
+--   buf:hit(x, y, w, h, action)        a region the pointer acts on
+--   buf:columns(widths, gap)           buffers side by side, a width each
 --   buf.width, buf.height
 --
 -- Coordinates count cells from 0 at the buffer's top-left corner, and
@@ -63,6 +66,42 @@ end
 ---   })
 function Buf:strip(x, y, w, h, opts)
   return paw.ui.strip(self, x, y, w, h, opts)
+end
+
+--- Mark a role (paw/roles.lua) over an area: drawn there with the role's
+--- cells in a terminal, painted as what it is by a frontend that knows it.
+--- `props.hit` makes it a hit region, `props.bind` ties it to a live value.
+--- Returns the buffer of the area.
+---   buf:mark("fader", 4, 2, 3, 12, { at = 0.8, hit = { kind = "fader", track = id } })
+function Buf:mark(role, x, y, w, h, props)
+  return paw.roles.mark(self, role, x, y, w, h, props)
+end
+
+--- Make an area a hit region: a press, a move or the wheel there goes to
+--- the view's gesture for `action.kind` (paw/roles.lua), in either frontend.
+function Buf:hit(x, y, w, h, action)
+  paw.roles.hit(self, x, y, w, h, action)
+end
+
+--- Buffers side by side across this one, a width each from the left with
+--- `gap` columns between (0 by default); a width of "*" takes what the
+--- others leave. What does not fit is left out.
+---   local name, body = buf:columns({ 12, "*" })
+function Buf:columns(widths, gap)
+  gap = gap or 0
+  local fixed, flexible = 0, 0
+  for _, w in ipairs(widths) do
+    if w == "*" then flexible = flexible + 1 else fixed = fixed + w end
+  end
+  local rest = max(0, self.width - fixed - gap * (#widths - 1))
+  local out, x = {}, 0
+  for i, w in ipairs(widths) do
+    if w == "*" then w = floor(rest / flexible) end
+    if x >= self.width then break end
+    out[i] = self:sub(x, 0, min(w, self.width - x), self.height)
+    x = x + w + gap
+  end
+  return unpack(out, 1, #widths)
 end
 
 function Buf:sub(x, y, w, h)

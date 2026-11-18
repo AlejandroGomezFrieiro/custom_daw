@@ -39,15 +39,18 @@ local state = {}
 paw.seats.keep("mouse", function() return state end, function(s) state = s end, function() return {} end)
 
 --- Whether a press is the second of a double click: the same button on the
---- same cell soon after the first, which was not itself a second.
+--- same cell soon after the first, which was not itself a second. A
+--- window's pointer, in fractions of a cell, counts by the cell it is in.
 local function mark_double(event)
   if event.kind ~= "down" then return end
   local now, last = api.now(), state.last
-  local double = last and not last.double and last.button == event.button and last.x == event.x
-    and last.y == event.y and now - last.time <= M.double_ms
+  local x, y = math.floor(event.x), math.floor(event.y)
+  local double = last and not last.double and last.button == event.button and last.x == x
+    and last.y == y and now - last.time <= M.double_ms
   event.double = double or nil
-  state.last = { button = event.button, x = event.x, y = event.y, time = now, double = double }
+  state.last = { button = event.button, x = x, y = y, time = now, double = double }
 end
+M.mark_double = mark_double
 
 --- Whether the modifiers of an event hold `letter` ("C", "A" or "S").
 function M.has(event, letter)

@@ -199,7 +199,10 @@ The window draws them in its own font at its own resolution, and the
 same scene lowered to cells is cell for cell what a terminal shows.
 
 `scene.watch` starts it, with the size of the frontend's cell in pixels
-(pictures are drawn for it, and its main area is laid out on it). A
+(pictures are drawn for it, and its main area is laid out on it) and the
+roles it paints itself (`roles`, a list of names); it answers the theme's
+colours (`theme`, the palette by name, which a node's `tone` names) and
+`roles_version`. A
 window is named by a string: a window of the layout by its number
 (`"3"`, as `paw.panes.state()` lists it), a view in a window of its own as
 `"view:<name>"` (`paw.canvas.windows()`). Nothing is sent of a window
@@ -231,17 +234,36 @@ pixels and scaled to its rectangle, under the cells' text with `under`
 (their backgrounds under it); a drawing too big to send each time comes
 as `blob`, a content key to ask `scene.blob` for once.
 
+A `role` is a named element a view marked over its rectangle (`buf:mark`,
+see [Roles](scripting.md#roles)): `role` its name and `props` what it
+shows, such as `{"role": "fader", "props": {"at": 0.81, "zero": 0.79,
+"value": -2}}`. Its kids are its cells, which a frontend that does not
+know the role draws; a frontend that said it paints the role is sent it
+without them. The widget roles (`label`, `button`, `switch`, `knob`,
+`fader`, `meter`, `chip`) are the core's; an extension may add more. A
+node with `bind` (`"meter:4"`) is moved by the live values below, and its
+props that those give (a meter's `levels`) are left out. A node with `hit`
+is a hit region: a press, a move or the wheel there means what the view
+says it does (`hit.kind` and the rest, its action).
+
 `scene.input` takes a pointer event as `paw.canvas.pointer` does (`kind`
 down, up, move, hover, double or wheel, `button`, `ctrl`, `shift`,
 `alt`, `dx`, `dy`), with `x` and `y` in units from the window's corner.
+The kernel finds the hit region under it in the scene it sent
+(`paw_scene::Scene::hit`) and gives the view's gesture for it the event in
+units, as the terminal gives it one in cells; a drag begun there goes on
+in units until it is let go. Off every region, the event goes to the view
+as a terminal's would.
 
 With `"live": true` the connection is also sent, while they change, the
 values a frontend moves things by without a new scene:
 
 ```json
 {"event": "scene.live", "payload": {"position": 12.5, "playing": true, "recording": false,
-  "clock": "0:07.0", "cpu": 0.075, "meters": {"4": [0.31, 0.3]}, "inputs": {"4": 0}}}
+  "clock": "0:07.0", "cpu": 0.075, "meters": {"4": [0.31, 0.3], "0": [0.4, 0.38]}, "inputs": {"4": 0}}}
 ```
+
+`meters` are each track's sides by its id, the master's as `"0"`.
 
 ## A terminal somewhere else
 

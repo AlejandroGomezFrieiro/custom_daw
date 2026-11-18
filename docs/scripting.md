@@ -324,6 +324,49 @@ if not pictured then draw_it_in_cells() end
 
 [Extensions](extensions.md) says more ("Pictures in the terminal").
 
+<a id="roles"></a>**Roles.** A view written once is shown by every
+frontend: the terminal draws its cells, and the window draws the same
+layout in its own font. Where something is a control (a fader, a switch,
+a button), the view marks it as a role over its rectangle, with what it
+shows as props; the terminal draws the role's cells, as the view would
+have, and the window paints it as a widget. The pointer works through hit
+regions: a press, a move or the wheel on one goes to the view's gesture
+for its kind, from the terminal in whole cells and from the window in
+fractions of one (`e.fine`), the same function either way.
+
+```lua
+paw.ui.role("hit", {                                -- an extension's own role
+  props = { velocity = "number 0..127" },
+  cells = function(buf, p) buf:text(0, 0, p.velocity > 90 and "█" or "▄", "Title") end,
+})
+paw.ui.view("pads", {
+  render = function(self, buf, ctx)
+    buf:mark("hit", 2, 1, 2, 1, { velocity = 100, hit = { kind = "pad", n = 1 } })
+    buf:mark("fader", 6, 1, 3, 8, { at = 0.7, zero = 0.8, hit = { kind = "level" } })
+    buf:mark("meter", 10, 1, 2, 8, { levels = { l, r }, bind = "meter:" .. track })
+    buf:mark("button", 0, 9, 6, 1, { text = "play", hit = { cmd = "play" } })
+    buf:hit(0, 0, buf.width, 1, { kind = "title", hint = "the pads" })
+    local left, right = buf:columns({ 12, "*" }, 1)   -- buffers side by side
+  end,
+  gestures = {
+    pad = function(self, e)                           -- e.hit, e.rect, e.x, e.y, e.kind, e.button
+      if e.kind == "down" then paw.mouse.grab(e, { drag = function(d) end, up = function(u) end }) end
+    end,
+  },
+})
+```
+
+The widget roles are `label` (`text`, `align`), `button` (`text`, `on`),
+`switch` (`letter`, `on`, `style`, `tone`), `knob` (`value` -1 to 1),
+`fader` (`at` and `zero`, 0 to 1 along its travel), `meter` (`levels`,
+`hold`) and `chip` (`text`, `style`, `color`); `style` is how the terminal
+draws it, `tone` a colour of the window's palette by name, `label` what it
+is called to a screen reader. A hit region's action may instead say what a
+click does by itself, `keys` to type or `cmd` to run, and `hint` what the
+status line says of it. A gesture returns false to leave the event to the
+view's `on_mouse`. `paw.ui.roles` lists the roles with their props; the
+mixer (`runtime/lua/paw/views/mixer.lua`) is built of them.
+
 **Buffers, windows and tabs.** A view is a buffer type with one buffer,
 shown in one window at a time (see Windows, buffers and tabs in
 [the terminal interface](terminal.md)). `paw.buftype` makes a type that has

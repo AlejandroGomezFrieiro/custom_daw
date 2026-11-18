@@ -25,6 +25,8 @@ pub struct Client {
     pub player: Option<paw_listen::Player>,
     /// The scenes' patches pushed and not yet taken (`scene.patch`).
     pub patches: Vec<Value>,
+    /// The live values last pushed and not yet taken (`scene.live`).
+    pub live: Option<Value>,
 }
 
 impl Client {
@@ -57,6 +59,7 @@ impl Client {
             fresh_kinds: false,
             player: None,
             patches: Vec::new(),
+            live: None,
         };
         let seat = if shared { "instance" } else { "own" };
         client.call("frontend.watch", json!([{ "seat": seat }]))?;
@@ -109,9 +112,10 @@ impl Client {
                         }
                         news.then_some(song)
                     }
-                    // A pane the kernel draws changes as often as the song
-                    // moves while it plays: drawn at the same pace.
-                    (name, _) if name == "scene.patch" => Some(true),
+                    // A pane the kernel draws, and the meters in one, change
+                    // as often as the song moves while it plays: drawn at
+                    // the same pace.
+                    (name, _) if name == "scene.patch" || name == "scene.live" => Some(true),
                     (name, _) => (name != "audio.frame").then_some(false),
                 };
                 if sender.send(event).is_err() {
@@ -180,6 +184,7 @@ impl Client {
                     any = true;
                 }
                 Ok((name, payload)) if name == "scene.patch" => self.patches.push(payload),
+                Ok((name, payload)) if name == "scene.live" => self.live = Some(payload),
                 Ok((name, payload)) if name == "audio.frame" => {
                     if let Some(player) = &self.player {
                         let _ = player.push(&payload);

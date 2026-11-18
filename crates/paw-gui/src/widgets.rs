@@ -347,82 +347,6 @@ pub fn knob(ui: &mut Ui, rect: Rect, id: Id, value: f32) -> (Response, Vec<Moved
     (response, moved)
 }
 
-/// Where a fader's cap sits for a level in dB, 0 to 1 along its travel:
-/// 0 dB at 72%, +6 at the top, -60 at the foot, the marks of its scale
-/// spaced as a mixer's are.
-pub fn taper(db: f32) -> f32 {
-    (if db <= -36.0 {
-        (db + 60.0) / 24.0 * 0.14
-    } else if db <= -24.0 {
-        0.14 + (db + 36.0) / 12.0 * 0.11
-    } else if db <= -12.0 {
-        0.25 + (db + 24.0) / 12.0 * 0.17
-    } else if db <= -6.0 {
-        0.42 + (db + 12.0) / 6.0 * 0.14
-    } else if db <= 0.0 {
-        0.56 + (db + 6.0) / 6.0 * 0.16
-    } else {
-        0.72 + db / 6.0 * 0.28
-    })
-    .clamp(0.0, 1.0)
-}
-
-/// The level in dB at a place along a fader's travel.
-pub fn taper_db(pos: f32) -> f32 {
-    if pos <= 0.14 {
-        pos / 0.14 * 24.0 - 60.0
-    } else if pos <= 0.25 {
-        (pos - 0.14) / 0.11 * 12.0 - 36.0
-    } else if pos <= 0.42 {
-        (pos - 0.25) / 0.17 * 12.0 - 24.0
-    } else if pos <= 0.56 {
-        (pos - 0.42) / 0.14 * 6.0 - 12.0
-    } else if pos <= 0.72 {
-        (pos - 0.56) / 0.16 * 6.0 - 6.0
-    } else {
-        (pos - 0.72) / 0.28 * 6.0
-    }
-}
-
-/// An upright fader with a cap, for a mixer strip. `db` is the level;
-/// what it reports is a level in dB too.
-pub fn fader(ui: &mut Ui, rect: Rect, id: Id, db: f32) -> (Response, Vec<Moved>) {
-    let t = th();
-    let response = ui.interact(rect, id, Sense::click_and_drag());
-    let travel = (rect.height() - 36.0).max(1.0);
-    let at = taper(db);
-    let p = ui.painter();
-    p.rect_filled(
-        Rect::from_min_size(pos2(rect.center().x - 2.0, rect.top() + 16.0), vec2(4.0, rect.height() - 32.0)),
-        CornerRadius::same(2),
-        t.well,
-    );
-    let cap = Rect::from_min_size(pos2(rect.left(), rect.top() + travel * (1.0 - at)), vec2(rect.width(), 36.0));
-    let (top, bottom) = if response.is_pointer_button_down_on() {
-        (t.text, t.thumb)
-    } else if response.hovered() {
-        (Color32::from_rgb(0xd7, 0xd9, 0xde), Color32::from_rgb(0xb7, 0xb9, 0xc0))
-    } else {
-        (t.thumb, t.thumb_low)
-    };
-    p.rect_filled(cap.with_max_y(cap.center().y), CornerRadius { nw: 3, ne: 3, sw: 0, se: 0 }, top);
-    p.rect_filled(cap.with_min_y(cap.center().y), CornerRadius { nw: 0, ne: 0, sw: 3, se: 3 }, bottom);
-    p.rect_stroke(cap, CornerRadius::same(3), Stroke::new(1.0, Color32::from_black_alpha(0x80)), StrokeKind::Inside);
-    p.rect_filled(
-        Rect::from_min_size(pos2(cap.left() + 3.0, cap.center().y - 1.0), vec2(cap.width() - 6.0, 2.0)),
-        CornerRadius::ZERO,
-        Color32::from_rgb(0x1b, 0x1c, 0x1f),
-    );
-    let moved = handle(ui, &response, id, at, |pos| 1.0 - (pos.y - rect.top() - 18.0) / travel, 0.1, true, 0.015)
-        .into_iter()
-        .map(|m| match m {
-            Moved::To(pos) => Moved::To(taper_db(pos)),
-            other => other,
-        })
-        .collect();
-    (response, moved)
-}
-
 /// A level meter, coloured by position: green to -18 dBFS, then
 /// yellow-green, yellow, orange, and red from 0 dB. `hold` is the peak
 /// held a moment, drawn as a thin line.
@@ -492,17 +416,4 @@ pub fn text_in(ui: &Ui, pos: Pos2, text: &str, font: egui::FontId, colour: Color
 /// How wide `text` is in `font`.
 pub fn text_width(ui: &Ui, text: &str, font: egui::FontId) -> f32 {
     ui.fonts_mut(|f| f.layout_no_wrap(text.to_string(), font, Color32::WHITE).size().x)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_fader_taper_goes_both_ways() {
-        assert!((taper(0.0) - 0.72).abs() < 1e-6, "0 dB at 72% of the travel");
-        for db in [-60.0, -40.0, -30.0, -18.0, -9.0, -3.0, 0.0, 3.0, 6.0] {
-            assert!((taper_db(taper(db)) - db).abs() < 1e-3, "{db}");
-        }
-    }
 }

@@ -420,7 +420,10 @@ end
 --- is drawn over them after (a menu, a float) covers them.
 local function draw(view, buf, ctx)
   M.drawing_win = ctx and ctx.win
+  -- The hit regions it marks on the screen are where the pointer finds them.
+  if M.screen then paw.roles.begin(view.name, ctx and ctx.win and ctx.win.id) end
   draw_view(view, buf, ctx)
+  paw.roles.finish()
   M.drawing_win = nil
   if M.rects.surfaces then api.grid_surfaces_seal() end
 end
@@ -733,10 +736,11 @@ function M.render_scene(name, w, h, cell, win)
     api.scene_picture({ x = 0, y = 0, w = w, h = h }, { ops = drawing and drawing.ops or {}, px = px })
     return
   end
-  M.view_win, M.pictures = win, {}
+  -- The roles it marks are nodes of the scene (paw/roles.lua).
+  M.view_win, M.pictures, M.scene_drawing = win, {}, true
   local ok, err = pcall(api.scene_draw, name, math.floor(w), math.floor(h))
   local pictures = M.pictures
-  M.view_win, M.pictures = nil, nil
+  M.view_win, M.pictures, M.scene_drawing = nil, nil, nil
   if not ok then error(err, 0) end
   for _, p in ipairs(pictures) do
     -- The whole strip, cut to the part that shows.
@@ -844,12 +848,13 @@ local function route(event)
     if win then L.enter(win) else M.focus(target.name) end
   end
   if paw.mouse.to_surface(target, event) then return end
-  if view.on_mouse then
-    view:on_mouse(paw.util.merge(event, {
-      x = event.x - target.x, y = event.y - target.y, view_x = target.x, view_y = target.y, w = target.w, h = target.h,
-      win = target.win,
-    }))
-  end
+  local e = paw.util.merge(event, {
+    x = event.x - target.x, y = event.y - target.y, view_x = target.x, view_y = target.y, w = target.w, h = target.h,
+    win = target.win,
+  })
+  -- A hit region the view marked has it first (paw/roles.lua).
+  if paw.roles.pointer(view, target.name, e) then return end
+  if view.on_mouse then view:on_mouse(e) end
   -- A press on a window's top row that the window did not hold drags the
   -- border above it.
   if border and not paw.mouse.gesture() then hold_border(event, border, true) end

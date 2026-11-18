@@ -1,0 +1,83 @@
+-- The widget roles: what panels of controls are made of (the mixer's
+-- strips, an editor's toolbar). Each draws in cells as the terminal always
+-- drew it; a window paints them as widgets (crates/paw-gui/src/roles.rs).
+-- Props say what a widget shows, never where: the rectangle marked is its
+-- place in both frontends.
+local draw = paw.draw
+local util = paw.util
+local role = paw.roles.define
+
+--- Text, as `buf:text` writes it: `align` "left" (the default), "right" or
+--- "center" in the rectangle, cut to it.
+role("label", {
+  props = { text = "string", style = "highlight group", align = "left | right | center", tone = "theme token (window)" },
+  cells = function(buf, p)
+    local text = util.fit(tostring(p.text or ""), buf.width)
+    local w = paw.api.str_width(text)
+    local x = p.align == "right" and buf.width - w or p.align == "center" and math.floor((buf.width - w) / 2) or 0
+    buf:text(x, 0, text, p.style)
+  end,
+})
+
+--- Something to click: its text, lit when `on`.
+role("button", {
+  props = { text = "string", style = "highlight group", on = "boolean" },
+  cells = function(buf, p)
+    buf:text(0, 0, util.fit(tostring(p.text or ""), buf.width), p.on and (p.on_style or "Visual") or p.style)
+  end,
+})
+
+--- A letter that is on or off (mute, solo, armed): `style` when on.
+role("switch", {
+  props = { letter = "string", on = "boolean", style = "highlight group when on", tone = "mute | solo | rec | play_on | select" },
+  cells = function(buf, p)
+    buf:text(0, 0, p.letter or "?", p.on and p.style or "FlagOff")
+  end,
+})
+
+--- A value turned between two ends (a pan): `value` from -1 to 1. A rail
+--- with a mark where it sits in cells.
+role("knob", {
+  props = { value = "number -1..1", style = "highlight group of the mark" },
+  cells = function(buf, p)
+    draw.pan(buf, 0, 0, buf.width, p.value or 0, p.style)
+  end,
+})
+
+--- A fader: its cap `at` (0 at the bottom to 1 at the top of its travel),
+--- 0 dB marked at `zero`; `value` the level it stands for.
+role("fader", {
+  props = { at = "number 0..1", zero = "number 0..1", value = "number (dB)", selected = "boolean" },
+  cells = function(buf, p)
+    local g, rows = draw.g, buf.height
+    local row = function(f) return math.floor(util.clamp(f or 0, 0, 1) * (rows - 1) + 0.5) end
+    local mid = math.floor(buf.width / 2)
+    buf:fill(mid, 0, 1, rows, g.fader_rail, "FaderTrack")
+    if p.zero then buf:text(mid, rows - 1 - row(p.zero), g.zero, "FaderZero") end
+    buf:text(0, rows - 1 - row(p.at), string.rep(g.fader, buf.width), p.selected and "FaderSel" or "Fader")
+  end,
+})
+
+--- Level meters, a column each, lit from the bottom: `levels` (linear,
+--- one a column) and `hold`, the loudest of late. Bound to a track's meter
+--- (`bind = "meter:<id>"`), a window moves it with `scene.live`.
+role("meter", {
+  props = { levels = "list of numbers 0..", hold = "number" },
+  bound = { "levels" },
+  cells = function(buf, p)
+    for i, level in ipairs(p.levels or {}) do
+      if i > buf.width then break end
+      draw.vmeter(buf, i - 1, 0, buf.height, level, p.hold)
+    end
+  end,
+})
+
+--- A name on a plate of a colour (a strip's track): `style` is the plate's
+--- highlight group, `color` its colour for a window.
+role("chip", {
+  props = { text = "string", style = "highlight group", color = "#rrggbb", selected = "boolean" },
+  cells = function(buf, p)
+    buf:fill(0, 0, buf.width, buf.height, " ", p.style)
+    buf:text(1, 0, util.fit(tostring(p.text or ""), buf.width - 1))
+  end,
+})

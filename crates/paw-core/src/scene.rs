@@ -12,7 +12,7 @@
 //!
 //! What is sent when, and to whom, is runtime/lua/paw/scene.lua's to say.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
@@ -35,6 +35,9 @@ struct Building {
     names: HashMap<String, u32>,
     /// Writes to the grid are being kept.
     recording: bool,
+    /// The nodes open (a role being drawn, `scene_open`), innermost last:
+    /// what is written goes into the last, placed from its corner.
+    open: Vec<(String, [f32; 2])>,
 }
 
 #[derive(Default)]
@@ -44,14 +47,26 @@ pub struct Scenes {
     kept: HashMap<(u64, String), Scene>,
     /// Drawings sent by content key, for each connection.
     blobs: HashMap<u64, HashMap<String, Value>>,
+    /// The roles each connection draws itself: their cells are not sent.
+    roles: HashMap<u64, HashSet<String>>,
 }
 
 impl Building {
-    /// A name of its own for a node: `base`, then `base#2`...
+    /// A name of its own for a node: `base`, then `base#2`..., under the
+    /// name of the node it is in.
     fn name(&mut self, base: String) -> String {
+        let base = match self.open.last() {
+            Some((parent, _)) => format!("{parent}/{base}"),
+            None => base,
+        };
         let count = self.names.entry(base.clone()).or_insert(0);
         *count += 1;
         if *count == 1 { base } else { format!("{base}#{count}") }
+    }
+
+    /// The corner of the node writes go into, in units of the scene.
+    fn origin(&self) -> [f32; 2] {
+        self.open.last().map_or([0.0, 0.0], |(_, at)| *at)
     }
 
     /// The part of the scene a write is cut to: nothing when it is all of it.
@@ -59,7 +74,18 @@ impl Building {
         let size = self.scene.size;
         let all = Rect { x: 0, y: 0, w: size[0] as i32, h: size[1] as i32 };
         let clip = clip.intersect(&all);
-        (clip != all).then_some([clip.x as f32, clip.y as f32, clip.w as f32, clip.h as f32])
+        let [ox, oy] = self.origin();
+        (clip != all || !self.open.is_empty()).then_some([clip.x as f32 - ox, clip.y as f32 - oy, clip.w as f32, clip.h as f32])
+    }
+
+    /// Put a node in, its rectangle in units of the scene, into the node
+    /// open (placed from its corner) or the root.
+    fn push(&mut self, mut node: Node) {
+        let [ox, oy] = self.origin();
+        node.rect[0] -= ox;
+        node.rect[1] -= oy;
+        let parent = self.open.last().map(|(key, _)| key.clone());
+        self.scene.push(parent.as_deref(), node);
     }
 
     fn visible(&self, clip: Rect, area: Rect) -> bool {
@@ -78,11 +104,12 @@ impl Scenes {
         if !b.visible(clip, Rect { x, y, w: cols, h: 1 }) {
             return;
         }
-        let key = b.name(format!("t{x},{y}"));
+        let [ox, oy] = b.origin();
+        let key = b.name(format!("t{},{}", x as f32 - ox, y as f32 - oy));
         let mut node = Node::new(key, Kind::Run { text: text.to_string() }, [x as f32, y as f32, cols as f32, 1.0]);
         node.clip = b.cut(clip);
         node.style = style;
-        b.scene.push(None, node);
+        b.push(node);
     }
 
     /// An area restyled or filled: a fill, while a view is drawn for a scene.
@@ -91,19 +118,24 @@ impl Scenes {
         if !b.visible(clip, area) {
             return;
         }
-        let key = b.name(format!("f{},{},{},{}", area.x, area.y, area.w, area.h));
+        let [ox, oy] = b.origin();
+        let key = b.name(format!("f{},{},{},{}", area.x as f32 - ox, area.y as f32 - oy, area.w, area.h));
         let rect = [area.x as f32, area.y as f32, area.w as f32, area.h as f32];
         let mut node = Node::new(key, Kind::Fill { ch }, rect);
         node.clip = b.cut(clip);
         node.style = style;
-        b.scene.push(None, node);
+        b.push(node);
     }
 
     /// The scene made since `begin`, compared with what `client` was last
     /// sent of the window `id`: the patch to send it, or nothing when
-    /// nothing changed. The new scene is kept in its place.
+    /// nothing changed. The new scene is kept in its place, lowered to
+    /// what the connection draws (`roles`).
     fn end(&mut self, client: u64, id: &str) -> Option<String> {
         let mut scene = self.building.take()?.scene;
+        if let Some(known) = self.roles.get(&client) {
+            scene.lower(&|role| known.contains(role));
+        }
         let blobs = self.blobs.entry(client).or_default();
         for node in scene.nodes.values_mut() {
             if let Kind::Picture(picture) = &mut node.kind
@@ -131,9 +163,13 @@ impl Scenes {
         (!patch.is_empty()).then(|| serde_json::to_string(&patch).unwrap_or_default())
     }
 
-    /// Forget what `client` was sent of the window `id`, or of every window.
+    /// Forget what `client` was sent of the window `id`, or of every window
+    /// and which roles it draws.
     fn forget(&mut self, client: u64, id: Option<&str>) {
         self.kept.retain(|(c, w), _| *c != client || id.is_some_and(|id| id != w));
+        if id.is_none() {
+            self.roles.remove(&client);
+        }
         self.prune(client);
     }
 
@@ -183,6 +219,16 @@ struct PictureOpts {
     clip: Option<Area>,
 }
 
+#[derive(Deserialize)]
+struct OpenOpts {
+    role: Option<String>,
+    props: Option<Value>,
+    hit: Option<Value>,
+    bind: Option<String>,
+    key: Option<String>,
+    clip: Option<Area>,
+}
+
 pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> {
     let sh = shared.clone();
     // Start a scene `w` by `h` units big, for `scene_draw` and
@@ -191,8 +237,75 @@ pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> 
         "scene_begin",
         lua.create_function(move |_, (w, h): (f32, f32)| {
             let scene = Scene::new([w.max(0.0), h.max(0.0)]);
-            sh.scenes.borrow_mut().building = Some(Building { scene, names: HashMap::new(), recording: false });
+            sh.scenes.borrow_mut().building = Some(Building { scene, names: HashMap::new(), recording: false, open: Vec::new() });
             Ok(())
+        })?,
+    )?;
+    let sh = shared.clone();
+    // While a view is drawn for a scene: a node over a rectangle of it, in
+    // units of the scene, that what is written until `scene_close` goes
+    // into. `opts`: `role` (a group without), `props`, `hit` (a press on
+    // it is on that), `bind` (`meter:4`), `key` (its name; the role and
+    // where it is without), `clip` (the part that shows). False when no
+    // scene is being drawn, with nothing to close.
+    api.set(
+        "scene_open",
+        lua.create_function(move |lua, (rect, opts): (LuaValue, LuaValue)| {
+            let rect: Area = from_lua(lua, rect)?;
+            let opts: OpenOpts = from_lua(lua, opts)?;
+            let mut scenes = sh.scenes.borrow_mut();
+            let Some(b) = scenes.building.as_mut().filter(|b| b.recording) else { return Ok(false) };
+            let [ox, oy] = b.origin();
+            let base = opts.key.unwrap_or_else(|| format!("{}@{},{}", opts.role.as_deref().unwrap_or("g"), rect.x - ox, rect.y - oy));
+            let key = b.name(base);
+            let kind = match opts.role {
+                Some(role) => Kind::Role { role, props: opts.props.unwrap_or(Value::Null) },
+                None => Kind::Group,
+            };
+            let mut node = Node::new(key.clone(), kind, rect.units());
+            node.clip = opts.clip.map(|c| [c.x - ox, c.y - oy, c.w, c.h]);
+            node.hit = opts.hit;
+            node.bind = opts.bind;
+            b.push(node);
+            b.open.push((key, [rect.x, rect.y]));
+            Ok(true)
+        })?,
+    )?;
+    let sh = shared.clone();
+    api.set(
+        "scene_close",
+        lua.create_function(move |_, ()| {
+            if let Some(b) = sh.scenes.borrow_mut().building.as_mut() {
+                b.open.pop();
+            }
+            Ok(())
+        })?,
+    )?;
+    let sh = shared.clone();
+    // The roles `client` draws itself: in what it is sent from now on,
+    // such a role goes without the cells that draw it for a terminal.
+    api.set(
+        "scene_roles",
+        lua.create_function(move |_, (client, roles): (u64, Vec<String>)| {
+            sh.scenes.borrow_mut().roles.insert(client, roles.into_iter().collect());
+            Ok(())
+        })?,
+    )?;
+    let sh = shared.clone();
+    // What is under the point `x, y` (units) of what `client` has of the
+    // window `id`: `{ key, hit, at = { x, y }, rect = { x, y, w, h } }`
+    // (see `paw_scene::Scene::hit`), or nil.
+    api.set(
+        "scene_hit",
+        lua.create_function(move |lua, (client, id, x, y): (u64, String, f32, f32)| {
+            let scenes = sh.scenes.borrow();
+            let Some(found) = scenes.kept.get(&(client, id)).and_then(|s| s.hit([x, y])) else { return Ok(LuaValue::Nil) };
+            let [rx, ry, rw, rh] = found.rect;
+            let out = serde_json::json!({
+                "key": found.key, "hit": found.hit, "at": { "x": found.at[0], "y": found.at[1] },
+                "rect": { "x": rx, "y": ry, "w": rw, "h": rh },
+            });
+            to_lua(lua, &out)
         })?,
     )?;
     let sh = shared.clone();
@@ -312,7 +425,7 @@ mod tests {
 
     fn building(w: f32, h: f32) -> Scenes {
         let scene = Scene::new([w, h]);
-        Scenes { building: Some(Building { scene, names: HashMap::new(), recording: true }), ..Scenes::default() }
+        Scenes { building: Some(Building { scene, names: HashMap::new(), recording: true, open: Vec::new() }), ..Scenes::default() }
     }
 
     fn all(w: i32, h: i32) -> Rect {
@@ -343,7 +456,7 @@ mod tests {
     fn a_window_drawn_again_alike_says_nothing_and_a_change_says_only_itself() {
         let mut s = Scenes::default();
         let draw = |s: &mut Scenes, word: &str| {
-            s.building = Some(Building { scene: Scene::new([10.0, 2.0]), names: HashMap::new(), recording: true });
+            s.building = Some(Building { scene: Scene::new([10.0, 2.0]), names: HashMap::new(), recording: true, open: Vec::new() });
             s.text(all(10, 2), 0, 0, "title", Style::default());
             s.text(all(10, 2), 0, 1, word, Style::default());
             s.end(1, "w")
@@ -356,6 +469,42 @@ mod tests {
         s.forget(1, Some("w"));
         let patch: Patch = serde_json::from_str(&draw(&mut s, "two").unwrap()).unwrap();
         assert!(patch.full);
+    }
+
+    #[test]
+    fn writes_while_a_role_is_open_are_its_cells_and_a_frontend_that_draws_it_gets_none() {
+        let draw = |s: &mut Scenes| {
+            let scene = Scene::new([10.0, 4.0]);
+            s.building = Some(Building { scene, names: HashMap::new(), recording: true, open: Vec::new() });
+            s.text(all(10, 4), 0, 0, "Mixer", Style::default());
+            let b = s.building.as_mut().unwrap();
+            let props = serde_json::json!({ "value": -6 });
+            let mut node = Node::new("fader@4,1", Kind::Role { role: "fader".into(), props }, [4.0, 1.0, 3.0, 3.0]);
+            node.hit = Some(serde_json::json!({ "kind": "fader", "track": 1 }));
+            b.push(node);
+            b.open.push(("fader@4,1".into(), [4.0, 1.0]));
+            s.fill(all(10, 4), Rect { x: 5, y: 1, w: 1, h: 3 }, Some('│'), Style::default());
+            s.text(all(10, 4), 4, 2, "━━━", Style::default());
+            s.building.as_mut().unwrap().open.pop();
+        };
+        let mut s = Scenes::default();
+        draw(&mut s);
+        let patch: Patch = serde_json::from_str(&s.end(1, "w").unwrap()).unwrap();
+        let keys: Vec<&str> = patch.set.iter().map(|n| n.key.as_str()).collect();
+        assert_eq!(keys, vec!["t0,0", "fader@4,1", "fader@4,1/f1,0,1,3", "fader@4,1/t0,1"]);
+        assert_eq!(patch.set[3].rect, [0.0, 1.0, 3.0, 1.0], "placed from the role's corner");
+        let mut kept = Scene::default();
+        kept.apply(&patch);
+        assert_eq!(kept.to_cells().cells[2 * 10 + 4].ch, '━', "its cells where it drew them");
+        assert_eq!(kept.hit([5.5, 2.5]).map(|h| h.hit["track"].clone()), Some(serde_json::json!(1)));
+        // A frontend that draws faders itself is sent the role alone.
+        s.roles.insert(2, ["fader".to_string()].into());
+        draw(&mut s);
+        let patch: Patch = serde_json::from_str(&s.end(2, "w").unwrap()).unwrap();
+        let keys: Vec<&str> = patch.set.iter().map(|n| n.key.as_str()).collect();
+        assert_eq!(keys, vec!["t0,0", "fader@4,1"]);
+        s.forget(2, None);
+        assert!(!s.roles.contains_key(&2), "forgotten with the connection");
     }
 
     #[test]

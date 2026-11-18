@@ -62,6 +62,10 @@ paw.buftype, paw.layouts = paw.layout.buftype, paw.layout.layouts
 paw.draw = require("paw.draw")
 paw.ui.keybar = require("paw.keybar")
 paw.mouse = require("paw.mouse")
+-- Roles views mark on their buffers, and the widgets among them (paw/roles.lua).
+paw.roles = require("paw.roles")
+paw.ui.role, paw.ui.roles = paw.roles.define, paw.roles.registry
+require("paw.roles.widgets")
 require("paw.menu")
 paw.canvas = require("paw.canvas")
 -- The tabs and windows as panes of a graphical frontend (paw/panes.lua).

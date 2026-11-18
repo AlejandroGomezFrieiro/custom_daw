@@ -4,25 +4,28 @@
 //! as it changes (`scene.patch`), and every frame draws from the copy kept
 //! here, asking nothing: the cells as text in the window's monospace font,
 //! block characters, braille and sextants as rectangles, the pictures as
-//! images made again only when their drawing changes. The window tells the
-//! kernel how big each window is, in cells (`scene.area`), and passes the
-//! pointer on in the same units (`scene.input`). See
-//! runtime/lua/paw/scene.lua and docs/protocol.md.
+//! images made again only when their drawing changes, the roles it knows
+//! (crate::roles: faders, meters, switches...) as widgets, the meters moved
+//! by the live values (`scene.live`). The window tells the kernel how big
+//! each window is, in cells (`scene.area`), and passes the pointer on in
+//! the same units (`scene.input`), where the view's hit regions give it its
+//! meaning. See runtime/lua/paw/scene.lua and docs/protocol.md.
 
 use std::collections::{HashMap, HashSet};
 
 use egui::{Color32, ColorImage, CornerRadius, Id, Pos2, Rect, Shape, Stroke, TextureHandle, Ui, pos2, vec2};
 use paw_scene::cells::{BOLD, Run, STRIKE, UNDERLINE};
-use paw_scene::{Kind, Patch, Scene};
+use paw_scene::{Kind, Node, Patch, Scene};
 use serde_json::{Value, json};
 use unicode_width::UnicodeWidthChar;
 
 use crate::app::View;
 use crate::panes::pointer_events;
+use crate::roles;
 use crate::theme::{hex, mono, mono_medium};
 
 /// The size of the monospace font cells are drawn in.
-const MONO_SIZE: f32 = 13.0;
+pub const MONO_SIZE: f32 = 13.0;
 
 /// The window's cell, in points: a character of its monospace font wide,
 /// a row of it high. Views drawn in cells are laid out on it.
@@ -53,6 +56,9 @@ struct Shown {
     /// The scene lowered to cells, as rows of runs.
     rows: Vec<Vec<Run>>,
     pictures: Vec<Picture>,
+    /// The roles painted here, where they are and what they are cut to, in
+    /// units (left, top, right, bottom).
+    roles: Vec<(Node, [f64; 4], [f64; 4])>,
     /// The shapes of the cells' backgrounds and of their text, and where,
     /// on what cell and at what scale they were made.
     shapes: Option<(Vec<Shape>, Vec<Shape>, [f32; 5])>,
@@ -69,6 +75,8 @@ pub struct Scenes {
     blobs: HashMap<String, Value>,
     /// The window's cell, once measured: the kernel is told it then.
     pub cell: Option<(f32, f32)>,
+    /// What bound nodes are moved by, as the kernel last sent it.
+    pub live: Value,
 }
 
 impl Scenes {
@@ -165,6 +173,15 @@ impl Shown {
             pictures.push(Picture { key: node.key.clone(), rect: node.rect, clip: node.clip, under: picture.under, px: picture.px, ops, image });
         });
         self.pictures = pictures;
+        let mut placed = Vec::new();
+        self.scene.placed(&mut |node, rect, cut| {
+            if let Kind::Role { role, .. } = &node.kind
+                && roles::KNOWN.contains(&role.as_str())
+            {
+                placed.push((node.clone(), rect, cut));
+            }
+        });
+        self.roles = placed;
         self.shapes = None;
     }
 
@@ -233,8 +250,9 @@ impl Shown {
         (back, text)
     }
 
-    /// Draw the window's scene over `rect`, cut to `clip`.
-    fn draw(&mut self, ui: &Ui, rect: Rect, clip: Rect, cell: (f32, f32)) {
+    /// Draw the window's scene over `rect`, cut to `clip`; `id` is the
+    /// window's.
+    fn draw(&mut self, ui: &Ui, id: &str, rect: Rect, clip: Rect, cell: (f32, f32), live: &Value) {
         let painter = ui.painter().with_clip_rect(clip.intersect(ui.clip_rect()));
         painter.rect_filled(rect, CornerRadius::ZERO, colour(&self.scene.bg));
         let ppp = ui.ctx().pixels_per_point();
@@ -248,6 +266,12 @@ impl Shown {
         let text = text.clone();
         self.pictures(ui, &painter, rect.min, cell, true);
         painter.extend(text);
+        for (node, at, cut) in &self.roles {
+            let cut = roles::rect_of(*cut, rect.min, cell);
+            let role_painter = painter.with_clip_rect(cut.intersect(painter.clip_rect()));
+            let salt = Id::unique(("scene-role", id, &node.key));
+            roles::paint(ui, &role_painter, salt, node, roles::rect_of(*at, rect.min, cell), cell.1, live);
+        }
         self.pictures(ui, &painter, rect.min, cell, false);
         if let Some([x, y]) = self.scene.cursor {
             let bar = Rect::from_min_size(pos2(rect.min.x + x * cell.0, rect.min.y + y * cell.1), vec2(2.0, cell.1));
@@ -289,7 +313,9 @@ impl View {
         }
         let (w, h) = cell(ctx);
         self.scenes.cell = Some((w, h));
-        let watched = self.k.borrow_mut().call("scene.watch", json!([{ "cell": { "w": w, "h": h } }]));
+        // The roles it paints come without their cells; the meters move
+        // with the live values.
+        let watched = self.k.borrow_mut().call("scene.watch", json!([{ "cell": { "w": w, "h": h }, "roles": roles::KNOWN, "live": true }]));
         if let Err(err) = watched {
             self.show(&format!("{err:#}"), true);
         }
@@ -298,6 +324,10 @@ impl View {
     /// Take in what the kernel pushed of the scenes, fetching the drawings
     /// sent by their key that are not here yet.
     pub fn scene_patches(&mut self) {
+        if let Some(live) = self.k.borrow_mut().live() {
+            self.scenes.live = live;
+            self.repaint = true;
+        }
         let patches = self.k.borrow_mut().patches();
         for patch in patches {
             let Ok(patch) = serde_json::from_value::<Patch>(patch) else { continue };
@@ -332,7 +362,7 @@ impl View {
             self.call_later("scene.area", json!([id, size[0], size[1]]));
         }
         if let Some(shown) = self.scenes.shown.get_mut(id) {
-            shown.draw(ui, rect, clip, cell);
+            shown.draw(ui, id, rect, clip, cell, &self.scenes.live);
         }
         for mut event in pointer_events(ui, rect, Id::unique(("scene-pointer", id))) {
             event["x"] = json!(event["x"].as_f64().unwrap_or(0.0) / cell.0 as f64);
