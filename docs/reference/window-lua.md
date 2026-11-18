@@ -65,21 +65,21 @@ table.insert(paw.frontend.menus.timeline, { label = "New drum track", run = func
 ## `paw.frontend.bands`
 
 `paw.frontend.bands` is a list of functions. Each function returns the
-entries of a band under the markers of the ruler.
+entries of a band under the markers of the arrange view's ruler, a row in
+the terminal and in the window.
 
 | Field | Value |
 | --- | --- |
 | `beat` | Where the entry starts. |
 | `length` | Its length in beats. An entry without a length is a flag. |
 | `name` | Its text. |
-| `color` | `#rrggbb`. Without it, the window's own color. |
+| `color` | `#rrggbb`. Without it, the color of the ruler's bars. |
 | `command` | A command line for a click. |
 | `run` | A function for a click, given the entry. |
 | `hint` | What the status line shows over the entry. |
 
-A band with no entries takes no space. The kernel calls the functions again
-when the project, the cursor or the transport changes. The sections of the
-song and the findings of the mix are bands.
+A band with no entries takes no space. The arrange view calls the
+functions each time that it draws. The findings of the mix are a band.
 
 ```lua
 table.insert(paw.frontend.bands, function()

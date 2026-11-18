@@ -240,10 +240,7 @@ impl View {
     /// What an entry of one of the window's own menus does.
     fn local_choice(&mut self, name: &str, path: &[usize]) {
         let first = path.first().copied().unwrap_or(0);
-        if let Some(track) = name.strip_prefix("lane:") {
-            let track = track.parse().unwrap_or(0);
-            self.show_lane(track, first);
-        } else if name == "render-range" {
+        if name == "render-range" {
             self.dialogs.render_range(first);
         }
     }

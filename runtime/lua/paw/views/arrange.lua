@@ -116,10 +116,13 @@ end
 function view:layout(w, h)
   local tracks = paw.groups.rows()
   local hw = view.header_width(w)
-  -- The ruler, its second row if something asks for one, and the tempo
-  -- lane's two rows when it is shown.
+  -- The ruler, its second row if something asks for one, a row for each
+  -- band of an extension's (`paw.frontend.bands`) that has entries, and
+  -- the tempo lane's two rows when it is shown.
   local tempo_rows = paw.tempolane.shown() and 2 or 0
-  local ruler_rows = (wants_ruler2(self) and 2 or 1) + tempo_rows
+  local bands = paw.frontend.band_state()
+  local band_y = wants_ruler2(self) and 2 or 1
+  local ruler_rows = band_y + bands.rows + tempo_rows
   local master_rows = 2
   local room = math.max(1, h - ruler_rows - master_rows)
   -- Take lanes (a line each) and automation lanes shown as rows (two
@@ -135,7 +138,7 @@ function view:layout(w, h)
     local rows, y = self:rows_with_lanes(tracks, th, ruler_rows, room, cursor_index)
     return {
       hw = hw, tw = w - hw, th = th, ruler_rows = ruler_rows, tempo_rows = tempo_rows, rows = rows, tracks = tracks,
-      used = y, master = { kind = "master", id = 0, y = h - master_rows, h = master_rows },
+      used = y, master = { kind = "master", id = 0, y = h - master_rows, h = master_rows }, bands = bands, band_y = band_y,
     }
   end
   if cursor_index ~= self.seen_index or fit ~= self.seen_fit then
@@ -152,8 +155,25 @@ function view:layout(w, h)
   end
   return {
     hw = hw, tw = w - hw, th = th, ruler_rows = ruler_rows, tempo_rows = tempo_rows, rows = rows, tracks = tracks,
-    used = y, master = { kind = "master", id = 0, y = h - master_rows, h = master_rows },
+    used = y, master = { kind = "master", id = 0, y = h - master_rows, h = master_rows }, bands = bands, band_y = band_y,
   }
+end
+
+--- The bands of extensions under the ruler (`paw.frontend.bands`), a row
+--- each from line `y`: an entry with a length over its stretch, one
+--- without a flag where it is, each in its colour with its name.
+local function draw_bands(buf, y, state, col)
+  local w = buf.width
+  for row = 0, state.rows - 1 do buf:fill(0, y + row, w, 1, " ", "Ruler") end
+  for _, e in ipairs(state.entries) do
+    local x0 = col(e.beat)
+    local span = e.length > 0 and math.max(1, col(e.beat + e.length) - x0) or api.str_width(e.name) + 2
+    if x0 < w and x0 + span > 0 then
+      local box = buf:sub(x0, y + e.row, span, 1)
+      box:fill(0, 0, span, 1, " ", e.color ~= "" and draw.hue(e.color).pill or "RulerBar")
+      box:text(0, 0, (e.length > 0 and draw.g.clip_start or "▾") .. e.name)
+    end
+  end
 end
 
 --- The chips of a header, in order: mute, solo, arm, monitor.
@@ -162,6 +182,14 @@ local function chips(t)
     { "M", t.mute, "Mute", "mute" }, { "S", t.solo, "Solo", "solo" },
     { "R", t.armed, "Armed", "armed" }, { "I", t.monitor, "Monitor", "monitor" },
   }
+end
+
+--- The colours a window lights each chip in.
+local chip_tones = { mute = "mute", solo = "solo", armed = "rec", monitor = "select" }
+
+--- Where a fader of the volume stands, from 0 at -60 dB to 1 at +6 dB.
+local function fader_at(volume)
+  return util.clamp(((volume or 0) + 60) / 66, 0, 1)
 end
 
 --- What a track sends, in a few words: `↗ Reverb -9  ↗ Delay -12`.
@@ -206,9 +234,11 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
   -- The master, drawn last, has none: the tracks' stay where they are.
   if not t.master then self.flags = {} end
   if chips_w > 0 then
-    draw.chips(buf, chips_at, y, list, gap)
-    if not narrow then
-      for i, chip in ipairs(list) do self.flags[chip[4]] = chips_at + (i - 1) * (1 + gap) end
+    -- Each a switch, which a window paints as a button.
+    for i, chip in ipairs(list) do
+      local x = chips_at + (i - 1) * (1 + gap)
+      buf:mark("switch", x, y, 1, 1, { letter = chip[1], on = chip[2] or false, style = chip[3], tone = chip_tones[chip[4]] })
+      if not narrow then self.flags[chip[4]] = x end
     end
   end
   local before = chips_w > 0 and chips_at - 1 or right
@@ -262,7 +292,10 @@ local function header(self, buf, y, height, t, index, selected, lanes, hue)
     local vol = draw.db_text(t.volume)
     local vol_at = right - #vol
     if vol_at - 1 > name_at then
-      draw.meter(buf, name_at, y + 1, vol_at - 1 - name_at, peak, draw.hold("track" .. t.id, peak))
+      -- A window moves it with the live values, and shows the volume on it.
+      buf:mark("hmeter", name_at, y + 1, vol_at - 1 - name_at, 1, {
+        levels = { left, r }, hold = draw.hold("track" .. t.id, peak), at = fader_at(t.volume), bind = "meter:" .. t.id,
+      })
     end
     buf:text(vol_at, y + 1, vol, selected and "Bright" or "TrackInfo")
   end
@@ -340,19 +373,101 @@ local function grid_lines(scroll, zoom, width)
   return out
 end
 
-local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, lanes, hue, lines, loop)
-  local g = draw.g
-  local w = buf.width
-  buf:fill(0, y, w, height, " ", selected and hue.lane_sel or "Lane")
-  if loop then buf:fill(loop[1], y, loop[2] - loop[1], height, nil, "LaneLoop") end
-  for _, line in ipairs(lines) do
-    if line.bar then
-      buf:fill(line.x, y, 1, height, g.bar, "LaneBar")
-    elseif zoom >= 4 then
-      buf:fill(line.x, y, 1, height, g.beat, "LaneBeat")
+--- What is drawn in a clip's body: its waveform, or its notes as a small
+--- piano roll.
+local function clip_body(clip, track, kind, zoom)
+  return function(box)
+    local cw, height = box.width, box.height
+    if clip.kind == "audio" then
+      -- In pixels under the cells where the terminal shows them, the
+      -- whole clip's, so that scrolling moves pieces already made.
+      local body = box:sub(0, 1, cw, height - 1)
+      -- The colour the cells draw it in (`paw.draw.hue`'s body).
+      local colour = draw.mix(require("paw.theme").palette.bg, draw.track_colour(track), kind == "_off" and 0.30 or 0.75)
+      local pictured = body:strip(0, 0, cw, height - 1, {
+        key = "arrange:wave:" .. clip.id, under = true,
+        draw = function(g, px)
+          paw.plot.wave(g, px, { peaks = function(n) return wave_peaks(clip, n) end, color = colour })
+        end,
+      })
+      if not pictured then paw.plot.wave_cells(body, { peaks = function(n) return wave_peaks(clip, n) end }) end
+    elseif clip.note_count > 0 then
+      local rows, runs = preview(clip, cw, height - 1, zoom)
+      for row, text in ipairs(rows) do
+        if runs then
+          for _, run in ipairs(runs[row]) do box:text(run.column, row, run.text, wave_style[run.mark]) end
+        else
+          box:text(0, row, text)
+        end
+      end
     end
   end
+end
+
+--- A clip on the timeline's plane, as the `clip` role it is.
+function view.clip_props(clip, track, hue, kind, zoom, chosen)
+  -- A clip with takes says which plays: `take 3 ‹2/4›`.
+  local badge = paw.takes.badge(clip)
+  local label = clip.offline and ("offline · " .. clip.name) or clip.name
+  -- Stretched, shifted, looped: `×1.5 ⟳ drums`.
+  local mark = paw.stretch.badge(clip)
+  if mark then label = mark .. " " .. label end
+  local warps = {}
+  for i, m in ipairs(clip.warp or {}) do warps[i] = m.beat - clip.start end
+  return {
+    key = "clip:" .. clip.id, id = clip.id, name = clip.name, label = badge and (label .. " ‹" .. badge .. "›") or label,
+    color = draw.track_colour(track), midi = clip.kind ~= "audio", muted = clip.muted or nil,
+    current = kind == "_cur" or nil, chosen = chosen or nil, offline = clip.offline or nil,
+    length = clip.length, per = zoom, repeats = paw.stretch.repeats(clip), warps = warps,
+    fade_in = clip.fade_in, fade_out = clip.fade_out, gain = clip.gain, content = paw.frontend.content_key(clip),
+    title_style = hue["title" .. kind], body_style = hue["body" .. kind], body = clip_body(clip, track, kind, zoom),
+  }
+end
+
+--- A curve over `w` columns and `h` rows of `buf` from `x`, `y`, as the
+--- `curve` role: `value(i)` is its height at half column `i` (nil for
+--- none); `o.points` the points marked on it, `{ beat, height, glyph }`
+--- each, which a terminal draws on its top row or its bottom by the
+--- height; `o.style` the style of its cells; `o.from`, `o.per` where the
+--- beats are; `o.color` and `o.enabled` how a window draws it.
+local function curve(buf, x, y, w, h, value, o)
+  local values, marks = {}, {}
+  for i = 0, 2 * w - 1 do values[i + 1] = value and value(i) or false end
+  for i, p in ipairs(o.points or {}) do marks[i] = { p[1], p[2] } end
+  buf:mark("curve", x, y, w, h, {
+    values = values, points = marks, from = o.from, per = o.per, color = o.color, enabled = o.enabled ~= false,
+    draw = function(b)
+      if value then draw.curve(b, 0, h, function(i) return values[i + 1] or nil end, o.style) end
+      for _, p in ipairs(o.points or {}) do
+        local px = math.floor((p[1] - o.from) * o.per + 0.5)
+        if px >= 0 and px < w then b:text(px, p[2] >= 0.5 and 0 or h - 1, p[3] or "◆", o.style) end
+      end
+    end,
+  })
+end
+
+--- The lines of the bars among `lines` (`grid_lines`), as the `beats`
+--- role takes them.
+local function bar_marks(lines)
+  local out = {}
+  for _, line in ipairs(lines) do
+    if line.bar then out[#out + 1] = { line.beat, true } end
+  end
+  return out
+end
+
+local function lane(self, buf, row, track, selected, cursor_clip, lanes, hue, marks, loop)
+  local y, height = row.y, row.h
+  local scroll, zoom = self.scroll, self.geometry.zoom
+  local plane = self.plane
+  local w = buf.width
+  plane:mark("beats", scroll, y, w / zoom, height, {
+    from = scroll, per = zoom, style = selected and hue.lane_sel or "Lane", tone = "lane", selected = selected or nil,
+    color = draw.track_colour(track), index = row.index, loop = loop, lines = marks, beats = zoom >= 4 or nil,
+  })
   local spans = {}
+  local chosen = {}
+  for _, id in ipairs(paw.frontend.chosen_clips()) do chosen[id] = true end
   for _, clip in ipairs(api.clip_list(track.id)) do
     local x0 = math.floor((clip.start - scroll) * zoom + 0.5)
     local x1 = math.floor((clip.start + clip.length - scroll) * zoom + 0.5)
@@ -360,53 +475,7 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
     if x0 < w and x0 + cw > 0 then
       spans[#spans + 1] = { x0, x0 + cw }
       local kind = clip.muted and "_off" or clip.id == cursor_clip and "_cur" or ""
-      local box = buf:sub(x0, y, cw, height)
-      box:fill(0, 0, cw, 1, " ", hue["title" .. kind])
-      -- A clip with takes says which plays: `take 3 ‹2/4›`.
-      local badge = paw.takes.badge(clip)
-      local label = clip.offline and ("offline · " .. clip.name) or clip.name
-      -- Stretched, shifted, looped: `×1.5 ⟳ drums`.
-      local mark = paw.stretch.badge(clip)
-      if mark then label = mark .. " " .. label end
-      box:text(cw > 2 and 1 or 0, 0, badge and (label .. " ‹" .. badge .. "›") or label)
-      if height >= 2 then
-        box:fill(0, 1, cw, height - 1, " ", hue["body" .. kind])
-        if clip.kind == "audio" then
-          -- In pixels under the cells where the terminal shows them, the
-          -- whole clip's, so that scrolling moves pieces already made.
-          local body = box:sub(0, 1, cw, height - 1)
-          -- The colour the cells draw it in (`paw.draw.hue`'s body).
-          local colour = draw.mix(require("paw.theme").palette.bg, draw.track_colour(track), kind == "_off" and 0.30 or 0.75)
-          local pictured = body:strip(0, 0, cw, height - 1, {
-            key = "arrange:wave:" .. clip.id, under = true,
-            draw = function(g, px)
-              paw.plot.wave(g, px, { peaks = function(n) return wave_peaks(clip, n) end, color = colour })
-            end,
-          })
-          if not pictured then paw.plot.wave_cells(body, { peaks = function(n) return wave_peaks(clip, n) end }) end
-        elseif clip.note_count > 0 then
-          local rows, runs = preview(clip, cw, height - 1, zoom)
-          for row, text in ipairs(rows) do
-            if runs then
-              for _, run in ipairs(runs[row]) do box:text(run.column, row, run.text, wave_style[run.mark]) end
-            else
-              box:text(0, row, text)
-            end
-          end
-        end
-      end
-      -- A notch where each repeat of a looped clip begins.
-      for _, at in ipairs(paw.stretch.repeats(clip)) do
-        local nx = math.floor(at * zoom + 0.5)
-        if nx > 0 and nx < cw and height >= 2 then box:fill(nx, 1, 1, height - 1, g.step, "ClipEdge") end
-      end
-      -- A warp marker, where a moment of the file is pinned to a beat.
-      for _, m in ipairs(clip.warp or {}) do
-        local nx = math.floor((m.beat - clip.start) * zoom + 0.5)
-        if nx > 0 and nx < cw then box:fill(nx, 0, 1, height, g.tick, "ClipWarp") end
-      end
-      -- A hairline where the clip starts, so that clips side by side stay apart.
-      box:fill(0, 0, 1, height, g.clip_start, "ClipEdge")
+      local box = plane:mark("clip", clip.start, y, clip.length, height, view.clip_props(clip, track, hue, kind, zoom, chosen[clip.id]))
       paw.ui.paint("arrange", "clip", { buf = box, width = cw, height = height, clip = clip })
     end
   end
@@ -423,10 +492,10 @@ local function lane(buf, y, height, track, selected, scroll, zoom, cursor_clip, 
         end
         return false
       end
-      draw.curve(buf:sub(0, y + 1, w, height - 1), 0, height - 1, function(i)
+      curve(buf, 0, y + 1, w, height - 1, function(i)
         if over_clip(math.floor(i / 2)) then return nil end
         return (api.lane_value_at(l.id, scroll + (i + 0.5) / (zoom * 2)) + 60) / 66
-      end, l.enabled and "Automation" or "Faint")
+      end, { style = l.enabled and "Automation" or "Faint", color = draw.track_colour(track), enabled = l.enabled, from = scroll, per = zoom })
     end
   end
   return spans
@@ -463,14 +532,13 @@ local function master_meter(buf, y, width)
   local left, right = api.track_meter(0)
   local x, mw = 1, math.min(40, width - 10)
   if mw < 8 then
-    draw.meter(buf, 1, y, math.max(1, width - 2), math.max(left, right))
+    buf:mark("hmeter", 1, y, math.max(1, width - 2), 1, { levels = { left, right }, bind = "meter:0" })
     return
   end
-  draw.stereo_meter(buf, x, y, mw, left, right)
+  buf:mark("hmeter", x, y, mw, 1, { levels = { left, right }, stereo = true, bind = "meter:0" })
+  -- The loudest of late, moved by the live values in a window as the meter is.
   local hold = draw.hold("master", math.max(left, right))
-  local db = 20 * math.log10(math.max(hold, 1e-6))
-  local text = db < -60 and "-inf" or string.format("%.1f", db)
-  buf:text(x + mw + 2, y, text, db > -0.1 and "MeterHigh" or "TrackInfo")
+  buf:mark("peak", x + mw + 1, y, 6, 1, { hold = hold, bind = "meter:0" })
   for _, mark in ipairs(scale) do
     local at = x + draw.db_cell(mark, mw)
     local label = tostring(mark)
@@ -548,23 +616,21 @@ function view:draw_lane_row(headers, timeline, row, lines)
   local state = l.enabled and "read" or "bypass"
   headers:text(math.max(2, hw - #state - 1), y + 1, state, l.enabled and "Automation" or "FlagOff")
   headers:text(4, y + 1, util.fit(paw.lanes.format(l, paw.lanes.value_at(l, beat)), math.max(1, hw - #state - 5)), "TrackInfo")
-  timeline:fill(0, y, tw, 2, " ", on and hue.lane_sel or "Lane")
-  for _, line in ipairs(lines) do
-    if line.bar then timeline:fill(line.x, y, 1, 2, draw.g.bar, "LaneBar") end
-  end
+  self.plane:mark("beats", scroll, y, tw / zoom, 2, {
+    from = scroll, per = zoom, style = on and hue.lane_sel or "Lane", tone = "auto", lines = bar_marks(lines),
+  })
   -- Volume on the fader's useful stretch, -60 to +6 dB; the rest across their range.
   local lo, hi = l.min or 0, l.max or 1
   if l.target == "volume" then lo, hi = -60, 6 end
   local function level(v) return hi ~= lo and util.clamp((v - lo) / (hi - lo), 0, 1) or 0.5 end
-  if l.point_count > 0 then
-    draw.curve(timeline:sub(0, y, tw, 2), 0, 2, function(i)
-      return level(api.lane_value_at(l.id, scroll + (i + 0.5) / (zoom * 2)))
-    end, l.enabled and "Automation" or "Faint")
-  end
-  for _, p in ipairs(api.lane_points(l.id)) do
-    local x = math.floor((p[1] - scroll) * zoom + 0.5)
-    if x >= 0 and x < tw then timeline:text(x, level(p[2]) >= 0.5 and y or y + 1, "◆", l.enabled and "Automation" or "Faint") end
-  end
+  local points = {}
+  for i, p in ipairs(api.lane_points(l.id)) do points[i] = { p[1], level(p[2]) } end
+  curve(timeline, 0, y, tw, 2, l.point_count > 0 and function(i)
+    return level(api.lane_value_at(l.id, scroll + (i + 0.5) / (zoom * 2)))
+  end or nil, {
+    points = points, style = l.enabled and "Automation" or "Faint", from = scroll, per = zoom,
+    color = draw.track_colour(api.track_get(row.id), row.index), enabled = l.enabled,
+  })
   if not on then return end
   -- A selection on this lane: the stretch of time chosen.
   local selection = paw.keymap.selection()
@@ -595,13 +661,13 @@ function view:draw_tempo_row(headers, timeline, y, lines)
   end
   local lo, hi = paw.tempolane.range()
   local function level(bpm) return util.clamp((bpm - lo) / (hi - lo), 0, 1) end
-  draw.curve(timeline:sub(0, y, tw, 2), 0, 2, function(i)
-    return level(paw.tempo.at(scroll + (i + 0.5) / (zoom * 2)))
-  end, "Automation")
-  for _, p in ipairs(paw.tempo.points()) do
-    local x = math.floor((p.beat - scroll) * zoom + 0.5)
-    if x >= 0 and x < tw then timeline:text(x, level(p.bpm) >= 0.5 and y or y + 1, (paw.opt.ascii and (p.ramp and ">" or "*") or (p.ramp and "◢" or "◆")), "Automation") end
+  local points = {}
+  for i, p in ipairs(paw.tempo.points()) do
+    points[i] = { p.beat, level(p.bpm), paw.opt.ascii and (p.ramp and ">" or "*") or (p.ramp and "◢" or "◆") }
   end
+  curve(timeline, 0, y, tw, 2, function(i)
+    return level(paw.tempo.at(scroll + (i + 0.5) / (zoom * 2)))
+  end, { points = points, style = "Automation", from = scroll, per = zoom, color = require("paw.theme").palette.accent })
   local x = math.floor((beat - scroll) * zoom + 0.5)
   timeline:fill(x, y, math.max(1, math.floor(paw.opt.grid * zoom)), 1, nil, "Cursor")
 end
@@ -621,10 +687,9 @@ function view:draw_take_row(headers, timeline, row, lines)
   headers:fill(0, y, hw, 1, " ", "TrackHeader")
   headers:text(0, y, "▏", hue.fg)
   headers:text(2, y, util.fit("↳ take " .. k, math.max(1, hw - 3)), "TrackInfo")
-  timeline:fill(0, y, tw, 1, " ", "TakeLane")
-  for _, line in ipairs(lines) do
-    if line.bar then timeline:fill(line.x, y, 1, 1, draw.g.bar, "LaneBar") end
-  end
+  self.plane:mark("beats", scroll, y, tw / zoom, 1, {
+    from = scroll, per = zoom, style = "TakeLane", tone = "take", lines = bar_marks(lines),
+  })
   for _, clip in ipairs(api.clip_list(row.id)) do
     local takes = paw.takes.of(clip)
     local entry = takes and takes.list[k]
@@ -646,7 +711,7 @@ function view:draw_take_row(headers, timeline, row, lines)
   -- The stretch being dragged over.
   local comp = self.comp
   if comp and comp.id == row.id and comp.take == k then
-    local x0, x1 = math.min(comp.x0, comp.x1) - hw, math.max(comp.x0, comp.x1) - hw
+    local x0, x1 = math.floor(math.min(comp.x0, comp.x1)) - hw, math.floor(math.max(comp.x0, comp.x1)) - hw
     timeline:fill(math.max(0, x0), y, math.max(0, x1 - math.max(0, x0) + 1), 1, nil, "Visual")
   end
   return names
@@ -703,6 +768,8 @@ function view:render(buf, ctx)
   self.geometry = { hw = hw, th = th, rows = #L.rows, zoom = zoom, span = span, layout = L }
   local function col(beat) return math.floor((beat - self.scroll) * zoom + 0.5) end
 
+  -- All of it takes the pointer, in both frontends (paw/views/arrange_mouse.lua).
+  buf:hit(0, 0, w, h, { kind = "arrange" })
   -- The rule between the headers and the timeline, from top to bottom.
   buf:fill(hw - 1, 0, 1, h, g.rule, "Rule")
   local headers, lanes = buf:sub(0, 0, hw - 1, h), buf:sub(hw, 0, tw, h)
@@ -772,13 +839,25 @@ function view:render(buf, ctx)
     mark_end = x + ruler:text(x, 0, (mark.kind == "tempo" and "▾" or "‖") .. mark.text, "RulerTempo") + 1
   end
   local ruler2
-  if L.ruler_rows - L.tempo_rows > 1 then
+  if L.band_y > 1 then
     ruler2 = buf:sub(hw, 1, tw, 1)
     ruler2:fill(0, 0, tw, 1, " ", "Ruler")
   end
+  if L.bands.rows > 0 then draw_bands(lanes, L.band_y, L.bands, col) end
   if L.tempo_rows > 0 then self:draw_tempo_row(headers, lanes, L.ruler_rows - L.tempo_rows, lines) end
 
-  -- Tracks.
+  -- Tracks. The timeline under the ruler is a plane, beats along and the
+  -- view's lines down: a window paints the clips and the lines on it where
+  -- they are between cells. Lines, not tracks, go down, because rows of
+  -- other kinds (take lanes, automation lanes) have heights of their own,
+  -- and a drag goes across all of them in one domain.
+  local mst = L.master
+  self.plane = buf:plane(hw, L.ruler_rows, tw, math.max(1, mst.y - L.ruler_rows), {
+    key = "timeline", x = { domain = "beat", from = self.scroll, per = zoom }, y = { domain = "line", from = L.ruler_rows, per = 1 },
+  })
+  local marks = {}
+  for i, line in ipairs(lines) do marks[i] = { line.beat, line.bar and true or false } end
+  local loop_beats = loop and { t.loop_start, t.loop_end } or nil
   local cursor_clip = cursor.clip()
   cursor_clip = cursor_clip and cursor_clip.id
   local covered, names_of = {}, {}
@@ -795,8 +874,8 @@ function view:render(buf, ctx)
       local hue = draw.track_hue(track, row.index)
       header(self, headers, y, row.h, track, row.index, selected and not cursor_lane, automation, hue)
       -- With its lanes open as rows, a track's curve is drawn there, not here.
-      covered[row] = lane(lanes, y, row.h, track, selected, self.scroll, zoom, cursor_clip,
-        paw.lanes.is_open(row.id) and {} or automation, hue, lines, loop)
+      covered[row] = lane(self, lanes, row, track, selected, cursor_clip,
+        paw.lanes.is_open(row.id) and {} or automation, hue, marks, loop_beats)
       if selected and not cursor_lane then
         local x = col(cursor.beat)
         -- In the mode's colour where the clips' names are, a shadow below.
@@ -825,7 +904,6 @@ function view:render(buf, ctx)
   end
 
   -- The master track is pinned to the bottom, with its level on both sides.
-  local mst = L.master
   if #tracks == 0 then
     welcome(buf:sub(0, L.ruler_rows, w, mst.y - L.ruler_rows))
   elseif mst.y - L.used >= 2 then
@@ -857,30 +935,31 @@ function view:render(buf, ctx)
   -- The playhead: a mark on the ruler and a thin line on the beat's left
   -- edge, which is where a clip that starts there begins to be drawn. Over a
   -- clip the line keeps the clip's colour behind it, so the clip is seen to
-  -- start where it does.
+  -- start where it does. A window moves it as the song plays.
   local px = col(t.position)
-  if px >= 0 and px < tw then
-    ruler:text(px, 0, g.cap, "RulerPlayhead")
-    for _, row in ipairs(L.rows) do
-      local on_clip, on_name = false, false
-      for _, s in ipairs(covered[row] or {}) do
-        if px >= s[1] and px < s[2] then on_clip = true end
-      end
-      for _, s in ipairs(names_of[row] or {}) do
-        if px >= s[1] and px < s[2] then on_name = true end
-      end
-      if on_name then
-        -- A take's name keeps its letter, in the playhead's colour.
-        lanes:fill(px, row.y, 1, 1, nil, "PlayheadClip")
-      elseif on_clip then
-        -- Under the clip's name only, so the name row reads unbroken.
-        local skip = row.h > 1 and 1 or 0
-        lanes:fill(px, row.y + skip, 1, row.h - skip, g.playhead, "PlayheadClip")
-      else
-        lanes:fill(px, row.y, 1, row.h, g.playhead, "Playhead")
-      end
+  local spans = {}
+  for _, row in ipairs(L.rows) do
+    local on_clip, on_name = false, false
+    for _, s in ipairs(covered[row] or {}) do
+      if px >= s[1] and px < s[2] then on_clip = true end
+    end
+    for _, s in ipairs(names_of[row] or {}) do
+      if px >= s[1] and px < s[2] then on_name = true end
+    end
+    if on_name then
+      -- A take's name keeps its letter, in the playhead's colour.
+      spans[#spans + 1] = { row.y, 1, "PlayheadClip", false }
+    elseif on_clip then
+      -- Under the clip's name only, so the name row reads unbroken.
+      local skip = row.h > 1 and 1 or 0
+      spans[#spans + 1] = { row.y + skip, row.h - skip, "PlayheadClip" }
+    else
+      spans[#spans + 1] = { row.y, row.h, "Playhead" }
     end
   end
+  buf:mark("playhead", hw, 0, tw, mst.y, {
+    at = t.position, from = self.scroll, per = zoom, lo = 0, hi = 1e12, spans = spans, bind = "position",
+  })
 end
 
 --- Scroll so that the cursor is in the middle of the timeline.
@@ -928,6 +1007,23 @@ view.grid = {
     return hits
   end,
 }
+
+-- Its ruler is its first row: a graphical frontend shows it with no title
+-- of its own over it (paw/panes.lua).
+view.titled = true
+-- What moves on its own as the song plays: the playhead and the meters. A
+-- frontend that paints them with the live values needs no new scene for
+-- them, but for when the view must scroll to follow the playhead.
+view.live_roles = { "playhead", "hmeter", "peak" }
+
+--- Whether the view must be drawn again although its live roles move on
+--- their own: the playhead it follows has left the time it shows.
+function view:moves()
+  local g = self.geometry
+  if not (g and g.span and paw.opt.follow) then return false end
+  local t = api.transport_get()
+  return t.playing and (t.position < self.scroll or t.position >= self.scroll + g.span)
+end
 
 paw.ui.view("arrange", view)
 return view

@@ -330,7 +330,7 @@ end
 function M.leave(name)
   local L = paw.layout
   local here, t = L.current(), L.tab()
-  if paw.panes.native[name] then return here and here.id end
+  if paw.panes.stays[name] then return here and here.id end
   -- Where the view had the keyboard, the window before it gets it back.
   local before = here and here.view == name and t.prev and L.find_id(t.layout, t.prev)
   L.conceal(name)
@@ -447,7 +447,7 @@ function M.dock(name)
   if not M.open_views[name] then return end
   M.open_views[name] = nil
   local L = paw.layout
-  if paw.panes.native[name] or L.reveal(name) then return paw.ui.focus(name) end
+  if paw.panes.stays[name] or L.reveal(name) then return paw.ui.focus(name) end
   -- A type with a buffer for each target shows the buffer it showed.
   local def = L.types[name]
   local loose = def and def.window and def.window()

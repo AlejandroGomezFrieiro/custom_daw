@@ -248,6 +248,43 @@ test("the piano roll with notes on its plane, two clips edited, a drawing and a 
   eq(notes >= 4, true, "its notes are roles in the scene: " .. notes)
 end)
 
+test("the arrange view with clips on its plane, an audio clip, lanes and take lanes as rows and a selection is its drawing in its scene", function()
+  fresh()
+  local saved = paw.opt.zoom
+  T.after(function()
+    paw.opt.zoom = saved
+    paw.keymap.feed("<Esc><Esc>")
+    api.scene_forget(0)
+  end)
+  local t = paw.add_track({ name = "keys" })
+  local u = paw.add_track({ name = "loop" })
+  t:add_clip({ start = 0.5, length = 3.3, notes = { { pitch = 60, start = 0, length = 1 }, { pitch = 67, start = 2, length = 1 } } })
+  t:add_clip({ start = 5, length = 2 })
+  local samples = {}
+  for i = 1, 48000 do samples[i] = 0.5 * math.sin(i / 30) end
+  u:add_clip({ file = T.write_wav(T.scratch .. "/parity-arrange.wav", samples), start = 2.25, length = 2 })
+  paw.frontend.act.lane(t.id, "volume")
+  paw.lanes.toggle(t.id)
+  paw.flush()
+  -- Clips between cells at every zoom: a column a beat, two, three and a half.
+  for _, zoom in ipairs({ 1, 2, 3.5 }) do
+    paw.opt.zoom = zoom
+    eq(all_checked({ "arrange" }, written), "", "at " .. zoom .. " columns a beat, drawn through its buffer")
+    eq(all_checked({ "arrange" }, lowered), "", "at " .. zoom .. " columns a beat, its scene is its drawing")
+  end
+  paw.ui.focus("arrange")
+  paw.keymap.feed("vl")
+  eq(all_checked({ "arrange" }, lowered), "", "with a selection")
+  paw.keymap.feed("<Esc>")
+  api.scene_forget(0)
+  local patch = scene_of("arrange", 150, 45)
+  local clips = 0
+  for _, node in ipairs(patch.set) do
+    if node.role == "clip" then clips = clips + 1 end
+  end
+  eq(clips, 3, "its clips are roles in the scene")
+end)
+
 -- Once every other test has run, since loading every extension changes
 -- what the tests of the core see.
 T.last("every bundled extension's view draws only through its buffer, and its scene is its drawing", function()

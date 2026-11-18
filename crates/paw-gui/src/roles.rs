@@ -16,7 +16,7 @@ use crate::widgets;
 
 /// The roles this window paints: it says so when it watches scenes, and
 /// is sent them without their cells.
-pub const KNOWN: &[&str] = &["label", "button", "switch", "knob", "fader", "meter", "peak", "chip", "note", "keyboard", "playhead", "scrollbar"];
+pub const KNOWN: &[&str] = &["label", "button", "switch", "knob", "fader", "meter", "peak", "chip", "note", "keyboard", "playhead", "scrollbar", "clip", "beats", "hmeter", "curve"];
 
 fn text(props: &Value, key: &str) -> String {
     props[key].as_str().unwrap_or("").to_string()
@@ -153,7 +153,8 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: 
                 painter.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(1.0, Color32::WHITE), StrokeKind::Inside);
             }
         }
-        _ => return false,
+        // The arrange view's (crate::timeline).
+        other => return crate::timeline::paint(ui, painter, node, other, props, rect, cell, live),
     }
     true
 }

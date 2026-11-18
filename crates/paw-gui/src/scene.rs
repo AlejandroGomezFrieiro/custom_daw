@@ -73,6 +73,11 @@ pub struct Scenes {
     told: HashMap<String, [f32; 2]>,
     /// The windows drawn this frame.
     seen: HashSet<String>,
+    /// Where each window was last drawn, in points.
+    placed: HashMap<String, Rect>,
+    /// The clip a drag in the arrange view moves, while the pointer is
+    /// over the session view's slots, where letting go puts it.
+    pub dragged_clip: Option<i64>,
     /// Drawings sent by their content key, fetched once.
     blobs: HashMap<String, Value>,
     /// The window's cell, once measured: the kernel is told it then.
@@ -406,6 +411,7 @@ impl View {
     pub fn scene(&mut self, ui: &Ui, id: &str, rect: Rect, clip: Rect) {
         let cell = self.scenes.cell();
         self.scenes.seen.insert(id.to_string());
+        self.scenes.placed.insert(id.to_string(), rect);
         let size = [rect.width().max(0.0) / cell.0, rect.height().max(0.0) / cell.1];
         if self.scenes.told.get(id) != Some(&size) {
             self.scenes.told.insert(id.to_string(), size);
@@ -415,10 +421,50 @@ impl View {
             shown.draw(ui, id, rect, clip, cell, &self.scenes.live);
         }
         for mut event in pointer_events(ui, rect, Id::unique(("scene-pointer", id))) {
+            if self.to_slot(rect, &event) {
+                continue;
+            }
             event["x"] = json!(event["x"].as_f64().unwrap_or(0.0) / cell.0 as f64);
             event["y"] = json!(event["y"].as_f64().unwrap_or(0.0) / cell.1 as f64);
             self.call_later("scene.input", json!([id, event]));
         }
+    }
+
+    /// A clip dragged from the arrange view over the session view's slots:
+    /// let go there, it goes into the slot (`clip_to_slot`), and the drag
+    /// in the kernel ends without moving it. True when the event was that.
+    fn to_slot(&mut self, rect: Rect, event: &Value) -> bool {
+        let at = rect.min + vec2(event["x"].as_f64().unwrap_or(0.0) as f32, event["y"].as_f64().unwrap_or(0.0) as f32);
+        let Some((column, slot)) = self.session.slot_at(at) else {
+            if event["kind"] == "up" {
+                self.scenes.dragged_clip = None;
+            }
+            return false;
+        };
+        match event["kind"].as_str() {
+            Some("move") if self.scenes.dragged_clip.is_none() => {
+                self.scenes.dragged_clip = self.ask("local g = paw.mouse.gesture(); return g and g.clip", json!([])).as_i64();
+                false
+            }
+            Some("up") => match self.scenes.dragged_clip.take() {
+                Some(clip) => {
+                    self.eval("paw.mouse.forget(); paw.api.ui_redraw()", json!([]));
+                    self.pass("clip_to_slot", json!([clip, column, slot]));
+                    true
+                }
+                None => false,
+            },
+            _ => false,
+        }
+    }
+
+    /// The track whose header is under a point of the window, in a pane
+    /// that shows the arrange view.
+    pub fn header_at(&self, p: Pos2) -> Option<i64> {
+        let cell = self.scenes.cell();
+        let (id, rect) = self.scenes.placed.iter().find(|(_, r)| r.contains(p))?;
+        let at = p - rect.min;
+        self.ask("return paw.ui.views.arrange:header_track(...)", json!([id, at.x / cell.0, at.y / cell.1])).as_i64()
     }
 
     /// At the end of a frame: the windows not drawn in it are gone, and
@@ -426,6 +472,7 @@ impl View {
     /// them either.
     pub fn scenes_done(&mut self) {
         let seen = std::mem::take(&mut self.scenes.seen);
+        self.scenes.placed.retain(|id, _| seen.contains(id));
         let gone: Vec<String> = self.scenes.told.keys().filter(|id| !seen.contains(*id)).cloned().collect();
         for id in gone {
             self.scenes.told.remove(&id);

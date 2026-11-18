@@ -108,6 +108,7 @@ function M.track(id)
   local items = {
     { label = "Rename", run = run("track.rename") },
     { label = "Colour", items = colour },
+    { label = "Input", items = require("paw.window_menus").input(id) },
     "-",
     { label = "Duplicate", run = run("track.duplicate") },
     "-",

@@ -331,63 +331,6 @@ pub fn slider(ui: &mut Ui, rect: Rect, id: Id, value: f32, centred: bool) -> (Re
     (response, moved)
 }
 
-/// A small round knob, for a pan: drag up and down to turn it.
-pub fn knob(ui: &mut Ui, rect: Rect, id: Id, value: f32) -> (Response, Vec<Moved>) {
-    let t = th();
-    let response = ui.interact(rect, id, Sense::click_and_drag());
-    let r = rect.width().min(rect.height()) / 2.0;
-    let face = if response.hovered() || response.is_pointer_button_down_on() { t.control_hover } else { t.control };
-    let p = ui.painter();
-    p.circle(rect.center(), r - 0.5, face, Stroke::new(1.0, t.divider));
-    let turn = (value.clamp(0.0, 1.0) - 0.5) * 270f32.to_radians();
-    let ink = if response.is_pointer_button_down_on() { t.select } else { t.text };
-    let at = |d: f32| rect.center() + vec2(turn.sin(), -turn.cos()) * d;
-    p.line_segment([at(r - 7.0), at(r - 2.5)], Stroke::new(2.0, ink));
-    let moved = handle(ui, &response, id, value, |pos| -pos.y / 120.0, 0.1, false, 0.02);
-    (response, moved)
-}
-
-/// A level meter, coloured by position: green to -18 dBFS, then
-/// yellow-green, yellow, orange, and red from 0 dB. `hold` is the peak
-/// held a moment, drawn as a thin line.
-pub fn meter(ui: &Ui, rect: Rect, level: f32, hold: f32, upright: bool) {
-    let t = th();
-    let p = ui.painter();
-    p.rect_filled(rect, CornerRadius::ZERO, t.meter_well);
-    let level = level.clamp(0.0, 1.0);
-    let bands: [(f32, f32, Color32); 5] = [(0.0, 0.636, t.meter_low), (0.636, 0.773, t.meter_mid), (0.773, 0.864, t.meter_high), (0.864, 0.909, t.meter_hot), (0.909, 1.0, t.meter_clip)];
-    for (from, to, colour) in bands {
-        if level <= from {
-            break;
-        }
-        let to = to.min(level);
-        let band = if upright {
-            Rect::from_x_y_ranges(rect.x_range(), (rect.bottom() - rect.height() * to)..=(rect.bottom() - rect.height() * from))
-        } else {
-            Rect::from_x_y_ranges((rect.left() + rect.width() * from)..=(rect.left() + rect.width() * to), rect.y_range())
-        };
-        p.rect_filled(band, CornerRadius::ZERO, colour);
-    }
-    if hold > 0.02 {
-        let hold = hold.clamp(0.0, 1.0);
-        let colour = if hold >= 0.909 { t.meter_clip } else { t.text };
-        let line = if upright {
-            Rect::from_min_size(pos2(rect.left(), rect.bottom() - rect.height() * hold), vec2(rect.width(), 1.0))
-        } else {
-            Rect::from_min_size(pos2(rect.left() + rect.width() * hold - 1.0, rect.top()), vec2(1.0, rect.height()))
-        };
-        p.rect_filled(line, CornerRadius::ZERO, colour);
-    }
-}
-
-/// The light over a meter that comes on when the level reaches 0 dB and
-/// stays on until it is clicked.
-pub fn clip_light(ui: &mut Ui, rect: Rect, id: Id, on: bool) -> bool {
-    let t = th();
-    ui.painter().rect_filled(rect, CornerRadius::ZERO, if on { t.meter_clip } else { t.meter_well });
-    ui.interact(rect.expand(2.0), id, Sense::click()).clicked()
-}
-
 /// Text cut short with an ellipsis to fit `width`.
 pub fn elide(ui: &Ui, text: &str, font: egui::FontId, width: f32) -> String {
     let fits = |s: &str| ui.fonts_mut(|f| f.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE).size().x) <= width;

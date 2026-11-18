@@ -497,7 +497,7 @@ impl View {
         if (p - from).length() <= 6.0 {
             return;
         }
-        if let Some(track) = self.arrange.header_at(p).and_then(|row| self.s.tracks.get(row)).map(|t| t.id) {
+        if let Some(track) = self.header_at(p) {
             self.pass("drop_device", json!([id, track, ctrl]));
             return;
         }

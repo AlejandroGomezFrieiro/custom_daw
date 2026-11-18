@@ -264,16 +264,15 @@ gets the function.
 - Scenes (the panes of the graphical window, and windows of views that
   the kernel draws; see "Scenes" in [the protocol](protocol.md)):
   - A scene has runs, fills, pictures, the widget roles, hit regions
-    (`buf:mark`, `buf:hit`), planes and notes on them. It has no roles for
-    clips or curves yet.
-  - The graphical window paints only the widget roles and notes. The own
+    (`buf:mark`, `buf:hit`), planes, and notes, clips and curves on them.
+  - The graphical window paints only the roles of the core. The own
     role of an extension (`paw.ui.role`) shows in its cells there, because
     it has no `pixels` drawing yet.
   - A view can draw over a role in cells (the cursor and selection of the
     roll, the tag of an articulation). The graphical window shows this over
     the role in cells too, not as a part of the note.
-  - The arrange view, the device panel and the session view are still the
-    own drawings of the graphical window, fed by `frontend.watch`.
+  - The device panel and the session view are still the own drawings of
+    the graphical window, fed by `frontend.watch`.
   - The graphical window does not scroll or zoom a plane itself. The wheel
     goes to the kernel, which draws the plane again.
   - paw-raster makes pictures into images when their drawing changes. They
@@ -295,6 +294,29 @@ gets the function.
     So short notes are too narrow for their names until you zoom in.
   - While you drag a note, the note stays where it was and a copy of it
     follows the pointer.
+- The arrange view of the graphical window is the arrange view of the
+  terminal, laid out in cells. Before, the window had its own drawing of
+  it. These details of that drawing are not there now:
+  - A track has the height of the others (`paw.opt.track_height`). A drag
+    of the bottom edge of a header does not give one track a height of its
+    own.
+  - The header has no microphone and loudspeaker buttons and no clip
+    light. The input is on the track's menu, and `I` is the monitor.
+  - The pan is a word (`L30`), not a knob. Drag it sideways.
+  - The timeline has no box of zoom buttons in its corner. `Ctrl -`,
+    `Ctrl +`, `Ctrl 0` and the arrows with `Ctrl` do the same.
+  - The ruler is one row. A drag along it loops. The lower half of the
+    ruler of the old drawing moved the playhead.
+  - Automation shows the lanes of the selected track as rows, not one lane
+    of each track over its clips.
+  - A take that records does not show as a red box that grows with the
+    playhead.
+  - The bar numbers, the names on the ruler and the text in the headers
+    are in cells. The clips, the bar lines, the curves and the playhead
+    are where they are, between cells. At a zoom that is not a whole
+    number of columns a beat, a bar's number can be up to half a cell
+    from its line.
+  - The pointer has no special shape over the edge of a clip.
 - The mixer of the graphical window is the mixer of the terminal, laid out
   in cells. Its switches are a cell wide. Its devices have rows of their
   own only when the mixer is at least twenty rows tall. At the usual

@@ -2586,6 +2586,12 @@ function paw.frontend.closing() end
 ---@param prompt any
 function paw.frontend.completions(prompt) end
 
+--- What changes exactly when what a clip shows inside does: its notes and
+--- controller moves (fetch `M.preview` again then), or its waveform (fetch
+--- `M.peaks` again then). Nil for a MIDI clip with no notes yet.
+---@param clip any
+function paw.frontend.content_key(clip) end
+
 --- The data that the window needs to open the file dialog of the desktop.
 --- `native` tells if it must use that dialog (the option). When it is off,
 --- the dialogs are those of the kernel. `dir` is the folder to start in. It

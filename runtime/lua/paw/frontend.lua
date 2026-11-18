@@ -384,6 +384,20 @@ function M.take_preview(id, take, points)
   return flat
 end
 
+--- What changes exactly when what a clip shows inside does: its notes and
+--- controller moves (fetch `M.preview` again then), or its waveform (fetch
+--- `M.peaks` again then). Nil for a MIDI clip with no notes yet.
+function M.content_key(clip)
+  local repeats = clip.loop and string.format("|%.17g|%.17g", clip.loop_start, clip.loop_length) or ""
+  -- Its warp markers change its waveform.
+  for _, m in ipairs(clip.warp or {}) do repeats = repeats .. string.format("|%.17g:%.17g", m.source, m.target) end
+  if clip.kind == "audio" then
+    return string.format("%s|%.17g|%.17g|%.17g|%.17g|%.17g|%.17g|%s%s", clip.file, clip.offset, clip.length, clip.gain,
+      paw.time.seconds(clip.length, clip.start), clip.stretch, clip.pitch, tostring(clip.stretching), repeats)
+  end
+  return clip.stamp and string.format("%.0f|%.0f|%.17g%s", clip.stamp, clip.control_stamp or 0, clip.length, repeats) or nil
+end
+
 --- A MIDI clip's notes for the small picture inside it: one flat list
 --- { start1, length1, pitch1, start2, ... }, at most `M.preview_notes` notes.
 --- Fetched when the clip's `stamp` in `state` changes.
@@ -551,13 +565,10 @@ function M.state(known)
       -- Stretched, shifted, looped, or being stretched: in a few characters.
       local mark = paw.stretch.badge(clip)
       local notches = paw.stretch.repeats(clip)
-      local repeats = clip.loop and string.format("|%.17g|%.17g", clip.loop_start, clip.loop_length) or ""
-      -- Its warp markers, in beats from its start; they change its waveform.
+      -- Its warp markers, in beats from its start.
       local warps = {}
-      for j, m in ipairs(clip.warp or {}) do
-        warps[j] = m.beat - clip.start
-        repeats = repeats .. string.format("|%.17g:%.17g", m.source, m.target)
-      end
+      for j, m in ipairs(clip.warp or {}) do warps[j] = m.beat - clip.start end
+      local content = M.content_key(clip)
       out.clips[#out.clips + 1] = {
         -- In take lanes: each take's name, and what changes exactly when
         -- its picture does (fetch `M.take_preview` again then).
@@ -575,11 +586,9 @@ function M.state(known)
         offline = clip.offline or nil,
         -- Changes exactly when the clip's notes or controller moves do:
         -- fetch `M.preview` (and the piano roll's clip) again then.
-        stamp = clip.stamp and string.format("%.0f|%.0f|%.17g%s", clip.stamp, clip.control_stamp or 0, clip.length, repeats) or nil,
+        stamp = clip.kind ~= "audio" and content or nil,
         -- Changes exactly when the clip's waveform does: fetch `M.peaks` again then.
-        waveform = clip.kind == "audio"
-          and string.format("%s|%.17g|%.17g|%.17g|%.17g|%.17g|%.17g|%s%s", clip.file, clip.offset, clip.length, clip.gain,
-            paw.time.seconds(clip.length, clip.start), clip.stretch, clip.pitch, tostring(clip.stretching), repeats) or nil,
+        waveform = clip.kind == "audio" and content or nil,
         -- Whether it loops, and where its repeats begin, in beats from its start.
         loop = clip.loop or nil, notches = notches, warps = warps,
       }

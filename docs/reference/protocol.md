@@ -328,6 +328,7 @@ paints the role gets the role without the kids.
 | --- | --- |
 | `label`, `button`, `switch`, `knob`, `fader`, `meter`, `peak`, `chip` | The core: the widget roles. |
 | `note`, `keyboard`, `playhead`, `scrollbar` | The core: the roles of the piano roll. |
+| `clip`, `beats`, `curve`, `hmeter` | The core: the roles of the arrange view. A `clip` names what it shows by `content`, a key that changes when its notes or its waveform change. The frontend gets them with `paw.frontend.preview(id)` or `paw.frontend.peaks(id, points)`, once for each key. |
 | Other names | An extension, with `paw.ui.role`. |
 
 A node with `bind` moves with the live values. Its props that the live

@@ -43,11 +43,13 @@ end
 --- watcher `w` moves by the live values: a view names the roles it draws
 --- such things with in `view.live_roles` (the mixer's meters and peaks),
 --- and a watcher that paints them all needs no new scene of it as the song
---- plays.
+--- plays, unless the view says it moves all the same (`view:moves()`: the
+--- arrange view scrolls to follow the playhead).
 local function still(w, name)
   local view = paw.ui.views[name]
   local roles = view and view.live_roles
   if not roles then return false end
+  if view.moves and view:moves() then return false end
   for _, role in ipairs(roles) do
     if not w.roles[role] then return false end
   end

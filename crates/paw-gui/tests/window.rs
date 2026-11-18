@@ -17,43 +17,15 @@ use std::sync::{Condvar, Mutex, Once};
 use std::time::{Duration, Instant};
 
 /// Where things are in the window, in pixels from the corner of its content,
-/// as the window draws them (src/arrange.rs: `HEADER_W`, the row height and
-/// zoom an `Arrange` starts with, the ruler's rows; src/app.rs:
-/// `TRANSPORT_H`) and checked against a screenshot. Scenarios compute their
-/// positions from these.
+/// as the window lays them out (src/app.rs: `TRANSPORT_H`). What is in a
+/// pane the kernel draws (the arrange view, the piano roll) is where its
+/// view put it, asked of the kernel (`arrange_point`, `roll_point`).
 mod place {
-    /// The track headers' width: the timeline starts here.
-    pub const HEADER_W: i32 = 240;
     /// The transport bar along the top.
     pub const TRANSPORT_H: i32 = 40;
     /// Where the main area, the panes of the kernel's windows, starts:
     /// under the transport bar and the line under it.
     pub const AREA_TOP: i32 = TRANSPORT_H + 1;
-    /// The ruler's main row.
-    pub const RULER_H: i32 = 28;
-    /// The band under the ruler that shows markers and regions, once there is one.
-    pub const MARKER_BAND: i32 = 18;
-    /// A track's row at the default height.
-    pub const ROW_H: i32 = 66;
-    /// A lane shown as a row under its track is this share of a row.
-    pub const LANE_ROW_H: i32 = ROW_H * 4 / 5;
-    /// A take lane shown under a track's clips is this share of a row.
-    pub const TAKE_ROW_H: i32 = ROW_H * 3 / 5;
-    /// Pixels to a beat at the zoom the window starts with.
-    pub const BEAT_PX: f64 = 28.0;
-
-    /// The x of a beat in the timeline, with the view at the start of the song.
-    pub fn beat_x(beat: f64) -> i32 {
-        HEADER_W + (beat * BEAT_PX).round() as i32
-    }
-    /// The y of the top of a track's row (from 0), the markers' band shown or not.
-    pub fn row_top(row: i32, markers: bool) -> i32 {
-        TRANSPORT_H + RULER_H + if markers { MARKER_BAND } else { 0 } + row * ROW_H
-    }
-    /// The y of the markers' band's middle.
-    pub fn marker_y() -> i32 {
-        TRANSPORT_H + RULER_H + MARKER_BAND / 2
-    }
 }
 
 type Point = (i32, i32);
@@ -1043,13 +1015,13 @@ fn demo_song_shows_and_answers_the_pointer() {
         w.ctl(&format!("return paw.api.track_get({keys}).name")),
         "Keys"
     );
-    w.click((70, place::row_top(2, false) + 17));
+    w.click(arrange_point(&w, "6", "row('track', 3) + 0.5"));
     w.expect(
         "the cursor on Keys",
         &format!("paw.cursor.track_id() == {keys}"),
     );
     let first = w.number("return paw.api.track_list()[1]") as i32;
-    w.click((70, place::row_top(0, false) + 17));
+    w.click(arrange_point(&w, "6", "row('track', 1) + 0.5"));
     w.expect(
         "the cursor on Drums",
         &format!("paw.cursor.track_id() == {first}"),
@@ -1057,7 +1029,7 @@ fn demo_song_shows_and_answers_the_pointer() {
 
     // The M button mutes the track, and again lets it sound.
     let bass = w.number("return paw.api.track_list()[2]") as i32;
-    let mute = (134, place::row_top(1, false) + 17);
+    let mute = arrange_point(&w, "v.flags.mute + 0.5", "row('track', 2) + 0.5");
     w.click(mute);
     w.expect("Bass muted", &format!("paw.api.track_get({bass}).mute"));
     w.click(mute);
@@ -1173,12 +1145,9 @@ fn lane_rows_take_drawn_points_and_markers_take_clicks() {
         w.number(&format!("return #paw.api.lane_points({lane})")),
         0.0
     );
-    let band = place::row_top(0, true) + place::ROW_H;
-    let (low, high) = (
-        band + place::LANE_ROW_H * 9 / 10,
-        band + place::LANE_ROW_H / 10,
-    );
-    w.drag((place::beat_x(2.0), low), (place::beat_x(10.0), high));
+    let low = arrange_point(&w, "beat(2)", "row('lane', 1) + 1.8");
+    let high = arrange_point(&w, "beat(10)", "row('lane', 1) + 0.2");
+    w.drag(low, high);
     w.shot("lane-drawn.png");
     w.expect(
         "points drawn",
@@ -1200,7 +1169,7 @@ fn lane_rows_take_drawn_points_and_markers_take_clicks() {
 
     // A click on the marker puts the edit cursor at it.
     w.expect("the cursor elsewhere", "paw.cursor.beat ~= 8");
-    w.click((place::beat_x(8.0) + 24, place::marker_y()));
+    w.click(arrange_point(&w, "beat(8) + 2.5", "1.5"));
     w.expect("the edit cursor at the marker", "paw.cursor.beat == 8");
     w.assert_alive("after clicking a marker");
 }
@@ -1218,21 +1187,17 @@ fn clips_move_trim_and_are_made_by_the_pointer() {
     let a = w.number("return paw.api.track_list()[1]") as i32;
     let b = w.number("return paw.api.track_list()[2]") as i32;
     let clip = |field: &str| format!("paw.api.clip_get(paw.api.clip_list({a})[1].id).{field}");
-    let top = place::row_top(0, false);
-    let body = top + place::ROW_H * 2 / 3;
+    let at = |w: &Scene, beat: &str, track: i32| arrange_point(w, &format!("beat({beat})"), &format!("row('track', {track}) + 1.5"));
     assert_eq!(w.number(&format!("return {}", clip("start"))), 4.0);
 
     // Dragged eight beats along, it lands on the beat there.
-    w.drag((place::beat_x(5.5), body), (place::beat_x(13.5), body));
+    w.drag(at(&w, "5.5", 1), at(&w, "13.5", 1));
     w.expect("the clip at beat 12", &format!("{} == 12", clip("start")));
     w.expect("its length kept", &format!("{} == 4", clip("length")));
     w.shot("clip-moved.png");
 
     // The end edge, dragged two beats, makes it longer.
-    w.drag(
-        (place::beat_x(16.0) - 3, body),
-        (place::beat_x(18.0) - 3, body),
-    );
+    w.drag(at(&w, "16 - 0.4 / g.zoom", 1), at(&w, "18 - 0.4 / g.zoom", 1));
     w.expect(
         "the clip six beats long",
         &format!("{} == 6", clip("length")),
@@ -1240,10 +1205,7 @@ fn clips_move_trim_and_are_made_by_the_pointer() {
     w.expect("its start kept", &format!("{} == 12", clip("start")));
 
     // The start edge, dragged a beat in, shortens it from the front.
-    w.drag(
-        (place::beat_x(12.0) + 3, body),
-        (place::beat_x(13.0) + 3, body),
-    );
+    w.drag(at(&w, "12 + 0.4 / g.zoom", 1), at(&w, "13 + 0.4 / g.zoom", 1));
     w.expect(
         "the clip starting at 13",
         &format!("{} == 13", clip("start")),
@@ -1258,10 +1220,7 @@ fn clips_move_trim_and_are_made_by_the_pointer() {
 
     // A double click on an empty stretch of the second track makes a clip.
     assert_eq!(w.number(&format!("return #paw.api.clip_list({b})")), 0.0);
-    w.double_click((
-        place::beat_x(20.3),
-        place::row_top(1, false) + place::ROW_H / 2,
-    ));
+    w.double_click(at(&w, "20.3", 2));
     w.expect("a clip on B at bar 20", &format!("#paw.api.clip_list({b}) == 1 and paw.api.clip_get(paw.api.clip_list({b})[1].id).start == 20"));
     w.assert_alive("after editing clips");
 }
@@ -1300,10 +1259,7 @@ fn a_very_long_song_does_not_hurt_the_window() {
     );
 
     // Zooming in, and out again, with Ctrl and the wheel.
-    let over = (
-        place::beat_x(10.0),
-        place::row_top(1, true) + place::ROW_H / 2,
-    );
+    let over = arrange_point(&w, "beat(10)", "row('track', 2) + 1.5");
     w.wheel_with_ctrl(over, true, 12);
     w.assert_alive("after zooming in");
     w.wheel_with_ctrl(over, false, 20);
@@ -1316,10 +1272,7 @@ fn a_very_long_song_does_not_hurt_the_window() {
 
     // The notes of the long clip, in the piano roll, opened by a double
     // click (again if the window was too busy to take two clicks as one).
-    let notes_at = (
-        place::beat_x(10.0),
-        place::row_top(0, true) + place::ROW_H * 2 / 3,
-    );
+    let notes_at = arrange_point(&w, "beat(10)", "row('track', 1) + 1.5");
     for _ in 0..3 {
         w.double_click(notes_at);
         if w.wait_for("paw.ui.visible('pianoroll')", 5).is_ok() {
@@ -1456,8 +1409,7 @@ paw.cursor.set_track(id)
     w.shot("take-lanes.png");
     // Row k of the lanes is under the clip: the first take's row is the
     // first.
-    let first = place::row_top(0, false) + place::ROW_H + place::TAKE_ROW_H / 2;
-    w.click((place::beat_x(2.0), first));
+    w.click(arrange_point(&w, "beat(2)", "row('take', 1) + 0.5"));
     w.expect(
         "the first take playing",
         &format!("select(2, paw.takes.count({clip})) == 1"),
@@ -1560,7 +1512,7 @@ fn copen_docks_the_list_and_focus_moves_between_panes_and_comes_back() {
     w.click(w.pane_middle("qflist"));
     w.expect("a click gives the list the keyboard", "paw.ui.focused == 'qflist'");
     // A click in the arrange view's pane takes it back.
-    w.click((place::HEADER_W / 2, place::row_top(0, false) + 10));
+    w.click(arrange_point(&w, "6", "row('track', 1) + 0.5"));
     w.expect("a click gives the arrange view the keyboard", "paw.ui.focused == 'arrange'");
     // Popped out, the list leaves its pane for a window of its own; `q`
     // there closes it and the keyboard is the main window's again.
@@ -1711,7 +1663,7 @@ fn reading_the_screen_is_reliable() {
 #[test]
 fn keys_reach_the_window_after_an_entry_of_a_submenu() {
     let mut w = scene!("submenu", DEMO);
-    let header = (70, place::row_top(0, false) + 17);
+    let header = arrange_point(&w, "6", "row('track', 1) + 0.5");
     w.click(header);
     w.expect("the first track under the cursor", "paw.cursor.track().index == 1");
     w.mouse_to(header);
@@ -1769,7 +1721,7 @@ fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
     let row = w.find_text("Bridge", 0);
     // The chorus is the clip at the start of the first row: its name is small
     // on its colour, which the reading of the screen does not always make out.
-    let chorus = (place::beat_x(1.0), place::row_top(0, false) + 30);
+    let chorus = arrange_point(&w, "beat(1)", "row('track', 1) + 1.5");
     w.drag(chorus, (column.0, row.1));
     w.expect(
         "a copy of the chorus in the bass's second slot",
@@ -1879,6 +1831,33 @@ fn the_mixer_is_the_kernels_scene_and_its_faders_and_switches_take_the_pointer()
 
 /// Where a point of the piano roll is in the window, from the kernel: a
 /// pitch and a beat (Lua), in the middle of the pitch's row.
+/// Where a point of the arrange view is in the window: `x` and `y` are Lua
+/// expressions in its cells, which may use `beat(b)` (the column of a
+/// beat), `row(kind, index)` (the line where the row of a track, a take
+/// lane or a lane of the track drawn `index`th begins), `v` (the view) and
+/// `g` (its geometry). The view's pane shows it from its corner, its ruler
+/// the first row.
+fn arrange_point(w: &Scene, x: &str, y: &str) -> Point {
+    let lua = format!(
+        "local v = paw.ui.views.arrange
+         local g = v.geometry
+         local function beat(b) return g.hw + (b - v.scroll) * g.zoom end
+         local function row(kind, index)
+           for _, r in ipairs(g.layout.rows) do if r.kind == kind and r.index == index then return r.y end end
+         end
+         for _, p in ipairs(paw.panes.state().panes) do
+           if p.view == 'arrange' then
+             local c = paw.canvas.cell
+             return math.floor(p.x + ({x}) * c.w) .. ',' .. math.floor({top} + p.y + ({y}) * c.h)
+           end
+         end",
+        top = place::AREA_TOP
+    );
+    let text = w.ctl(&lua);
+    let (x, y) = text.trim_matches('"').split_once(',').unwrap_or_else(|| panic!("no arrange pane: {text}"));
+    (x.parse().unwrap(), y.parse().unwrap())
+}
+
 fn roll_point(w: &Scene, pitch: &str, beat: &str) -> Point {
     let lua = format!(
         "local r = paw.ui.views.pianoroll

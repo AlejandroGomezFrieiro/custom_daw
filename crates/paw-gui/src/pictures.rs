@@ -1,11 +1,9 @@
 //! The pictures inside clips: a MIDI clip's notes as a small piano roll, an
 //! audio clip's waveform. Each is white on clear, tinted when drawn, and
 //! made again only when the clip's key (its notes' stamp, its waveform's)
-//! says what it shows has changed.
+//! says what it shows has changed (crate::timeline).
 
-use std::collections::HashMap;
-
-use egui::{Color32, ColorImage, TextureHandle, TextureOptions};
+use egui::{Color32, ColorImage};
 
 /// A picture to tint: as opaque at each place as `alpha` says.
 fn shade(width: usize, height: usize, alpha: impl Fn(usize, usize) -> u8) -> ColorImage {
@@ -106,39 +104,6 @@ pub fn notched(mut picture: ColorImage, at: &[f32]) -> ColorImage {
 /// power of two, so that a small change of zoom does not fetch it again.
 pub fn wave_points(pixels: f32) -> usize {
     (pixels.max(1.0) as usize).next_power_of_two().clamp(64, 4096)
-}
-
-/// The pictures made, by what they are of (a clip, or a clip's take), with
-/// the key they were made for.
-#[derive(Default)]
-pub struct Pictures {
-    made: HashMap<(i64, usize), (String, Option<TextureHandle>)>,
-}
-
-impl Pictures {
-    /// The picture of `of`, made by `make` when `key` is not what it was
-    /// made for.
-    pub fn get(
-        &mut self,
-        ctx: &egui::Context,
-        of: (i64, usize),
-        key: &str,
-        make: impl FnOnce() -> Option<ColorImage>,
-    ) -> Option<TextureHandle> {
-        if let Some((known, texture)) = self.made.get(&of)
-            && known == key
-        {
-            return texture.clone();
-        }
-        let texture = make().map(|image| ctx.load_texture(format!("clip-{}-{}", of.0, of.1), image, TextureOptions::NEAREST));
-        self.made.insert(of, (key.to_string(), texture.clone()));
-        texture
-    }
-
-    /// Let go of the pictures of clips no longer there.
-    pub fn keep(&mut self, alive: impl Fn(i64) -> bool) {
-        self.made.retain(|(id, _), _| alive(*id));
-    }
 }
 
 #[cfg(test)]

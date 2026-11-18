@@ -146,11 +146,7 @@ impl View {
             p.text(pos2(r.right(), r.center().y), Align2::RIGHT_CENTER, (row + 1).to_string(), sans(T_SMALL), if row as i64 == chosen_row { t.text } else { t.text_3 });
         }
         let pointer = ui.input(|i| i.pointer.latest_pos());
-        let drop = if self.arrange.gesture.as_ref().is_some_and(|g| matches!(g, crate::arrange::Gesture::Clip { .. })) {
-            pointer.and_then(|p| self.session.slot_at(p))
-        } else {
-            None
-        };
+        let drop = if self.scenes.dragged_clip.is_some() { pointer.and_then(|p| self.session.slot_at(p)) } else { None };
         let mut act: Option<(&str, Value)> = None;
         for (c, (id, name, colour)) in columns.iter().enumerate() {
             let s = state(c);
