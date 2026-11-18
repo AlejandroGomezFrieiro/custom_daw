@@ -434,20 +434,24 @@ local function index_text(sources)
   local out = {
     "# paw help",
     "",
-    "Move in this page as in any text: `j` `k`, `/` to search, `v` and `y` to copy. "
-      .. "`Ctrl-]` (or `Enter`, or a double click) on a link or a word follows it; "
-      .. "`Ctrl-o` and `Ctrl-t` go back. `K` looks up the word under the cursor. "
-      .. "`:help` with a topic goes to it (`Tab` completes): a key (`:help gU`), a command "
-      .. "(`:help :s`), an option (`:help 'timebind'`), a Lua module (`:help paw.qf`) or a "
-      .. "section (`:help key-rule`). `:helpgrep` with words lists every line of help that "
-      .. "holds them in the quickfix list (`]q` goes through them). `?` lists the keys of "
-      .. "the view you are in, `:q` closes this window, `-` comes back here.",
+    "This page is the contents of the help. Each line below is a link to a page or to a section.",
+    "",
+    "The keys of a text move the cursor in this page: `j` and `k` move it, `/` searches, "
+      .. "`v` selects and `y` copies. `Ctrl-]` follows the link or the word under the cursor. "
+      .. "`Enter` and a double click do the same. `Ctrl-o` and `Ctrl-t` return to the previous place. "
+      .. "`K` finds the word under the cursor in the help. `-` shows this page again.",
+    "",
+    "`:help` with a topic shows that topic, and `Tab` completes the topic. A topic is a key "
+      .. "(`:help gU`), a command (`:help :s`), an option (`:help 'timebind'`), a Lua module "
+      .. "(`:help paw.qf`) or a section (`:help key-rule`). `:helpgrep` with words puts each "
+      .. "line of help that contains the words in the quickfix list. `]q` moves to the next line "
+      .. "of that list. `?` shows the keys of the current view. `:q` closes this window.",
   }
   local has_manual = false
   for _, source in ipairs(sources) do has_manual = has_manual or source.manual == true end
   if not has_manual then
     out[#out + 1] = ""
-    out[#out + 1] = "The manual (`docs/`) was not found: run the program from its source tree, or set `PAW_HOME` to a copy of it."
+    out[#out + 1] = "paw did not find the manual (`docs/`). Run paw from its source tree, or set `PAW_HOME` to a directory that contains `docs/`."
   end
   local groups = {}
   for _, kind in ipairs(M.kinds) do groups[#groups + 1] = { kind.name, kind.title } end
