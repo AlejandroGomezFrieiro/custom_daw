@@ -1,18 +1,14 @@
 # notation
 
-Staff notation for a clip, to read and to write: in the terminal, drawn in
-text cells, and engraved with a music font (Leland) wherever there are
-pixels: in a window of the graphical frontend, and on a terminal that shows
-images.
+Staff notation for a clip, to read and to write. In the terminal, paw
+draws it in text cells. Where there are pixels, paw engraves it with a
+music font (Leland). That is in a window of the graphical frontend, and in
+a terminal that shows images.
 
-Notation is a view of the clip's MIDI, as REAPER's notation editor is: the
-notes are the truth, what plays and what every other view edits. The
-score is those notes written as a musician would write them down, with
-what you decide in notation (a spelling, a voice, a staccato, a dynamic)
-kept beside them. Writing in notation edits the MIDI: a note entered is a
-MIDI note where it is written and as long; a note raised, moved, made
-longer or deleted is that MIDI note changed; each edit is one undo step,
-and it changes no note it does not write.
+Notation is a view of the MIDI of the clip, as the notation editor of
+REAPER is. The notes are the truth: they play, and every other view edits
+them. An edit in notation is an edit of the MIDI, one undo step, and it
+changes only the notes that it writes. See [About](#about).
 
 ```lua
 paw.ext.load("extensions/notation")   -- or put it in ~/.config/paw/extensions
@@ -24,7 +20,87 @@ paw.ext.load("extensions/notation")   -- or put it in ~/.config/paw/extensions
 
 ![The score in the terminal, the hairpin's popover open and what it would write drawn in the accent](images/tui-notation.png)
 
-## Opening it
+## Try it
+
+1. Type `:ext.load notation`. Put the arrange cursor on a MIDI clip with a
+   melody.
+2. Type `:notation`. The clip opens as a score at the bottom of the
+   terminal.
+3. Press `W` until the cursor is on an empty bar. Press `i`, then type
+   `cdeg`. Four notes appear, and the cursor moves after each one. Press
+   `Esc`.
+4. Press `v`, then `B` to select back to the start of the bar. Press `\d`,
+   type `p<f` and press Enter. A hairpin from `p` to `f` appears under the
+   notes.
+5. Press Space. The notes play louder along the hairpin.
+
+## How to
+
+### How to open a clip as notation
+
+- In the arrange view or the piano roll, press `,n`, or type `:notation`.
+- In the graphical window, choose "Open as notation" in the menu of a MIDI
+  clip.
+
+To return to the arrange view, press `,n` again. To close the view, type
+`:q`.
+
+### How to enter notes
+
+1. Choose the value: `g5` for a quarter, `g4` for an eighth.
+2. Press `i`. Type the letters of the notes, `c` to `b`. Capitals stay at
+   the cursor, to make a chord (`CEg`).
+3. Press `Esc` to stop.
+
+See [Keys](#keys) for the keys of insert mode.
+
+### How to write a dynamic, a hairpin or a tempo
+
+1. Put the cursor on the note, or select the notes.
+2. Press `\d` for a dynamic or a hairpin, `\t` for a tempo. Type it, and
+   press Enter.
+
+Each popover is an Ex command, so `:5,8notation.dyn p` does the same. See
+[Popovers](#popovers).
+
+### How to make the notes play as written again
+
+After you edit velocities or lengths in the piano roll, press `g@` in
+notation. Dynamics and hairpins set the velocities again. Staccato and
+tenuto set the lengths again.
+
+### How to correct what the transcription wrote
+
+- To change a setting of the transcription for the clip, type
+  `:notation.set` and the setting, for example `:notation.set swing off`.
+- To see every note as played, press `gR`.
+- To forget the decisions of notation and write again from the notes,
+  press `g=`.
+
+### How to edit a score of several tracks
+
+Type `:score`. Each staff is a track. `[[` and `]]` move between
+instruments. See [Scores](#scores).
+
+### How to print a part or the score
+
+- For the part of the track, type `:part.export flute.pdf`.
+- For every part, type `:part.export parts.pdf all`.
+- For the full score, type `:part.export score.pdf score`.
+
+### How to exchange MusicXML
+
+- To open a MusicXML file as a new project, type `:open song.musicxml`.
+- To add its parts to this project, type `:import song.mxl`.
+- To write the clip as MusicXML, type `:notation.export song.musicxml`.
+
+See [Import and export](#import-and-export).
+
+## Reference
+
+### The view
+
+<!-- tags: notation-opening-it -->
 
 | | |
 | --- | --- |
@@ -39,7 +115,7 @@ so does closing the window. `Esc` in normal mode stays in the view, as it
 does in Vim: it drops a count, an operator or a selection, and pressed again
 soon it says how to leave.
 
-## MIDI is the truth
+### MIDI is the truth
 
 Every MIDI clip opens as notation; there is nothing to convert first. The
 score of a clip is made from its notes each time they change (written and
@@ -96,30 +172,7 @@ clip shows as that score said, and the first edit in notation keeps what
 the score said on the notes and the clip, the edit's undo step taking it
 back.
 
-## Works without the extension
-
-Nothing in the core knows of notation. Without this extension a clip
-written in notation is a MIDI clip like any other: its notes play, and the
-piano roll, Ex, the language servers, MIDI export and every other view edit
-them as they are. What notation keeps rides along with them: on a note
-copied or pasted, on the clip moved or duplicated, saved with the project.
-Loaded again, notation shows the notes as they are now, with what it kept
-on the notes that are left; and an edit in notation changes only the notes
-it writes.
-
-## Coming from REAPER
-
-The model is REAPER's: MIDI is the item's, and notation shows it, with
-what it cannot say kept as notation data on the notes (REAPER's
-"notation events": spelling, voice, articulation, text) and with the item
-(dynamics, clefs, key signatures). Entering in notation writes MIDI; a
-dynamic sets the velocities of the notes after it when it is written, as
-REAPER's does when it is set to; the piano roll edits the same notes. What
-differs: the transcription here reads played music for itself (strums,
-swing, drift, voices, hands, grace notes, tuplets) rather than quantizing
-for display only, and its settings are the clip's (`:notation.set`).
-
-## The piano roll beside it
+### The piano roll beside it
 
 The roll edits the same notes, and nothing asks or refuses: it is a plain
 MIDI editor. With the roll and the notation view both on screen, on one
@@ -127,7 +180,7 @@ clip and both `:setlocal timebind`, the note under one's cursor is outlined
 in the other (`⟦ ⟧` in the roll, a `◉` head in the staff), found by the
 note's id.
 
-## What is written of a MIDI clip
+### What is written of a MIDI clip
 
 Between a clip's notes and the page is a transcription (`notation.score`):
 the notes are transcribed into written chords, each knowing which played
@@ -257,7 +310,7 @@ The rest of the page:
   group's or a selection's are in [The score](#scores), the parts in
   [Parts](#parts).
 
-## Keys
+### Keys
 
 In the notation view. Counts, registers, `.`, macros and marks work as
 everywhere. The operators and text objects work on the written score (see
@@ -327,7 +380,7 @@ the barline. No other voice and no other staff is touched.
 | `Backspace` | step back and remove what starts there |
 | `Esc` | back to normal mode |
 
-## The grammar
+### The grammar
 
 A Vim grammar for music: an operator, then a motion or a text object, with
 counts, registers, `.` and undo as everywhere. Text objects are found in
@@ -480,7 +533,7 @@ nothing. It does it again to no effect (an accent is not added twice), and
 taking a mark away afterwards puts back what the note had before it was
 applied.
 
-## Popovers
+### Popovers
 
 Everything that is not a note is written with a popover, as in Dorico,
 in the shape of a Vim prompt: the local leader (`\`, option `paw.opt.localleader`) and a letter opens a
@@ -546,7 +599,7 @@ MuseScore**: the popovers stand for MuseScore's palettes and the
 `Ctrl-E`/`Ctrl-T`/`Ctrl-K`/`Ctrl-L` text entries; lyrics and chord
 symbols go on with `Space` as there, and `-` hyphenates.
 
-## The staff in cells
+### The staff in cells
 
 Where the terminal cannot show pictures (tmux, a plain terminal, a remote
 shell) the staff is drawn in text cells, in characters every common
@@ -583,7 +636,7 @@ and JetBrains Mono lack some of them, and terminals take them from a font
 that has them (DejaVu Sans Mono or Noto Sans Mono, on nearly every system);
 they stay one cell wide.
 
-## The engraved page
+### The engraved page
 
 In a window, and on a terminal's pixel surface where the terminal shows
 images, the staff is engraved with the SMuFL font Leland: the font's own
@@ -720,7 +773,7 @@ else; and in normal mode the letters are motions and operators, so notes
 are only entered by letter in insert mode. A click chooses rather than
 enters, as in MuseScore outside note input.
 
-## Scores
+### Scores
 
 A score of several tracks is edited where it is read, as Dorico and
 MuseScore edit theirs: each staff is a line, and the staff the cursor is on
@@ -828,7 +881,7 @@ open), and the motions `staff`, `unit`, `sibling` and `edge`;
 `view:frame()` says what the view shows and where the open clip is in it,
 `view:activate(clip_id)` makes a staff the cursor's.
 
-## Import and export
+### Import and export
 
 | | |
 | --- | --- |
@@ -901,7 +954,7 @@ drawing operations as the screen (`paw.api.canvas_export`, in
 crates/paw-raster), with the music font's glyphs and the text as outlines,
 so the files need no fonts.
 
-## Parts
+### Parts
 
 A song of several instruments is a score, and each instrument has a part
 to play from. Every track with MIDI is an instrument, every MIDI clip of it
@@ -1002,7 +1055,7 @@ engraver and the cell view draw, and `page.export` writes), `interval(spec)`,
 `transposition(track_id)`, `transpose_score(score, interval, fifths)`,
 `multirests(layout)` and `condense(a, b)`.
 
-## From Lua
+### From Lua
 
 ```lua
 local model = require("notation.model")
@@ -1084,7 +1137,9 @@ joins, per })` is the line breaker on its own.
 on each staff: notes and rests with their start, value (`base`, `dots`),
 `tuplet`, `voice`, ties, accidentals, stems and beams.
 
-## Not done
+### Limits
+
+<!-- tags: notation-not-done -->
 
 Of the score and the parts: a score written transposed (it is at concert
 pitch); in a transposed part, a key or clef written in a popover is the
@@ -1126,3 +1181,36 @@ after each change (their chords, swing, drift, hands and voices, which
 reach across bars: some 6 ms for 64 bars); what each measure is then
 written as is kept by what it is written from, and only the measures
 that changed are written, laid out and engraved again.
+
+## About
+
+Notation is a view of the MIDI of the clip. The score is those notes,
+written as a musician writes them, with the decisions that you make in
+notation (a spelling, a voice, a staccato, a dynamic) kept beside them. A
+note that you enter is a MIDI note at the written place, with the written
+length. A note that you raise, move, lengthen or delete is that MIDI note,
+changed. The reasons are in [About MIDI as the
+truth](../../docs/explanation/about-midi-as-the-truth.md).
+
+### Works without the extension
+
+Nothing in the core knows of notation. Without this extension a clip
+written in notation is a MIDI clip like any other: its notes play, and the
+piano roll, Ex, the language servers, MIDI export and every other view edit
+them as they are. What notation keeps rides along with them: on a note
+copied or pasted, on the clip moved or duplicated, saved with the project.
+Loaded again, notation shows the notes as they are now, with what it kept
+on the notes that are left; and an edit in notation changes only the notes
+it writes.
+
+### Coming from REAPER
+
+The model is REAPER's: MIDI is the item's, and notation shows it, with
+what it cannot say kept as notation data on the notes (REAPER's
+"notation events": spelling, voice, articulation, text) and with the item
+(dynamics, clefs, key signatures). Entering in notation writes MIDI; a
+dynamic sets the velocities of the notes after it when it is written, as
+REAPER's does when it is set to; the piano roll edits the same notes. What
+differs: the transcription here reads played music for itself (strums,
+swing, drift, voices, hands, grace notes, tuplets) rather than quantizing
+for display only, and its settings are the clip's (`:notation.set`).
