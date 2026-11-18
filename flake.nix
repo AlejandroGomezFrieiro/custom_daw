@@ -142,11 +142,11 @@
             };
             # The Rust tests that need no display, audio device or Lua
             # suite: those of the libraries and the engine's own. Some read
-            # the sound files in tests/fixtures.
+            # the sound files in tests/fixtures, and paw-mcp's the manual.
             tests = craneLib.cargoNextest (withDeps // {
               src = lib.fileset.toSource {
                 root = ./.;
-                fileset = lib.fileset.unions [ cargoFiles ./tests/fixtures ];
+                fileset = lib.fileset.unions [ cargoFiles ./tests/fixtures ./docs ];
               };
               cargoNextestExtraArgs = "--workspace -E 'not (package(paw-gui) | binary(suite) | binary(remote) | binary(safety))'";
               doInstallCargoArtifacts = false;
