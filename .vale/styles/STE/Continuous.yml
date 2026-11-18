@@ -1,0 +1,7 @@
+# ASD-STE100 3.2: no continuous forms ("is playing" -> "plays").
+extends: existence
+message: "Do not use the continuous form '%s' (STE 3.2). Use the simple present."
+level: error
+ignorecase: true
+tokens:
+  - '(?:is|are|was|were|be|been)\s+(?!nothing|something|anything|everything|during|string|setting|binding|mapping|recording|heading|warning|rendering|ending|timing|missing|outgoing|incoming|following|existing|pending|remaining|leading|trailing|matching|surrounding|corresponding|underlying|working)\w{2,}ing\b'

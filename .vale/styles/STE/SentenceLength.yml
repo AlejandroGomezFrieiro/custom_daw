@@ -1,0 +1,7 @@
+# ASD-STE100 6.x: a descriptive sentence has not more than 25 words.
+extends: occurrence
+message: "Write a sentence of not more than 25 words (STE 6). Split it."
+level: error
+scope: sentence
+max: 25
+token: \b[\w'’-]+\b

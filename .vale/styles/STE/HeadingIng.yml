@@ -1,0 +1,9 @@
+# ASD-STE100 3.5: a heading starts with a verb or a noun, not an -ing form.
+extends: existence
+message: "Start the heading with a verb or a noun, not '%s' (STE 3.5)."
+level: error
+scope: heading
+tokens:
+  - '^\w+ing\b'
+exceptions:
+  - (?i)recording|recordings|setting|settings|heading|headings|binding|bindings|mapping|mappings|warning|warnings|timing|routing|rendering|string|strings|nothing|something|everything

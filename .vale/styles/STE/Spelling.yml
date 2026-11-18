@@ -1,0 +1,32 @@
+# ASD-STE100 1.14: American spelling.
+extends: substitution
+message: "Use the American spelling '%s', not '%s' (STE 1.14)."
+level: error
+ignorecase: true
+swap:
+  colour: color
+  colours: colors
+  coloured: colored
+  behaviour: behavior
+  behaviours: behaviors
+  centre: center
+  centres: centers
+  centred: centered
+  licence: license
+  licences: licenses
+  grey: gray
+  favour: favor
+  favourite: favorite
+  neighbour: neighbor
+  neighbours: neighbors
+  analyse: analyze
+  catalogue: catalog
+  dialogue: dialog
+  metre: meter
+  programme: program
+  travelled: traveled
+  cancelled: canceled
+  labelled: labeled
+  modelled: modeled
+  signalling: signaling
+  '(organ|recogn|real|normal|optim|initial|serial|custom|summar|priorit|synchron|visual|minim|maxim|final|standard|categor|author|special|util|emphas|memor|quant|local|random|sanit|token|parameter|apolog|harmon|stabil)is(e|es|ed|ing|ation|ations)': $1iz$2

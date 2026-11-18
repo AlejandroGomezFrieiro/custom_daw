@@ -1,0 +1,13 @@
+# ASD-STE100 3.5: an -ing form only in a technical name.
+extends: existence
+message: "'%s' is an -ing form (STE 3.5). Use a verb or a noun, unless it is a technical name."
+level: warning
+ignorecase: true
+tokens:
+  - '\b\w{3,}ing\b'
+exceptions:
+  - (?i)thing|things|nothing|something|anything|everything|during|string|strings|bring|brings
+  - (?i)ring|rings|spring|king|sing|sings|ceiling|morning|evening|swing|wing|ping|pings
+  - (?i)setting|settings|heading|headings|recording|recordings|binding|bindings|drawing|drawings
+  - (?i)mapping|mappings|meaning|meanings|warning|warnings|timing|timings|rendering|ending|endings
+  - (?i)building|routing|listing|listings|padding|spacing|beginning|offering|wiring|keyring

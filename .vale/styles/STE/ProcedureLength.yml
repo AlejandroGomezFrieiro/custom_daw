@@ -1,0 +1,8 @@
+# ASD-STE100 5.1: a sentence in a procedure has not more than 20 words.
+# Enabled for tutorials, how-to guides and the course in .vale.ini.
+extends: occurrence
+message: "Write a step of not more than 20 words (STE 5.1). Split it."
+level: error
+scope: sentence
+max: 20
+token: \b[\w'’-]+\b

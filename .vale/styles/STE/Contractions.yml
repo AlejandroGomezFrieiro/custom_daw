@@ -1,0 +1,13 @@
+# ASD-STE100 4.2: no contractions.
+extends: existence
+message: "Do not use the contraction '%s' (STE 4.2). Write the words in full."
+level: error
+ignorecase: true
+tokens:
+  - '\w+n[’'']t'
+  - '\w+[’'']re'
+  - '\w+[’'']ve'
+  - '\w+[’'']ll'
+  - '\w+[’'']d'
+  - 'I[’'']m'
+  - '(?:it|that|there|what|here|who)[’'']s'

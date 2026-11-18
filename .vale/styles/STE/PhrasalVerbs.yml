@@ -1,0 +1,34 @@
+# ASD-STE100 9.3: no phrasal verbs.
+extends: substitution
+message: "Use '%s' instead of the phrasal verb '%s' (STE 9.3)."
+level: error
+ignorecase: true
+swap:
+  set up: configure|prepare
+  sets up: configures|prepares
+  look up: find
+  looks up: finds
+  turn on: enable|start
+  turns on: enables|starts
+  turn off: disable|stop
+  turns off: disables|stops
+  go back: return
+  goes back: returns
+  come back: return
+  comes back: returns
+  carry out: do
+  find out: find
+  pick up: get
+  fill in: write
+  point out: show
+  give up: stop
+  take out: remove
+  put in: add
+  shut down: stop
+  break down: divide
+  log in: sign in
+  check out: examine
+  figure out: find
+  end up: become
+  run into: get
+  get rid of: remove

@@ -260,12 +260,31 @@ paw did not write), view (arrange view, piano roll, mixer, ...), window
 command (`:name`), key, option (`paw.opt.name`), extension (not plugin, add-on),
 kernel, frontend (the terminal or the graphical window), buffer, register.
 
-**How to check**: `nix develop -c target/release/paw --clean --no-plugins -l
-tools/ste-check.lua <files...>` reports sentences that are too long,
-semicolons, long paragraphs, contractions, "-ing" forms, present perfect,
-passive with "by", phrasal verbs and words on the unapproved list, each with
-an approved alternative. It skips code blocks, code spans and generated
-pages. It is a help, not the standard: read every sentence yourself too.
+**How to check**: Vale, with the project's styles (`.vale.ini`):
+
+```sh
+nix develop -c tools/vale.sh                 # every page
+nix develop -c tools/vale.sh docs/how-to/*.md
+```
+
+- `STE` (.vale/styles/STE): the rules above: sentence and paragraph
+  length (20 words in tutorials and how-tos, 25 elsewhere), semicolons,
+  contractions, tenses, "-ing" forms, the passive with "by", phrasal
+  verbs, unapproved words, American spelling, the glossary.
+- `Readability`: Flesch-Kincaid and Gunning fog grade of each page.
+- `write-good`: cliches, "There is" openings, repeated words.
+- `alex`: inclusive language (music and Vim words such as master, attack
+  and yank are allowed).
+- `AiTells`: patterns of machine-written prose (stock phrases, hidden verbs,
+  "not just X, but Y", vague link text, dashes, file paths outside code).
+- `Vale`: spelling, with paw's words in
+  .vale/styles/config/vocabularies/Paw/accept.txt (add a real word there,
+  never a misspelling).
+
+Vale skips code blocks and code spans. Errors must be fixed. A warning
+is fixed or kept on purpose (a technical name, a quoted UI label).
+`tools/ste-check.lua` is the older checker; prefer Vale. Vale is a help,
+not the standard: read every sentence yourself too.
 
 ## Workflow
 
@@ -296,6 +315,6 @@ fit to the user's need, anticipating the reader.
 - [ ] How-tos: titled "How to …", goal-first, conditional imperatives, no teaching, links to reference.
 - [ ] Reference: neutral, structured like the machinery, consistent entries, each name described once.
 - [ ] Explanation: "About …", why/context/alternatives, no steps or option tables.
-- [ ] STE: procedure sentences ≤ 20 words, descriptive ≤ 25, active voice, approved verb forms, no semicolons, glossary words; `tools/ste-check.lua` clean or each remaining report justified.
+- [ ] STE: procedure sentences ≤ 20 words, descriptive ≤ 25, active voice, approved verb forms, no semicolons, glossary words; `tools/vale.sh <pages>` has no errors, and each warning left is on purpose.
 - [ ] docs/README.md and the README landing pages link the new or moved pages.
 - [ ] No stale path anywhere (`grep -rn "docs/<old>"`), `:help <tag>` still lands, suite green.

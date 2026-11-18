@@ -1,0 +1,8 @@
+# ASD-STE100 3.2: only the simple tenses (no present perfect).
+extends: existence
+message: "Do not use '%s' (STE 3.2). Use the simple present or the simple past."
+level: error
+ignorecase: true
+tokens:
+  - '(?:has|have|had)(?:\s+not)?\s+been'
+  - '(?:has|have|had)(?:\s+not)?\s+\w+ed'

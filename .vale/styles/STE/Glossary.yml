@@ -1,0 +1,16 @@
+# ASD-STE100 9.4 and 1.11: one name for one thing (the glossary in
+# .claude/skills/diataxis-docs/SKILL.md).
+extends: substitution
+message: "Use '%s' instead of '%s': paw's name for it."
+level: error
+ignorecase: true
+swap:
+  add-on: extension
+  add-ons: extensions
+  addon: extension
+  addons: extensions
+  channel strip: track
+  channel strips: tracks
+  media item: clip
+  media items: clips
+  song file: project

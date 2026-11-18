@@ -1,0 +1,8 @@
+# ASD-STE100 3.6: active voice. Passive only when the agent is unknown:
+# a passive that names its agent with "by" can always be active.
+extends: existence
+message: "'%s' names who does it: write it in the active voice (STE 3.6)."
+level: error
+ignorecase: true
+tokens:
+  - '(?:is|are|was|were|be|been)\s+\w+(?:ed|en|wn|lt|ade|ent)\s+by\b'

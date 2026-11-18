@@ -1,0 +1,69 @@
+# ASD-STE100 1.x: approved words with one meaning. The official dictionary
+# is not public; these are the common words it does not approve and the
+# word to write instead.
+extends: substitution
+message: "Use '%s' instead of '%s' (STE 1)."
+level: error
+ignorecase: true
+swap:
+  ensure: make sure
+  ensures: makes sure
+  verify: make sure
+  verifies: makes sure
+  utilize: use
+  utilise: use
+  via: through
+  e\.g\.: for example
+  i\.e\.: that is
+  etc\.: and other ...
+  simply: (remove it)
+  basically: (remove it)
+  obviously: (remove it)
+  just: (remove it)
+  approximately: about
+  prior to: before
+  subsequently: then
+  thus: so
+  hence: so
+  whilst: while
+  amongst: among
+  upon: on
+  whereas: but
+  therefore: so
+  additionally: also
+  furthermore: also
+  moreover: also
+  however: but
+  whether: if
+  regarding: about
+  numerous: many
+  sufficient: enough
+  commence: start
+  terminate: stop
+  attempt: try
+  obtain: get
+  retrieve: get
+  modify: change
+  perform: do
+  performs: does
+  facilitate: help
+  leverage: use
+  in order to: to
+  a lot of: many
+  lots of: many
+  as well as: and
+  as soon as: when
+  in case: if
+  a number of: some
+  out of the box: (remove it)
+  under the hood: inside
+  no-op: does nothing
+  please: (remove it)
+  very: (remove it)
+  really: (remove it)
+  clearly: (remove it)
+  completely: (remove it)
+  extremely: (remove it)
+  quite: (remove it)
+  fairly: (remove it)
+  actually: (remove it)
