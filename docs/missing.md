@@ -399,10 +399,11 @@
   where the system keeps them.
 - Packaged extensions (`paw.withExtensions`) are loaded at startup and
   cannot be left out for one run other than by running the plain program.
-- Unloading an extension (`paw.ext.unload`) takes away what it registered
-  while it loaded, not what it registers later (in a handler, a timer), nor
-  its timers; options it defined keep their defaults, and the Lua devices and
-  plugins it ships stay among the devices for the session. Requirements name
+- Unloading an extension (`paw.ext.unload`) takes away what it registers
+  later only when a function of its files is in it or its code made it
+  there: a key mapped later to a command's name from a module of the
+  core it called is not its own; its timers started with `paw.api.timer_start`
+  rather than `paw.every` or `paw.defer` are not stopped. Requirements name
   extensions and the API's version, not versions of the program or of
   plugins. `:checkhealth` has no check of MIDI ports' latency or of the
   frontends attached, and the window does not show it in a view of its own

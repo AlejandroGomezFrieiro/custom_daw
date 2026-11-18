@@ -44,13 +44,35 @@ local function report(found)
   end
 end
 
+--- The directories looked in besides the user's, by path: `{ dir, rank }`.
+--- An extension's go when it is unloaded (paw/ext.lua).
+M.dirs = {}
+
 --- Look for devices in `dir` too. `rank` (default `M.RANK_EXTENSION`) says
 --- whose script wins where two directories have one of the same name.
 function M.add_dir(dir, rank)
   local found = api.lua_devices_add(dir, rank or M.RANK_EXTENSION)
+  M.dirs[dir] = M.dirs[dir] or { dir = dir, rank = rank or M.RANK_EXTENSION }
   report(found)
   M.watch()
   return found
+end
+
+--- The kinds of the scripts found in `dir`.
+function M.kinds_in(dir)
+  local out = {}
+  for _, s in ipairs(api.lua_devices()) do
+    if s.active and s.path:match("^(.*)/[^/]*$") == dir then out[#out + 1] = s.kind end
+  end
+  return out
+end
+
+--- Look in `dir` no more: its scripts' devices are no longer offered (one
+--- of the same name elsewhere takes their place); those made go on.
+--- Returns the kinds of the scripts that were there.
+function M.remove_dir(dir)
+  M.dirs[dir] = nil
+  return api.lua_devices_remove(dir)
 end
 
 --- Look at every script again: those that changed are loaded, and the

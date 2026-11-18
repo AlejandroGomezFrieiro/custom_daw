@@ -1351,7 +1351,9 @@ local function global(ctx, invert)
   end
   local cmd = (parts[2] or ""):match("^%s*(.-)%s*$")
   local title = string.format(":%s/%s/", invert and "v" or "g", pat)
-  if cmd == "" then
+  -- Vim's `:g/pat/p` prints the lines: here the list of them is the print.
+  local prints = { [""] = true, p = true, print = true, ["#"] = true, nu = true, number = true, l = true, list = true }
+  if prints[cmd] then
     local entries = {}
     for i, item in ipairs(matches) do entries[i] = { address = M.address_of(item), text = M.label(item), source = "ex" } end
     paw.qf.set(entries, { title = title })

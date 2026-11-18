@@ -633,7 +633,8 @@ roll.entering("mine", function(note, clip) note.velocity = 90 end)   -- a note t
 
 extensions/articulations uses all four.
 
-**Other.** `paw.defer(fn, ms)`, `paw.every(ms, fn)`, `paw.cancel(handle)`;
+**Other.** `paw.defer(fn, ms)`, `paw.every(ms, fn)`, `paw.cancel(handle)`
+(`paw.timers` holds those waiting, by handle);
 `paw.state.key = value` survives `:reload`; `project.meta` and `track.meta` are
 saved with the project, for extension data; `paw.music.pitch("F#3")`,
 `paw.music.degree("A4", "minor_pentatonic", 3)`; `paw.time.format(beats)`;
@@ -872,7 +873,8 @@ family (`paw.on("*")` alone does not hear them).
 ## Scripts and other programs
 
 `paw -l script.lua [args]` runs a script with no UI and exits, which makes the
-paw usable as a batch tool. A running instance listens on a Unix socket:
+paw usable as a batch tool. The arguments are its `...`, and `arg` as
+Neovim's `-l` gives them (`arg[0]` the script, `arg[1]` on the rest). A running instance listens on a Unix socket:
 
 ```sh
 paw ctl eval 'paw.transport.position'

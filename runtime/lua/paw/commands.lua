@@ -18,11 +18,13 @@ function M.define(name, run, opts)
     ext = opts.ext or M.owner() }
 end
 
---- The extension being loaded, whose commands and keys these are: what
---- `:help` takes them to.
+--- The extension being loaded, or whose code registers these commands and
+--- keys later: what `:help` takes them to, and what unloading takes away.
 function M.owner()
   local ext = rawget(paw, "ext")
-  return ext and ext.current and ext.current.name or nil
+  if not ext then return nil end
+  -- While it loads, or later from code of its own files.
+  return ext.current and ext.current.name or ext.caller()
 end
 
 --- What an undo step made by a command is called: its `label`, or the

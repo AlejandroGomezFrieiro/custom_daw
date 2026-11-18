@@ -31,17 +31,34 @@ paw.hooks = require("paw.hooks")
 -- Before anything that keeps state of its own for each terminal and window.
 paw.seats = require("paw.seats")
 
+--- The timers waiting, by handle: the function each runs. An extension's
+--- go when it is unloaded (paw/ext.lua).
+paw.timers = {}
+
 --- Run `fn` once, after `ms` milliseconds (or as soon as the current turn ends).
 function paw.defer(fn, ms)
-  return api.timer_start(ms or 0, false, fn)
+  local handle
+  handle = api.timer_start(ms or 0, false, function(...)
+    paw.timers[handle] = nil
+    return fn(...)
+  end)
+  paw.timers[handle] = fn
+  return handle
 end
 
 --- Run `fn` every `ms` milliseconds. Returns a handle for `paw.cancel`.
 function paw.every(ms, fn)
-  return api.timer_start(ms, true, fn)
+  local handle = api.timer_start(ms, true, fn)
+  paw.timers[handle] = fn
+  return handle
 end
 
-paw.cancel = api.timer_stop
+--- Stop a timer: `handle` is what `paw.defer` or `paw.every` returned.
+function paw.cancel(handle)
+  if handle == nil then return end
+  paw.timers[handle] = nil
+  return api.timer_stop(handle)
+end
 
 --- Let `ms` milliseconds pass while timers fire and events are delivered, as
 --- they do between key presses. A script run with `-l` is one long turn in

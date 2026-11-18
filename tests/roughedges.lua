@@ -33,3 +33,40 @@ test("the playhead over a take lane keeps the letters of the take's name", funct
     eq(text:find("Riff 2", 1, true) ~= nil, true, "the second's, the playhead at " .. beat)
   end
 end)
+
+test(":g/pat/p lists the matches in the quickfix list, as :g/pat/ does", function()
+  start()
+  local t = paw.add_track({ name = "Keys" })
+  t:add_clip({ start = 0, length = 4, notes = {
+    { pitch = 60, start = 0, length = 1 }, { pitch = 64, start = 1, length = 1 }, { pitch = 60, start = 2, length = 1 },
+  } })
+  api.undo_checkpoint()
+  for _, cmd in ipairs({ "p", "print", "#", "nu" }) do
+    T.keys(":g/c4/" .. cmd .. "<CR>")
+    eq(#paw.qf.current().entries, 2, ":g/c4/" .. cmd .. " lists the two C4s")
+  end
+end)
+
+test(":w with a folder says to name a file in it instead of failing to write", function()
+  start()
+  local folder = T.scratch .. "/a-folder"
+  os.execute("mkdir -p '" .. folder .. "'")
+  T.keys(":w " .. folder .. "<CR>")
+  eq(paw.ui.message.text, folder .. " is a folder: name a file in it, `:w " .. folder .. "/song.json`", "the message")
+  eq(paw.ui.message.level, "warn", "a warning, not an error with a trace")
+end)
+
+test("a time signature's lower number is a power of two", function()
+  start()
+  T.fails(function() paw.project.sig_den = 3 end, "1, 2, 4, 8, 16, 32 or 64, not 3", "3 is refused")
+  paw.project.sig_den = 8
+  eq(paw.project.sig_den, 8, "8 is taken")
+  paw.project.sig_den = 4
+end)
+
+test("a script run with -l finds its arguments in arg, as Neovim's -l gives them", function()
+  eq(type(arg), "table", "the suite has arg")
+  eq(arg[0], "tests/suite.lua", "arg[0] is the script")
+  local name = "a script run with -l finds its arguments in arg, as Neovim's -l gives them"
+  eq(arg[1] == nil or name:find(arg[1], 1, true) ~= nil, true, "arg[1] its first argument: the words choosing tests, if any")
+end)

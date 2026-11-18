@@ -11,6 +11,8 @@
 -- `init.lua`; there is no separate plugin interface. What it registers while
 -- it loads (commands, keys, views, buffer types, hooks, ...) is recorded as
 -- its own: `:extensions` lists it, and `paw.ext.unload(name)` takes it away.
+-- So is what it registers later, from a handler or a timer, when a function
+-- of its own files is in it (a command's, a key's, a hook's, a timer's).
 --
 -- A manifest is a Lua file that returns a table:
 --
@@ -71,6 +73,45 @@ function M.satisfies(version, want)
     end
   end
   return true
+end
+
+-- Whose code it is -----------------------------------------------------------------
+
+--- Whether `source` (a function's, as `debug.getinfo` names it) is one of
+--- the files of the extension `entry`.
+local function in_files(entry, source)
+  if type(source) ~= "string" or source:sub(1, 1) ~= "@" then return false end
+  local path = entry.path
+  return source == "@" .. path or source:sub(1, #path + 2) == "@" .. path .. "/"
+end
+
+local function defined_by(entry, fn)
+  return type(fn) == "function" and in_files(entry, debug.getinfo(fn, "S").source)
+end
+
+--- Whether `value`, an entry of a registry, is the extension's own: a
+--- function of its files, a table with one among its fields, or a table
+--- that says it is (`ext`, as a key mapped from its code says).
+local function made_by(entry, value)
+  if defined_by(entry, value) then return true end
+  if type(value) ~= "table" then return false end
+  if value.ext == entry.name then return true end
+  for _, v in pairs(value) do
+    if defined_by(entry, v) then return true end
+  end
+  return false
+end
+
+--- The loaded extension whose code called the function this is called
+--- from, or nil for the core's or the user's.
+function M.caller()
+  for level = 3, 64 do
+    local info = debug.getinfo(level, "S")
+    if not info then return nil end
+    for name, entry in pairs(M.loaded) do
+      if in_files(entry, info.source) then return name end
+    end
+  end
 end
 
 -- What extensions own --------------------------------------------------------------
@@ -203,14 +244,24 @@ M.registries = {
       if not value then paw.off(key) end
     end,
     label = function(_, h) return h.pattern end },
-  -- Options keep their default once defined: a value set for one stays
-  -- meaningful after its extension is gone, as in Neovim.
-  { kind = "options", title = "options", snapshot = function()
-      local out = {}
-      for _, o in ipairs(paw.option.list()) do out[o.name] = o.default end
-      return out
-    end, put = function() end, keeps = true },
+  -- An option goes with its definition, and the value set for it.
+  { kind = "options", title = "options", snapshot = function() return paw.option.definitions() end,
+    put = function(key, value) paw.option.undefine(key, value) end },
+  -- Only its own timers: the core's started while it loaded (a watch the
+  -- core starts again) are not.
+  keyed("timers", "timers", function() return paw.timers end, function(key, value)
+    if not value then paw.cancel(key) end
+  end, function() return "timer" end),
+  keyed("device_dirs", "devices written in Lua", function() return paw.luadev and paw.luadev.dirs end,
+    function(key, value)
+      if not value then paw.luadev.remove_dir(key) end
+    end),
+  keyed("plugin_dirs", "plugin directories", function() return paw.plugins and paw.plugins.dirs end,
+    function(key, value)
+      if not value then paw.plugins.remove_dir(key) end
+    end),
 }
+for _, reg in ipairs(M.registries) do reg.strict = reg.kind == "timers" or nil end
 
 local function snapshot()
   local out = {}
@@ -240,11 +291,43 @@ local function claim(entry, before)
       list[#list + 1] = { key = key, value = now[key], old = old }
     end
     for key, value in pairs(now) do
-      if was[key] ~= value then own(key, was[key]) end
+      if was[key] ~= value and (not reg.strict or made_by(entry, value)) then own(key, was[key]) end
     end
     for key, value in pairs(was) do
-      if now[key] == nil then own(key, value) end
+      if now[key] == nil and not reg.strict then own(key, value) end
     end
+    if #list > 0 then
+      table.sort(list, function(a, b) return tostring(a.key) < tostring(b.key) end)
+      entry.owned[reg.kind] = list
+    end
+  end
+  entry.settled = after
+end
+
+--- Take for `entry`'s own what it registered after it loaded: entries new
+--- or changed since then that its files made.
+local function adopt(entry)
+  if not entry.settled then return end
+  local now = snapshot()
+  for _, reg in ipairs(M.registries) do
+    local settled, list = entry.settled[reg.kind] or {}, entry.owned[reg.kind] or {}
+    local mine = {}
+    for _, item in ipairs(list) do mine[item.key] = item end
+    for key, value in pairs(now[reg.kind] or {}) do
+      local id = reg.kind .. "\0" .. tostring(key)
+      local holder = claimed[id]
+      if value ~= settled[key] and not (holder and holder.name ~= entry.name and holder.value == value)
+        and made_by(entry, value) then
+        if mine[key] then
+          mine[key].value = value
+        else
+          list[#list + 1] = { key = key, value = value, old = settled[key] }
+        end
+        claimed[id] = { name = entry.name, value = value }
+        settled[key] = value
+      end
+    end
+    entry.settled[reg.kind] = settled
     if #list > 0 then
       table.sort(list, function(a, b) return tostring(a.key) < tostring(b.key) end)
       entry.owned[reg.kind] = list
@@ -256,6 +339,7 @@ end
 --- each item a short label, in the order of `paw.ext.registries`.
 function M.provides(name)
   local entry = M.loaded[name]
+  if entry then adopt(entry) end
   local out = {}
   for _, reg in ipairs(M.registries) do
     local list = entry and entry.owned and entry.owned[reg.kind]
@@ -399,12 +483,48 @@ function M.load(path)
   return entry
 end
 
---- Take an extension away: everything it registered while it loaded is
---- removed, and what it replaced put back (a command or key of the core it
---- remapped). Its modules are forgotten, so loading it again runs them
---- afresh. Options it defined keep their defaults; devices it ships stay
---- among the devices for the session. Returns true, or nil and why not.
-function M.unload(name)
+--- Of the device kinds an extension brings (its devices written in Lua and
+--- the plugins in directories it added), those on tracks and the tracks'
+--- names: `{ used = { kinds }, tracks = { names } }`.
+local function devices_in_use(entry)
+  local kinds, any = {}, false
+  for _, item in ipairs(entry.owned and entry.owned.device_dirs or {}) do
+    for _, kind in ipairs(paw.luadev.kinds_in(item.key)) do kinds[kind], any = true, true end
+  end
+  for _, item in ipairs(entry.owned and entry.owned.plugin_dirs or {}) do
+    for _, kind in ipairs(item.value and item.value.kinds or {}) do kinds[kind], any = true, true end
+  end
+  local tracks, used, seen = {}, {}, {}
+  if not any then return { tracks = tracks, used = used } end
+  local ids = api.track_list()
+  ids[#ids + 1] = 0
+  for _, id in ipairs(ids) do
+    local t = api.track_get(id)
+    for _, device in ipairs(t.devices) do
+      local kind = api.device_get(device).kind
+      if kinds[kind] then
+        if not seen[kind] then seen[kind], used[#used + 1] = true, kind end
+        if tracks[#tracks] ~= t.name then tracks[#tracks + 1] = t.name end
+      end
+    end
+  end
+  return { tracks = tracks, used = used }
+end
+
+--- Take an extension away: everything it registered is removed (while it
+--- loaded, and later from its handlers and timers), and what it replaced
+--- put back (a command or key of the core it remapped). Its options go
+--- with their values, its timers stop, and the devices written in Lua and
+--- plugin directories it added are no longer offered. Its modules are
+--- forgotten, so loading it again runs them afresh.
+---
+--- While a track holds one of its devices it is not unloaded (as Neovim
+--- will not delete a buffer with changes), unless `opts.force`: the
+--- devices then stay where they are, playing, until removed, and are
+--- missing when the project is opened again without the extension.
+--- Returns true (or, forced, what was left on tracks, in words), or nil and
+--- why not.
+function M.unload(name, opts)
   local entry = M.loaded[name]
   if not entry then return nil, "no extension `" .. tostring(name) .. "` is loaded" end
   for _, other in pairs(M.loaded) do
@@ -412,6 +532,17 @@ function M.unload(name)
     if requires and requires[name] ~= nil then
       return nil, other.name .. " requires " .. name .. ": unload it first"
     end
+  end
+  adopt(entry)
+  local devices = devices_in_use(entry)
+  local left
+  if #devices.tracks > 0 then
+    local what = table.concat(devices.used, ", ") .. " on " .. table.concat(devices.tracks, ", ")
+    if not (opts and opts.force) then
+      return nil, what .. ": remove " .. (#devices.used == 1 and "it" or "them") .. " first, or `:ext.unload! " .. name .. "` leaves "
+        .. (#devices.used == 1 and "it" or "them") .. " there"
+    end
+    left = what .. " left there until removed"
   end
   paw.emit("ext.unloading", { name = name })
   for i = #M.registries, 1, -1 do
@@ -437,7 +568,7 @@ function M.unload(name)
   M.loaded[name] = nil
   api.ui_redraw()
   paw.emit("ext.unloaded", { name = name })
-  return true
+  return left or true
 end
 
 --- Load the extensions the program was built with: `dirs` is a list of

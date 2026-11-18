@@ -39,6 +39,17 @@ pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> 
             scanned(lua, found)
         })?,
     )?;
+    // Look in `dir` no more: its scripts' kinds are made by a script of the
+    // same name elsewhere from now on, or not at all. Returns the kinds of
+    // the scripts that were there.
+    let sh = shared.clone();
+    api.set(
+        "lua_devices_remove",
+        lua.create_function(move |_, dir: String| {
+            let mut session = sh.session.borrow_mut();
+            Ok(paw_luadev::remove_dir(&mut session.registry, Path::new(&dir)))
+        })?,
+    )?;
     // Look at every script again, loading those that changed. Same answer
     // as `lua_devices_add`; `changed` are the kinds whose devices are now
     // behind their file.
