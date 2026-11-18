@@ -1,16 +1,16 @@
 using System.Runtime.InteropServices;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>
-/// The engine's Resamplers/ and Wavtools/ folders (P3.2). Every entry of the user's OpenUtau folder is linked, except a
+/// The engine's Resamplers/ and Wavtools/ folders. Every entry of the user's OpenUtau folder is linked, except a
 /// generic-Linux ELF executable whose program interpreter does not exist (NixOS without nix-ld): it gets a /bin/sh wrapper
 /// of the same name that runs it through the glibc loader this engine runs on, with the library folders of this process.
 /// The name stays identical, so .ustx resampler references keep working. The user's files are never written.
 /// </summary>
 static class ToolMirror
 {
-    const string Marker = "# reautau-loader-wrapper";
+    const string Marker = "# paw-utau-loader-wrapper";
 
     public static void Build(string src, string dst, Func<string, bool>? include = null)
     {

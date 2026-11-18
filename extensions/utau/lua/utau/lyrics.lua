@@ -1,6 +1,5 @@
 -- Lyrics as text: splitting text into one syllable per note, and the lyric
--- sheet, where a clip's lyrics read one line per phrase (ReaUtau's
--- lyric_sheet and lyrics modules).
+-- sheet, where a clip's lyrics read one line per phrase.
 local notes = require("utau.notes")
 
 local M = {}

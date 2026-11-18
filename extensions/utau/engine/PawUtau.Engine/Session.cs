@@ -3,14 +3,14 @@ using OpenUtau.Api;
 using OpenUtau.Core;
 using OpenUtau.Core.Render;
 using OpenUtau.Core.Ustx;
-using ReaUtau.Protocol;
+using PawUtau.Protocol;
 using Log = Serilog.Log;
-using ProtoError = ReaUtau.Protocol.Error;
-using ProtoLog = ReaUtau.Protocol.Log;
-using ProtoProgress = ReaUtau.Protocol.Progress;
+using ProtoError = PawUtau.Protocol.Error;
+using ProtoLog = PawUtau.Protocol.Log;
+using ProtoProgress = PawUtau.Protocol.Progress;
 using RenderProgress = OpenUtau.Core.Render.Progress;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>
 /// One connection's protocol state machine and project mirror. All project mutations, notifications and rendering
@@ -61,7 +61,7 @@ public sealed class Session : IDisposable
         {
             conn.Send(new ProtoLog
             {
-                Level = ReaUtau.Protocol.LogLevel.Warn,
+                Level = PawUtau.Protocol.LogLevel.Warn,
                 Source = "protocol",
                 Message = $"unknown message type 0x{frame.Type:x2} ignored",
             });
@@ -108,7 +108,7 @@ public sealed class Session : IDisposable
             default:
                 conn.Send(new ProtoLog
                 {
-                    Level = ReaUtau.Protocol.LogLevel.Warn,
+                    Level = PawUtau.Protocol.LogLevel.Warn,
                     Source = "protocol",
                     Message = $"unexpected message {msg.GetType().Name} from extension",
                 });
@@ -132,7 +132,7 @@ public sealed class Session : IDisposable
             conn.Close();
             return;
         }
-        if (h.Role != ReaUtau.Protocol.Role.Extension)
+        if (h.Role != PawUtau.Protocol.Role.Extension)
             Log.Warning("peer Hello role {Role}, expected extension", h.Role);
         Lists.SendSingers(conn);
         Lists.SendRenderers(conn);
@@ -143,7 +143,7 @@ public sealed class Session : IDisposable
 
     // ---- batch edits --------------------------------------------------------------------------------------------------------
     /// <summary>
-    /// "retake" (P4.1): AI pitch takes of the phrases of the given parts. Args JSON:
+    /// "retake": AI pitch takes of the phrases of the given parts. Args JSON:
     /// <c>{"action": "info" | "new" | "prev" | "next" | "select", "index": n, "notes": [noteId, ...], "whole": bool}</c>.
     /// With notes, only the phrases containing them are changed, and "new" re-rolls only those notes (the rest of the phrase
     /// keeps the current take) unless "whole"; without notes every phrase of the parts is. The answer's message is JSON:

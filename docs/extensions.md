@@ -404,7 +404,7 @@ over a socket or its standard input and output (see Helper programs in
 [Scripting](scripting.md)). The utau engine is such a program, built from
 the extension's own `engine/` source; `bin/` beside the extension is where
 its package puts it, and where the extension looks first after the
-`utau_engine` option and `$REAUTAU_ENGINE`.
+`utau_engine` option and `$PAW_UTAU_ENGINE`.
 
 **Plugins of its own.** An extension that builds a CLAP or VST3 plugin
 (its Nix package puts it beside the extension) registers the directory

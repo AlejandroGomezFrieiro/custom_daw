@@ -101,7 +101,7 @@ colours are in `runtime/lua/paw/theme.lua`.
 
 [examples/config](../examples/config) has a fuller configuration and two
 extensions. [extensions/utau](../extensions/utau) is a larger one: singing
-synthesis with OpenUtau's engines, through ReaUtau's `reautau-engine`, with a
+synthesis with OpenUtau's engines, through its own engine, `paw-utau-engine`, with a
 vocal editor and lyric sheet.
 
 Devices written in Lua go in `~/.config/paw/devices/`, one `.lua` file each,

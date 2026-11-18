@@ -1,20 +1,20 @@
 -- Tests of the utau extension outside the vocal editor: curves that follow
 -- their clips, export, freezing, singer presets, installing singers,
 -- harmony and doubling, and the renderer's own features. Loaded by
--- tests/suite.lua with its helpers. Tests that sing need reautau-engine and
+-- tests/suite.lua with its helpers. Tests that sing need paw-utau-engine and
 -- the test voicebank, and are skipped without them.
 local T = ...
 io.stdout:setvbuf("line")
 local api = paw.api
 local eq, near, test, fails = T.eq, T.near, T.test, T.fails
 
-local SINGER = os.getenv("REAUTAU_TEST_SINGER") or "Kitane sno act5 VCV"
+local SINGER = os.getenv("PAW_UTAU_TEST_SINGER") or "Kitane sno act5 VCV"
 
 local utau
 local function load()
   if not (paw.ext.loaded.utau and paw.ext.loaded.utau.ok) then paw.ext.load("extensions/utau") end
   utau = require("utau")
-  if paw.opt.utau_openutau_dir == "" and not os.getenv("REAUTAU_OPENUTAU_DIR") then
+  if paw.opt.utau_openutau_dir == "" and not os.getenv("PAW_UTAU_OPENUTAU_DIR") then
     paw.opt.utau_openutau_dir = (os.getenv("HOME") or "") .. "/.local/share/OpenUtau"
   end
   return utau
@@ -23,10 +23,10 @@ end
 --- Skip unless the engine runs and has the test voicebank.
 local function need_singer()
   load()
-  if not utau.engine.find() then return "skipped: reautau-engine not found (set REAUTAU_ENGINE)" end
+  if not utau.engine.find() then return "skipped: paw-utau-engine not found (set PAW_UTAU_ENGINE)" end
   utau.engine.start()
   if not utau.wait(function() return #utau.singers > 0 end, 60) then
-    return "skipped: reautau-engine did not start: " .. tostring(utau.engine.reason)
+    return "skipped: paw-utau-engine did not start: " .. tostring(utau.engine.reason)
   end
   if not utau.find_singer(SINGER) or utau.find_singer(SINGER).id ~= SINGER then
     return "skipped: voicebank " .. SINGER .. " is not installed"
@@ -108,6 +108,18 @@ local function voice_track(name)
   return track, utau.device_of(track.id)
 end
 
+--- Run `fn` with the engine kept off, so that it does not sing over the
+--- phrases a test gives a device itself.
+local function without_engine(fn)
+  load()
+  local start = utau.engine.start
+  utau.engine.stop()
+  utau.engine.start = function() return false end
+  local ok, err = pcall(fn)
+  utau.engine.start = start
+  if not ok then error(err, 0) end
+end
+
 local function wait_for(what, limit, fn)
   local waited = 0
   while not fn() do
@@ -155,7 +167,7 @@ test("utau: the device plays the phrases it is given, in time", function()
   eq(#v.list(device), 0, "cleared")
 end)
 
-test("utau: a device made later, a render's own and the one playing live sound exactly the same", function()
+test("utau: a device made later, a render's own and the one playing live sound exactly the same", function() without_engine(function()
   T.fresh()
   load()
   paw.project.tempo = 120
@@ -216,7 +228,7 @@ test("utau: a device made later, a render's own and the one playing live sound e
   end
   eq(matched, true, "offline, the render's own device plays the same samples, bit for bit")
   eq(left[at - 1], 0, "and nothing before them")
-end)
+end) end)
 
 test("utau: a vocal track is a kind of track: made, shown, described and opened as one", function()
   T.fresh()
@@ -603,7 +615,7 @@ end
 
 test("utau: a vocal track exported to .ustx imports back the same", function()
   local track, clip = rich()
-  if not utau.engine.find() then return "skipped: reautau-engine not found (set REAUTAU_ENGINE)" end
+  if not utau.engine.find() then return "skipped: paw-utau-engine not found (set PAW_UTAU_ENGINE)" end
   local export = require("utau.export")
   local desc = export.describe({ tracks = { track.id } })
   eq(#desc.tracks, 1, "one track described")
@@ -635,7 +647,7 @@ end)
 
 test("utau: a clip exports to UTAU's .ust and to MIDI with lyrics", function()
   local track, clip = rich()
-  if not utau.engine.find() then return "skipped: reautau-engine not found (set REAUTAU_ENGINE)" end
+  if not utau.engine.find() then return "skipped: paw-utau-engine not found (set PAW_UTAU_ENGINE)" end
   local export = require("utau.export")
   local function plain(c)
     -- MIDI has no parts: the notes come back where they were in the song.
@@ -661,7 +673,7 @@ end)
 
 test("utau: opening in OpenUtau writes a .ustx beside the project and says what it would run", function()
   local track = rich()
-  if not utau.engine.find() then return "skipped: reautau-engine not found (set REAUTAU_ENGINE)" end
+  if not utau.engine.find() then return "skipped: paw-utau-engine not found (set PAW_UTAU_ENGINE)" end
   local export = require("utau.export")
   os.execute("mkdir -p '" .. T.scratch .. "/proj'")
   paw.project.save(T.scratch .. "/proj/song.json")
@@ -670,7 +682,7 @@ test("utau: opening in OpenUtau writes a .ustx beside the project and says what 
   local path, argv = export.open({ dry = true })
   eq(exists(path), true, "the file is written")
   eq(argv[#argv], path, "and OpenUtau is to be started on it")
-  eq(argv[1], os.getenv("REAUTAU_OPENUTAU") or "OpenUtau", "as ReaUtau starts it")
+  eq(argv[1], os.getenv("PAW_UTAU_OPENUTAU") or "OpenUtau", "as the extension starts it")
   paw.opt.utau_openutau = "env FOO=1 OpenUtau"
   eq(table.concat(export.open_command("/x.ustx"), " "), "env FOO=1 OpenUtau /x.ustx", "a command of one's own")
   paw.opt.utau_openutau = ""
@@ -751,7 +763,7 @@ test("utau: a track's voice is saved as a singer preset and given to another tra
   local path = T.scratch .. "/presets/Soft lead.json"
   eq(exists(path), true, "the preset is a file in the presets folder")
   local text = T.read_file(path)
-  eq(text:find('"singer": "Someone"', 1, true) ~= nil, true, "JSON, as ReaUtau writes it")
+  eq(text:find('"singer": "Someone"', 1, true) ~= nil, true, "JSON, as the engine reads it")
   eq(#require("utau.singer_presets").list(), 1, "listed")
   paw.flush()
   api.undo_checkpoint()
@@ -824,7 +836,7 @@ test("utau: singers install from an archive or a folder, and are listed", functi
   eq(exists(to .. "/Singers/Tiny Folder Bank/oto.ini"), true, "with its files")
   fails(function() install.install(folder, { to = to }) end, "installed already", "a second time")
   -- An archive, by the engine.
-  if not utau.engine.find() then return "skipped (archives): reautau-engine not found (set REAUTAU_ENGINE)" end
+  if not utau.engine.find() then return "skipped (archives): paw-utau-engine not found (set PAW_UTAU_ENGINE)" end
   local archive = T.scratch .. "/tiny.zip"
   zip(archive, {
     { "Tiny Zip Bank/character.txt", "name=Tiny Zip\n" },
@@ -958,7 +970,7 @@ test("utau: AI pitch, takes and the renderer's curves send what the protocol say
     eq(m.body[1] .. " " .. m.body[2] .. " " .. m.body[3][1] .. " " .. m.body[4][1], id .. " retake " .. clip.id .. " 2",
       "request, name, part and note")
     local args = require("utau.json").decode(m.body[5])
-    eq(args.action .. " " .. args.kind .. " " .. args.notes[1], "new timbre 2", "and the arguments ReaUtau's engine reads")
+    eq(args.action .. " " .. args.kind .. " " .. args.notes[1], "new timbre 2", "and the arguments the engine reads")
     -- The answer, as the engine frames it.
     local answer = '{"error":null,"changed":1,"phrases":[{"hash":"77","start":0,"current":1,"count":2,"vcurrent":0,"vcount":1,"notes":[1,2,3]}]}'
     local frame = proto.frame(proto.type.BatchEditResult, mp.array(5) .. mp.uint(id) .. mp.bool(true) .. mp.str(answer)

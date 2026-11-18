@@ -1,5 +1,4 @@
--- Harmony and double tracks: a second vocal track made from the first, as
--- ReaUtau makes them (its modules/harmony.lua and takes.lua).
+-- Harmony and double tracks: a second vocal track made from the first.
 --
 -- The new track goes right under the source, as a copy of it (the voice,
 -- every curve, the lyrics and note properties), a little quieter and panned

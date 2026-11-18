@@ -2,8 +2,8 @@
   description = "paw, a personal audio workstation, with a small Rust kernel and everything else in Lua";
 
   inputs.nixpkgs.url = "nixpkgs";
-  # What extensions/utau's engine is built against: the OpenUtau commit
-  # ReaUtau pins (see extensions/utau/engine/README.md).
+  # What extensions/utau's engine is built against: the pinned OpenUtau
+  # commit (see extensions/utau/engine/README.md).
   inputs.openutau = {
     url = "github:openutau/OpenUtau/bc194b6fe4897427a73066390b286e11205fd10f";
     flake = false;

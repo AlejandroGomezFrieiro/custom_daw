@@ -3,13 +3,13 @@ using OpenUtau.Api;
 using OpenUtau.Core;
 using OpenUtau.Core.Format;
 using OpenUtau.Core.Ustx;
-using ReaUtau.Protocol;
+using PawUtau.Protocol;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>
-/// One-shot exporter: <c>reautau-engine --export &lt;project.json&gt; --out &lt;file.ustx&gt;</c>. The REAPER side writes
-/// its vocal tracks as JSON (notes carry the type-15 payload verbatim, base64; curves are knots in OpenUtau units and
+/// One-shot exporter: <c>paw-utau-engine --export &lt;project.json&gt; --out &lt;file.ustx&gt;</c>. The extension writes
+/// its vocal tracks as JSON (notes carry their payload, base64; curves are knots in OpenUtau units and
 /// part-relative ticks); this builds a UProject with the same mapping the live engine uses (NoteMapper, CcShape) and
 /// saves it with OpenUtau's own writer, so the project opens in the OpenUtau GUI.
 /// </summary>
@@ -20,7 +20,7 @@ static class Export
         Bootstrap.Init(o);
         JsonDocument doc;
         try { doc = JsonDocument.Parse(File.ReadAllText(o.ExportPath)); }
-        catch (Exception e) { Console.Error.WriteLine("reautau-engine: cannot read " + o.ExportPath + ": " + e.Message); return 1; }
+        catch (Exception e) { Console.Error.WriteLine("paw-utau-engine: cannot read " + o.ExportPath + ": " + e.Message); return 1; }
         Exception? error = null;
         Bootstrap.Pump.Invoke(() =>
         {
@@ -31,7 +31,7 @@ static class Export
             }
             catch (Exception e) { error = e; }
         });
-        if (error != null) { Console.Error.WriteLine("reautau-engine: export failed: " + error); return 1; }
+        if (error != null) { Console.Error.WriteLine("paw-utau-engine: export failed: " + error); return 1; }
         return 0;
     }
 

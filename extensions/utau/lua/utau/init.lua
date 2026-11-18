@@ -1,4 +1,4 @@
--- Singing synthesis: vocal tracks sung by reautau-engine.
+-- Singing synthesis: vocal tracks sung by paw-utau-engine.
 --
 -- A vocal track is a track with a `utau` device. Its MIDI clips are the
 -- engine's parts, their notes carry lyrics and note properties in
@@ -476,7 +476,7 @@ local function put(device, message, raw)
   voices.put(device, message.hash, message.start, message.rate, message.channels, message.quality, raw)
 end
 
---- Which clips a layout keeps (ReaUtau protocol 7.2): those still in it, and
+--- Which clips a layout keeps: those still in it, and
 --- old ones under a phrase that is being rendered, until it arrives.
 local function retained(layout, have)
   local keep, current = {}, {}

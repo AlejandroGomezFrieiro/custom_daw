@@ -1,8 +1,8 @@
 using System.Reflection;
-using ReaUtau.Protocol;
+using PawUtau.Protocol;
 using Log = Serilog.Log;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>
 /// Process lifetime: bootstrap OpenUtau, connect to the extension's listening Unix socket (retrying while the extension
@@ -34,7 +34,7 @@ public sealed class EngineHost
             conn.Send(new Hello
             {
                 ProtocolVersion = Proto.Version,
-                Role = ReaUtau.Protocol.Role.Engine,
+                Role = PawUtau.Protocol.Role.Engine,
                 Version = EngineVersion(),
                 OpenUtauVersion = Bootstrap.OpenUtauVersion,
                 Pid = (uint)Environment.ProcessId,

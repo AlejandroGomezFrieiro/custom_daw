@@ -542,7 +542,7 @@ end, { desc = "Restart the singing engine" })
 command("utau.status", function()
   local e = utau.engine
   local lines = { string.format("engine: %s%s", e.state, e.reason and (" (" .. e.reason .. ")") or "") }
-  if e.info then lines[#lines + 1] = string.format("reautau-engine %s, OpenUtau %s", e.info.engine, e.info.openutau) end
+  if e.info then lines[#lines + 1] = string.format("paw-utau-engine %s, OpenUtau %s", e.info.engine, e.info.openutau) end
   lines[#lines + 1] = string.format("%d singers; log: %s", #utau.singers, e.log_path())
   for _, vocal in ipairs(utau.vocal_tracks()) do
     local state, counts = utau.status(vocal.track)

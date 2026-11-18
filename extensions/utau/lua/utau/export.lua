@@ -1,9 +1,9 @@
 -- Getting the singing out: OpenUtau's `.ustx`, UTAU's `.ust` and MIDI with
 -- lyrics, and opening a track in OpenUtau.
 --
--- As in ReaUtau, the vocal tracks are described as JSON (notes with the
+-- The vocal tracks are described as JSON (notes with the
 -- payload the engine sings from, curves as knots in OpenUtau's ticks and
--- units) and `reautau-engine --export` builds the OpenUtau project with the
+-- units) and `paw-utau-engine --export` builds the OpenUtau project with the
 -- same mapping the live engine uses, then saves it with OpenUtau's own
 -- writers. The format follows the file's extension; a `.ust` holds one part,
 -- so a second part goes to `name-2.ust`, and so on.
@@ -96,7 +96,7 @@ function M.write(path, opts)
     end
   end
   if code ~= 0 or #files == 0 then
-    error("export failed: " .. (out:match("reautau%-engine: ([^\n]+)") or ("exit code " .. tostring(code))), 0)
+    error("export failed: " .. (out:match("paw%-utau%-engine: ([^\n]+)") or ("exit code " .. tostring(code))), 0)
   end
   return files
 end
@@ -119,10 +119,10 @@ function M.open_path()
 end
 
 --- What starts OpenUtau on a file: `paw.opt.utau_openutau`, else
---- `$REAUTAU_OPENUTAU` as ReaUtau reads it, else `OpenUtau` on the PATH.
+--- `$PAW_UTAU_OPENUTAU`, else `OpenUtau` on the PATH.
 function M.open_command(path)
   local command = paw.opt.utau_openutau
-  if not command or command == "" then command = os.getenv("REAUTAU_OPENUTAU") end
+  if not command or command == "" then command = os.getenv("PAW_UTAU_OPENUTAU") end
   if not command or command == "" then command = "OpenUtau" end
   local argv = {}
   for word in command:gmatch("%S+") do argv[#argv + 1] = word end
