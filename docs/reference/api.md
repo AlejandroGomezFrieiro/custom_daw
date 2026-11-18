@@ -685,6 +685,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.frontend.take_preview(id, take, points)`: What take `take` of a clip plays, for the picture in its take lane. For sound, this is a waveform as `M.peaks` gives it, at `points` points. For MIDI, it is the notes as `M.preview` gives them. It repeats as a looped clip repeats. The waveform of the take that plays is the waveform of the clip, stretched. The waveform of a different take is its file, made shorter or longer in time as the clip stretches it.
 - `paw.frontend.take_rows(clip)`: The takes of a clip as its take lanes show them: `{ name, key }` each. `key` changes exactly when the sound of the take changes. Nil for a clip without takes, which has nothing in the lanes.
 - `paw.frontend.vca_words(id)`: What a track is in VCA terms, for a strip: a VCA's members by name, a member's VCAs by name, joined by commas.
+- `paw.frontend.window_renderer_set(info)`: The window tells which OpenGL renderer draws it (see `paw.frontend.window_renderer`). One that draws on the processor is told once, in a line that says what to do.
 
 ## Module paw.fx
 

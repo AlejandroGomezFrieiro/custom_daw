@@ -68,10 +68,10 @@ test("checkhealth: the window says whether it draws on a graphics card, and why 
   eq(r.items[2].text:find("draws 30 frames a second", 1, true) ~= nil, true, r.items[2].text)
   eq(r.items[1].text:find("AMD Radeon 890M", 1, true) ~= nil, true, "it names the renderer")
   -- On the processor: said once when the window starts, with what to do.
-  local before = #paw.ui.messages
+  local before = paw.ui.messages[#paw.ui.messages]
   paw.frontend.window_renderer_set({ renderer = "llvmpipe (LLVM 19.1.7, 256 bits)", version = "4.5", software = true, cause = "asked" })
   local said = paw.ui.messages[#paw.ui.messages]
-  eq(#paw.ui.messages, before + 1, "one message")
+  eq(paw.ui.messages[#paw.ui.messages - 1], before, "one message (the list keeps the last 500)")
   eq(said.level, "warn", "a warning")
   eq(said.text:find("draws on the processor (llvmpipe)", 1, true) ~= nil, true, "in words: " .. said.text)
   eq(said.text:find("PAW_GUI_RENDERER", 1, true) ~= nil, true, "with the fix for its cause")

@@ -26,8 +26,8 @@ test("the window is told how many frames a second to draw while the song plays",
   eq(pcall(function() paw.opt.window_fps = "fast" end), false, "a number or auto")
   paw.opt.window_fps = "auto"
   eq(paw.frontend.state(-1).window_cache, "auto", "the still part as textures where the window draws on the processor")
-  paw.commands.exec("set nowindow_cache")
-  eq(paw.frontend.state(-1).window_cache, false, ":set nowindow_cache draws it straight")
+  paw.commands.exec("set window_cache=false")
+  eq(paw.frontend.state(-1).window_cache, false, ":set window_cache=false draws it straight")
   paw.opt.window_cache = "auto"
 end)
 
