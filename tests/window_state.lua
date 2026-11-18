@@ -143,3 +143,157 @@ test("window state: :sp in the roll shows the roll again, on the clip of this wi
   sized(function() keys(":e arrange<CR>") keys(":vs<CR>") end)
   eq(windows():find("arrange arrange", 1, true) ~= nil, true, ":vs in the arrange view shows it twice")
 end)
+
+test("window state: the mixer twice, each window with its own row and scroll", function()
+  start()
+  for i = 1, 12 do paw.add_track({ name = "T" .. i }) end
+  paw.cursor.set_track(paw.tracks()[1])
+  sized(function()
+    keys(":e mixer<CR>")
+    keys("<C-w>v")
+  end)
+  eq(windows(), "mixer mixer", "Ctrl-w v shows the mixer again")
+  eq(screen():find("traceback", 1, true), nil, "both drawn")
+  local before = each("mixer", function(v) return v.row end)
+  eq(before[1], before[2], "the new window starts from the row of the first")
+  keys("j")
+  local rows = each("mixer", function(v) return v.row end)
+  eq(rows[1], before[1], "the left mixer's row stays")
+  eq(rows[2] ~= before[2], true, "the right mixer's row moved")
+  local mixers = L.windows(paw.ui.layout)
+  L.within(mixers[1], function() paw.ui.views.mixer.scroll = 0 end)
+  L.within(mixers[2], function() paw.ui.views.mixer.scroll = 3 end)
+  local scrolls = each("mixer", function(v) return v.scroll end)
+  eq(scrolls[1] .. " " .. scrolls[2], "0 3", "a scroll for each window")
+  keys("<C-w>c")
+  eq(windows(), "mixer", "closing one leaves the other")
+end)
+
+test("window state: the session view twice", function()
+  start()
+  riff()
+  sized(function()
+    keys(":e session<CR>")
+    keys(":sp session<CR>")
+  end)
+  eq(windows(), "session session", "two session views")
+  eq(screen():find("traceback", 1, true), nil, "both drawn")
+end)
+
+test("window state: two device panels on two tracks", function()
+  start()
+  local a = paw.add_track({ name = "Lead" })
+  local b = paw.add_track({ name = "Bass" })
+  a:add_device("delay")
+  b:add_device("gain")
+  paw.cursor.set_track(a)
+  sized(function()
+    keys(":e devices<CR>")
+    keys(":vs devices://Bass<CR>")
+  end)
+  eq(windows(), "devices devices", "two device panels")
+  local tracks = each("devices", function(v) return v:track_id() end)
+  eq(tracks[1] == a.id and tracks[2] == b.id, true, "the left follows the cursor, the right is pinned to Bass")
+  local text = screen()
+  eq(text:find("Delay", 1, true) ~= nil and text:find("Gain", 1, true) ~= nil, true, "each draws its track's devices")
+  eq(text:find("Bass · pinned", 1, true) ~= nil, true, "the pinned one says so")
+  eq(text:find("traceback", 1, true), nil, "neither failed")
+  -- Keys in the pinned panel act on its track, not on the cursor's.
+  keys(":device.add delay<CR>")
+  paw.flush()
+  eq(#api.track_get(b.id).devices, 2, "a device added in the pinned panel goes on Bass")
+  eq(#api.track_get(a.id).devices, 1, "and not on the cursor track")
+  eq(paw.cursor.track_id(), b.id, "the track of the keys is the pinned one")
+  keys("<C-w>h")
+  eq(paw.cursor.track_id(), a.id, "and the cursor's again in the other panel")
+  -- The cursor moves: the pinned panel stays, the other follows.
+  paw.cursor.set_track(b)
+  tracks = each("devices", function(v) return v:track_id() end)
+  eq(tracks[1] .. " " .. tracks[2], b.id .. " " .. b.id, "the left follows the cursor to Bass")
+  paw.cursor.set_track(a)
+  -- \p pins the left panel to the track it shows, and again follows the cursor.
+  keys("\\p")
+  eq(paw.ui.views.devices.pin, a.id, "\\p pins the panel to Lead")
+  eq(paw.ui.message ~= nil and tostring(paw.ui.message.text):find("Lead", 1, true) ~= nil, true, "it says what it did")
+  paw.cursor.set_track(b)
+  eq(each("devices", function(v) return v:track_id() end)[1], a.id, "the pinned panel stays on Lead")
+  keys("\\p")
+  eq(paw.ui.views.devices.pin, nil, "\\p again: it follows the cursor")
+  -- A saved layout keeps the pinned track.
+  local found = false
+  local function walk(node)
+    if node.view == "devices" and node.target == b.id then found = true end
+    for _, child in ipairs(node.children or {}) do walk(child) end
+  end
+  for _, t in ipairs(L.capture().tabs) do walk(t.layout) end
+  eq(found, true, "a saved layout keeps the pinned track")
+end)
+
+--- The text a view in a window of its own draws, as one string.
+local function painted(name)
+  local drawing = paw.canvas.paint(name, 1200, 600, { fresh = true })
+  local out = {}
+  for _, op in ipairs(drawing and drawing.ops or {}) do
+    for _, v in ipairs(op) do
+      if type(v) == "string" then out[#out + 1] = v end
+    end
+  end
+  return table.concat(out)
+end
+
+test("window state: a piano roll in a window of its own keeps its own clip and cursor", function()
+  start()
+  local _, clip, other = riff()
+  sized(function()
+    keys(":e roll://riff<CR>")
+    keys(":vs roll://hook<CR>")
+  end)
+  local roll = paw.ui.views.pianoroll
+  keys(":view.window<CR>")
+  local own = paw.canvas.open_views.pianoroll
+  eq(own ~= nil and own.win ~= nil, true, "the roll of hook is in a window of its own")
+  eq(windows(), "pianoroll", "the pane of riff stays")
+  eq(painted("pianoroll"):find("hook", 1, true) ~= nil, true, "the window of its own draws hook")
+  eq(screen():find("riff", 1, true) ~= nil, true, "the pane draws riff")
+  -- Keys typed in the window of its own act on its clip.
+  local pitch = roll.pitch
+  paw.canvas.key("pianoroll", "k")
+  eq(roll.clip_id, other.id, "keys in the window of its own act on hook")
+  eq(roll.pitch, pitch + 1, "its cursor moved")
+  -- Keys in the main window act on the pane's clip, with its cursor.
+  paw.canvas.back("pianoroll")
+  keys("<Esc>")
+  eq(roll.clip_id, clip.id, "keys in the main window act on riff")
+  eq(painted("pianoroll"):find("hook", 1, true) ~= nil, true, "the window of its own still draws hook")
+  eq(roll.clip_id, clip.id, "and the pane keeps riff after it draws")
+  -- Back into the main window: the pane it left shows what it showed.
+  paw.canvas.dock("pianoroll")
+  eq(windows(), "pianoroll pianoroll", "back in its pane")
+  eq(roll.clip_id, other.id, "on hook")
+  eq(roll.pitch, pitch + 1, "with its cursor")
+  eq(each("pianoroll", function(v) return v.clip_id end)[1], clip.id, "the other pane keeps riff")
+end)
+
+test("window state: the notation in a window of its own keeps its own clip", function()
+  start()
+  notation()
+  local _, clip, other = riff()
+  sized(function()
+    keys(":e notation://riff<CR>")
+    keys(":vs notation://hook<CR>")
+  end)
+  local score = paw.ui.views.notation
+  keys(":view.window<CR>")
+  local own = paw.canvas.open_views.notation
+  eq(own ~= nil and own.win ~= nil, true, "the notation of hook is in a window of its own")
+  eq(windows(), "notation", "the pane of riff stays")
+  paw.canvas.paint("notation", 900, 500, { fresh = true })
+  eq(score.clip_id, other.id, "the window of its own paints hook")
+  paw.layout.settle()
+  paw.canvas.back("notation")
+  keys("<Esc>")
+  eq(score.clip_id, clip.id, "keys in the main window act on riff")
+  eq(screen():find("traceback", 1, true), nil, "the pane draws")
+  eq(score.clip_id, clip.id, "and keeps riff")
+  paw.canvas.close("notation")
+end)

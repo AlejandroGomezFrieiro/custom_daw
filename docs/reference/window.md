@@ -740,11 +740,17 @@ So these keys and commands do in the window what they do in the terminal.
 | --- | --- |
 | Press in a pane | Gives the pane the keyboard. A ring in the color of the selection shows that pane, when there is more than one pane. |
 | Drag a border between panes | Shares the space. The panes keep a size of whole cells, as `Ctrl-w +` does. The kernel moves the border with the code that moves it in the terminal (`paw.layout.drag_border`). |
-| Click a tab | Goes to the tab. The row of tabs shows when there is more than one tab. |
+| Click a tab | Goes to the tab. The row of tabs shows when there is more than one tab, as the tab line of the terminal does. |
+| The close button of a tab, or a middle click on a tab | Closes the tab, as `:tabclose` does. The last tab stays. |
+| Drag a tab along the row | Moves the tab there, as `:tabmove` does. A line shows where it goes. |
+| `+` after the last tab | Opens a new tab with the start page, as `:tabnew` does. |
 | The close button of a pane | Closes its window, as `Ctrl-w c` does. The last window of a tab stays. |
 
-Two panes of one view (two piano rolls) are two scenes, each with the
-state of its window: its clip, cursor and scroll.
+Two panes of one view (two piano rolls, two mixers, two device panels)
+are two scenes. Each has the state of its window: its clip, cursor and
+scroll. A view moved into a window of its own keeps the state of the pane
+that it left, and then has its own. The other panes of the view stay.
+When it returns to the main window, the pane shows what the window showed.
 
 Each attached window has its own tabs and windows. A window shows its
 main area for the first time. Then the kernel shows the device panel if

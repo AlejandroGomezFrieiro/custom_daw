@@ -45,8 +45,13 @@
 -- cells of that font, on a background of its own.
 local api = paw.api
 local band = bit.band
+local own_window
 local M = {
+  -- The views in a window of their own, by name: each has `win`, a window
+  -- in no tab with a state of its own (`paw.layout.loose`).
   open_views = {},
+  -- The view whose window of its own has the keyboard, if any.
+  inside = nil,
   -- What a view was called when it was opened (`open`), for the pane or
   -- the window that shows it.
   titles = {},
@@ -285,6 +290,22 @@ end
 
 M.Painter = Painter
 
+-- The window in no tab that a view in a window of its own draws and acts
+-- with: the one it has, else a new one that starts from the state of the
+-- pane it leaves (the one with the keyboard, else the one it showed in
+-- last). So the window of its own keeps its own clip and cursor.
+-- Returns it, and the pane it leaves (nil for one it had).
+function own_window(name)
+  local had = M.open_views[name] and M.open_views[name].win
+  if had then return had end
+  local L = paw.layout
+  -- A view with one state, or a buffer type, needs none.
+  if not L.keepers[name] or L.types[name] then return nil end
+  local here = L.current()
+  local from = here and here.view == name and here or L.find(paw.ui.layout, name, true)
+  return L.loose(name, from), from
+end
+
 --- Show a view that paints in a graphical frontend, and give it the
 --- keyboard. When the view has a place in the layout (`paw.ui.dock`, or a
 --- window that shows it), it is docked, as the terminal shows it. If not,
@@ -303,11 +324,19 @@ function M.open(name, opts)
   end
   -- Taking the keyboard may have shown its place in the layout too.
   local back = M.open_views[name] and M.open_views[name].back
-  back = M.leave(name) or back
-  M.open_views[name] = { title = opts.title or view.title or name, width = opts.width or 900, height = opts.height or 520, back = back }
-  if paw.ui.focused ~= name and not paw.ui.float then
-    paw.ui.focused = name
-    paw.emit("view.focused", { view = name })
+  local from = M.open_views[name] and M.open_views[name].from
+  local win, pane = own_window(name)
+  back = M.leave(name, pane) or back
+  M.open_views[name] = {
+    title = opts.title or view.title or name, width = opts.width or 900, height = opts.height or 520, back = back, win = win,
+    from = pane and pane.id or from,
+  }
+  if not paw.ui.float then
+    M.inside = name
+    if paw.ui.focused ~= name then
+      paw.ui.focused = name
+      paw.emit("view.focused", { view = name })
+    end
   end
   api.ui_redraw()
 end
@@ -326,14 +355,22 @@ end
 --- Returns the window that had the keyboard, to give the keyboard back to
 --- it. A view that a frontend draws itself (the arrange view, the mixer and
 --- other views) also stays where it is. The separate window is a second
---- view of it.
-function M.leave(name)
+--- view of it. A view with a state for each window leaves only the pane
+--- `pane` that it goes out of: its other windows stay.
+function M.leave(name, pane)
   local L = paw.layout
   local here, t = L.current(), L.tab()
   if paw.panes.stays[name] then return here and here.id end
   -- Where the view had the keyboard, the window before it gets it back.
   local before = here and here.view == name and t.prev and L.find_id(t.layout, t.prev)
-  L.conceal(name)
+  if pane then
+    -- Its place stays, closed, for when it comes back. The last window
+    -- of a tab stays.
+    pane.hidden = true
+    if #L.focusable_windows() == 0 then pane.hidden = false end
+  else
+    L.conceal(name)
+  end
   -- A type with a buffer for each target: the windows of the tab showing
   -- the buffer the window of its own shows close, as a view's do.
   local def = L.types[name]
@@ -352,6 +389,7 @@ end
 --- window. It goes to the window that had it before the view went there,
 --- else to the current window of the tab.
 function M.back(name)
+  M.inside = nil
   local window = M.open_views[name]
   local L = paw.layout
   local win = window and window.back and L.find_id(paw.ui.layout, window.back)
@@ -361,6 +399,7 @@ end
 
 --- Give a view in a window the keyboard, as a click in it does.
 local function focus(name)
+  if M.open_views[name] and not paw.ui.float then M.inside = name end
   if paw.ui.focused ~= name and not paw.ui.float then
     if paw.keymap.mode == "x" then paw.keymap.set_mode("n") end
     paw.ui.focused = name
@@ -386,9 +425,12 @@ function M.open_view(name, opts)
   opts = opts or {}
   local float = paw.ui.float and paw.ui.float.name == name and paw.ui.float
   if float then paw.ui.close() end
-  local back = M.open_views[name] and M.open_views[name].back or M.leave(name)
+  local from = M.open_views[name] and M.open_views[name].from
+  local win, pane = own_window(name)
+  local back = M.open_views[name] and M.open_views[name].back or M.leave(name, pane)
   M.open_views[name] = {
-    title = opts.title or (float and float.title) or view.title or name, cells = true, back = back,
+    title = opts.title or (float and float.title) or view.title or name, cells = true, back = back, win = win,
+    from = pane and pane.id or from,
     -- The float's size in cells, or a size that suits most views.
     width = opts.width or math.floor((float and float.width or 100) * M.cell.w + 0.5),
     height = opts.height or math.floor(((float and float.height or 32) + 1) * M.cell.h + 0.5),
@@ -432,6 +474,7 @@ function M.close(name)
     return
   end
   if paw.ui.focused == name and not paw.ui.float then M.back(name) end
+  if M.inside == name then M.inside = nil end
   M.open_views[name] = nil
   local view = paw.ui.views[name]
   if view and view.on_close then view:on_close() end
@@ -444,15 +487,37 @@ end
 --- does this when its separate window closes. `Ctrl-w d` in it does the same.
 function M.dock(name)
   name = name or paw.ui.focused
-  if not M.open_views[name] then return end
+  local window = M.open_views[name]
+  if not window then return end
   M.open_views[name] = nil
+  if M.inside == name then M.inside = nil end
   local L = paw.layout
-  if paw.panes.stays[name] or L.reveal(name) then return paw.ui.focus(name) end
+  -- The pane takes what the window of its own showed: its clip, its cursor.
+  local function take(win)
+    if win and window.win and not paw.panes.stays[name] then L.hand_over(window.win, win) end
+  end
+  if paw.panes.stays[name] then return paw.ui.focus(name) end
+  -- A view with a state for each window goes back to the pane it left,
+  -- if that is still its closed place, else into a new window.
+  if window.win then
+    local place = window.from and L.find_id(paw.ui.layout, window.from)
+    local win = place and place.view == name and place
+    if win then
+      win.hidden = false
+    else
+      win = L.split({ view = name }) or L.show_in(L.current(), name)
+    end
+    take(win)
+    L.enter(win)
+    return
+  end
+  if L.reveal(name) then return paw.ui.focus(name) end
   -- A type with a buffer for each target shows the buffer it showed.
   local def = L.types[name]
   local loose = def and def.window and def.window()
   local win = L.split({ view = name, buf = loose and loose.buf or nil })
-  if not win then L.show_in(L.current(), name, loose and loose.buf or nil) end
+  if not win then win = L.show_in(L.current(), name, loose and loose.buf or nil) end
+  take(win)
   focus(name)
   api.ui_redraw()
 end
@@ -497,7 +562,11 @@ function M.paint_cells(name, window, width, height, opts)
   -- The strips the view keeps under its cells (`buf:strip`), drawn here
   -- between the cells' backgrounds and their text.
   paw.ui.pictures = {}
+  -- The view draws with the state of its window of its own.
+  paw.ui.view_win = window.win
   local ok, snap = pcall(api.ui_view_snapshot, name, cols, bare and rows or rows - 1)
+  paw.ui.view_win = nil
+  paw.layout.settle()
   local pictures = paw.ui.pictures
   paw.ui.pictures = nil
   if not ok then error(snap, 0) end
@@ -652,6 +721,8 @@ function M.paint(name, width, height, opts)
     return M.paint_cells(name, window, width, height, opts)
   end
   if not view then return nil end
+  -- A view in a window of its own paints with that window's state.
+  if window and window.win then paw.layout.bind(window.win) end
   local ops = {}
   -- In a window of its own the view has the two lines of the screen's
   -- bottom under it, when the frontend asks; a pane's frontend has them.
@@ -739,6 +810,8 @@ function M.pointer(name, event)
   if not view then return end
   if event.kind == "down" then focus(name) end
   local window = M.open_views[name]
+  -- The view takes the pointer with the state of its window of its own.
+  if window and window.win then paw.layout.bind(window.win) end
   if not view.paint and window and window.cells then
     local e = M.cell_event(window, event)
     if e and view.on_mouse then paw.limit.named("the mouse", paw.mouse.to_view, view, e) end

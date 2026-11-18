@@ -45,6 +45,19 @@ as widgets: sliders, a power button, buttons with icons.
 | `s` | Solos the track. |
 | `:device.copy_to <track>` | Copies the selected device to a track. |
 | `:device.move_to <track>` | Moves the selected device to a track. |
+| `\p`, `:devices.pin` | Pins the panel to the track that it shows. Again: the panel follows the cursor track. `:devices.pin Bass` pins it to the track Bass. |
+
+## Two panels on two tracks
+
+The device panel shows in any number of windows. Each window has its own
+row, scroll and track. A panel follows the cursor track until you pin it.
+A pinned panel shows its track, wherever the cursor goes. Its title says
+`pinned`.
+
+- `:vs devices://Bass` puts a second panel beside this window, pinned to the track Bass. A number also names a track: `devices://3`.
+- `:e devices://Bass` pins the panel in this window.
+- In a pinned panel, the keys and the commands act on its track. For example, `a` adds a device to that track, and `p` pastes there.
+- A saved layout and the project keep the track of a pinned panel.
 
 ## The parts of a row
 

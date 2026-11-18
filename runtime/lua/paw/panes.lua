@@ -112,7 +112,8 @@ end
 function M.state()
   if area.w <= 0 or area.h <= 0 then return nil end
   local u = paw.ui
-  local top = #u.tabs > 1 and M.tabline or 0
+  -- The row of tabs shows as the terminal's tab line does.
+  local top = (#u.tabs > 1 or paw.statusline.tabline_always()) and M.tabline or 0
   local map = {}
   local root = in_pixels(u.layout, "v", map)
   local rects = u.place(root, 0, top, area.w, math.max(0, area.h - top))
@@ -209,6 +210,23 @@ end
 --- A click on tab `i` goes to it.
 function M.tab(i)
   if not paw.ui.float then L.tab_go(i) end
+end
+
+--- Close tab `i`, as `:tabclose` does (its close button, a middle click).
+function M.tab_close(i)
+  if paw.ui.float then return end
+  if not L.tab_close(i) then paw.notify("the last tab does not close", "warn") end
+end
+
+--- A new tab on the start page, after the current one, as `:tabnew` makes.
+function M.tab_new()
+  if not paw.ui.float then L.tab_new() end
+end
+
+--- Move tab `from` to place `to` among the tabs, as `:tabmove` does (a
+--- tab dragged along the row).
+function M.tab_move(from, to)
+  if not paw.ui.float then L.tab_move(to, from) end
 end
 
 return M

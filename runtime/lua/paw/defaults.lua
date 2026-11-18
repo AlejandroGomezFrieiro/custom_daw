@@ -923,15 +923,27 @@ command("set", function(ctx)
   -- `set follow?` shows an option; a name that is none is an error, as in Vim.
   local ask = name:match("^(.-)%?$")
   if ask then name, value = ask, nil end
+  local function known(n)
+    for _, o in ipairs(paw.option.list()) do
+      if o.name == n then return true end
+    end
+    return false
+  end
+  -- The true/false forms of Vim: `set follow!` and `set invfollow` flip
+  -- it, `set nofollow` sets it false, `set follow` alone sets it true.
   local flip = name:match("^(.-)!$")
-  local known = false
-  for _, o in ipairs(paw.option.list()) do known = known or o.name == (flip or name) end
-  if not known then return paw.notify("E518: Unknown option: " .. (flip or name), "error") end
-  -- `set follow!` flips a true/false option, as in Vim.
-  if flip then
-    name = flip
-    if type(paw.opt[name]) ~= "boolean" then return paw.notify(name .. " is not a true/false option", "warn") end
-    value = not paw.opt[name]
+  local off = not flip and not ask and not known(name) and name:match("^no(.+)$")
+  local inv = not flip and not ask and not off and not known(name) and name:match("^inv(.+)$")
+  local base = flip or off or inv or name
+  if not known(base) then return paw.notify("E518: Unknown option: " .. (flip or name), "error") end
+  local boolean = type(paw.opt[base]) == "boolean"
+  if flip or off or inv then
+    name = base
+    if not boolean then return paw.notify(name .. " is not a true/false option", "warn") end
+    if value ~= nil then return paw.notify("E474: Invalid argument: " .. tostring(ctx.args[1]) .. " takes no value", "error") end
+    if off then value = false else value = not paw.opt[name] end
+  elseif value == nil and boolean and not ask then
+    value = true
   end
   if value == nil then return paw.notify(name .. " = " .. tostring(paw.opt[name])) end
   local err
@@ -940,7 +952,7 @@ command("set", function(ctx)
   paw.opt[name] = value
   paw.notify(name .. " = " .. tostring(paw.opt[name]))
 end, {
-  desc = "Show or set an option: `set zoom 4`, `set zoom=4`, `set zoom?` shows it, `set follow!` flips it, `set` alone lists them",
+  desc = "Show or set an option: `set zoom 4`, `set zoom=4`, `set zoom?` shows it, `set follow` and `set nofollow` turn it on and off, `set follow!` flips it, `set` alone lists them",
   complete = { "options" },
 })
 

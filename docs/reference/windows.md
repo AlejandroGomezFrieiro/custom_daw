@@ -49,8 +49,9 @@ An empty window shows the start page: `:vnew`, `:tabnew` without a name,
 in the new half. `Ctrl-w h` and `Ctrl-w l` go between the two. Each window
 takes its own keys, and a clip that you open shows in that window.
 
-- The arrange view, the piano roll and the notation view show in any number of windows. Each window has its own state: the open clip, the cursor, the scroll and the zoom of the view. The edit cursor of the arrange view (the track and the time) is one for all its windows.
-- The mixer, the device panel, the session view and the views of extensions without a state for each window show in one window at a time. If you show one of them in a different window, it moves there, with a message.
+- The arrange view, the piano roll, the notation view, the mixer, the device panel and the session view show in any number of windows. Each window has its own state: the open clip, the cursor, the scroll and the zoom of the view. The edit cursor of the arrange view (the track and the time) is one for all the windows.
+- Each device panel follows the cursor track, or shows the track that it is pinned to (`devices://Bass`, `\p`). See [Two panels on two tracks](device-panel.md#two-panels-on-two-tracks).
+- The views of extensions without a state for each window show in one window at a time. If you show one of them in a different window, it moves there, with a message.
 - A panel window closed with `Ctrl-w c` keeps its place. The panel returns there. A second window of a view closes for good.
 - New windows go to the right of and below the window that you split. `:set splitright!` and `:set splitbelow!` put them to the left and above.
 
@@ -65,8 +66,9 @@ A view that opens a thing of its own takes a name of the form
 | `roll://riff` | The piano roll on the clip named riff (the first in the order of the tracks). |
 | `roll://7`, `roll://paw://clip/7` | The piano roll on clip 7. |
 | `notation://riff` | The notation view on the clip riff (the notation extension). |
+| `devices://Bass`, `devices://3` | The device panel, pinned to the track Bass, or to track 3. |
 
-A name that is not a clip shows a message, and the window shows the view as it was.
+A name that is not a clip or a track shows a message, and the window shows the view as it was.
 
 ## Keys and commands
 
@@ -97,7 +99,8 @@ A name that is not a clip shows a message, and the window shows the view as it w
 | `:tabnew Mix`, `:tabnew mixer`, `:tabnew roll://riff` | Makes a new tab named Mix, or a tab that shows the mixer or the clip riff in the piano roll. Without a name, the tab shows the start page. |
 | `gt` `gT`, `:tabn 2` | Go to the next and the previous tab. Go to tab 2. |
 | `Ctrl-w T` | Moves the window to a tab of its own. |
-| `:tabclose` | Closes the tab. |
+| `:tabclose`, `:tabclose 2` | Closes the tab, or tab 2. |
+| `:tabmove`, `:tabmove 0`, `:tabmove 2`, `:tabmove +1` | Moves the tab to the end, to the start, after tab 2, or one place on. |
 | `:tabs` | Lists the tabs and their windows. |
 | `:narrow Strings`, `zn` | Makes a tab of the tracks of one group (`zn`: the group at the cursor). |
 | `:widen`, `zw` | Closes the narrowed tab and returns. |
@@ -105,7 +108,11 @@ A name that is not a clip shows a message, and the window shows the view as it w
 | `:layout save edit`, `:layout edit` | Write the tabs and windows as layout `edit`. Put them back. |
 
 With more than one tab, a tab line along the top gives their names. A click
-on a tab goes to it. A click in a window gives it the keyboard (see
+on a tab goes to it. In the graphical window, each tab has a close
+button, and a middle click on a tab closes it. A drag of a tab moves it
+(`:tabmove`). `+` after the last tab opens a new tab (`:tabnew`).
+
+A click in a window gives it the keyboard (see
 [The mouse](mouse.md)). The rule between two windows side by side is a
 border to drag with the mouse. So is the top row of a window below a
 different window, where a press that the window does not use drags the
@@ -143,7 +150,7 @@ paw.ui.start_layout = { dir = "h", "notation://riff", "roll://riff" }
 A project keeps its tabs and windows. When you save it, paw writes the
 tabs and windows of your frontend into the project file, with the clip
 of each window. When you open the project, paw puts them back. This is
-not an edit, and it is not an undo step. `:set project_screen=false`
+not an edit, and it is not an undo step. `:set noproject_screen`
 (`paw.opt.project_screen = false`) keeps the screen as it is when a
 project opens.
 
@@ -154,8 +161,13 @@ project opens.
 | `size` | The size of a window, in cells. |
 | `weight` | The share of a window, 1 by default. |
 
-Each terminal attached with `paw attach` has its own tabs and windows.
-The project keeps a default: those of the frontend that saved it last.
+Each terminal attached with `paw attach`, and each graphical window, is a
+seat: it has its own tabs and windows. The project keeps the tabs and
+windows of each kind of seat (the graphical window and the terminal). It
+also keeps a default: those of the seat that saved it last. When a project opens,
+each seat gets its own. A seat that has none in the project gets the
+default. A window that attaches to paw after the project opened gets the
+layout of the windows, if the project has one.
 
 ## Narrowed tabs
 

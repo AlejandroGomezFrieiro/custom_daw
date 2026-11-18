@@ -133,6 +133,10 @@ M.parent_of = parent_of
 -- one window or many.
 M.keepers = {}    -- view name -> { { key, get, set, fresh } }
 local bound = {}  -- view name -> the window whose state is in the view's table now
+-- Windows that are in no tab: a view in a window of its own in a graphical
+-- frontend (paw/canvas.lua). Each has a state of its own, as a window of a
+-- tab has.
+local loose = setmetatable({}, { __mode = "k" })
 paw.seats.keep("layout.bound", function() return bound end, function(b) bound = b end, function() return {} end)
 
 --- Keep some state of a view for each window. `get()` gives it (one
@@ -205,7 +209,7 @@ function M.bind(win)
   -- The window before went (another layout, a closed tab) or shows
   -- another view now: what the table holds is the view's latest state,
   -- and this window takes it.
-  if was and (was.view ~= name or not M.get(was.id)) then was, saved = nil, nil end
+  if was and (was.view ~= name or not (loose[was] or M.get(was.id))) then was, saved = nil, nil end
   if was then
     was.kept = now
     if not saved then
@@ -223,6 +227,38 @@ end
 
 --- The window whose state the table of a view holds now, if any.
 function M.bound(name) return bound[name] end
+
+--- A window in no tab for the view `name`: a view in a window of its own
+--- of a graphical frontend. It starts from the state of the window `from`
+--- (the pane that it leaves), else of the window whose state the view
+--- holds now. It keeps its own state from then on.
+function M.loose(name, from)
+  if from and from.view == name then M.bind(from) end
+  local win = M.leaf(name)
+  loose[win] = true
+  M.bind(win)
+  return win
+end
+
+--- True if a window of this number is in a tab of the seat, or is a
+--- window in no tab (`M.loose`) that is still in use.
+function M.alive(id)
+  if M.get(id) then return true end
+  for win in pairs(loose) do
+    if win.id == id then return true end
+  end
+  return false
+end
+
+--- Give the state of the window `from` to the window `to` of the same
+--- view, in place of its own: a view in a window of its own that goes
+--- back into its pane takes what it showed there.
+function M.hand_over(from, to)
+  if not (from and to and from.view == to.view and M.keepers[from.view]) then return end
+  M.bind(from)
+  to.kept = nil
+  bound[from.view] = to
+end
 
 local function pack(...) return { n = select("#", ...), ... } end
 
@@ -246,15 +282,22 @@ function M.settle()
   local u = ui()
   local t = u.tabs and u.tabs[u.tab]
   if not t then return end
+  local canvas = paw.canvas
   for name in pairs(M.keepers) do
-    local win = t.win and M.find_id(t.layout, t.win)
+    -- A view in a window of its own of a graphical frontend, which has
+    -- the keyboard there.
+    local own = canvas and canvas.open_views[name]
+    own = own and own.win
+    local win = own and canvas.inside == name and u.focused == name and own or (t.win and M.find_id(t.layout, t.win))
     if not (win and win.view == name) then
       local id = t.last and t.last[name]
       win = id and M.find_id(t.layout, id)
     end
-    -- Else a window of the view in the tab, or its closed place: what acts
-    -- on the view meanwhile acts on what it will show.
-    if not (win and win.view == name and not win.hidden) then win = M.find(t.layout, name) end
+    -- Else a window of the view in the tab, its window of its own, or its
+    -- closed place: what acts on the view meanwhile acts on what it will show.
+    if not (win and win.view == name and (not win.hidden or win == own)) then
+      win = M.find(t.layout, name, true) or own or M.find(t.layout, name)
+    end
     if win then M.bind(win) end
   end
 end
@@ -844,6 +887,8 @@ function M.enter(win)
   end
   -- The view's table holds this window's state while it has the keyboard.
   M.bind(win)
+  -- A view in a window of its own no longer has the keyboard there.
+  if paw.canvas then paw.canvas.inside = nil end
   t.last = t.last or {}
   t.last[win.view] = win.id
   if u.focused ~= win.view then
@@ -1490,6 +1535,22 @@ function M.tab_close(i)
   return true
 end
 
+--- Move tab `i` (the current tab) to place `to` among the tabs: 1 is the
+--- first. The current tab stays the current tab.
+function M.tab_move(to, i)
+  local u = ui()
+  i = i or u.tab
+  if not u.tabs[i] then return false end
+  to = math.max(1, math.min(#u.tabs, math.floor(to)))
+  local current = u.tabs[u.tab]
+  table.insert(u.tabs, to, table.remove(u.tabs, i))
+  for k, t in ipairs(u.tabs) do
+    if t == current then u.tab = k end
+  end
+  api.ui_redraw()
+  return true
+end
+
 --- What a tab is called: its name, else the buffer of its current window.
 function M.tab_title(t)
   if t.name then return t.name end
@@ -1608,6 +1669,19 @@ function M.as_tabs(spec)
   if type(spec) ~= "table" then return {} end
   if spec.view or spec.dir or spec.children then return { { layout = spec } } end
   return spec
+end
+
+--- The tabs and windows that the project keeps: `{ default, seats }`,
+--- `seats` the layout of each kind of seat (`paw.seats.kind`), each in
+--- the form `M.capture` gives. Nil when it keeps none. A project saved
+--- with one layout gives it as the default.
+function M.project_screen()
+  local screen = api.project_screen()
+  if type(screen) ~= "table" then return nil end
+  if screen.tabs then return { default = screen, seats = {} } end
+  if type(screen.seats) ~= "table" then screen.seats = {} end
+  if not (screen.default or next(screen.seats)) then return nil end
+  return screen
 end
 
 --- Lay out the screen as the configuration starts it: `paw.ui.start_layout
@@ -1772,6 +1846,7 @@ M.tabs = {
   end,
   go = M.tab_go,
   close = M.tab_close,
+  move = function(i, to) return M.tab_move(to, i) end,
   title = M.tab_title,
 }
 
@@ -1924,9 +1999,34 @@ function M.setup()
     -- roll on clip 7; any other word names it.
     M.tab_new(name ~= nil and tostring(name) or nil, view or nil, nil, buf and not buf.single and buf.id or nil, target)
   end, { desc = "A new tab: `tabnew Mix` named, `tabnew mixer` showing the mixer, `tabnew roll://riff` the piano roll on the clip riff", complete = names })
-  command("tabclose", function()
-    if not M.tab_close() then paw.notify("the last tab does not close", "warn") end
-  end, { desc = "Close the tab" })
+  command("tabclose", function(ctx)
+    local n = ctx.args[1] and tonumber(ctx.args[1])
+    if ctx.args[1] and not (n and paw.ui.tabs[n]) then return paw.notify("no tab " .. tostring(ctx.args[1]), "warn") end
+    if not M.tab_close(n) then paw.notify("the last tab does not close", "warn") end
+  end, { desc = "Close the tab, or tab n: `tabclose 2`" })
+  -- As in Vim: `:tabmove` to the end, `:tabmove 0` to the start,
+  -- `:tabmove 2` after tab 2, `:tabmove +1` and `:tabmove -1` one on or back.
+  command("tabmove", function(ctx)
+    local u = paw.ui
+    local arg = ctx.args[1] and tostring(ctx.args[1])
+    local to
+    if not arg then
+      to = #u.tabs
+    else
+      local sign, n = arg:match("^([%+%-]?)(%d*)$")
+      if not sign or (sign == "" and n == "") then return paw.notify("usage: tabmove, tabmove 0, tabmove 2, tabmove +1, tabmove -1", "warn") end
+      n = tonumber(n) or 1
+      if sign == "+" then
+        to = u.tab + n
+      elseif sign == "-" then
+        to = u.tab - n
+      else
+        to = n < u.tab and n + 1 or n
+      end
+    end
+    if to < 1 or to > #u.tabs then return paw.notify("no place " .. arg .. " for the tab", "warn") end
+    M.tab_move(to)
+  end, { desc = "Move the tab: `tabmove` to the end, `tabmove 0` to the start, `tabmove 2` after tab 2, `tabmove +1`" })
   command("tabnext", function(ctx)
     local n = tonumber(ctx.args[1])
     if n then return M.tab_go(n) end
@@ -2057,15 +2157,42 @@ function M.setup()
   map("gt", "tabnext", { desc = "The next tab" })
   map("gT", "tabprevious", { desc = "The previous tab" })
 
-  -- The project keeps the tabs and windows of the seat that saves it, and
-  -- opens with them: each seat has its own after that.
+  -- The project keeps the tabs and windows of each kind of seat (the
+  -- graphical window, a terminal: `paw.seats.kind`), and a default: those
+  -- of the seat that saved it. Opening it gives each seat its own, else
+  -- the default. A project saved before keeps one layout, the default.
   paw.option.define("project_screen", true)
   paw.on("project.saving", function()
-    if paw.opt.project_screen then api.project_screen_set(M.capture()) end
+    if not paw.opt.project_screen then return end
+    local screen = M.project_screen() or { seats = {} }
+    screen.default = M.capture()
+    screen.seats[paw.seats.kind()] = screen.default
+    -- The other seats open now keep theirs too.
+    for _, id in ipairs(paw.seats.list()) do
+      if id ~= paw.seats.current then
+        screen.seats[paw.seats.kind(id)] = paw.seats.within(id, M.capture)
+      end
+    end
+    api.project_screen_set(screen)
   end)
   paw.on("project.loaded", function()
-    local screen = paw.opt.project_screen and api.project_screen()
-    if type(screen) == "table" then M.restore(screen) end
+    if not paw.opt.project_screen then return end
+    local screen = M.project_screen()
+    if not screen then return end
+    for _, id in ipairs(paw.seats.list()) do
+      local mine = screen.seats[paw.seats.kind(id)] or screen.default
+      if mine then
+        if id == paw.seats.current then M.restore(mine) else paw.seats.within(id, M.restore, mine) end
+      end
+    end
+  end)
+  -- A seat that opens after the project did (a window attached to it)
+  -- takes the layout that the project keeps for its kind, if any.
+  paw.on("seat.opened", function(event)
+    if not paw.opt.project_screen then return end
+    local screen = M.project_screen()
+    local mine = screen and screen.seats[paw.seats.kind(event.seat)]
+    if mine then paw.defer(function() paw.seats.within(event.seat, M.restore, mine) end) end
   end)
 
   paw.on("startup", M.start)
