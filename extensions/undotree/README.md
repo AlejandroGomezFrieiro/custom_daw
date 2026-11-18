@@ -1,12 +1,12 @@
 # undotree
 
-Neovim's undo tree for paw. No edit is lost by undoing and then changing
-something: the change starts a new branch, and the old one stays where you can
-go back to it. Any earlier state can be returned to, by walking the tree, by
-stepping through time across branches, or by a time (`:earlier 2m`). States
-can be named, named states can be written beside the project as checkpoints
-and restored after reopening it, and two states can be compared by ear while
-the song plays.
+The undo tree of Neovim, for paw. An undo followed by a change does not
+lose an edit: the change starts a new branch, and the old branch stays.
+You can return to any earlier state: walk the tree, step through time
+across branches, or give a time (`:earlier 2m`). You can name states,
+write named states beside the project as checkpoints, and restore them
+after the project opens again. You can compare two states by ear while the
+song plays.
 
 ```lua
 paw.ext.load("extensions/undotree")   -- or put the directory in ~/.config/paw/extensions
@@ -14,166 +14,233 @@ paw.ext.load("extensions/undotree")   -- or put the directory in ~/.config/paw/e
 
 ![The melody moved with 3>ic, undone and moved with 2>ic instead; ,uu shows both branches, and Enter goes back to the first](images/tui-undotree.gif)
 
-The tree itself is in the kernel, so `u` and `Ctrl-r` walk it whether or not
-this extension is loaded; the extension is the interface to the rest of it.
+## Try it
 
-## Keys
+1. Type `:ext.load undotree`, and open a song.
+2. Put the cursor on a clip. Type `3>ic`. The clip moves three steps later.
+3. Press `u`, then type `2>ic`. The clip moves two steps later. The first
+   edit is now on another branch.
+4. Press `,uu`. The window of the tree shows two branches.
+5. Press `j` to select the state of the first edit, and press Enter. The
+   clip is three steps later again.
 
-| Keys | What they do |
+## How to
+
+### How to return to an earlier state
+
+- To return two minutes, type `:earlier 2m`. To go forward, type
+  `:later 2m`.
+- To step through states in the order that they were made, press `g-` or
+  `g+`.
+- To choose a state, press `,uu`, select the state and press Enter.
+
+### How to compare two versions by ear
+
+1. Press `,ua`. This state is A.
+2. Continue to work, or go to another state of the tree.
+3. Start playback, and press `\`. You hear A.
+4. Press `\` again. You hear where you were, B.
+5. To forget A and B, press `,uB`.
+
+### How to keep a version after paw closes
+
+1. Save the project.
+2. Type `:checkpoint before the bridge`, or press `,uc` and type the name.
+3. Later, to restore it, type `:checkpoints` and choose it.
+
+The restore is a new step. So `u` returns to where you were.
+
+### How to see what a step changed
+
+- For the last step, type `:undo.diff`, or press `,ud`.
+- From state 3 to now, type `:undo.diff 3`.
+
+### In the graphical window
+
+- Choose More ▸ Undo tree, or type `:view.window undotree_paint`.
+- Click a state to go there. Point at a state to see the step, its time
+  and the state that it came from.
+
+## Reference
+
+The tree is in the kernel. So `u` and `Ctrl-r` walk it when the extension
+is not loaded. The extension is the interface to the rest of the tree.
+
+### Keys
+
+| Keys | Effect |
 | --- | --- |
-| `g-` `g+` | the state made before or after this one, whatever branch it is on (with a count: `5g-`) |
-| `<leader>uu` | the undo tree window |
-| `<leader>ua` | mark this state as A |
-| `<leader>ub`, `\` | switch between A and where you were (B) |
-| `<leader>uB` | forget A and B |
-| `<leader>uc` | write a checkpoint (asks for a name) |
-| `<leader>ul` | list checkpoints and restore one |
-| `<leader>un` | name this state, for this session |
-| `<leader>ud` | what the last step changed |
+| `g-` `g+` | the state made before or after this state, on any branch (with a count: `5g-`) |
+| `<leader>uu` | the window of the undo tree |
+| `<leader>ua` | marks this state as A |
+| `<leader>ub`, `\` | switches between A and where you were (B) |
+| `<leader>uB` | forgets A and B |
+| `<leader>uc` | writes a checkpoint. It asks for a name |
+| `<leader>ul` | lists checkpoints, to restore one |
+| `<leader>un` | names this state, for this session |
+| `<leader>ud` | shows what the last step changed |
 
-`u` and `Ctrl-r` are the built-in undo and redo: undo goes to the parent state,
-redo to the child last visited. `\` is the option `undotree_ab_key`; set it
-to another key, or `""` for none, before the extension loads.
+- `u` and `Ctrl-r` are the built-in undo and redo. Undo goes to the parent
+  state. Redo goes to the child that you visited last.
+- `\` is the option `undotree_ab_key`. Set it to another key, or to `""`
+  for none, before the extension loads.
 
-In the undo tree window: `j` `k` move (`Ctrl-d` `Ctrl-u` by ten, `g` `G` to
-the ends), `Enter` goes to the selected state and stays open, `u` `Ctrl-r`
-undo and redo, `-` `+` step through time like `g-` `g+`, `a` marks the
-selected state A, `b` switches A/B, `n` names the selected state, `c` writes a
-checkpoint of the current state, `d` switches the right-hand side between
-what the selected state's step changed and what differs from it to the
-current state, `Space` plays and stops, `q` or `Esc` closes. A click on a row
-selects it, and the wheel moves the selection.
+### The window
 
-In the graphical frontend the tree opens in a painted window of its own
-(More ▸ Undo tree, or `:view.window undotree_paint`): a node for each state,
-newest at the top, the branches drawn between them, the way back to the first
-state and the current state lit. A click on a state goes there; resting the
-pointer on one says what the step was, when, and which state it grew from;
-the right-hand side shows what the chosen state changed. It takes the same
-keys as the terminal's, and a name asked for with `n` or `c` is typed on its
-last line. (`:view.window undotree`, or "Open in a window" on `<leader>uu`,
-opens the terminal's view in cells instead.)
-
-The terminal's tree draws newest at the top. `@` is the current state, `*` any other;
-`│` carries a branch down to where it grew from, and `─┘` joins it there.
-Each row shows the state's number, the time it was made, its name in quotes,
-`[A]` `[B]`, `(saved)` for the state last saved, and what made it: the
-description of the key or command, then the keys typed (`Delete the clip  x`,
-`Add a track above  O`, `Set Keys volume`), or `a change` for changes made by
-scripts, `opened` for the project as loaded.
-
-## Commands
-
-| Command | |
+| Keys | Effect |
 | --- | --- |
-| `:undotree` | open or close the window |
+| `j` `k` | move. `Ctrl-d` `Ctrl-u` by ten, `g` `G` to the ends |
+| `Enter` | goes to the selected state. The window stays open |
+| `u` `Ctrl-r` | undo and redo |
+| `-` `+` | step through time, as `g-` `g+` |
+| `a` | marks the selected state as A |
+| `b` | switches between A and B |
+| `n` | names the selected state |
+| `c` | writes a checkpoint of the current state |
+| `d` | switches the right side between what the step of the selected state changed, and what is different from it to the current state |
+| `Space` | plays and stops |
+| `q`, `Esc` | closes |
+
+A click on a row selects it. The wheel moves the selection.
+
+The tree in the terminal shows the newest state at the top.
+
+- `@` is the current state, `*` any other state.
+- `│` takes a branch down to the state where it started, and `─┘` joins it
+  there.
+- Each row shows the number of the state, its time and its name in
+  quotes. It shows `[A]` `[B]`, and `(saved)` for the state saved last.
+- Then it shows what made the state: the description of the key or the
+  command, then the keys typed (`Delete the clip  x`, `Add a track above
+  O`, `Set Keys volume`). It shows `a change` for changes by scripts, and
+  `opened` for the project as it opened.
+
+In the graphical window, the tree opens in a painted window of its own.
+Each state is a node, with the newest at the top, and lines for the
+branches. The way back to the first state and the current state are lit.
+It takes the same keys as the terminal. You type a name for `n` or `c` on
+its last line. `:view.window undotree`, or "Open in a window" on
+`<leader>uu`, opens the view of the terminal in cells.
+
+### Commands
+
+| Command | Effect |
+| --- | --- |
+| `:undotree` | opens or closes the window |
 | `:earlier 5`, `:earlier 30s`, `:earlier 2m`, `:earlier 1h`, `:earlier 1d` | back by a count of states or by a time, across branches |
-| `:later …` | the same, forwards |
-| `:undo.goto 12` | go to state 12 |
-| `:undo.name verse` | name the current state, for this session only |
-| `:undo.diff`, `:undo.diff 3`, `:undo.diff 3 7` | what the last step changed; from state 3 to now; from 3 to 7 |
-| `:checkpoint before the bridge` | name the current state and write it beside the project |
-| `:checkpoints` | list checkpoints; choosing one restores it |
-| `:checkpoint.restore 2`, `:checkpoint.restore intro` | restore by number in the list or by name |
-| `:checkpoint.delete 2` | delete a checkpoint file |
-| `:ab.mark`, `:ab.mark 12` | mark the current state, or state 12, as A |
-| `:ab.toggle` | switch between A and B |
-| `:ab.clear` | forget A and B |
+| `:later …` | the same, forward |
+| `:undo.goto 12` | goes to state 12 |
+| `:undo.name verse` | names the current state, for this session only |
+| `:undo.diff`, `:undo.diff 3`, `:undo.diff 3 7` | what the last step changed. From state 3 to now. From 3 to 7 |
+| `:checkpoint before the bridge` | names the current state and writes it beside the project |
+| `:checkpoints` | lists checkpoints. When you choose one, paw restores it |
+| `:checkpoint.restore 2`, `:checkpoint.restore intro` | restores by number in the list or by name |
+| `:checkpoint.delete 2` | deletes a checkpoint file |
+| `:ab.mark`, `:ab.mark 12` | marks the current state, or state 12, as A |
+| `:ab.toggle` | switches between A and B |
+| `:ab.clear` | forgets A and B |
 
-Time travel follows Vim: `:earlier 2m` goes to the newest state made at least
-two minutes before the current state was, and stops at the oldest state;
-`:later` goes to the newest state made by that time after it. A count steps
-through states in the order they were made, like `g-` and `g+`. Vim's `f`
-(file writes) is not supported.
+Time travel obeys Vim. `:earlier 2m` goes to the newest state made at
+least two minutes before the current state, and stops at the oldest state.
+`:later` goes to the newest state made by that time after it. A count
+steps through states in the order that they were made, as `g-` and `g+`
+do.
 
-## A/B
+### A/B
 
-Mark one version A (`<leader>ua`), go on working or go somewhere else in the
-tree, and press `\` to hear A; `\` again goes back to where you were, which is
-B. Each switch first closes the open undo step, so B is exactly what you last
-heard. Moving is an ordinary sync of one snapshot to the other, the same path
-every edit and undo takes, so the transport does not stop or move, and only
-what differs between the two versions is sent to the engine: a volume
-change is a volume change, a different clip list replaces that track's clips,
-and a device that is only in one version is added or removed (a plugin added
-this way starts from its saved state, which may be heard). A and B are kept
-from pruning while they are marked. Opening another project forgets them.
+- Each switch first closes the open undo step. So B is what you heard
+  last.
+- A switch is an ordinary sync from one snapshot to the other, as each edit
+  and undo is. So the transport does not stop or move.
+- paw sends the engine only what is different between the two versions. A
+  volume change is a volume change. A different list of clips replaces the
+  clips of that track. A device that is only in one version is added or
+  removed. A plugin added in this way starts from its saved state, and you
+  can hear this.
+- paw does not prune A and B while they are marked.
+- When another project opens, paw forgets A and B.
 
-## Checkpoints on disk
+### Checkpoints on disk
 
-`:checkpoint <name>` names the current state and writes it to a folder beside
-the project file, named after it: `song.json` keeps its checkpoints in
-`song.checkpoints/`. The folder is only made by the first checkpoint, so a
-project that never uses them has none. Each checkpoint is one file,
-`<milliseconds since 1970>-<name>.json` (the name percent-encoded, spaces as
-`+`), holding the project as it was with its plugins' state; listing reads
-only the folder. Two checkpoints may share a name; both are kept.
+- `:checkpoint <name>` names the current state and writes it to a folder
+  beside the project file. `song.json` keeps its checkpoints in
+  `song.checkpoints/`.
+- The first checkpoint makes the folder. So a project with no checkpoints
+  has no folder.
+- Each checkpoint is one file, `<milliseconds since 1970>-<name>.json`.
+  The name is percent-encoded, with spaces as `+`. The file holds the
+  project as it was, with the state of its plugins. The list reads only
+  the folder.
+- Two checkpoints can have the same name. paw keeps both.
+- A project that you did not save has no folder. `:checkpoint` then names
+  the state and keeps it in memory. The first save of the project writes
+  all these checkpoints, each as its state was.
+- A restore does not remove history. It is a new step below the current
+  state, with the name of the checkpoint. So `u` returns to where you were.
+- Checkpoints are not undo history. When the project opens again, the tree
+  starts from the project as it opened. The checkpoints are what is left of
+  earlier sessions.
 
-A project that has never been saved has no folder. `:checkpoint` then names
-the state and remembers it, and the first save of the project writes every
-checkpoint named so far (as each state was, even if you have moved on since).
-Until then those names live only in this session.
+### The limit of the tree
 
-Restoring a checkpoint does not throw history away: it is a new step below the
-current state, named as the checkpoint, so `u` goes back to where you were.
-Checkpoints are not undo history: after reopening a project the tree starts
-again from the project as loaded, and the checkpoints are what is left of
-earlier sessions.
+<!-- tags: undotree-pruning -->
 
-## Pruning
+- The tree keeps at most 1000 states.
+- When an edit goes past that, paw drops the oldest state that is not
+  protected. The protected states are the root (the project as opened or
+  made), the current state, the state saved last, named states, A and B.
+- The children of the dropped state go to its parent. Undo from them goes
+  past it.
+- States share all unchanged parts through `Arc`. So a state costs about
+  what its edit changed.
+- When all states are protected, paw keeps more than the limit. It does not
+  drop a protected state.
 
-The tree keeps at most 1000 states. When an edit takes it past that, the
-oldest state is dropped that is not the root (the project as opened or made),
-the current state, the state last saved, a named state, or A or B. Its
-children hang from its parent instead, so undoing from them skips over it.
-States share everything unchanged through `Arc`, so a state costs about what
-its edit changed. When every state is protected the limit gives way rather
-than drop one.
-
-## API
+### API
 
 In `paw.api`, plain data only:
 
-| Function | |
+| Function | Returns or does |
 | --- | --- |
-| `undo_tree()` | `{ current, root, saved, limit, pending, states }`; each state is `{ id, parent, children, redo, time, label, keys, name, keep, current, saved }`, oldest first. `time` is seconds since 1970; `pending` says an edit is open; `redo` is the child redo goes to |
-| `undo_current()` | the current state's id |
-| `undo_goto(id)` | go to a state; false if there is none |
-| `undo_step(n)` | `n` states later in the order they were made (earlier when negative); the id gone to, or nil |
-| `undo_travel(seconds)` | to the newest state made that long after (before, when negative) the current one; the id, or nil |
-| `undo_name(name, id)` | name a state, the current one by default; nil or `""` removes the name; returns the id |
-| `undo_keep(id, keep)` | keep a state from pruning, or let it go again |
-| `undo_diff(a, b)` | what differs from `a` to `b` (`b` defaults to the current state, `a` to `b`'s parent): `{ from, to, same, project, tracks, devices, clips, notes, lanes, items }`, each kind `{ added, removed, changed }`, `project` a list of fields, `items` lines such as `~ device synth on track Bass: cutoff` |
-| `undo_label(text)`, `undo_keys(text)` | what makes the open step (the first label given wins) and the keys typed; the runtime sets them from the key's or command's description |
+| `undo_tree()` | `{ current, root, saved, limit, pending, states }`. Each state is `{ id, parent, children, redo, time, label, keys, name, keep, current, saved }`, oldest first. `time` is seconds since 1970. `pending` tells that an edit is open. `redo` is the child that redo goes to |
+| `undo_current()` | the id of the current state |
+| `undo_goto(id)` | goes to a state. false if there is none |
+| `undo_step(n)` | `n` states later in the order that they were made (earlier when negative). The id of the new state, or nil |
+| `undo_travel(seconds)` | goes to the newest state made that long after (before, when negative) the current state. The id, or nil |
+| `undo_name(name, id)` | names a state, the current state by default. nil or `""` removes the name. Returns the id |
+| `undo_keep(id, keep)` | protects a state from pruning, or removes the protection |
+| `undo_diff(a, b)` | what is different from `a` to `b` (`b` defaults to the current state, `a` to the parent of `b`): `{ from, to, same, project, tracks, devices, clips, notes, lanes, items }`. Each kind is `{ added, removed, changed }`. `project` is a list of fields. `items` are lines such as `~ device synth on track Bass: cutoff` |
+| `undo_label(text)`, `undo_keys(text)` | what makes the open step (the first label wins), and the keys typed. The runtime sets them from the description of the key or the command |
 | `checkpoint_dir()` | the folder, or nil for a project with no file |
-| `checkpoint_write(name, id)` | write a state (the current one by default) and name it; `{ file, name, time, state }` |
+| `checkpoint_write(name, id)` | writes a state (the current state by default) and names it. Returns `{ file, name, time, state }` |
 | `checkpoint_list()` | `{ file, name, time }` for each, oldest first |
-| `checkpoint_restore(file)` | a path from the list or a file name in the folder; the new state's id |
-| `checkpoint_delete(file)` | |
+| `checkpoint_restore(file)` | a path from the list, or a file name in the folder. Returns the id of the new state |
+| `checkpoint_delete(file)` | deletes a checkpoint file |
 
-`paw.undo()` and `paw.redo()` are unchanged. `undo_checkpoint()` is the older
-call that closes the open undo step; it is not about checkpoints on disk.
+- `paw.undo()` and `paw.redo()` are as before. `undo_checkpoint()` is an
+  older function that closes the open undo step. It is not about
+  checkpoints on disk.
+- `undo_diff` compares notes in clips that are in both states. A note at
+  the same start and pitch with a different value is changed. A note that
+  moved is removed and added. It counts clips that were added or removed,
+  not their notes.
 
-Notes are compared within clips present in both states: a note at the same
-start and pitch with something else different counts as changed, one that
-moved counts as removed and added. Notes of clips that were added or removed
-are not counted, only the clips.
+`require("undotree")` has the Lua side: `tree()`, `rows(tree)` (the
+drawing), `go(id)`, `travel(dir, amount, count)`, `mark_a(id)`,
+`toggle()`, `clear_ab()`, `checkpoint(name)`, `items()`, `restore(item)`,
+`choose()`.
 
-`require("undotree")` has the Lua side: `tree()`, `rows(tree)` (the drawing),
-`go(id)`, `travel(dir, amount, count)`, `mark_a(id)`, `toggle()`,
-`clear_ab()`, `checkpoint(name)`, `items()`, `restore(item)`, `choose()`.
+### Limits
 
-## Not done
-
-- The tree is not saved: closing the program or opening another project
-  starts it again. Checkpoints are what lasts.
-- Labels name the key or command by its description (a command's own
-  `label` option, else its description up to the first example). Edits made
-  by scripts, timers or the control socket without a command are labelled
-  `a change`.
-- Moving notes is counted as a removal and an addition, and notes inside added
-  or removed clips are not counted.
-- Comparing by ear switches the whole project. There is no A/B of one track
-  alone, and no crossfade at the switch.
-- Vim's `:earlier 1f` (by file writes) and `:undolist` are not there; the
+- paw does not save the tree. When the program closes or another project
+  opens, the tree starts again. Checkpoints stay.
+- Labels name the key or the command by its description (the `label`
+  option of a command, else its description to the first example). Edits
+  by scripts, timers or the control socket without a command have the
+  label `a change`.
+- A note that moves counts as removed and added. Notes in added or removed
+  clips do not count.
+- The comparison by ear switches the full project. There is no A/B of one
+  track, and no crossfade at the switch.
+- Vim has `:earlier 1f` (by file writes) and `:undolist`. paw does not. The
   window does both jobs.
