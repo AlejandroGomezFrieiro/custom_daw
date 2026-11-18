@@ -319,7 +319,11 @@ command("track.new", function()
     end,
   })
 end, { desc = "Add a track of a kind chosen from a list: an ordinary one, or one an extension defines (a vocal track, a drum track)" })
-command("track.remove", function()
+command("track.remove", function(ctx)
+  -- Never the cursor's track when another was meant.
+  if ctx.args[1] ~= nil then
+    error("track.remove removes the track at the cursor and takes no argument: `:t3 track.remove` removes track 3", 0)
+  end
   local track = need_track()
   if not track then return end
   local index = cursor.index()
@@ -775,7 +779,13 @@ end, { desc = "Route the track into another by name, or to the master: `track.ou
 command("clip.add", function(ctx)
   local track = need_track()
   if not track then return end
-  local length = tonumber(ctx.args.length) or paw.opt.clip_length
+  if ctx.args[1] ~= nil then
+    error("clip.add puts a clip at the cursor and takes length= and name=: `clip.add length=8`", 0)
+  end
+  local length = ctx.args.length == nil and paw.opt.clip_length or tonumber(ctx.args.length)
+  if not length or not (length > 0 and length < math.huge) then
+    error("a clip's length is a number of beats above 0, not " .. tostring(ctx.args.length), 0)
+  end
   local clip = track:add_clip({ start = cursor.beat, length = length * (ctx.count or 1), name = ctx.args.name })
   return clip
 end, { desc = "Add an empty MIDI clip at the cursor" })
@@ -903,13 +913,6 @@ command("export", function(ctx)
   paw.notify(string.format("exported %d notes to %s", notes, path))
 end, { desc = "Write a MIDI file of the project, of the clip at the cursor, or of the selection's tracks: `export song.mid`, `export riff.mid clip`, `export part.mid selection`", complete = { "files", function() return { "clip", "selection" } end } })
 
---- Text typed for an option, as the value it stands for.
-local function option_value(text)
-  if text == "true" or text == "on" then return true end
-  if text == "false" or text == "off" then return false end
-  return tonumber(text) or text
-end
-
 command("set", function(ctx)
   local name, value = ctx.args[1], ctx.args[2]
   for key, v in pairs(ctx.args) do
@@ -931,7 +934,10 @@ command("set", function(ctx)
     value = not paw.opt[name]
   end
   if value == nil then return paw.notify(name .. " = " .. tostring(paw.opt[name])) end
-  paw.opt[name] = type(value) == "string" and option_value(value) or value
+  local err
+  value, err = paw.option.read(name, value)
+  if value == nil then return paw.notify(err, "error") end
+  paw.opt[name] = value
   paw.notify(name .. " = " .. tostring(paw.opt[name]))
 end, {
   desc = "Show or set an option: `set zoom 4`, `set zoom=4`, `set zoom?` shows it, `set follow!` flips it, `set` alone lists them",
@@ -1722,6 +1728,10 @@ command("cmdline", function(ctx)
     -- A number alone is a bar to go to, as it is a line in an editor.
     if line:match("^%s*%d+%s*$") then return paw.commands.run("cursor.bar", { tonumber(line) }) end
     if line:match("%S") then paw.state.last_cmdline = line paw.commands.used(line:match("^%s*:?(%S+)")) end
+    -- What the line changes is one undo step, named by the line, not by
+    -- the `:` that opened it.
+    api.undo_label(nil)
+    api.undo_label(":" .. line:match("^%s*:?(.-)%s*$"))
     paw.commands.exec(line)
   end)
 end, { desc = "Type a command" })
@@ -2857,6 +2867,7 @@ command("view.maximize", function()
 end, { desc = "Give the focused window the whole tab, or put the others back" })
 
 map("<C-w>d", "view.dock", { desc = "Put a view in a window of its own back in the main window, as a pane" })
+map("<C-^>", function() paw.layout.alternate() end, { desc = "Show what this window showed before, as `:b #` does" })
 map("<C-w>+", "view.height 1", { desc = "Taller window; with the arrange view alone, taller tracks" })
 map("<C-w>-", "view.height -1", { desc = "Shorter window; with the arrange view alone, shorter tracks" })
 map("<C-w>=", "view.equal", { desc = "Windows of equal size; with the arrange view alone, track height automatic" })

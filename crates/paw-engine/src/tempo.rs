@@ -296,7 +296,8 @@ impl TempoMap {
     /// The bar a beat is in, counting from 0.
     pub fn bar_of(&self, beat: f64) -> i64 {
         let b = self.bars_at_beat(beat);
-        b.bar + ((beat - b.beat) / b.len + EPS).floor() as i64
+        // Saturating: a beat absurdly far on is in the last bar there is.
+        b.bar.saturating_add(((beat - b.beat) / b.len + EPS).floor() as i64)
     }
 
     /// Where bar `bar` (counting from 0) starts, in beats.
@@ -341,15 +342,16 @@ impl TempoMap {
     }
 
     /// Every bar and signature beat line from `from` up to and not
-    /// including `to`, in order.
-    pub fn lines(&self, from: f64, to: f64, mut f: impl FnMut(Line)) {
+    /// including `to`, in order, for as long as `f` returns true.
+    pub fn lines(&self, from: f64, to: f64, mut f: impl FnMut(Line) -> bool) {
         if !to.is_finite() {
             return;
         }
         let mut bar = self.bar_of(from.max(0.0));
         loop {
             let start = self.bar_start(bar);
-            if start >= to {
+            // A bar past the last one counted is past any `to` worth asking.
+            if start >= to || bar == i64::MAX {
                 return;
             }
             let end = self.bar_start(bar + 1);
@@ -360,8 +362,8 @@ impl TempoMap {
                 if beat >= end - EPS || beat >= to {
                     break;
                 }
-                if beat >= from - EPS {
-                    f(Line { beat, bar, index });
+                if beat >= from - EPS && !f(Line { beat, bar, index }) {
+                    return;
                 }
                 index += 1;
             }
@@ -547,7 +549,10 @@ mod tests {
         near(m.bar_start(3), 9.0, "then bars of three");
         assert!(m.is_bar_line(6.0));
         let mut lines = Vec::new();
-        m.lines(3.5, 9.5, |l| lines.push((l.beat, l.bar, l.index)));
+        m.lines(3.5, 9.5, |l| {
+            lines.push((l.beat, l.bar, l.index));
+            true
+        });
         assert_eq!(
             lines,
             vec![
@@ -562,6 +567,22 @@ mod tests {
     }
 
     #[test]
+    fn lines_far_away_or_many_end() {
+        let m = TempoMap::new(&[], &[s(0.0, 4, 4), s(8.0, 3, 4)]);
+        let mut n = 0;
+        m.lines(1e300, 1e300, |_| {
+            n += 1;
+            true
+        });
+        m.lines(0.0, 1e300, |_| {
+            n += 1;
+            n < 100
+        });
+        assert_eq!(n, 100, "nothing out there, and the count stops it");
+        assert_eq!(m.bar_of(1e300), i64::MAX, "a beat past every bar is in the last");
+    }
+
+    #[test]
     fn lines_follow_the_unit() {
         let m = TempoMap::new(&[], &[s(0.0, 6, 8)]);
         let mut n = 0;
@@ -569,6 +590,7 @@ mod tests {
         m.lines(0.0, 6.0, |l| {
             n += 1;
             bars += (l.index == 0) as i32;
+            true
         });
         assert_eq!((n, bars), (12, 2), "two bars of six eighths");
     }

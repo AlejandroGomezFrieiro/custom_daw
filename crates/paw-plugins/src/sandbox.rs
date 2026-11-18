@@ -398,6 +398,10 @@ struct RemoteDevice {
     /// Parameter moves for the next block.
     moves: Vec<ParamMove>,
     told_priority: bool,
+    /// The longest a render waits for one block: a device that is never
+    /// in this process (a script) is ended as soon as live, a plugin is
+    /// given [`OFFLINE_LIMIT`].
+    offline_limit: Duration,
 }
 
 impl RemoteDevice {
@@ -416,7 +420,8 @@ impl Device for RemoteDevice {
         let link = &*self.link;
         let shm = &link.shm;
         let header = shm.header();
-        if link.dead.load(Ordering::Relaxed) {
+        // A helper that has said why it stopped is ending, or has ended.
+        if link.dead.load(Ordering::Relaxed) || header.reason_len.load(Ordering::Acquire) > 0 {
             return self.without(io);
         }
         if self.outstanding {
@@ -491,7 +496,7 @@ impl Device for RemoteDevice {
             if TEST_HANG.load(Ordering::Relaxed) {
                 Duration::from_secs(1)
             } else {
-                OFFLINE_LIMIT
+                self.offline_limit
             }
         } else {
             block + block / 2 + Duration::from_millis(2)
@@ -503,7 +508,8 @@ impl Device for RemoteDevice {
                 break;
             }
             let waited = started.elapsed();
-            if waited >= limit || link.dead.load(Ordering::Relaxed) {
+            let stopped = header.reason_len.load(Ordering::Acquire) > 0;
+            if waited >= limit || link.dead.load(Ordering::Relaxed) || stopped {
                 self.outstanding = true;
                 link.late.fetch_add(1, Ordering::Relaxed);
                 if offline {
@@ -853,8 +859,10 @@ impl Controller for RemoteController {
         // Late now and then is a slow plugin; late every time for a while,
         // with no answer in between, is a plugin that has hung.
         if self.ended.is_none() && self.link.dead.load(Ordering::Relaxed) {
-            // Given up on by the audio side: a render it did not answer.
-            self.end("it did not answer a block of the render in time and was ended".into());
+            // Given up on by the audio side: a render it did not answer, or
+            // one it stopped in, saying why.
+            let why = self.link.shm.header().reason();
+            self.end(why.unwrap_or_else(|| "it did not answer a block of the render in time and was ended".into()));
         } else if answered != answered_before {
             self.stalled_since = None;
         } else if late != late_before || self.stalled_since.is_some() {
@@ -1050,6 +1058,7 @@ impl RemoteFactory {
                 outstanding: false,
                 moves: Vec::with_capacity(PARAMS),
                 told_priority: false,
+                offline_limit: if self.argv.is_some() { STALL_LIMIT } else { OFFLINE_LIMIT },
             }),
             controller: Some(Box::new(controller)),
         }

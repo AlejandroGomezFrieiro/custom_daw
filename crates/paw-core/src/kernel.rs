@@ -409,7 +409,7 @@ impl Kernel {
                         let value: LuaValue = self.call("rpc", (method, params, client))?;
                         self.lua.from_value::<Value>(value)
                     })()
-                    .map_err(|err| err.to_string());
+                    .map_err(|err| told(&err));
                     self.shared.input_from.set(0);
                     result
                 };
@@ -593,4 +593,16 @@ fn install_loader(lua: &Lua, env: &Env) -> mlua::Result<()> {
     })?;
     // After the path searcher, so files on disk can replace built-in modules.
     package.get::<Table>("loaders")?.push(embedded)
+}
+
+/// What went wrong in a call on the control socket, as its caller is told
+/// it (docs/protocol.md): the message alone, without the way it came
+/// through Lua and Rust.
+fn told(err: &mlua::Error) -> String {
+    let whole = match err {
+        mlua::Error::CallbackError { cause, .. } => return told(cause),
+        mlua::Error::RuntimeError(message) => message.clone(),
+        other => other.to_string(),
+    };
+    whole.split("\nstack traceback:").next().unwrap_or_default().trim_end().to_string()
 }

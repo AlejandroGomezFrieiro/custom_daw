@@ -84,6 +84,18 @@ are answered in order. A request with `"id": null` is answered with
 An extension adds methods of its own with
 `paw.remote.methods["name"] = function(client, ...) return … end`.
 
+Every request that runs Lua (all of the above but `hello`, `ui.*`,
+`file.*` and `monitor.*`) has the time limit a key has,
+`paw.opt.lua_limit` (2 seconds): one that runs longer is stopped and
+answered with an error that says so, and the instance goes on. Waiting
+in the kernel does not count (a render, opening a project). Code sent
+with `eval` that knows it needs longer asks for it first:
+`paw.limit.extend(60000)`.
+
+An error is the message alone, as Lua or the kernel gave it, with no
+stack: ``"no method `nonsense`"``, `"no clip 9"`, `"rpc:1: attempt to
+perform arithmetic on a nil value"` (`rpc` is the code sent with `eval`).
+
 ### `hello` and the token
 
 Over TCP the kernel speaks first:

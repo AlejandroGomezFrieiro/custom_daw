@@ -410,6 +410,7 @@ local function hearable(path) return is_sound(path) or is_midi(path) end
 local function hear(path)
   local ok, err = pcall(paw.pick.hear_file, path)
   if not ok then paw.notify(tostring(err):match("^[^\n]*"):gsub("^[^:]*:%d+: ", ""), "warn") end
+  return ok
 end
 
 local heard = { path = nil, since = 0, playing = nil }
@@ -615,8 +616,9 @@ end, "Files: show or hide the files whose names start with a dot")
 
 files_key("gh", function(buf, t, s)
   local line = t.lines[s.row]
-  if not (line and line.id) then return end
-  if hearable(line.id) then hear(line.id) else paw.notify(basename(line.id) .. " is not a sound or MIDI file", "warn") end
+  if not (line and line.id) then return paw.notify("no file on this line to hear", "warn") end
+  if not hearable(line.id) then return paw.notify(basename(line.id) .. " is not a sound or MIDI file", "warn") end
+  if hear(line.id) then paw.notify("hearing " .. basename(line.id)) end
 end, "Files: hear the file")
 
 files_key("gH", function()

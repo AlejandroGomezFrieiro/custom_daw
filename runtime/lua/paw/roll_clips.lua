@@ -19,7 +19,7 @@ local M = {}
 -- Which tracks' notes the roll shows behind its own: "all" pitched tracks,
 -- those of the active clip's "group", "none", or a list of track ids. Drum
 -- tracks (those with a drum map) are left out of "all" and "group".
-paw.option.define("roll_context", "all")
+paw.option.define("roll_context", "all", { type = { "string", "table" }, values = { "all", "group", "none" } })
 -- At most this many context notes, so that a dense song stays quick to draw.
 paw.option.define("roll_context_max", 4000)
 

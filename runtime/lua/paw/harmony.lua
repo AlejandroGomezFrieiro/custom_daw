@@ -16,7 +16,7 @@ local api = paw.api
 local read = require("paw.harmony.read")
 local M = { read = read, voice = require("paw.harmony.voice") }
 
-paw.option.define("chords", "names")          -- chord symbols in the piano roll's ruler: "names", "roman", "both" or false
+paw.option.define("chords", "names", { type = { "string", "boolean" }, values = { "names", "roman", "both", false } }) -- chord symbols in the piano roll's ruler: "names", "roman", "both" or false
 paw.option.define("harmony_step", 0.5)        -- beats: the shortest chord the built-in reading finds is about twice this
 
 -- Theory: pitch classes, keys and scales -------------------------------------------

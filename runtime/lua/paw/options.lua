@@ -1,5 +1,10 @@
 -- Options: `paw.opt.zoom = 4`. Any name can be set; the ones the runtime
 -- reads are defined below. Changing one emits `option.changed`.
+--
+-- A defined option takes values of its default's type, and a number in its
+-- range (`specs` below, or what `paw.option.define` was given): a value
+-- that is not is refused with an error that says what it takes, and the
+-- option keeps what it had.
 local M = {}
 
 local defaults = {
@@ -50,6 +55,115 @@ local defaults = {
   media_cache = 16,
   ffmpeg = "ffmpeg",       -- what renders to MP3, Ogg and Opus run: a name on the PATH, or a path
 }
+
+-- What an option takes besides its default's type: `type` (a type or a
+-- list of them), `min` and `max` for a number, `integer`, and `values`,
+-- the only strings or booleans it takes.
+local specs = {
+  timeoutlen = { min = 0, max = 10000 },
+  hint_delay = { min = 0, max = 10000 },
+  threads = { min = 0, max = 256, integer = true },
+  octave = { min = -1, max = 9, integer = true },
+  grid = { min = 1 / 128, max = 64 },
+  zoom = { min = 0.125, max = 64 },
+  track_height = { type = { "number", "string" }, min = 1, max = 12, integer = true, values = { "auto" } },
+  header_width = { type = { "number", "string" }, min = 8, max = 60, integer = true, values = { "auto" } },
+  termcolors = { type = { "string", "number" } },
+  curve_glyphs = { values = { "sextant", "braille", "line" } },
+  wave_scale = { values = { "linear", "db" } },
+  fps = { min = 1, max = 240 },
+  clip_length = { min = 1 / 128, max = 100000 },
+  count_in = { min = 0, max = 16, integer = true },
+  pre_roll = { min = 0, max = 64, integer = true },
+  pre_roll_seconds = { min = 0, max = 60 },
+  velocity = { min = 1, max = 127, integer = true },
+  send_level = { min = -150, max = 24 },
+  note_grid = { min = 1 / 128, max = 64 },
+  note_zoom = { min = 0.125, max = 64 },
+  message_time = { min = 0, max = 600000 },
+  media_stream = { min = 0 },
+  media_cache = { min = 0 },
+  autosave = { min = 0 },
+}
+
+local function has(list, value)
+  for _, v in ipairs(list) do
+    if v == value then return true end
+  end
+  return false
+end
+
+local function show(value)
+  return type(value) == "string" and string.format("%q", value) or tostring(value)
+end
+
+local function types_of(name)
+  local spec = specs[name] or {}
+  if type(spec.type) == "table" then return spec.type end
+  return { spec.type or type(defaults[name]) }
+end
+
+--- What an option takes, in words: `a whole number from 1 to 12, or "auto"`.
+local function takes(name)
+  local spec = specs[name] or {}
+  local words = {}
+  for _, t in ipairs(types_of(name)) do
+    if t == "number" then
+      local what = spec.integer and "a whole number" or "a number"
+      if spec.min and spec.max then
+        what = string.format("%s from %g to %g", what, spec.min, spec.max)
+      elseif spec.min then
+        what = string.format("%s from %g up", what, spec.min)
+      end
+      words[#words + 1] = what
+    elseif t == "boolean" and not spec.values then
+      words[#words + 1] = "true or false"
+    elseif t == "string" and not spec.values then
+      words[#words + 1] = "text"
+    elseif t == "table" then
+      words[#words + 1] = "a list"
+    end
+  end
+  for _, v in ipairs(spec.values or {}) do words[#words + 1] = show(v) end
+  return table.concat(words, ", or ")
+end
+
+--- Whether `value` is one that option `name` takes: true, or nil and an
+--- error that says what it takes. An option with no default takes anything.
+function M.check(name, value)
+  if defaults[name] == nil or value == nil then return true end
+  local spec = specs[name] or {}
+  local ok = has(types_of(name), type(value))
+  if ok and type(value) == "number" then
+    ok = value == value and value > -math.huge and value < math.huge
+      and (not spec.min or value >= spec.min) and (not spec.max or value <= spec.max)
+      and (not spec.integer or value % 1 == 0)
+  elseif ok and spec.values and (type(value) == "string" or type(value) == "boolean") then
+    ok = has(spec.values, value)
+  end
+  if ok then return true end
+  return nil, string.format("%s takes %s, not %s", name, takes(name), show(value))
+end
+
+--- The value typed text stands for in option `name` (`true`, `off`, a
+--- number, or the text), or nil and an error that says what it takes.
+--- A value that is not text is checked as it is.
+function M.read(name, text)
+  local value = text
+  if text == "true" or text == "on" then
+    value = true
+  elseif text == "false" or text == "off" then
+    value = false
+  elseif type(text) == "string" then
+    value = tonumber(text) or text
+  end
+  -- `set ffmpeg=7` keeps the text, for an option that takes text.
+  if not M.check(name, value) and M.check(name, tostring(text)) then value = tostring(text) end
+  local ok, err = M.check(name, value)
+  if not ok then return nil, err end
+  return value
+end
+
 local values = {}
 
 local opt = setmetatable({}, {
@@ -59,6 +173,8 @@ local opt = setmetatable({}, {
     return v
   end,
   __newindex = function(self, name, value)
+    local ok, err = M.check(name, value)
+    if not ok then error(err, 2) end
     local old = self[name]
     values[name] = value
     if old ~= value then
@@ -69,14 +185,19 @@ local opt = setmetatable({}, {
 })
 
 --- Give an option a default, for extensions that add options of their own.
-function M.define(name, default)
+--- It then takes values of the default's type; `spec` says more:
+---   paw.option.define("lanes", 4, { min = 1, max = 16, integer = true })
+---   paw.option.define("look", "plain", { values = { "plain", "fancy" } })
+---   paw.option.define("size", "auto", { type = { "number", "string" }, min = 1, values = { "auto" } })
+function M.define(name, default, spec)
   defaults[name] = default
+  specs[name] = spec or specs[name]
 end
 
 --- Every option that has a default, by name: { name, default }.
 function M.list()
   local out = {}
-  for name, default in pairs(defaults) do out[#out + 1] = { name = name, default = default } end
+  for name, default in pairs(defaults) do out[#out + 1] = { name = name, default = default, takes = takes(name) } end
   table.sort(out, function(a, b) return a.name < b.name end)
   return out
 end

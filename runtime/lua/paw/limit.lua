@@ -1,5 +1,5 @@
 -- A time limit on Lua that runs away. A key handler, a command, an event
--- handler, a timer or a view that runs for more than `paw.opt.lua_limit`
+-- handler, a timer, a view or a request on the control socket that runs for more than `paw.opt.lua_limit`
 -- milliseconds (2000) without returning is stopped with an error naming it,
 -- instead of freezing the program.
 --
@@ -26,7 +26,7 @@ local CHECK_EVERY = 100000  -- instructions between looks at the clock
 local deadline     -- when the running callback must have returned, or nil
 local what = {}    -- a stack of what is running, for the error
 
-paw.option.define("lua_limit", 2000)
+paw.option.define("lua_limit", 2000, { min = 0 })
 
 local async = api.limit_async == true
 
@@ -55,16 +55,30 @@ if async then api.limit_hook(hook) end
 --- Call `fn(...)` as `paw.try` does (an error becomes a message), with the
 --- time limit. The kernel's ways into Lua go through here. Inside a call
 --- that is limited already, it is `paw.try`.
-function M.guard(name, fn, ...)
-  if deadline or (paw.opt.lua_limit or 0) <= 0 then return paw.try(fn, ...) end
+local function limited(name, call, fn, ...)
   set(api.now() + paw.opt.lua_limit)
   what = { name }
   if not async then debug.sethook(hook, "", CHECK_EVERY) end
-  local result = { paw.try(fn, ...) }
+  local result = { call(fn, ...) }
   if not async then debug.sethook() end
   set(nil)
   what = {}
-  return unpack(result)
+  return result
+end
+
+function M.guard(name, fn, ...)
+  if deadline or (paw.opt.lua_limit or 0) <= 0 then return paw.try(fn, ...) end
+  return unpack(limited(name, paw.try, fn, ...))
+end
+
+--- Call `fn(...)` with the time limit as `guard` does, but give its error
+--- to the caller instead of reporting it: for a call whose caller is told
+--- what went wrong, such as a request on the control socket.
+function M.call(name, fn, ...)
+  if deadline or (paw.opt.lua_limit or 0) <= 0 then return fn(...) end
+  local result = limited(name, pcall, fn, ...)
+  if not result[1] then error(result[2], 0) end
+  return unpack(result, 2, table.maxn(result))
 end
 
 --- Name what runs inside the limited call, for the error should it run away:

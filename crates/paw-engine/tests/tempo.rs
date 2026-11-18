@@ -80,7 +80,10 @@ fn the_metronome_follows_the_map() {
     let heard = onsets(&out, 50);
     let mut expected = Vec::new();
     let heard_to = map.beat((out.len() as f64 - 2.0) / SR);
-    map.lines(0.0, heard_to, |line| expected.push(line));
+    map.lines(0.0, heard_to, |line| {
+        expected.push(line);
+        true
+    });
     assert!(
         expected
             .iter()

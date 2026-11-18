@@ -1242,7 +1242,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn project_file_text(lua, _sh, value => LuaValue) {
             crate::session::project_file_text(from_lua(lua, value)?).lua()
         }
-        fn undo_label(_, sh, text => String) {
+        // Name the open step; the first name given wins. nil takes back a
+        // name given while the step has changed nothing yet.
+        fn undo_label(_, sh, text => Option<String>) {
             sh.session.borrow_mut().undo_label(text);
             Ok(())
         }
@@ -1300,7 +1302,15 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // does when it starts, and tests do.
         fn ui_caps_set(lua, sh, caps => LuaValue) {
             let mut value: Value = lua.from_value(caps)?;
-            value["cell"] = json!([value["cell"]["w"], value["cell"]["h"]]);
+            // An empty table comes as an empty list.
+            if value.as_array().is_some_and(Vec::is_empty) {
+                value = json!({});
+            }
+            let Some(fields) = value.as_object_mut() else {
+                return Err(mlua::Error::runtime("ui_caps_set takes a table: { graphics, pixels, cell = { w, h }, … }"));
+            };
+            let cell = fields.get("cell").map_or((Value::Null, Value::Null), |c| (c["w"].clone(), c["h"].clone()));
+            fields.insert("cell".into(), json!([cell.0, cell.1]));
             sh.caps.borrow_mut().insert(sh.seat.get(), Caps::from_json(&value));
             sh.dirty.set(true);
             Ok(())

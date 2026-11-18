@@ -657,12 +657,6 @@ return function(pick)
 
   -- Options ------------------------------------------------------------------------
 
-  local function convert(text)
-    if text == "true" then return true end
-    if text == "false" then return false end
-    return tonumber(text) or text
-  end
-
   S.options = {
     desc = "Set an option",
     title = "Options",
@@ -676,7 +670,9 @@ return function(pick)
       end
       paw.ui.input({ prompt = o.name .. " = ", text = tostring(value) }, function(text)
         if text == "" then return end
-        paw.opt[o.name] = convert(text)
+        local value, err = paw.option.read(o.name, text)
+        if value == nil then return paw.notify(err, "error") end
+        paw.opt[o.name] = value
         paw.notify(o.name .. " = " .. tostring(paw.opt[o.name]))
       end)
     end,

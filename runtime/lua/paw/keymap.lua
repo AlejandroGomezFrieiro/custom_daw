@@ -679,10 +679,19 @@ end
 
 -- Running mappings --------------------------------------------------------------
 
-local function exec(map, ctx)
+--- Name the undo step a key makes by its description. A key typed (not
+--- one a macro or a mapping plays) first takes back the name of a key
+--- before it that changed nothing: `3G` then `dd` is the delete.
+local function label(text)
+  if depth == 0 then api.undo_label(nil) end
+  if text then api.undo_label(text) end
+end
+
+local function exec(map, ctx, motion)
   -- The key's description names the undo step it makes. Keys that replay
-  -- others (`.`, `@a`) leave the name to what they replay.
-  if map.desc and not map.norepeat then api.undo_label(map.desc) end
+  -- others (`.`, `@a`) leave the name to what they replay, and an
+  -- operator's motion to the operator.
+  if not map.norepeat and not motion then label(map.desc) end
   if type(map.rhs) == "function" then
     return paw.limit.named("the key " .. M.human(map.lhs) .. (map.desc and " (" .. map.desc .. ")" or ""), map.rhs, ctx)
   end
@@ -705,7 +714,7 @@ local function run(map, char)
     local o = op
     op = nil
     M.set_mode("n")
-    if o.map.desc then api.undo_label(o.map.desc) end
+    label(o.map.desc)
     if o.map.count == "operator" then
       ctx.op_count, ctx.register = o.count, o.register
     else
@@ -716,7 +725,7 @@ local function run(map, char)
     if map.object then
       reg = map.object(ctx)
     else
-      exec(map, ctx)
+      exec(map, ctx, true)
       local r2, c2 = g.get()
       if not map.linewise and r == r2 and c == c2 then return end
       reg = region(r, c, r2, c2, map.linewise and "line" or "char")
@@ -733,7 +742,7 @@ local function run(map, char)
       local _, col = g.get()
       M.set_mode("n")
       if not reg then return end
-      if map.desc then api.undo_label(map.desc) end
+      label(map.desc)
       if map.count == "operator" then ctx.op_count = ctx.count end
       if reg.kind == "line" then g.set(first_row(g, reg), col) else g.set(first_row(g, reg), reg.c0) end
       return map.operator(reg, ctx)

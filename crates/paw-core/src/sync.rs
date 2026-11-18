@@ -1840,23 +1840,21 @@ fn release_targets(
 }
 
 /// With some track soloed, a track still sounds if it is soloed itself, feeds a
-/// soloed track, or carries a soloed track's signal on to the master. The
-/// tracks that still sound, found in one pass over the outputs.
+/// soloed track, or carries a soloed track's signal on to the master: through
+/// its output or a send (the reverb a soloed track sends to is heard with
+/// it, and the stems of a song add up to its mix). The tracks that still
+/// sound, found in one pass over the outputs.
 fn solo_paths(project: &Project, soloed: &HashSet<Id>) -> HashSet<Id> {
     let by_id: HashMap<Id, &Track> = project.tracks.iter().map(|t| (t.id, &**t)).collect();
     let mut sounding = HashSet::new();
-    // Soloed tracks, and every track their output passes through.
-    for t in project.tracks.iter().filter(|t| soloed.contains(&t.id)) {
-        sounding.insert(t.id);
-        let mut at = t.output;
-        let mut steps = 0;
-        while let Some(next) = at.and_then(|id| by_id.get(&id)) {
-            if steps > by_id.len() {
-                break;
-            }
-            sounding.insert(next.id);
-            steps += 1;
-            at = next.output;
+    // Soloed tracks, and every track their sound passes through.
+    let mut ahead: Vec<Id> = project.tracks.iter().map(|t| t.id).filter(|id| soloed.contains(id)).collect();
+    while let Some(id) = ahead.pop() {
+        if !sounding.insert(id) {
+            continue;
+        }
+        if let Some(t) = by_id.get(&id) {
+            ahead.extend(t.output.iter().chain(t.sends.iter().map(|s| &s.target)).filter(|id| by_id.contains_key(id)));
         }
     }
     // Tracks whose output reaches a soloed track. `feeds` remembers the

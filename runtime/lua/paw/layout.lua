@@ -744,6 +744,8 @@ function M.show_in(win, name, buf)
   if win.view == name and win.buf == buf then return win end
   local old_view, old_buf = win.view, win.buf
   local before = M.buf_of(win)
+  -- What `Ctrl-^` goes back to.
+  win.alt = { view = old_view, buf = old_buf }
   local single_view = not M.types[name]
   if single_view then
     local moved = remove_view(t.layout, name, win)
@@ -770,6 +772,18 @@ function M.show_in(win, name, buf)
   end
   M.enter(win)
   return win
+end
+
+--- Show again what a window (the current one) showed before what it shows
+--- now: Vim's alternate buffer, `Ctrl-^` and `:b#`.
+function M.alternate(win)
+  win = win or M.current()
+  local alt = win and win.alt
+  if not alt or not (M.types[alt.view] or ui().views[alt.view]) then
+    return paw.notify("this window has shown nothing else", "warn")
+  end
+  -- A buffer closed since is made again, as `:e` would.
+  return M.show_in(win, alt.view, alt.buf and M.buffers[alt.buf] and alt.buf or nil)
 end
 
 --- The window next to the current one in a direction ("h", "j", "k",
@@ -1469,10 +1483,11 @@ function M.setup()
     M.show_in(M.current(), buf.type, not buf.single and buf.id or nil)
   end
   command("buffer", function(ctx)
+    if ctx.args[1] == "#" then return M.alternate() end
     local view, buf = M.resolve(ctx.args[1])
     if not view then return paw.notify("no buffer `" .. tostring(ctx.args[1]) .. "`: `:ls` lists them", "warn") end
     M.show_in(M.current(), view, buf and not buf.single and buf.id or nil)
-  end, { desc = "Show a buffer in this window, by name or number: `b roll`, `b 3`", complete = names })
+  end, { desc = "Show a buffer in this window, by name or number: `b roll`, `b 3`; `b #` what it showed before", complete = names })
   command.alias("b", "buffer")
   command("bnext", function(ctx) listed_step(ctx.count or 1) end, { desc = "Show the next buffer in this window" })
   command("bprevious", function(ctx) listed_step(-(ctx.count or 1)) end, { desc = "Show the previous buffer in this window" })

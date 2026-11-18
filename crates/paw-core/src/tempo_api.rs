@@ -98,12 +98,12 @@ pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> 
         |lua, m, (from, to, limit): (f64, f64, Option<usize>)| {
             let list = lua.create_table()?;
             let limit = limit.unwrap_or(10_000);
+            if limit == 0 {
+                return Ok(list);
+            }
             let mut n = 0;
             let mut result = Ok(());
             m.lines(from, to, |line| {
-                if n >= limit || result.is_err() {
-                    return;
-                }
                 n += 1;
                 result = (|| {
                     let t = lua.create_table_with_capacity(0, 3)?;
@@ -112,6 +112,7 @@ pub fn install(lua: &Lua, api: &Table, shared: &Rc<Shared>) -> mlua::Result<()> 
                     t.raw_set("index", line.index)?;
                     list.raw_set(n, t)
                 })();
+                n < limit && result.is_ok()
             });
             result.map(|_| list)
         },

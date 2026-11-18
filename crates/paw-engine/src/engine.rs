@@ -2191,6 +2191,7 @@ impl Engine {
                 starts[*count] = (at.min(n - 1), line.index == 0);
                 *count += 1;
             }
+            *count < starts.len()
         });
     }
 

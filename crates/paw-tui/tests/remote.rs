@@ -383,6 +383,47 @@ fn connections_that_misbehave_are_closed_and_the_kernel_goes_on() {
     assert_eq!(good.call("eval", json!(["return 2 + 2"])).unwrap(), json!(4));
 }
 
+#[test]
+fn lua_that_runs_away_over_the_socket_is_stopped_and_errors_are_plain() {
+    let instance = start("runaway");
+    let mut c = Connection::unix(&instance.socket).unwrap();
+    c.call("eval", json!(["paw.opt.lua_limit = 300"])).unwrap();
+    c.call("eval", json!(["paw.command('zz_spin', function() while true do end end)"])).unwrap();
+    c.call(
+        "eval",
+        json!(["paw.keymap.set('gZ', function() while true do end end, { view = 'arrange' })"]),
+    )
+    .unwrap();
+    // Each way in: code, a command, keys. Each is stopped, and the instance
+    // answers again afterwards.
+    for (method, params) in [
+        ("eval", json!(["while true do end"])),
+        ("cmd", json!(["zz_spin"])),
+        ("keys", json!(["gZ"])),
+    ] {
+        let started = Instant::now();
+        let outcome = c.call(method, params);
+        assert!(started.elapsed() < Duration::from_secs(10), "{method} was stopped soon");
+        if let Err(err) = outcome {
+            assert!(err.to_string().contains("ran for more than"), "{method}: {err}");
+        }
+        assert_eq!(c.call("eval", json!(["return 2 + 2"])).unwrap(), json!(4), "after {method}");
+    }
+    // Errors are their message, as docs/protocol.md shows them.
+    let mut error = |method: &str, params: Value| c.call(method, params).unwrap_err().to_string();
+    let told = [
+        (error("no_such_method", json!([])), "no method `no_such_method`"),
+        (error("eval", json!(["error('boom')"])), "boom"),
+        (error("clip_notes", json!([999])), "no clip 999"),
+        (error("eval", json!(["paw.tracks("])), "rpc:1: unexpected symbol near '<eof>'"),
+        (error("eval", json!([7])), "`eval` takes the code to run, as a string"),
+    ];
+    for (got, want) in told {
+        assert!(got.ends_with(want), "{got}");
+        assert!(!got.contains("stack traceback") && !got.contains("runtime error"), "{got}");
+    }
+}
+
 fn type_keys(c: &mut Connection, keys: &[&str]) {
     for key in keys {
         c.notify("ui.input", json!([{ "key": key }])).unwrap();

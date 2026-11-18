@@ -30,6 +30,10 @@ local function kernel_opts(opts)
   out.range, out.background, out.format = nil, nil, nil
   if out.channels == "mono" then out.channels = 1 elseif out.channels == "stereo" then out.channels = 2 end
   if out.rate then out.sample_rate, out.rate = out.rate, nil end
+  local rate = out.sample_rate
+  if rate ~= nil and not (type(rate) == "number" and rate % 1 == 0 and rate >= 8000 and rate <= 384000) then
+    error("a sample rate is a whole number of Hz from 8000 to 384000, not " .. tostring(rate), 0)
+  end
   out.ffmpeg = out.ffmpeg or paw.opt.ffmpeg
   out.bitrate = tonumber(out.bitrate)
   if out.tags and next(out.tags) == nil then out.tags = nil end

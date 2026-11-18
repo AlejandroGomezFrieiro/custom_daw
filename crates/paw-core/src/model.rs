@@ -834,6 +834,22 @@ fn unnamed(id: &u64) -> bool {
     *id == 0
 }
 
+impl Clip {
+    /// About how many bytes the clip holds.
+    fn weight(&self) -> usize {
+        use std::mem::size_of;
+        size_of::<Clip>()
+            + match &self.content {
+                ClipContent::Midi { notes, controls } => {
+                    notes.len() * size_of::<Note>()
+                        + notes.iter().map(|n| n.meta.len() * 64).sum::<usize>()
+                        + controls.len() * size_of::<Control>()
+                }
+                ClipContent::Audio { .. } => 0,
+            }
+    }
+}
+
 /// Give every note of a list that has no id, or the id of a note before it,
 /// the next free one. Returns whether any changed. The same notes are always
 /// given the same ids, so a state written without them (an older file, a
@@ -988,6 +1004,39 @@ impl Project {
             }
         }
         named
+    }
+
+    /// About how many bytes this project holds that `before` does not
+    /// share with it: what keeping it as a step of the undo history costs.
+    pub fn weight_over(before: &Project, project: &Project) -> usize {
+        use std::mem::size_of;
+        let old: std::collections::HashMap<Id, &Arc<Track>> = before.all_tracks().map(|t| (t.id, t)).collect();
+        let mut bytes = 0;
+        for track in project.all_tracks() {
+            let was = old.get(&track.id);
+            if was.is_some_and(|w| Arc::ptr_eq(w, track)) {
+                continue;
+            }
+            bytes += size_of::<Track>();
+            let clips: std::collections::HashMap<Id, &Arc<Clip>> =
+                was.map(|w| w.clips.iter().map(|c| (c.id, c)).collect()).unwrap_or_default();
+            for clip in &track.clips {
+                if !clips.get(&clip.id).is_some_and(|c| Arc::ptr_eq(c, clip)) {
+                    bytes += clip.weight();
+                }
+            }
+            let devices: std::collections::HashMap<Id, &Arc<DeviceInst>> =
+                was.map(|w| w.devices.iter().map(|d| (d.id, d)).collect()).unwrap_or_default();
+            for device in &track.devices {
+                if !devices.get(&device.id).is_some_and(|d| Arc::ptr_eq(d, device)) {
+                    bytes += size_of::<DeviceInst>()
+                        + device.state.as_ref().map_or(0, String::len)
+                        + device.params.len() * 48;
+                }
+            }
+            bytes += track.lanes.iter().map(|l| l.points.len() * 16).sum::<usize>();
+        }
+        bytes
     }
 
     /// Every track including the master track, which comes last.

@@ -130,8 +130,8 @@ impl Session {
         Ok(())
     }
 
-    /// The command making the open step. The first one named in a step wins.
-    pub fn undo_label(&mut self, text: String) {
+    /// The command making the open step: see [`History::label`].
+    pub fn undo_label(&mut self, text: Option<String>) {
         self.history.label(text);
     }
 
@@ -289,7 +289,7 @@ impl Session {
         self.checkpoint();
         self.history.clear_labels();
         self.history
-            .label(format!("checkpoint.restore {}", file.name));
+            .label(Some(format!("checkpoint.restore {}", file.name)));
         self.next_id = self.next_id.max(project.max_id() + 1);
         self.edit(|p| {
             *p = project;

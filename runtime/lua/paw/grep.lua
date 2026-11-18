@@ -177,8 +177,12 @@ local function parse(arg)
   end
   local fields
   for word in (rest or ""):gmatch("%S+") do
-    fields = fields or {}
-    fields[word] = true
+    -- Vim's files to search (`%` the file open, `##` the argument list)
+    -- are the project here, which is searched whole.
+    if word ~= "%" and word ~= "##" and word ~= "*" then
+      fields = fields or {}
+      fields[word] = true
+    end
   end
   return pattern, flags or "", fields
 end

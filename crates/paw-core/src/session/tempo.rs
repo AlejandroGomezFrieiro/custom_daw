@@ -42,6 +42,10 @@ impl Session {
         if tempos.is_empty() || sigs.is_empty() {
             bail!("a tempo map needs at least one tempo and one signature");
         }
+        // The same map again changes nothing, and makes no undo step.
+        if tempos == self.project.tempo_points() && sigs == self.project.sig_points() {
+            return Ok(());
+        }
         self.edit(|p| {
             p.retime(TempoMap::new(&tempos, &sigs));
             Ok(())
