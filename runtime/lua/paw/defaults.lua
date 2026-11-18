@@ -1691,14 +1691,41 @@ end, {
     return out
   end,
 })
+command("ext.unload", function(ctx)
+  local name = tostring(ctx.args[1] or "")
+  local ok, err = paw.ext.unload(name)
+  if not ok then return paw.notify(err, "warn") end
+  paw.notify(name .. " unloaded: what it registered is gone")
+end, {
+  desc = "Take a loaded extension away, with everything it registered: `ext.unload notation`",
+  complete = function()
+    local out = {}
+    for _, e in ipairs(paw.ext.list()) do out[#out + 1] = e.name end
+    return out
+  end,
+})
 command("extensions", function()
   local lines = {}
   for _, e in ipairs(paw.ext.list()) do
-    lines[#lines + 1] = { text = string.format("%-20s %s", e.name, e.ok and e.path or "FAILED: " .. tostring(e.error)), style = e.ok and "Normal" or "Error" }
+    local head = e.name .. (e.version and " " .. e.version or "")
+    lines[#lines + 1] = { text = string.format("%-24s %s", head, e.ok and e.path or "FAILED: " .. tostring(e.error)), style = e.ok and "Title" or "Error" }
+    if e.manifest and e.manifest.description then lines[#lines + 1] = "  " .. e.manifest.description end
+    for _, group in ipairs(paw.ext.provides(e.name)) do
+      -- Wrapped, the title only on the first line.
+      local line = string.format("  %-22s ", group.title)
+      for i, item in ipairs(group.items) do
+        if i > 1 and #line + #item > 100 then
+          lines[#lines + 1] = { text = line, style = "Dim" }
+          line = string.rep(" ", 25)
+        end
+        line = line .. item .. "  "
+      end
+      lines[#lines + 1] = { text = line, style = "Dim" }
+    end
   end
   if #lines == 0 then lines[1] = "No extensions loaded. They live in " .. api.env().config_dir .. "/extensions" end
   paw.ui.page("Extensions", lines)
-end, { desc = "List loaded extensions" })
+end, { desc = "List loaded extensions, each with what it registered" })
 
 for _, name in ipairs({ "open", "edit", "new" }) do paw.project.allow_discard(name) end
 

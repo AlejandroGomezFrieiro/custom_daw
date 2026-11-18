@@ -219,10 +219,30 @@ function M.textobject(lhs, fn, opts)
   M.set(lhs, nil, paw.util.merge(opts or {}, { mode = { "o", "x" }, object = fn }))
 end
 
+--- Remove a mapping: `opts.mode` and `opts.view` as `set` took them.
 function M.del(lhs, opts)
   opts = opts or {}
   local scope = maps[opts.mode or "n"] and maps[opts.mode or "n"][opts.view or "global"]
   if scope then scope[table.concat(M.parse(lhs))] = nil end
+end
+
+--- Call `fn(map, mode, scope, keys)` for every mapping, in no order, `keys`
+--- run together as `put` takes them: `every` without the sorting.
+function M.each(fn)
+  for mode, by_scope in pairs(maps) do
+    for scope, by_keys in pairs(by_scope) do
+      for keys, map in pairs(by_keys) do fn(map, mode, scope, keys) end
+    end
+  end
+end
+
+--- Put a mapping back as `map` (one `every` gave), or remove it with nil,
+--- by its mode, scope and keys run together (`table.concat(map.keys)`):
+--- what unloading an extension does with the keys it mapped.
+function M.put(mode, scope, keys, map)
+  maps[mode] = maps[mode] or {}
+  maps[mode][scope] = maps[mode][scope] or {}
+  maps[mode][scope][keys] = map
 end
 
 -- The keys as they were before every view kept to one rule (docs/terminal.md,
@@ -474,6 +494,7 @@ function M.setreg(value, name, yank)
   if yank and not name then registers["0"] = value end
 end
 
+--- What a register holds (the unnamed one when `name` is nil).
 function M.getreg(name)
   return registers[name and name:lower() or '"']
 end
@@ -562,6 +583,7 @@ function M.changes(view)
   return changes[view or paw.ui.focused] or {}
 end
 
+--- Set mark `name` (a letter) at the cursor of the focused view.
 function M.mark(name)
   local g = grid()
   if not g or not name:match("^%a$") then return end
@@ -673,6 +695,7 @@ function M.search_next(dir, n)
   g.set(row, col)
 end
 
+--- Search the focused view for `text`, forward (`dir` 1) or back (-1).
 function M.search(text, dir)
   M.search_text = text
   M.search_next(dir or 1)
@@ -992,6 +1015,7 @@ handle = function(key)
   end
 end
 
+--- Handle one key as if it were typed. The kernel calls this; scripts use `feed`.
 function M.dispatch(key)
   if macro and depth == 0 then macro.keys[#macro.keys + 1] = key end
   if not track.keys then track.keys, track.edits, track.texts = {}, api.project_get().edits, text_changes end

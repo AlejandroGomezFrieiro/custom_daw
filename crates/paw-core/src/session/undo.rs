@@ -144,6 +144,31 @@ impl Session {
         joins
     }
 
+    /// Whether the open step holds edits that the end of this turn will
+    /// close as a step of their own: not during a trial, whose edits are
+    /// one step made when it ends.
+    pub fn undo_pending(&self) -> bool {
+        self.touched && self.trial.is_none()
+    }
+
+    /// Put back the project as the open step found it, leaving the history
+    /// as it was: an edit refused before it became a step (`edit.before`).
+    /// False when there is nothing to put back, or a trial is under way.
+    pub fn undo_discard(&mut self) -> bool {
+        if !self.undo_pending() {
+            return false;
+        }
+        self.project = self.checkpoint.clone();
+        self.touched = false;
+        self.dirty = true;
+        self.restoring = true;
+        self.edits += 1;
+        self.sweep = Default::default();
+        self.join = None;
+        self.history.clear_labels();
+        true
+    }
+
     /// The keys typed for the open step.
     pub fn undo_keys(&mut self, text: String) {
         self.history.keys(text);
