@@ -1,200 +1,285 @@
 # doctor: a guided check of the real hardware
 
-Most of this program has been tried against stand-ins: the null audio
-backend, injected MIDI, plugins in a test set. The doctor is for the real
-thing. It walks through a list of checks. Each one is started, watched or
-listened to by you, and answered ("heard it", "did not", skip), or measures by
-itself. What was found is kept, and at the end a report is written as
-Markdown, with the machine's facts at the top and, when an earlier report
-exists, what changed since.
+The doctor checks the real hardware: the audio device, MIDI input,
+recording and plugins. It runs a list of checks. You start, watch or
+listen to each check and answer it ("heard it", "did not", skip), or the
+check measures by itself. At the end, the doctor writes a report in
+Markdown, with the facts of the machine at the top. When an earlier
+report exists, the report also shows what changed.
 
+```lua
+paw.ext.load("/path/to/paw/extensions/doctor")   -- config/init.lua has this line
 ```
-:doctor              open the page: the checks, how each went, the question being asked
-:doctor all          run every check
-:doctor input        run one (by name or number); :doctor unattended runs those that need nobody
-:doctor stop         end a run, tidy up, write the report
-:doctor report       where the last report is
-paw doctor           from the shell: the checks that need nobody, report on standard output
-```
-
-<!-- tags: :doctor -->
-
-`:doctor.close` closes the page, and stops a run that is going.
 
 ![:doctor on the null backend with a test signal: the page of checks, then :doctor unattended running the sound system, input levels and dropouts checks](images/tui-doctor.gif)
 
-Load it in `init.lua` (`config/init.lua` has the line) or with
-`paw.ext.load("/path/to/paw/extensions/doctor")`. `paw doctor` needs neither:
-it loads the extension from the source tree beside the binary, or from
-`$PAW_HOME`.
+## Try it
 
-The page floats over the terminal; in the window the same page is painted in
-pixels, with buttons for what the keys do and a button for each answer.
+1. Type `:ext.load doctor`, then `:doctor`. A page with the list of checks
+   opens.
+2. Press `k` until the cursor is on the first check, "The sound system".
+3. Press Enter. The check runs, and its result shows beside its name.
+4. Press `o`. The message gives the path of the report.
+5. Press `q`. The page closes.
 
-| Key on the page | What it does |
+## How to
+
+### How to check all the hardware
+
+1. Connect the audio interface, the MIDI controller and the speakers or
+   headphones.
+2. Type `:doctor all`.
+3. Answer each question with the key shown under it. To skip a check,
+   press `s`.
+4. At the end, the doctor writes the report. Type `:doctor report` to see
+   its path.
+
+**WARNING:** Turn the volume down before check 4, Round trip latency. Its
+clicks are loud through a microphone and speakers.
+
+### How to run the checks from the shell
+
+1. Type `paw doctor` in a shell. It runs the checks that need no person and
+   prints the report.
+2. To run some checks only, add `--only system,plugins`.
+
+`paw doctor` does not need the extension loaded. It finds the extension
+in the source tree beside the binary, or in `$PAW_HOME`.
+
+### How to keep the latency that the doctor measured
+
+1. Run check 4, Round trip latency, and accept the offset.
+2. Copy the line that the report gives into your `init.lua`.
+
+The doctor sets the offset only for the session.
+
+### How to check a plugin
+
+1. Set `paw.opt.doctor_plugins` to a part of the name of the plugin, for
+   example `{ "MT-PowerDrumKit" }`. Or give `--plugin MT-PowerDrumKit` to
+   `paw doctor`.
+2. Run check 8, Plugins.
+3. If the plugin is silent, accept the offer to open its editor. Some
+   instruments need this one time before they make sound.
+
+### How to add a check
+
+1. After the doctor loads, add a table to `require("doctor").checks`, in
+   your `init.lua` or in an extension:
+
+   ```lua
+   table.insert(require("doctor").checks, {
+     name = "Footswitch",                       -- shown in the list and the report
+     help = "Press the footswitch once.",       -- what it needs from the person
+     unattended = false,                        -- true if it can run with nobody there
+     limit = 60,                                -- seconds before it is stopped (120 by default)
+     run = function(ctx)
+       local pressed = false
+       local handler = paw.on("midi.in", function(e) if e.type == "cc" and e.number == 64 then pressed = true end end)
+       ctx:cleanup(function() paw.off(handler) end)
+       ctx:ask("Press the footswitch.", { { "s", "skip" } }, { timeout = 15, done = function() return pressed end, default = "timeout" })
+       if not pressed then return "fail", "no pedal message arrived" end
+       ctx:fact("pedal", "sustain")
+       return "ok", "the footswitch sends sustain"
+     end,
+   })
+   ```
+
+2. In `run`, wait only with the functions of `ctx`. Do not write a loop
+   that does not yield.
+3. Type `:doctor` and run the new check.
+
+## Reference
+
+### Commands
+
+| Command | Effect |
 | --- | --- |
-| `j` `k` | the check under the cursor |
-| `<CR>` | run it |
-| `A` | run every check; `u` those that need nobody |
-| `y` `n` `s` `w` `r` `l` `b` `a` `d` | answer the question being asked (the keys are listed under it); `s` also skips the check going on |
-| `o` | where the report is |
-| `<Esc>` | stop the run; the page stays (`q` closes it) |
-| `q` | close the page |
+| `:doctor` | opens the page: the checks, the result of each, the current question |
+| `:doctor all` | runs every check |
+| `:doctor input` | runs one check, by name or number |
+| `:doctor unattended` | runs the checks that need no person |
+| `:doctor stop` | stops a run, removes what it made, writes the report |
+| `:doctor report` | the path of the last report |
+| `:doctor.close` | closes the page, and stops a run |
+| `paw doctor` | from the shell: the checks that need no person. The report goes to standard output |
 
-## What each check needs from you
+<!-- tags: :doctor -->
 
-| Check | What you do | Without anybody |
+The page floats over the terminal. In the graphical window, paw paints the
+same page in pixels, with buttons for the keys and a button for each
+answer.
+
+### Keys
+
+| Key on the page | Effect |
+| --- | --- |
+| `j` `k` | moves the cursor between the checks |
+| `<CR>` | runs the check under the cursor |
+| `A` | runs every check |
+| `u` | runs the checks that need no person |
+| `y` `n` `s` `w` `r` `l` `b` `a` `d` | answer the current question. The page lists the keys under it. `s` also skips the current check |
+| `o` | shows the path of the report |
+| `<Esc>` | stops the run. The page stays |
+| `q` | closes the page |
+
+### Checks
+
+| Check | What you do | With no person |
 | --- | --- | --- |
 | 1. The sound system | nothing | runs |
-| 2. Output | listen to a gentle tone (-18 dB), a second each on the left, the right and both; say whether and where you heard it, or play it again | not run |
-| 3. Input levels | play or speak into each input; the level of each channel is shown live, and the loudest each reached is kept; press `d` when done. A channel that stayed silent is named | listens for three seconds |
-| 4. Round trip latency | connect an output to an input with a cable, or let a microphone hear the speakers (the click is loud: turn the volume down); say yes. Three clicks are played and recorded; the median delay is measured and the recording offset (`paw.transport.record_offset`) offered | not run |
-| 5. Dropouts | nothing: a song of many synth voices plays for twenty seconds (`paw.opt.doctor_seconds`), then again while a long sound file is read from the disk. Counts of xruns and late plugin blocks, the CPU load and how long a block took are reported for both | runs |
-| 6. MIDI input | press a key, then move a knob or fader, within twenty seconds each; the port, channel, note and controller that arrived are recorded | lists the ports |
-| 7. Recording | play or speak for four seconds while a track records from the first input (the first pair, if there are two); the take is played back, its peak shown, and you say whether you heard it | records what arrives, and says if it is silent |
-| 8. Plugins | nothing, unless a plugin you named is silent: it offers to open its editor, which some instruments need once before they sound | runs |
+| 2. Output | listen to a soft tone (-18 dB), one second on the left, on the right and on both. Tell if and where you heard it, or play it again | does not run |
+| 3. Input levels | play or speak into each input. The page shows the level of each channel, and keeps the highest level. Press `d` at the end. The page names a channel that stayed silent | listens for three seconds |
+| 4. Round trip latency | connect an output to an input with a cable, or let a microphone hear the speakers. Answer yes. The doctor plays and records three clicks, measures the median delay, and offers the recording offset (`paw.transport.record_offset`) | does not run |
+| 5. Dropouts | nothing. A song of many synth voices plays for twenty seconds (`paw.opt.doctor_seconds`). Then it plays again while paw reads a long sound file from the disk. The report gives xruns, late plugin blocks, the CPU load and the time of a block for both | runs |
+| 6. MIDI input | press a key, then move a knob or a fader, within twenty seconds each. The doctor records the port, the channel, the note and the controller | lists the ports |
+| 7. Recording | play or speak for four seconds while a track records from the first input (the first pair, if there are two). The doctor plays the take back and shows its peak. Tell if you heard it | records, and tells if the take is silent |
+| 8. Plugins | nothing, unless a plugin that you named is silent. Then the doctor offers to open its editor | runs |
 | 9. The environment | nothing | runs |
 
-Every wait has a limit and every question a timeout (a question nobody
-answers is a skipped one); `s` skips the check going on and `<Esc>` ends the
-run. A check that raises an error is reported as failed with the error, and
-the run goes on.
+- Each wait has a limit, and each question has a timeout. A question with
+  no answer is a skip.
+- A check that raises an error fails, with the error. The run continues.
 
-### What they look at
+### What each check reads
 
-1. **The sound system**: the backend, the output and input chosen and every
-   one found (`paw.audio.devices()`), the sample rate, the block, the latencies
-   reported (`paw.api.engine_get()`). It warns about the traps known so far:
-   a Bluetooth output (its latency is high; headphones that are the system's
-   default catch everything), an output latency over 80 ms, the interface
-   connected but not the output in use, a device whose own sample rate is
-   not the program's, a block over 25 ms, no input open, and the null
-   backend.
+1. **The sound system**: the backend, the output and the input, all the
+   devices found (`paw.audio.devices()`), the sample rate, the block, the
+   latencies (`paw.api.engine_get()`). It warns about these problems:
+   - a Bluetooth output (high latency, and headphones that are the
+     default of the system get all the sound)
+   - an output latency over 80 ms
+   - an interface that is connected but is not the output
+   - a device with a sample rate that is not the rate of paw
+   - a block over 25 ms
+   - no open input
+   - the null backend
 2. **Output**: a tone made for the check, played from a track of its own.
-3. **Input levels**: `paw.audio.levels()` sampled every few hundredths of a
-   second. Below -60 dBFS counts as silent; a channel that reached full scale
-   is warned about.
-4. **Round trip latency**: a track plays a click, a muted track armed on the
-   first input records, and the click's place in the take is found. What the
-   program already takes off a take (what the audio system reports, plus the
-   offset) is subtracted, and what is left is added to the offset, if you say
-   so. It is set for this session; the report says what to put in
-   `init.lua` to keep it. A tone or noise that was there before the click
-   was played is told apart from a loop-back, and so is silence.
-5. **Dropouts**: `xruns`, `late_blocks`, MIDI events dropped and the CPU load
-   from `paw.api.engine_get()`, with `engine_reset_stats` before each run.
-   The long file is a quiet tone written for the check, long enough that
-   its decoded sound is past `paw.opt.media_stream`; it is brought in and
-   played, and `paw.media.list()` says whether it was read from the disk.
-   The decoded copy stays in `~/.cache/paw/media`, where the cache's own limit
-   takes care of it.
+3. **Input levels**: `paw.audio.levels()`, sampled every few hundredths of a
+   second. Below -60 dBFS is silent. A channel that reached full scale gets
+   a warning.
+4. **Round trip latency**: a track plays a click, and a muted track armed
+   on the first input records. The doctor finds the click in the take. It
+   subtracts what paw already removes from a take (the latency that the
+   audio system reports, plus the offset). It adds the rest to the offset,
+   if you accept. It tells a tone or a noise from before the click, and
+   silence, from a loop-back.
+5. **Dropouts**: `xruns`, `late_blocks`, dropped MIDI events and the CPU
+   load from `paw.api.engine_get()`, with `engine_reset_stats` before each
+   run. The long file is a quiet tone, long enough that its decoded sound
+   is past `paw.opt.media_stream`. `paw.media.list()` tells if paw read it
+   from the disk. The decoded copy stays in `~/.cache/paw/media`, inside
+   the limit of the cache.
 6. **MIDI input**: the ports from `paw.midi.inputs()`, and the `midi.in`
-   events, which name the port they came from.
-7. **Recording**: the take's file is read back for its peak per channel, its
-   length and its format.
-8. **Plugins**: how many of each format the scan found, and what the scan
-   said about files it could not use (the log lines "plugin scan: …"). For
-   each name fragment in `paw.opt.doctor_plugins` (`{ "MT-PowerDrumKit",
-   "Ugritone" }`), a plugin whose name has it is loaded on a track, sent five
-   notes (a drum plugin plays kick, snare, hat and more), and the track's
-   meter says whether sound came out. Windows plugins through yabridge are
-   named the same way. A plugin that does not start, is not installed or is
-   silent is said so, with the known fact that some need their editor
-   opened once (`ge` on the track).
-9. **The environment**: `DISPLAY`, `WAYLAND_DISPLAY` and `XAUTHORITY` as the
-   program sees them (after it has put a stale display name right), whether
-   the sockets and the authority file are there, the free space where
-   recordings go, whether `ffmpeg` and `gdi2m` are on the `PATH`, the
-   kernel's version, `paw.api.limit_async` and the engine's threads.
+   events, which name their port.
+7. **Recording**: the file of the take, read back for its peak on each
+   channel, its length and its format.
+8. **Plugins**: the number of plugins of each format, and the files that
+   the scan could not use (the log lines "plugin scan: …"). For each part
+   of a name in `paw.opt.doctor_plugins` (`{ "MT-PowerDrumKit", "Ugritone"
+   }`), the doctor loads a plugin with that name on a track and sends it
+   five notes. A drum plugin plays kick, snare, hat and more. The meter of
+   the track tells if sound came out.
 
-## Your project is not touched
+   You name Windows plugins through yabridge in the same way. The report
+   names a plugin that does not
+   start, is not installed or is silent. Some plugins need their editor
+   opened one time (`ge` on the track).
+9. **The environment**:
+   - `DISPLAY`, `WAYLAND_DISPLAY` and `XAUTHORITY` as paw sees them, after
+     it corrects an old display name
+   - the sockets and the authority file
+   - the free space for recordings
+   - `ffmpeg` and `gdi2m` on the `PATH`
+   - the version of the kernel, `paw.api.limit_async` and the threads of
+     the engine
+
+### Your project during a run
+
+- When a check first needs tracks, the doctor puts your project aside as a
+  whole (`paw.api.project_shelve`). This includes its undo tree, its
+  transport and its changed flag. An empty scratch project opens.
+- When the run ends, the scratch project closes. Your project returns as
+  it was, with the playhead at the same place.
+- The checks that only read (1, 3, 6, 9, and 8 with no plugin named) do not
+  put the project aside.
+- While your project is aside, a copy is in `doctor/open-project.json` in
+  the state directory. paw removes it when your project returns. If paw
+  stops in that time, that file is your project: open it with `:edit`.
+- Autosave is off during the run, and on again after it.
+- Plugins on your tracks stop while the project is aside, and start again
+  when it returns.
+- A check removes all that it added when it ends, also when you cancel it
+  or when it fails: its tracks, its files, its take.
+
+### The report
+
+The report is `<state directory>/doctor/<year-month-day-time>.md`. A
+`.json` file beside it holds the same data, for the next report.
+
+- At the top are the facts of the machine: the program, the kernel, the
+  system, the processor, the memory and the sound system. Then the
+  devices, the rate, the block, the display and the configuration.
+- Then a table of the checks, and a section for each check.
+- Under "Changed since the report of …": the facts of the machine and the
+  results of each check that are different from the last report. For
+  example, a device that is gone, a different rate, a plugin that is now
+  silent.
+- Measurements that are never the same two times (peaks, CPU, latency) are
+  in the report, but the doctor does not compare them.
+
+### `paw doctor`
+
+| Option | Effect |
+| --- | --- |
+| `--seconds 20` | the length of the dropout runs |
+| `--plugin MT-PowerDrumKit` | a plugin to check. You can give it more than one time. Default: `paw.opt.doctor_plugins` |
+| `--only system,plugins` | the checks to run |
+| `--audio`, `--output`, `--input`, `--buffer`, `--rate` | the audio options of paw |
+
+`paw doctor` opens the sound device, and makes sound while it runs. Other
+scripts get the null backend. The exit status is 1 if a check failed.
+
+### The context of a check
+
+`run(ctx)` returns `"ok"`, `"warn"`, `"fail"` or `"skip"`, and a sentence.
+It runs in a coroutine that a timer wakes.
+
+| `ctx:` | Effect |
+| --- | --- |
+| `say(text)` | a line on the page while the check works |
+| `log(text)`, `warn(text)` | a line for the report. A warning changes "ok" to "warn" |
+| `fact(key, value)` | a result, compared with the last report |
+| `measure(key, value)` | a result, not compared |
+| `sleep(ms)` | waits |
+| `wait_for(fn, ms)` | waits until `fn()` is true. Returns true or false |
+| `ask(question, choices, opts)` | asks for a key: `{ { "y", "yes" }, ... }`. Returns the key, `"skip"` when there is no person, `opts.default` at the timeout, or `"done"` when `opts.done()` is true. paw calls `opts.each()` while it waits |
+| `track(opts)` | a track in the scratch project. paw removes it when the check ends |
+| `file(path)`, `dir()` | a file to delete, a directory of the run |
+| `cleanup(fn)` | runs `fn` when the check ends, in all cases |
+| `play(beat, seconds)`, `stop()` | plays the scratch project, stops it |
+| `attended()` | true when a person is there |
+
+An error in a check ends it as failed. A `pcall` in a check must raise
+again an error that is a table. The doctor uses such an error to end a
+check that you cancel or that times out.
+
+### Limits
+
+The doctor ran on the null backend only. There, a test input gives two
+channels of tone, and `paw.midi.inject` acts as a controller. The paths
+for real hardware (a Bluetooth output, a UR22mkII, the latency of
+PipeWire, a loop-back cable, real plugin windows) come from the reports of
+the program. They did not run against the devices.
+
+## About
+
+Most of paw was tried against substitutes: the null audio backend, MIDI
+that a test sends, plugins in a test set. The doctor is for the real
+hardware, where a person must listen.
 
 A check needs tracks, clips and recordings of its own. The doctor does not
-add them to your project and take them away: that would leave steps in its
-undo history and move things. When a check first needs one, your project is
-put aside whole, with its undo tree, its transport and its changed flag
-(`paw.api.project_shelve`), and an empty scratch project opens in its place;
-when the run ends, however it ends, the scratch project is closed and yours
-comes back exactly as it was, down to the playhead. The checks that only
-look (1, 3, 6, 9, and 8 with nothing named) never put anything aside.
-
-While your project is aside a copy of it is kept in `doctor/open-project.json`
-in the state directory, and removed when it is back. If the program dies in
-between, that file is the project: open it with `:edit`. Autosave is turned
-off for the run, since a safety copy of the scratch project would take the
-place of yours, and turned on again after. Plugins on your tracks are
-stopped while the project is aside and started again when it is back.
-
-Everything a check adds goes when it ends, also when it is cancelled and when
-it fails: its tracks, the files it wrote, the take it recorded.
-
-## The report
-
-`<state directory>/doctor/<year-month-day-time>.md`, with the same data as
-`.json` beside it for the next report to compare with. At the top the
-machine: program, kernel, system, processor, memory, sound system, devices,
-rate, block, display, configuration. Then a table of the checks and a
-section on each with what was found. Under "Changed since the report of
-…" are the machine's facts and each check's findings that differ from the
-last report: a device that went, a rate that moved, a plugin that stopped
-sounding. Measurements that are never the same twice (peaks, CPU, latency)
-are reported but not compared.
-
-`paw doctor` takes `--seconds 20` (the length of the dropout runs),
-`--plugin MT-PowerDrumKit` (repeatable; else `paw.opt.doctor_plugins`),
-`--only system,plugins`, and the program's audio options (`--audio`,
-`--output`, `--input`, `--buffer`, `--rate`). Unlike other scripts it opens
-the sound device, since that is what it looks at; it makes sound while it
-runs. It exits with 1 if a check failed.
-
-## Adding a check
-
-A check is a table in `require("doctor").checks`. Add it from your
-`init.lua` or an extension, after the doctor is loaded:
-
-```lua
-table.insert(require("doctor").checks, {
-  name = "Footswitch",                       -- shown in the list and the report
-  help = "Press the footswitch once.",       -- what it needs from the person
-  unattended = false,                        -- true if it can run with nobody there
-  limit = 60,                                -- seconds before it is stopped (120 by default)
-  run = function(ctx)
-    local pressed = false
-    local handler = paw.on("midi.in", function(e) if e.type == "cc" and e.number == 64 then pressed = true end end)
-    ctx:cleanup(function() paw.off(handler) end)
-    ctx:ask("Press the footswitch.", { { "s", "skip" } }, { timeout = 15, done = function() return pressed end, default = "timeout" })
-    if not pressed then return "fail", "no pedal message arrived" end
-    ctx:fact("pedal", "sustain")
-    return "ok", "the footswitch sends sustain"
-  end,
-})
-```
-
-`run(ctx)` returns `"ok"`, `"warn"`, `"fail"` or `"skip"` and a sentence. It
-runs in a coroutine woken from a timer, so it waits with the context's
-functions and never with a loop of its own that does not yield:
-
-| `ctx:` | |
-| --- | --- |
-| `say(text)` | a line shown while it works |
-| `log(text)`, `warn(text)` | a line for the report; a warning turns "ok" into "warn" |
-| `fact(key, value)`, `measure(key, value)` | what was found: compared with the last report, or only reported |
-| `sleep(ms)`, `wait_for(fn, ms)` | let time pass; until `fn()`, true or false |
-| `ask(question, choices, opts)` | ask for a key: `{ { "y", "yes" }, ... }`; returns the key, `"skip"` when nobody is there, `opts.default` on timeout, `"done"` when `opts.done()` is true; `opts.each()` is called while waiting |
-| `track(opts)` | a track in the scratch project, removed when the check ends |
-| `file(path)`, `dir()` | a file to delete, a directory of the run's own |
-| `cleanup(fn)` | run `fn` when the check ends, however it ends |
-| `play(beat, seconds)`, `stop()` | play the scratch project; stop it |
-| `attended()` | whether a person is there |
-
-An error raised inside a check ends it as failed. A `pcall` inside one must
-pass on an error that is a table (the doctor ends a cancelled or timed-out
-check with one).
-
-## What it cannot do
-
-It has been run on the null backend only, where a test input gives two
-channels of tone and `paw.midi.inject` stands in for a controller. The
-hardware paths (a Bluetooth output, a UR22mkII, PipeWire's own latency, a
-loop-back cable, real plugin windows) are written from the program's own
-reports and have not been run against the devices themselves.
+add them to your project and remove them after. That would leave steps in
+the undo history and move things. So it puts your project aside as a
+whole. Autosave is off for the run, because a safety copy of the scratch
+project would replace the copy of your project.
