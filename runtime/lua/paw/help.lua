@@ -1,4 +1,4 @@
--- Help, as Vim's: the manual inside the program. docs/terminal.md says how
+-- Help, as Vim's: the manual inside the program. docs/reference/help.md says how
 -- it is used, docs/scripting.md how an extension ships help of its own.
 --
 --   :help                the contents
@@ -10,7 +10,7 @@
 -- how-to guides, reference and explanation, as docs/README.md lists them),
 -- every extension's README.md and doc/*.md (bundled beside the program or in
 -- the configuration, loaded or not), and what `paw.help.add` names, made into
--- text by paw/markdown.lua and shown in text buffers (`help://terminal.md`)
+-- text by paw/markdown.lua and shown in text buffers (`help://help.md`)
 -- that cannot be changed. Their keys are the text buffers' own (motions,
 -- `v`, `y`, `/`), with `Ctrl-]` (or `Enter`, or a double click) to follow
 -- the link or look up the word under the cursor, `K` to look a word up,
@@ -157,7 +157,7 @@ end
 --- The manual's pages: every Markdown file under docs/. The kind of a page
 --- is its folder's (docs/reference/...), else the section of docs/README.md
 --- that lists it or its folder's README. A page is named by its base name
---- (`help://terminal.md`, tags `terminal`) or, when two kinds have pages of
+--- (`help://options.md`, tags `options`) or, when two kinds have pages of
 --- the same name, with its kind before it (`how-to/x.md`, `how-to-x`). A
 --- page in a folder of its own is named by its path in its kind
 --- (`course/05-grammar.md`), its tags after the folder: `course` for the
@@ -839,7 +839,7 @@ function M.back(n)
 end
 
 --- Where a link's target leads from a page: a tag (`help:tag`), another
---- page (`mixing.md`, `../docs/terminal.md#keys`), or a place on the web.
+--- page (`mixing.md`, `../docs/reference/ex.md#flags`), or a place on the web.
 local function link_target(source, target)
   local tag = target:match("^help:(.+)$")
   if tag then return build().tags[tag] end
@@ -1142,7 +1142,7 @@ function M.topic_of(view)
 end
 
 M.view_topics = {
-  arrange = "terminal", pianoroll = "piano-roll", mixer = "mixer", devices = "device-panel", session = "session-view",
+  arrange = "arrange-view", pianoroll = "piano-roll", mixer = "mixer", devices = "device-panel", session = "session-view",
   textbuf = "lists-edited-as-text", qflist = "quickfix-list",
 }
 

@@ -3360,7 +3360,7 @@ function paw.help.lookup(topic) end
 --- The manual's pages: every Markdown file under docs/. The kind of a page
 --- is its folder's (docs/reference/...), else the section of docs/README.md
 --- that lists it or its folder's README. A page is named by its base name
---- (`help://terminal.md`, tags `terminal`) or, when two kinds have pages of
+--- (`help://options.md`, tags `options`) or, when two kinds have pages of
 --- the same name, with its kind before it (`how-to/x.md`, `how-to-x`). A
 --- page in a folder of its own is named by its path in its kind
 --- (`course/05-grammar.md`), its tags after the folder: `course` for the

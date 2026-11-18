@@ -1,5 +1,5 @@
 -- Text buffers: a listing of the project edited as text, after oil.nvim.
--- docs/terminal.md says how they are used, docs/scripting.md how an
+-- docs/reference/lists-edited-as-text.md says how they are used, docs/scripting.md how an
 -- extension adds a kind of its own.
 --
 --   :e paw://tracks          :vs paw://sends          :e paw://markers

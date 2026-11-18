@@ -1,4 +1,4 @@
--- One key rule in every view (docs/terminal.md, "Keys: one grammar"): the
+-- One key rule in every view (docs/reference/key-rule.md): the
 -- motion keys only move (the structural `]]` `[[` `]s` `[s` `[{` `]}` too), `<` `>` are the time operators, `+` `-` `Ctrl-a`
 -- `Ctrl-x` change the main value and `[` `]` the second, `K` describes,
 -- `ge` is the plugin window, `gc` mutes and `gC` opens a curve, and Escape

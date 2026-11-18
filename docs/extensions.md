@@ -224,8 +224,7 @@ table, under Events.
 ## Pictures in the terminal
 
 A view that draws cells can show part of itself in pixels where the
-terminal shows images (see "Pictures" in [The terminal
-interface](terminal.md)): in its `render` it keeps a **strip** of cells
+terminal shows images (see [Pictures in the terminal](reference/pictures.md)): in its `render` it keeps a **strip** of cells
 and says how to draw it, and draws its cells as it would anyway.
 
 ```lua

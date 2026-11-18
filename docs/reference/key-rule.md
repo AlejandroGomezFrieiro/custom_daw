@@ -1,0 +1,99 @@
+# The key rule
+
+<!-- tags: key-rule keys-one-grammar -->
+
+Every view obeys one rule for its keys: a key has the same meaning in each
+view. `tests/keys_constitution.lua` examines the mappings of every view,
+also those of the bundled extensions, and fails on a mapping that breaks
+the rule. `:lua =paw.keyrule.broken()` does the same check on your own
+mappings.
+
+Buffers of text (`:e paw://tracks`) keep the keys of Vim for text. There,
+`Ctrl-a` adds to the number under the cursor, and `-` goes up to the
+buffer above, as in oil.nvim. Their motions and operators obey the rule.
+
+For the reasons of the rule, see [About the key rule](../explanation/about-the-key-rule.md).
+
+## The keys in every view
+
+| Keys | Meaning in every view |
+| --- | --- |
+| `h` `j` `k` `l` `w` `b` `e` `0` `^` `$` `gg` `G`, with counts | Motions only. They work after an operator and in visual mode. `h` `l` go along the columns of the view, `j` `k` along its rows. In the mixer, `h` `l` go from strip to strip, and `j` `k` along the rows of a strip. In the device panel, `j` `k` go over the devices and their parameters, `w` `b` from device to device, and `e` to the last parameter of a device. |
+| `+` `-`, `Ctrl-a` `Ctrl-x` | The main value of what is under the cursor, up and down. A count first gives how much: `6 Ctrl-x` is 6 dB down on a fader, six semitones down on a note. On a selection, the value of all of it. |
+| `]` `[` | The second value, up and down. |
+| `>` `<` | The time operators: later and earlier (`>>`, `>ic`, `3>` on a selection). Never pan. |
+| `K` | Describes what is under the cursor. `gK` gives what the diagnostics and language servers say about it. |
+| `ge` | The plugin window of what is under the cursor (an insert in the mixer, a device in the panel), else of the track. |
+| `gc` | Mute: an operator over clips and tracks (`gcc` the track), and over strips in the mixer. A lane of automation off or on. A device bypassed (`gcc` in the panel). |
+| `gC`, `Enter` | Opens the curve of what is under the cursor: a lane row, a parameter, the fader or pan of the mixer, the strip of the piano roll. `gX` opens the expression of the note. |
+| `Alt-h` `Alt-l`, `H` `L` | Shorter and longer. Earlier and later. For a clip, a note, a chord in the score. |
+| `Esc` | Cancels: a count, an operator, a selection, insert mode, a suggestion, the chosen notes, a running check. It never leaves or closes a view. A second `Esc` says how to leave: `Ctrl-w p` returns to the window before, and `:q`, `ZZ`, `Ctrl-w c` or the key of the view (`,m` `,d` `,p`, `q` on a page) close it. Pickers, menus and floating lists are prompts, and close on `Esc`. |
+| `s` `M` `r` | Solo, mute, arm the track: in the arrange view, the mixer, the session view (the track of the column) and the device panel (its track). |
+| `a` | Append: a device after the chain of the track (arrange view, mixer, device panel), notes after the note (piano roll, score), a drawing from the curve (curve editor). |
+| `A` | Automate the main value: a point at the cursor on the volume of the track, the parameter, the lane. |
+| `c` | Change what is under the cursor: an operator over clips and notes. On a lane point or a parameter, type its value. On a device, choose a preset. |
+| `~` | Switch a property of what is under the cursor: the mute of a clip, the shape of a part of a curve, the vibrato of a note. |
+| `]x` `[x` | The next and the previous item of a list: `]d` diagnostics, `]t` takes, `]p` presets, `]c` curves (vocal editor), `]'` markers. `]g` `[g` change the grid. |
+| `Ctrl-d` `Ctrl-u` | A big step along `j` `k`: four tracks, an octave (piano roll, score, vocal editor), ten steps of a curve. |
+
+## The main and the second value
+
+| View, under the cursor | Main: `+` `-` `Ctrl-a` `Ctrl-x` | Second: `]` `[` |
+| --- | --- | --- |
+| Arrange view, a track (and `V` over tracks) | the volume, a dB | the pan, a tenth |
+| Arrange view, a selection of clips (`v`, `Ctrl-v`) | the pitch of their notes, a semitone | |
+| Arrange view, a lane row | the value of the point | |
+| Mixer | the row: the fader or a send in dB, the pan in tenths, a switch on (`+`) or off (`-`), an insert on or bypassed | the pan of the strip |
+| Device panel | the parameter, 1/100 of its range. On the row of a device, its wet mix | |
+| Piano roll | the pitch of the note, a semitone | its velocity, by 10 |
+| Score (notation) | the pitch of the note: sharpen, flatten | |
+| Drum grid | the velocity of the hit, by 16 | the same: a hit has no pitch |
+| Curve editor | the value of the point | the bend of the smooth part after it |
+| Vocal editor | the pitch of the note | the start of its phoneme |
+| Virtual inputs | the setting. On the row of an input, on or off | |
+
+## Leaders
+
+| Leader | Meaning |
+| --- | --- |
+| The leader | `<leader>` in a mapping. It is `paw.opt.leader`, `,` by default. It starts the keys that mean the same in every view: `,m` the mixer, `,d` the device panel. |
+| The local leader | `<localleader>` in a mapping. It is `paw.opt.localleader`, a backslash by default, as in Vim. It starts the keys of one view, for example the notation popovers: `\d` dynamics, `\t` tempo. |
+
+A key of one view must not use a key of the global leader.
+`:lua =paw.keyrule.broken()` lists the keys that do. `:map` and the key
+hints show both leaders as you type them.
+
+## The classic keys
+
+`paw.opt.keys = "classic"` in `init.lua` (or `:set keys=classic`) gives the
+keys as they were before the rule, for a time. `:set keys=default` removes
+them again. The changes:
+
+| View | Before | Now |
+| --- | --- | --- |
+| Arrange | `(` `)` pan | `[` `]` |
+| Arrange | `Ctrl-a` `Ctrl-x` transpose the clip | volume. `vic` then `Ctrl-a` transposes |
+| Everywhere | `gC` count a bar in | `gM` |
+| Lane row | `gc` the curve | `gC` or `Enter`. `gc` turns the lane off or on |
+| Mixer | `j` `k` the fader | `+` `-`. `j` `k` move along the strip |
+| Mixer | `<` `>` pan | `[` `]` |
+| Mixer | `gg` `G` first and last track | first and last row. `0` `$` first and last strip |
+| Device panel | `h` `l`, `H` `L` the parameter | `+` `-`, with a count |
+| Device panel | `b` bypass | `gc` |
+| Device panel | `e`, `Enter` the plugin window | `ge`. `Enter` on a parameter opens its curve |
+| Device panel | `s`, `<` `>`, `w`, `W` presets | `c` on a device, `[p` `]p`, `,w`, `,W`. `s` solos |
+| Device panel | `K` side-chain | `gS` |
+| Device panel | `gc` the curve | `gC`, `Enter` |
+| Piano roll | `J` `K` an octave | `Ctrl-d` `Ctrl-u` |
+| Piano roll | `+` `-` length | `Alt-l` `Alt-h`. `+` `-` the pitch |
+| Piano roll | `gc` the curve of the strip, `gC` of the note | `gC`, `gX` |
+| Piano roll, drum grid, virtual inputs, vocal editor | `Esc` back to the arrange view | `Ctrl-w p`. `Esc` stays |
+| Doctor | `Esc` closes the page when nothing runs | `q`. `Esc` stops a run |
+| Curve editor | `J` `K` ten steps | `Ctrl-d` `Ctrl-u` |
+| Curve editor | `s` shape, `<` `>` bend | `~`, `[` `]`. `<` `>` move points in time |
+| Curve editor | `gn` a wave, `gw` its own window | `g~`, `Ctrl-w f` |
+| Session | `s` `S` stop, `b` `B` back, `e` notes | `S` `gS`, `B` `gB`, `i`. `s` solos |
+| Virtual inputs | `h` `l`, `H` `L` the setting | `+` `-`, with a count |
+| Score | `+` `-` length, `Alt-h` `Alt-l` move the chord, `J` `K` octave, `ge` respell | `Alt-l` `Alt-h`, `H` `L`, `Ctrl-d` `Ctrl-u`, `g~`. `+` `-` sharpen and flatten |
+| Vocal editor | `+` `-` length, `J` `K` octave, `Ctrl-a` select all, `Ctrl-x` cut, `gc` `gC` curves, `gA` phrase | `Alt-l` `Alt-h`, `Ctrl-d` `Ctrl-u`, `gA`, `d`, `]c` `[c`, `vap`. `+` `-` `Ctrl-a` `Ctrl-x` the pitch |
+| Lyric sheet | `K` kana, `Esc` closes | `~`, `q` |

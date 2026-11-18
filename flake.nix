@@ -9,7 +9,7 @@
     flake = false;
   };
   # Builds the workspace in layers: every dependency once, in a derivation
-  # of its own that the program and the checks reuse (docs/running.md).
+  # of its own that the program and the checks reuse (docs/explanation/about-the-nix-build.md).
   inputs.crane.url = "github:ipetkov/crane";
 
   outputs = { self, nixpkgs, openutau, crane }:

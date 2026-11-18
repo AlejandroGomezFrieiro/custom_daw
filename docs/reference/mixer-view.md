@@ -1,0 +1,50 @@
+# The mixer
+
+<!-- tags: mixer -->
+
+The mixer shows a strip for each track. `,m` shows it. It is a grid. `h`
+`l` go from strip to strip. `j` `k` go along the rows of a strip, from the
+top to the bottom. The rows of a strip are its devices (inserts), its
+sends, the fader, the pan, mute, solo, arm and the input monitor.
+
+## What the view shows
+
+- A strip has a name plate, meters with the peak held, a fader with 0 dB marked, the pan and the chips. If there is room, it also shows its first devices and sends.
+- The row under the cursor has a mark on the left edge of the strip (a switch is lit), and a color of its own across the strip. The title bar gives its name and value at the right.
+- The scale to the left of the first strip is the scale of the fader, for every strip, from `+6` to `-48`. The fader uses most of its travel for the top twenty decibels.
+- The meters next to the fader are linear from -60 to 0 dB. The highest recent level shows in numbers under them.
+- The top row of the meters is the clip light. It goes red when a level reaches full scale, and stays red until you click it (or the peak), or until the transport starts again.
+- If there is room, the row under the name of a strip gives the track that it plays into (`→ Master`, `→ Drum bus`). A click there, or `:track.output`, chooses it. Four rows name its first devices, and the last row counts the others (`+2 more`). With less room, one row counts the devices and the sends.
+- VCAs have strips after the tracks. The arrange view makes them (`,vn` and the other keys of [the arrange view](arrange-view.md)). See [Edit, mix and render](../mixing.md).
+
+## Keys
+
+| Keys | Effect |
+| --- | --- |
+| `h` `l` | Go to the next and the previous strip. |
+| `0` `$`, `5\|` | Go to the first and the last strip, the fifth strip. |
+| `j` `k` | Go along the rows of the strip. |
+| `gg` `G` | Go to the top and the bottom row. |
+| `w` `b` | Go to the next and the previous kind of row. |
+| `+` `-` | Change the row: a dB on the fader or a send, a tenth of pan, a switch on or off, an insert on or bypassed. `6 Ctrl-x` is six dB down. |
+| `]` `[` | Pan the strip, from any row. |
+| `Enter` | Types the value of the row. On a switch, switches it. On an insert, shows its window. |
+| `x` | Clears the row: 0 dB, the center, off. A send or an insert goes away. |
+| `gC` | Opens the curve of the fader or the pan in the [curve editor](curve-editor.md). |
+| `K` | Describes the row. |
+| `M` `s` `r` `Alt-i` | Mute, solo, arm, monitor the track. |
+| `dj` | Clears the fader and the pan. |
+| `yj`, then `p` | Copies the fader and the pan to a different strip. |
+| `gcc` | Mutes a strip. `gc2l` mutes three strips. |
+| `dd` `yy` `p` | Cut, copy and paste whole tracks. |
+| `V`, then `-` | Lowers every selected fader. `.` does it again. |
+| `grv` `grp` | Type the volume and the pan of the strip. |
+| `grC` | Chooses the color of the track. |
+
+## The session view
+
+<!-- tags: session-view -->
+
+`,l` shows the session view, the clip launcher: a column of slots under
+each track, and a scene for each row. `Enter` launches a slot, and `L`
+launches a row as a scene. Its keys are in [Live performance](../live.md).

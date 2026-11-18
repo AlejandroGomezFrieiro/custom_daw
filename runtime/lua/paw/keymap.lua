@@ -245,8 +245,8 @@ function M.put(mode, scope, keys, map)
   maps[mode][scope][keys] = map
 end
 
--- The keys as they were before every view kept to one rule (docs/terminal.md,
--- "Keys: one grammar"), made only with `paw.opt.keys = "classic"`.
+-- The keys as they were before every view kept to one rule (docs/reference/key-rule.md,
+-- "The classic keys"), made only with `paw.opt.keys = "classic"`.
 local classic = {}
 
 --- Make a classic mapping, keeping what it covers to put back.

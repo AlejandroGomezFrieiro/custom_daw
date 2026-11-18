@@ -202,7 +202,7 @@ paw.command("mood", fn, { complete = function(text, info) return { "calm", "loud
 -- ctx.range is { selection = true, region = <as an operator gets it> }, and
 -- paw.keymap.selection() returns that region while the command runs, so a
 -- command that works on the selection takes the range unasked. `:5,8name`
--- (or `:5name`, `:%name`, `:'a,'bname`, `:.+4name`; docs/terminal.md, "Ex")
+-- (or `:5name`, `:%name`, `:'a,'bname`, `:.+4name`; docs/reference/ex.md)
 -- gives time, to commands made with `range = true` only: ctx.range is
 -- { bars = { 5, 8 }, from, to }, beats of the song, `to` not included.
 -- `:t2,t4name` (`t*`, `t/Drums/`) adds tracks = { ids }; a command without
@@ -372,8 +372,7 @@ bound roles names them in `view.live_roles` (the mixer's `{ "meter",
 the view as it plays, only the live values.
 
 **Buffers, windows and tabs.** A view is a buffer type with one buffer,
-shown in one window at a time (see Windows, buffers and tabs in
-[the terminal interface](terminal.md)). `paw.buftype` makes a type that has
+shown in one window at a time (see [Windows, buffers and tabs](reference/windows.md)). `paw.buftype` makes a type that has
 a buffer for each target, any number of windows showing each:
 
 ```lua
@@ -445,8 +444,7 @@ arrange view and the piano roll do; a window that follows another is drawn
 with `ctx.follower`.
 
 **Text buffers.** `paw.textbuf.kind` adds a listing edited as text, as
-`paw://tracks` is (see Lists edited as text in [the terminal
-interface](terminal.md)). The kind reads the project into items, writes
+`paw://tracks` is (see [Lists edited as text](reference/lists-edited-as-text.md)). The kind reads the project into items, writes
 each as cells, reads a line back into fields, and turns what changed into a
 plan; the text core does the editing, the hidden ids, the diff, the float
 that shows the plan and the one undo step it is applied as.
@@ -508,12 +506,10 @@ kind (`paw/views/files.lua`): `paw.files.open(folder, { tree = true })`,
 made from.
 
 **The status line.** `paw.statusline.setup` and `paw.statusline.component`
-change and extend the line, a winbar and the tab line (see The status line
-in [Configuration](configuration.md#the-status-line)).
+change and extend the line, a winbar and the tab line (see [The status line](reference/status-line.md)).
 
 **Help.** An extension ships help by having it: its `README.md`, and any
-`doc/*.md` beside it, are pages of `:help` (see Help in [the terminal
-interface](terminal.md)), whether it is loaded or not. The page's title is
+`doc/*.md` beside it, are pages of `:help` (see [Help](reference/help.md)), whether it is loaded or not. The page's title is
 tagged with the extension's name (`doc/more.md` with `name-more`), each
 heading with the name and the heading's words (`## Keys` in notation's
 README is `notation-keys`), and each key, command (`:name.open`), option and
@@ -552,7 +548,7 @@ on the status line what is under the pointer. See `runtime/lua/paw/mouse.lua`.
 address (`paw://lane/9`, `paw://track/3/device/5/param/cutoff`,
 `paw://clip/7/control/cc/74`, `paw://clip/7/control/bend#key=60`,
 `paw://tempo`), as points `{ beat, value, shape, tension }` in project
-beats; the curve editor (see [the terminal interface](terminal.md)) is a
+beats; the curve editor (see [The curve editor](reference/curve-editor.md)) is a
 buffer type named `curve` built on it.
 
 ```lua
@@ -764,8 +760,9 @@ query (`"clip[name~=pizz] > note[pitch>=C5]"`, or a table of steps) and
 a field. `paw.grep.search(pattern, { mode, fields })` finds the project's
 text, and `paw.grep.source(name, function(add) end)` adds text to it.
 `paw.regex.compile(text)` makes a regular expression of the common kind
-(`re:find(s)`). Each is in [the terminal interface](terminal.md),
-"Structural queries" and "Searching the project's text".
+(`re:find(s)`). Each is in [Pickers](reference/pickers.md),
+[Structural queries](reference/queries.md) and
+[Search the text of the project](reference/grep.md).
 
 **Layers and locators.** What modules draw over a view goes in layers:
 `paw.ui.views.pianoroll.layer(name, order, paint)` draws over the roll in
@@ -939,7 +936,7 @@ paw attach --connect studio:7700 --token-file studio.token   # over the network
 Over the network the instance has to be started with `--listen-tcp
 0.0.0.0:7700` (or `127.0.0.1:7700` for this machine alone); the
 connection is encrypted (TLS) and has to show that it knows the token.
-[Running it](running.md#on-another-machine) says how to set that up,
+[How to work on paw from another computer](how-to/work-from-another-computer.md) says how to set that up,
 send files from the machine you sit at, and hear the instance there.
 
 **State of each seat, for module authors.** Whatever a module keeps about

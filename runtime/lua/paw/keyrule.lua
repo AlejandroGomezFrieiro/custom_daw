@@ -1,4 +1,4 @@
--- The one key rule every view keeps (docs/terminal.md, "Keys: one grammar"),
+-- The one key rule every view keeps (docs/reference/key-rule.md),
 -- as a check over the mappings: what `tests/keys_constitution.lua` runs, and
 -- anyone writing an extension can run with `:lua =paw.keyrule.broken()`.
 local keymap = paw.keymap

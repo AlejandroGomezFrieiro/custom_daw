@@ -1,0 +1,93 @@
+# The command line
+
+<!-- tags: cmdline command-line -->
+
+`:` opens the command line at the bottom of the screen. It runs a command
+by its name: `:q` quits, `:w` saves. For ranges, `:s` and `:g`, see
+[Ex commands](ex.md).
+
+## Completion
+
+While you type a command, a list above the command line shows what the
+line can become, with a description of each item. The list shows command
+names first. After the name, it shows the arguments of the command:
+
+| Command | The list shows |
+| --- | --- |
+| `:send` | tracks, by name |
+| `:device.add` | devices |
+| `:open`, `:import`, `:render`, `:write` | files |
+| `:set` | options |
+
+| Key | Effect |
+| --- | --- |
+| `Tab`, `Ctrl-n` | Puts the next item of the list in the line. |
+| `Shift-Tab`, `Ctrl-p` | Puts the previous item in the line. |
+| `Enter` | Runs the line. On a directory, it opens the directory in the list. |
+| `Up`, `Down` | The lines typed before. |
+| `Esc` | Closes the command line. |
+
+A command name that is not complete runs the command of that name with
+`.open`, if an extension has one: `:notation` runs `:notation.open`. Else
+paw shows the commands that the name can mean.
+
+## Options
+
+| Command | Effect |
+| --- | --- |
+| `:set {name} {value}`, `:set {name}={value}` | Sets an option: `:set zoom 4`, `:set zoom=4`. |
+| `:set {name}!` | Switches a true or false option: `:set follow!`. |
+| `:set {name}?` | Shows the value of an option: `:set zoom?`. |
+| `:setlocal {name}` | Sets an option of the window: `:setlocal timebind`. |
+
+A name that is not an option gives the error `E518`. See [Options](options.md).
+
+## Prompts
+
+Some keys open a prompt with the current value in it, for example `grn`
+(rename the track). The value is selected: what you type replaces it. To
+edit the value, press `Left` or `Home` first.
+
+## Unsaved work
+
+Work is unsaved when the project has changes. Work is also unsaved in a
+project with no file that is not empty. An example is a project opened
+from a MIDI file or a REAPER project. These commands do not replace a project with unsaved work:
+`:open`, `:edit`, `:new`, `:recent`, `:recover`, `:rpp.import`, `:tutor`
+and `:q`. They show a message and stop.
+
+- `:w` saves the work first.
+- The same command with `!` discards the work: `:open! song.json`, `:new!`, `:q!`.
+
+The graphical window asks in a dialog box.
+
+`:open` opens a project, a MIDI file (as a new project) or a sound file.
+
+## Messages
+
+After an error, the bottom line says how to read the full message, until
+you read it.
+
+| Key or command | Effect |
+| --- | --- |
+| `:messages` | Shows all messages, newest at the bottom. A long message wraps over many rows. |
+| `,fn` | Chooses a message from a list, newest first. |
+
+## Keys that are not complete
+
+If you stop in the middle of a key sequence, paw lists the keys that can
+come next. A group of keys shows its name, for example `+automation`.
+`paw.opt.hint_delay` sets the time before the list shows, and
+`paw.opt.hints` turns it off.
+
+A key sequence that has no mapping stops with a message, for example
+`,kn is not mapped`. paw discards the other keys that you typed. It does not run them
+as new commands.
+
+## Find a key or a command
+
+| Key | Effect |
+| --- | --- |
+| `?` | Lists every key of the focused view and the global keys. Type a part of a key or of its description to filter the list. `Enter` runs the key. See [Pickers](pickers.md). |
+| `,,` | Chooses a command by its name. |
+| `:help all` | Shows the keys of the focused view as one page. |
