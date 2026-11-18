@@ -34,6 +34,8 @@ pub trait Kernel {
     fn live(&mut self) -> Option<Value> {
         None
     }
+    /// Draw the song's moves (the playhead, the meters) `fps` times a second.
+    fn set_pace(&mut self, _fps: f64) {}
 }
 
 impl Kernel for Client {
@@ -55,6 +57,9 @@ impl Kernel for Client {
     fn live(&mut self) -> Option<Value> {
         self.live.take()
     }
+    fn set_pace(&mut self, fps: f64) {
+        self.pace.store((1e6 / fps.max(1.0)) as u64, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 /// Taller or shorter tracks in the arrange view, by `...` rows, from the
@@ -69,6 +74,25 @@ const MESSAGE_TIME: Duration = Duration::from_secs(5);
 /// The transport bar along the top, and the status line along the bottom.
 pub const TRANSPORT_H: f32 = 40.0;
 pub const STATUS_H: f32 = 22.0;
+
+/// The frames a second the window draws while the song plays, by
+/// `paw.opt.window_fps`: a number from 1 to 60, or `auto`: 30 on a
+/// graphics card, 15 on the processor, where each frame costs much more.
+pub fn frame_rate(option: &Value, software: bool) -> f64 {
+    match option.as_f64() {
+        Some(fps) => fps.clamp(1.0, 60.0),
+        None if software => 15.0,
+        None => 30.0,
+    }
+}
+
+/// Whether the still part of the panes is kept in a texture, by
+/// `paw.opt.window_cache`: true, false, or `auto`, which is on: it saves
+/// processor time on a graphics card too, where the texture costs a few
+/// megabytes of its memory.
+pub fn cache_on(option: &Value) -> bool {
+    option.as_bool().unwrap_or(true)
+}
 
 /// What the kernel last said, read.
 #[derive(Default)]
@@ -149,6 +173,18 @@ pub struct View {
     pub gone: bool,
     pub listening: bool,
     pub ctx: Option<egui::Context>,
+    /// OpenGL draws the window on the processor (llvmpipe).
+    pub software: bool,
+    /// The frames a second while the song plays, as last set.
+    pub fps: f64,
+    /// The textures that keep what does not move in the panes drawn from
+    /// scenes (with OpenGL only), and whether they are used
+    /// (`paw.opt.window_cache`).
+    pub layer: Option<crate::layer::Layer>,
+    pub cache: bool,
+    /// With `PAW_GUI_STATS` set: frames drawn since the last report, and
+    /// when that was. Every 10 s the window prints what it drew.
+    stats: Option<(u64, Instant)>,
     /// The window's title as last set.
     title: String,
 }
@@ -186,6 +222,11 @@ impl View {
             gone: false,
             listening: false,
             ctx: None,
+            software: false,
+            fps: 0.0,
+            layer: None,
+            cache: false,
+            stats: std::env::var_os("PAW_GUI_STATS").map(|_| (0, Instant::now())),
             title: String::new(),
         }
     }
@@ -282,6 +323,12 @@ impl View {
 
     /// Take in a state as `paw.frontend.state` gives it.
     pub fn take(&mut self, state: Value) {
+        let fps = frame_rate(&state["window_fps"], self.software);
+        if self.fps != fps {
+            self.fps = fps;
+            self.k.borrow_mut().set_pace(fps);
+        }
+        self.cache = cache_on(&state["window_cache"]);
         self.s.playing = flag(&state["playing"]);
         self.s.recording = flag(&state["recording"]);
         if state.get("project").is_some_and(Value::is_object) {
@@ -397,6 +444,27 @@ impl View {
         if self.gone && self.ours {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        self.stats();
+    }
+
+    /// With `PAW_GUI_STATS`: a line every 10 s of the frames drawn, and of
+    /// the squares and pixels of the panes' texture painted again.
+    fn stats(&mut self) {
+        let Some((frames, since)) = &mut self.stats else { return };
+        *frames += 1;
+        let seconds = since.elapsed().as_secs_f64();
+        if seconds < 10.0 {
+            return;
+        }
+        let (squares, pixels) = self.layer.as_mut().map_or((0, 0), |l| (std::mem::take(&mut l.painted), std::mem::take(&mut l.pixels)));
+        eprintln!(
+            "paw-gui: stats: {frames} frames in {seconds:.1} s ({:.1}/s), texture {}, {squares} squares painted ({:.2} a frame), {:.0} pixels painted a frame",
+            *frames as f64 / seconds,
+            if self.cache { "on" } else { "off" },
+            squares as f64 / *frames as f64,
+            pixels as f64 / *frames as f64,
+        );
+        self.stats = Some((0, Instant::now()));
     }
 
     /// The panes of the main area: those the window draws itself, and those
@@ -723,5 +791,50 @@ impl View {
     /// Where the pointer is, if it is over `rect`.
     pub fn pointer_in(ui: &Ui, rect: Rect) -> Option<Pos2> {
         ui.input(|i| i.pointer.hover_pos()).filter(|p| rect.contains(*p))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::rc::Rc;
+
+    /// A kernel that keeps the pace it is set to.
+    struct Paced(Rc<RefCell<Vec<f64>>>);
+
+    impl Kernel for Paced {
+        fn call(&mut self, _method: &str, _params: Value) -> Result<Value> {
+            Ok(Value::Null)
+        }
+        fn state(&mut self) -> Result<Option<Value>> {
+            Ok(None)
+        }
+        fn send_file(&mut self, path: &Path) -> Result<String> {
+            Ok(path.to_string_lossy().into())
+        }
+        fn listening(&self) -> bool {
+            false
+        }
+        fn set_pace(&mut self, fps: f64) {
+            self.0.borrow_mut().push(fps);
+        }
+    }
+
+    #[test]
+    fn the_song_is_drawn_at_the_pace_of_window_fps_slower_on_the_processor() {
+        assert_eq!(frame_rate(&json!("auto"), false), 30.0);
+        assert_eq!(frame_rate(&json!("auto"), true), 15.0);
+        assert_eq!(frame_rate(&Value::Null, true), 15.0, "a kernel without the option");
+        assert_eq!(frame_rate(&json!(10), true), 10.0);
+        assert_eq!(frame_rate(&json!(500), false), 60.0);
+        assert!(cache_on(&json!("auto")) && cache_on(&json!(true)) && !cache_on(&json!(false)));
+        let paces = Rc::new(RefCell::new(Vec::new()));
+        let mut view = View::new(Box::new(Paced(paces.clone())), true);
+        view.software = true;
+        view.take(json!({ "window_fps": "auto" }));
+        view.take(json!({ "window_fps": "auto" }));
+        assert_eq!(*paces.borrow(), vec![15.0], "set once, when it changes");
+        view.take(json!({ "window_fps": 24 }));
+        assert_eq!(*paces.borrow(), vec![15.0, 24.0]);
     }
 }

@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 use unicode_width::UnicodeWidthChar;
 
 use crate::app::View;
+use crate::layer::Layer;
 use crate::panes::pointer_events;
 use crate::roles;
 use crate::theme::{hex, mono, mono_medium};
@@ -332,10 +333,15 @@ impl Shown {
     }
 
     /// Draw the window's scene over `rect`, cut to `clip`; `id` is the
-    /// window's.
-    fn draw(&mut self, ui: &Ui, id: &str, rect: Rect, clip: Rect, cell: (f32, f32), live: &Value) {
+    /// window's. With a `layer`, what does not move is kept there as
+    /// textures; what moves (the roles bound to live values and the one
+    /// under the pointer) is drawn over it each frame.
+    fn draw(&mut self, ui: &Ui, id: &str, rect: Rect, clip: Rect, cell: (f32, f32), live: &Value, layer: Option<&mut Layer>) {
         let painter = ui.painter().with_clip_rect(clip.intersect(ui.clip_rect()));
-        painter.rect_filled(rect, CornerRadius::ZERO, colour(&self.scene.bg));
+        // The still part, painted where the layer takes it from, or on the screen.
+        let kept = egui::LayerId::new(egui::Order::Background, Id::unique(("scene-still", id)));
+        let still = if layer.is_some() { egui::Painter::new(ui.ctx().clone(), kept, painter.clip_rect()) } else { painter.clone() };
+        still.rect_filled(rect, CornerRadius::ZERO, colour(&self.scene.bg));
         let ppp = ui.ctx().pixels_per_point();
         let key = [rect.min.x, rect.min.y, cell.0, cell.1, ppp];
         if self.shapes.as_ref().is_none_or(|s| s.2 != key) {
@@ -343,17 +349,18 @@ impl Shown {
             self.shapes = Some((back, text, key));
         }
         let Some((back, text, _)) = &self.shapes else { return };
-        painter.extend(back.iter().cloned());
+        still.extend(back.iter().cloned());
         let text = text.clone();
-        self.pictures(ui, &painter, rect.min, cell, true);
-        painter.extend(text);
-        for (node, at, cut) in &self.roles {
-            let (cut, at) = (roles::rect_of(*cut, rect.min, cell), roles::rect_of(*at, rect.min, cell));
-            // A role that shows whole is painted with the window's own cut:
-            // shapes of one cut are drawn together, each cut costs a draw.
-            let role_painter = if cut.contains_rect(at) { painter.clone() } else { painter.with_clip_rect(cut.intersect(painter.clip_rect())) };
-            let salt = Id::unique(("scene-role", id, &node.key));
-            roles::paint(ui, &role_painter, salt, node, at, cell, live);
+        self.pictures(ui, &still, rect.min, cell, true);
+        still.extend(text);
+        let mut moving = Vec::new();
+        for (i, (node, at, _)) in self.roles.iter().enumerate() {
+            let at = roles::rect_of(*at, rect.min, cell);
+            if node.bind.is_some() || ui.rect_contains_pointer(at) {
+                moving.push(i);
+                continue;
+            }
+            self.role(ui, &still, id, i, rect.min, cell, live);
         }
         if self.over_shapes.as_ref().is_none_or(|s| s.1 != key) {
             self.over_shapes = Some((self.over_shapes(ui.ctx(), rect.min, cell), key));
@@ -361,17 +368,36 @@ impl Shown {
         if let Some((over, _)) = &self.over_shapes {
             for (cut, shape) in over {
                 if cut.contains_rect(shape.visual_bounding_rect()) {
-                    painter.add(shape.clone());
+                    still.add(shape.clone());
                 } else {
-                    painter.with_clip_rect(cut.intersect(painter.clip_rect())).add(shape.clone());
+                    still.with_clip_rect(cut.intersect(still.clip_rect())).add(shape.clone());
                 }
             }
         }
-        self.pictures(ui, &painter, rect.min, cell, false);
+        self.pictures(ui, &still, rect.min, cell, false);
         if let Some([x, y]) = self.scene.cursor {
             let bar = Rect::from_min_size(pos2(rect.min.x + x * cell.0, rect.min.y + y * cell.1), vec2(2.0, cell.1));
-            painter.rect_filled(bar, CornerRadius::ZERO, colour(&self.scene.fg));
+            still.rect_filled(bar, CornerRadius::ZERO, colour(&self.scene.fg));
         }
+        if let Some(layer) = layer {
+            let shapes = ui.ctx().graphics_mut(|g| std::mem::take(g.entry(kept)));
+            layer.draw(ui.ctx(), &painter, id, rect, shapes.all_entries().cloned().collect());
+        }
+        for i in moving {
+            self.role(ui, &painter, id, i, rect.min, cell, live);
+        }
+    }
+
+    /// Paint the role `i` of the scene with `painter`, cut as it is.
+    #[allow(clippy::too_many_arguments)]
+    fn role(&self, ui: &Ui, painter: &egui::Painter, id: &str, i: usize, from: Pos2, cell: (f32, f32), live: &Value) {
+        let (node, at, cut) = &self.roles[i];
+        let (cut, at) = (roles::rect_of(*cut, from, cell), roles::rect_of(*at, from, cell));
+        // A role that shows whole is painted with the window's own cut:
+        // shapes of one cut are drawn together, each cut costs a draw.
+        let role_painter = if cut.contains_rect(at) { painter.clone() } else { painter.with_clip_rect(cut.intersect(painter.clip_rect())) };
+        let salt = Id::unique(("scene-role", id, &node.key));
+        roles::paint(ui, &role_painter, salt, node, at, cell, live);
     }
 
     /// Draw the pictures under the cells' text, or those over it, making
@@ -465,8 +491,11 @@ impl View {
             self.scenes.told.insert(id.to_string(), size);
             self.call_later("scene.area", json!([id, size[0], size[1]]));
         }
+        // Textures for what does not move, in the main window only (a
+        // view in a window of its own is drawn straight).
+        let layer = self.layer.as_mut().filter(|layer| self.cache && !layer.failed() && ui.ctx().viewport_id() == egui::ViewportId::ROOT);
         if let Some(shown) = self.scenes.shown.get_mut(id) {
-            shown.draw(ui, id, rect, clip, cell, &self.scenes.live);
+            shown.draw(ui, id, rect, clip, cell, &self.scenes.live, layer);
         }
         for mut event in pointer_events(ui, rect, Id::unique(("scene-pointer", id))) {
             if self.to_slot(rect, &event) {
@@ -510,6 +539,9 @@ impl View {
     /// the kernel is told (a size of nothing), so that it keeps nothing of
     /// them either.
     pub fn scenes_done(&mut self) {
+        if let Some(layer) = &mut self.layer {
+            layer.frame_done();
+        }
         let hovering = self.scenes.hovering.take();
         if let Some(left) = std::mem::replace(&mut self.scenes.hovered, hovering.clone())
             && Some(&left) != hovering.as_ref()

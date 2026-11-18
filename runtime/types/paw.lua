@@ -2807,6 +2807,12 @@ function paw.frontend.take_rows(clip) end
 ---@param id any
 function paw.frontend.vca_words(id) end
 
+--- The window tells which OpenGL renderer draws it (see
+--- `paw.frontend.window_renderer`). One that draws on the processor is
+--- told once, in a line that says what to do.
+---@param info any
+function paw.frontend.window_renderer_set(info) end
+
 --- Add a device as a person does, from the device picker, the "Add a device"
 --- box of the window or `:device.add`. It works as `track:add_device`. Then
 --- a plugin with a window shows its window (`paw.opt.editor_on_add`), as

@@ -464,6 +464,9 @@ function M.state(known)
     record_dropped = e.record_dropped, devices_stopped = e.devices_stopped,
     -- What each drawn track plays from its slots: `M.launch_state`.
     launch = M.launch_state(ids),
+    -- How often the window draws while the song plays (`paw.opt.window_fps`).
+    window_fps = paw.opt.window_fps,
+    window_cache = paw.opt.window_cache,
   }
   if known == M.revision then return out end
 
@@ -631,6 +634,42 @@ function M.save_as(after)
 end
 
 paw.option.define("native_dialogs", true) -- the window opens the desktop's file dialogs, not the kernel's list
+-- Frames a second the window draws while the song plays (the playhead, the
+-- meters): "auto" is 30 on a graphics card and 15 on the processor. Keys,
+-- the pointer and edits are drawn at once all the same.
+paw.option.define("window_fps", "auto", { type = { "number", "string" }, min = 1, max = 60, values = { "auto" } })
+-- The window keeps what does not move in a pane as textures, and paints a
+-- part again only when it changes: true, false, or "auto" (on).
+paw.option.define("window_cache", "auto", { type = { "boolean", "string" }, values = { "auto", true, false } })
+
+--- What the graphical window said of the OpenGL that draws it when it
+--- started: `{ renderer, version, software, cause }`, or nil before a
+--- window started. `cause` tells why a window draws on the processor:
+--- "asked", "libgl", "no-card" or "driver".
+M.window_renderer = nil
+
+--- What to do about a window that draws on the processor, by cause, the
+--- likely cause first. `:checkhealth window` gives all of them.
+M.software_advice = {
+  asked = "PAW_GUI_RENDERER=software or --renderer software asks for the processor: unset the variable and leave out the option",
+  libgl = "LIBGL_ALWAYS_SOFTWARE is set: unset it",
+  driver = "the OpenGL driver of the graphics card is missing (on NixOS, set hardware.graphics.enable = true; elsewhere install Mesa's drivers), "
+    .. "or the X server gives no DRI3 (over SSH, VNC or Xvfb): start the window on the computer's own screen",
+  ["no-card"] = "no graphics card was found (/dev/dri has no render node): on this computer the window can only draw on the processor; "
+    .. "a lower paw.opt.window_fps costs less",
+}
+
+--- The window tells which OpenGL renderer draws it (see
+--- `paw.frontend.window_renderer`). One that draws on the processor is
+--- told once, in a line that says what to do.
+function M.window_renderer_set(info)
+  M.window_renderer = info
+  if type(info) == "table" and info.software then
+    local advice = M.software_advice[info.cause] or M.software_advice.driver
+    paw.notify("The window draws on the processor (" .. tostring(info.renderer):match("^%S+") .. "), which costs CPU while a song plays: "
+      .. advice .. ". See :checkhealth window.", "warn")
+  end
+end
 
 --- The data that the window needs to open the file dialog of the desktop.
 --- `native` tells if it must use that dialog (the option). When it is off,

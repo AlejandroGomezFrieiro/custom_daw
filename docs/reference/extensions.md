@@ -222,6 +222,7 @@ advice under it. `:checkhealth audio ffmpeg` runs only those checks.
 | `plugins` | the plugin host |
 | `ffmpeg` | `ffmpeg`, for compressed renders |
 | `terminal` | pictures in the terminal |
+| `window` | the OpenGL renderer of the graphical window: the graphics card or the processor, and what to do about the processor |
 | `fonts` | the fonts that the graphical window uses when its own font has no glyph |
 | `extensions` | the extensions, their versions and their requirements |
 

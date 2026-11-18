@@ -172,6 +172,26 @@ M.register("terminal", function(h)
   if paw.opt.graphics == false then h.info("paw.opt.graphics is off") end
 end, { desc = "the terminal interface" })
 
+M.register("window", function(h)
+  local r = paw.frontend.window_renderer
+  if not r then return h.info("no graphical window has started (paw-gui)") end
+  if r.software then
+    -- The likely cause first, then the others.
+    local advice, causes = {}, { "asked", "libgl", "driver", "no-card" }
+    local first = paw.frontend.software_advice[r.cause]
+    if first then advice[1] = first end
+    for _, cause in ipairs(causes) do
+      if cause ~= r.cause then advice[#advice + 1] = paw.frontend.software_advice[cause] end
+    end
+    h.warn("the window draws on the processor, not on a graphics card: " .. tostring(r.renderer), advice)
+  else
+    h.ok("the window draws on the graphics card: " .. tostring(r.renderer))
+  end
+  local fps = paw.opt.window_fps
+  if fps == "auto" then fps = r.software and 15 or 30 end
+  h.info("while the song plays, the window draws " .. tostring(fps) .. " frames a second (paw.opt.window_fps)")
+end, { desc = "the graphical window and the OpenGL that draws it" })
+
 M.register("fonts", function(h)
   local p = io.popen("fc-list ':lang=ja:outline=true' family 2>/dev/null")
   local found = p and p:read("*l")

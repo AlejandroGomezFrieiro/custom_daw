@@ -30,6 +30,7 @@ paw-gui --connect <host:port> --token-file <path>
 | `--listen-audio` | | Plays the kernel's sound on this machine (about 1 Mbit/s). The engine menu has the same switch. |
 | `--renderer` | `gpu` (default) or `software` | `gpu` draws with OpenGL on the system's driver. `software` asks Mesa for llvmpipe, which draws on the processor. |
 | `PAW_GUI_RENDERER` | `gpu` or `software` | The environment variable for the renderer, when `--renderer` is absent. |
+| `PAW_GUI_STATS` | any value | Each 10 seconds, the window writes to its log the frames that it drew, and the squares and pixels of the texture of the panes that it painted again. |
 | `-h`, `--help` | | Shows the options. |
 
 The token, the certificates and the TLS rules are in [The control
@@ -81,19 +82,54 @@ driver of the graphics card, or Mesa's llvmpipe on the processor. On NixOS,
 `hardware.graphics.enable` supplies the driver. If OpenGL cannot start,
 the window shows one line that tells so, and stops.
 
+At start, the window writes the name of the OpenGL renderer to its log
+(`paw-gui: OpenGL renderer: ...`) and tells it to the kernel
+(`paw.frontend.window_renderer`). If the renderer draws on the processor
+(`llvmpipe`, `softpipe` or `swrast`), the kernel shows one warning. The warning
+tells the likely cause and what to do. `:checkhealth window` shows the
+renderer and the advice for all the usual causes:
+
+| Cause | What to do |
+| --- | --- |
+| `PAW_GUI_RENDERER=software` or `--renderer software` | Remove the variable and the option. |
+| `LIBGL_ALWAYS_SOFTWARE` is set | Remove the variable. |
+| The system has no OpenGL driver for the graphics card | On NixOS, set `hardware.graphics.enable = true`. On other systems, install the Mesa drivers. |
+| The X server gives no DRI3 (SSH with X forwarding, VNC, Xvfb) | Start the window on the screen of the computer. |
+| The computer has no graphics card (no render node in `/dev/dri`) | The window can draw only on the processor. |
+
 The window draws a frame only when something changes. At rest, it draws
-nothing. While the song plays, it draws at most 25 frames a second for the
-playhead, the clock and the meters. The piano roll and the timeline get
+nothing. While the song plays, it draws the playhead, the clock and the
+meters at most `paw.opt.window_fps` times a second. The value `"auto"`
+(the default) is 30 on a graphics card and 15 on the processor, where
+each frame costs much more. A key, the pointer and an edit show in the
+next frame all the same.
+
+The window also keeps the parts of the panes that do
+not move in a texture of the size of the window (`paw.opt.window_cache`).
+Each frame copies the texture to the screen. Then it draws the parts that
+move over it. These are the playhead, the meters, the live values and the
+control under the pointer. The window paints a square of 256 by 256 pixels of the texture
+again only when a part in the square changes. The texture has the pixels of
+the screen, so the panes look the same as without it. A view in a window of
+its own does not use it.
+
+The piano roll and the timeline get
 only the notes, lines and points near the visible area. So a clip of
 thousands of notes opens and scrolls as fast as a short clip.
 
 Measured with the demo song in a 1500x960 window on llvmpipe, without a
-graphics card:
+graphics card, with `LP_NUM_THREADS=4`. Other programs used the computer
+at the same time, so the values are not exact:
 
 | State | Load |
 | --- | --- |
 | At rest | 0% of a core |
-| While the song plays | about 105% of a core. A frame takes less than 1 ms of the window's own work. llvmpipe uses the rest to fill pixels on its threads. |
+| While the song plays, the arrange view | about 80% of a core (155% with 25 frames a second and no texture) |
+| While the song plays, the mixer or the piano roll | about 40% of a core (120% to 145% with 25 frames a second and no texture) |
+
+Most of the load is llvmpipe, which fills pixels on its threads. While the
+song plays, the window paints no square of the texture again: only the
+parts that move change.
 
 llvmpipe uses as many threads as the processor has free. So the load
 that you measure changes with what else runs. To compare two windows, set
