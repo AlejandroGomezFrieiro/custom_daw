@@ -416,9 +416,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.cursor.lane_id()`: The automation lane row of the cursor: a lane of the cursor track that shows as a row (see `paw.lanes`). Nil when the cursor is on the track.
 - `paw.cursor.lens()`: Keys and commands typed in a pinned window act on its track: the track of "the cursor" is the window's while that window has the keyboard, or while paw draws it.
 - `paw.cursor.line()`: 1-based row of the cursor among every row drawn, lanes included.
-- `paw.cursor.master_reachable()`: Whether a move of the cursor can go on from the last track to the master: a move of its own in normal mode, in the views that draw the master after the tracks. After an operator or in a selection, only tracks count.
-- `paw.cursor.move_track(delta)`: Move by rows. In normal mode, the rows of open automation lanes count. After an operator or in a selection, only tracks count, as for `dj`. From the last track, a move down goes on to the master, and from the master a move up comes back to the tracks.
-- `paw.cursor.on_master()`: Whether the cursor is on the master track: the row after the last track in the arrange view, the strip after the last in the mixer.
+- `paw.cursor.master_reachable()`: True if a move of the cursor can go on from the last track to the master: a move of its own in normal mode, in the views that draw the master after the tracks. After an operator or in a selection, only tracks count.
+- `paw.cursor.move_track(delta)`: Move by rows. In normal mode, the rows of open automation lanes count. After an operator or in a selection, only tracks count, as for `dj`. From the last track, a move down goes on to the master, and from the master a move up returns to the tracks.
+- `paw.cursor.on_master()`: True if the cursor is on the master track: the row after the last track in the arrange view, the strip after the last in the mixer.
 - `paw.cursor.row()`: 1-based row of the cursor track among the tracks that are drawn: the same as `index` until a group is folded. On the master, the row after the last track.
 - `paw.cursor.set_beat(beat)`: Put the cursor at a beat (not before 0).
 - `paw.cursor.set_track(track, lane)`: Put the cursor on a track, or with `lane` on one of its lane rows.

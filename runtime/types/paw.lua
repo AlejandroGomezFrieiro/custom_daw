@@ -1607,7 +1607,7 @@ function paw.cursor.lens() end
 --- 1-based row of the cursor among every row drawn, lanes included.
 function paw.cursor.line() end
 
---- Whether a move of the cursor can go on from the last track to the
+--- True if a move of the cursor can go on from the last track to the
 --- master: a move of its own in normal mode, in the views that draw the
 --- master after the tracks. After an operator or in a selection, only
 --- tracks count.
@@ -1616,11 +1616,11 @@ function paw.cursor.master_reachable() end
 --- Move by rows. In normal mode, the rows of open automation lanes count.
 --- After an operator or in a selection, only tracks count, as for `dj`.
 --- From the last track, a move down goes on to the master, and from the
---- master a move up comes back to the tracks.
+--- master a move up returns to the tracks.
 ---@param delta any
 function paw.cursor.move_track(delta) end
 
---- Whether the cursor is on the master track: the row after the last
+--- True if the cursor is on the master track: the row after the last
 --- track in the arrange view, the strip after the last in the mixer.
 function paw.cursor.on_master() end
 

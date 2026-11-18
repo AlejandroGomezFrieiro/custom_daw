@@ -40,13 +40,13 @@ function M.track_id()
   return track_id
 end
 
---- Whether the cursor is on the master track: the row after the last
+--- True if the cursor is on the master track: the row after the last
 --- track in the arrange view, the strip after the last in the mixer.
 function M.on_master()
   return track_id == 0
 end
 
---- Whether a move of the cursor can go on from the last track to the
+--- True if a move of the cursor can go on from the last track to the
 --- master: a move of its own in normal mode, in the views that draw the
 --- master after the tracks. After an operator or in a selection, only
 --- tracks count.
@@ -110,7 +110,7 @@ end
 --- Move by rows. In normal mode, the rows of open automation lanes count.
 --- After an operator or in a selection, only tracks count, as for `dj`.
 --- From the last track, a move down goes on to the master, and from the
---- master a move up comes back to the tracks.
+--- master a move up returns to the tracks.
 function M.move_track(delta)
   local reach = master_reachable()
   if paw.lanes.any_open() and paw.keymap.mode == "n" then
