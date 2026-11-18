@@ -5,7 +5,7 @@
 -- A frontend says how big its main area is (`area`), and is told with each
 -- state (`state`) where every window of the current tab goes, which has the
 -- keyboard, the borders between them and the tabs. It draws the views it
--- has its own drawing for (`native`: the device panel, the session view)
+-- has its own drawing for (`native`: the session view)
 -- in their panes, and is sent
 -- every other as a scene (paw/scene.lua): a view that paints as a picture
 -- at the pane's size, any other cell by cell as the terminal draws it,
@@ -18,10 +18,10 @@ local L = require("paw.layout")
 
 local M = {
   -- Views a frontend draws in its own way.
-  native = { devices = true, session = true },
+  native = { session = true },
   -- Views that stay in the layout when they show in a window of their own
-  -- too, as a second view of them: the arrange view, and those a frontend
-  -- draws itself.
+  -- too, as a second view of them: the arrange view, the device panel, and
+  -- those a frontend draws itself.
   stays = { arrange = true, devices = true, session = true },
   -- The least room, in pixels, a view needs in a frontend.
   least = {

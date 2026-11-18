@@ -844,17 +844,6 @@ function view:on_mouse(e)
   press_empty(self, e, h)
 end
 
---- The track whose header is at `x`, `y` (cells, fractions allowed) of
---- the arrange view in window `win` (its id, as a frontend names it), if
---- any: where a frontend drops a device dragged from elsewhere.
-function view:header_track(win, x, y)
-  local shown = paw.layout.find_id(paw.ui.layout, tonumber(win) or -1)
-  if not (shown and shown.view == "arrange" and self.geometry) or x >= self.geometry.hw - 1 then return nil end
-  for _, row in ipairs(self.geometry.layout.rows) do
-    if row.kind == "track" and y >= row.y and y < row.y + row.h then return row.id end
-  end
-end
-
 -- The view's one hit region: every press, move and wheel over it, from
 -- either frontend, comes here.
 view.gestures = {

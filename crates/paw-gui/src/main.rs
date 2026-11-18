@@ -15,7 +15,6 @@ mod app;
 mod canvas;
 mod chrome;
 mod client;
-mod devices;
 mod dialogs;
 mod icons;
 mod keys;

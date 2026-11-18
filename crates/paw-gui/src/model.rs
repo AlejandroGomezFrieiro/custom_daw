@@ -27,11 +27,6 @@ pub fn rows(value: &Value) -> &[Value] {
     value.as_array().map(Vec::as_slice).unwrap_or(&[])
 }
 
-/// Fader position, 0 to 1, for a volume from -60 to +6 dB.
-pub fn fader(db: f32) -> f32 {
-    ((db + 60.0) / 66.0).clamp(0.0, 1.0)
-}
-
 /// A number of decibels as the window writes them, with a true minus sign.
 pub fn decibels(db: f32) -> String {
     if db <= -60.0 {
@@ -39,12 +34,6 @@ pub fn decibels(db: f32) -> String {
     }
     let text = format!("{:.1}", if db.abs() < 0.05 { 0.0 } else { db });
     text.replacen('-', "\u{2212}", 1)
-}
-
-/// A parameter's name with a capital letter, as a label.
-pub fn capitalised(name: &str) -> String {
-    let mut chars = name.chars();
-    chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
 }
 
 /// A track, as the panels beside the timeline name it.
@@ -82,7 +71,6 @@ mod tests {
         assert_eq!(decibels(-0.01), "0.0");
         assert_eq!(decibels(3.5), "3.5");
         assert_eq!(decibels(-90.0), "\u{2212}inf");
-        assert_eq!(capitalised("attack"), "Attack");
     }
 
     #[test]

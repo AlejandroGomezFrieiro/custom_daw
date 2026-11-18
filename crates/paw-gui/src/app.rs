@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use crate::client::Client;
 use crate::model::{self, Track, flag, int, rows, text};
 use crate::theme::th;
-use crate::{canvas, devices, dialogs, keys, menu, panes, portal, scene, session};
+use crate::{canvas, dialogs, keys, menu, panes, portal, scene, session};
 
 /// What the window asks of a kernel: calls answered, and the state pushed.
 /// A client of a real kernel in the program; a stand-in in the tests.
@@ -78,8 +78,6 @@ pub struct State {
     pub modal: Value,
     pub project: Value,
     pub tracks: Vec<Track>,
-    pub devices: Value,
-    pub routing: Value,
     pub slots: Value,
     pub kinds: Vec<String>,
     pub selected: i64,
@@ -129,7 +127,6 @@ pub struct View {
     pub message_time: f64,
     pub message_dismissed: f64,
     pub last_mode: String,
-    pub devices: devices::Devices,
     pub session: session::Session,
     pub panes: panes::Panes,
     pub canvases: canvas::Canvases,
@@ -172,7 +169,6 @@ impl View {
             message_time: 0.0,
             message_dismissed: 0.0,
             last_mode: String::new(),
-            devices: devices::Devices::default(),
             session: session::Session::default(),
             panes: panes::Panes::default(),
             canvases: canvas::Canvases::default(),
@@ -301,15 +297,12 @@ impl View {
         let project = &state["project"];
         self.s.revision = int(&state["revision"]);
         self.s.tracks = model::tracks(&state["tracks"]);
-        self.s.devices = state["devices"].clone();
-        self.s.routing = state["routing"].clone();
         self.s.slots = state["slots"].clone();
         if let Some(kinds) = state["kinds"].as_array() {
             self.s.kinds = kinds.iter().map(text).collect();
         }
         self.s.selected = state["selected"].as_i64().unwrap_or(-1);
         self.s.project = project.clone();
-        self.devices.project(&self.s.devices);
     }
 
     fn modal(&mut self, modal: &Value) {
@@ -375,7 +368,6 @@ impl View {
             self.title = title;
         }
         self.text_ids.borrow_mut().clear();
-        crate::widgets::new_frame();
         // The whole window, whatever margin the `ui` given has.
         let full = ctx.content_rect();
         ui.set_clip_rect(full);
@@ -418,7 +410,6 @@ impl View {
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt(("pane", view.as_str())));
             child.set_clip_rect(rect.intersect(ui.clip_rect()));
             match view.as_str() {
-                "devices" => self.draw_devices(&mut child, rect),
                 "session" => self.draw_session(&mut child, rect),
                 _ => {}
             }
@@ -490,11 +481,6 @@ impl View {
             ctx.memory_mut(|m| m.surrender_focus(id));
         }
         self.text_focus = focused.is_some_and(|id| ids.contains(&id));
-    }
-
-    /// A text box: kept in the list of those that take the keyboard.
-    pub fn text_box(&self, id: egui::Id) {
-        self.text_ids.borrow_mut().push(id);
     }
 
     // ------------------------------------------------------- leaving, files

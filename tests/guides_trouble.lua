@@ -17,17 +17,23 @@ local function start()
   paw.keymap.feed("<Esc><Esc>")
   while paw.ui.float do paw.ui.close() end
   paw.ui.focus("arrange")
-  -- The list keeps the last 500: a full one would not grow by what is said.
-  for i = #paw.ui.messages, 1, -1 do paw.ui.messages[i] = nil end
 end
 
---- The messages since `from` (an index into the list), as one text.
+--- The messages after the message `from` (the last one when the test began,
+--- see `mark`), as one text. The list keeps the last 500 messages, so a
+--- place in it moves; the message itself does not.
 local function said(from)
-  local out = {}
-  for i, m in ipairs(paw.ui.messages) do
-    if i > from then out[#out + 1] = m.text end
+  local out, seen = {}, from == nil
+  for _, m in ipairs(paw.ui.messages) do
+    if seen then out[#out + 1] = m.text end
+    if m == from then seen = true end
   end
   return table.concat(out, "\n")
+end
+
+--- The last message now, for `said`.
+local function mark()
+  return paw.ui.messages[#paw.ui.messages]
 end
 
 local function wait_for(what, limit, fn)
@@ -40,7 +46,7 @@ end
 
 test("guide: fix no sound", function()
   start()
-  local before = #paw.ui.messages
+  local before = mark()
   keys(":engine<CR>")
   eq(said(before):find("^null: none") ~= nil, true, ":engine names the backend and the output device: " .. said(before))
   local lead = T.tone("Lead", 8)
@@ -67,7 +73,7 @@ end)
 
 test("guide: fix crackles and dropouts", function()
   start()
-  local before = #paw.ui.messages
+  local before = mark()
   keys(":engine.status<CR>")
   eq(said(before):find("xruns", 1, true) ~= nil, true, ":engine.status counts the xruns: " .. said(before))
   T.after(function() paw.audio.use({ buffer = 0 }) end)
@@ -98,7 +104,7 @@ test("guide: deal with a plugin that crashes or hangs", function()
   keys("aGuide FX<CR>")
   local fx = lead:devices()[2]
   eq(fx.kind, "lua:guide_fx", "the effect is on the track")
-  local before = #paw.ui.messages
+  local before = mark()
   local pid = tonumber(api.device_call(fx.id, "sandbox.pid"))
   os.execute("kill -KILL " .. pid)
   wait_for("the crash to be told", 5000, function() return fx:get().stopped ~= nil end)
@@ -115,7 +121,7 @@ test("guide: deal with a plugin that crashes or hangs", function()
   eq(fx:get().offline, false, "and o again online")
   paw.ui.focus("arrange")
   keys(":w " .. d .. "/song.json<CR>")
-  before = #paw.ui.messages
+  before = mark()
   keys(":edit " .. d .. "/song.json offline<CR>")
   eq(said(before):find("opened with every plugin offline", 1, true) ~= nil, true, ":edit song.json offline opens it with the plugins offline")
 end)

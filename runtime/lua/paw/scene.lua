@@ -43,17 +43,26 @@ end
 --- watcher `w` moves by the live values: a view names the roles it draws
 --- such things with in `view.live_roles` (the mixer's meters and peaks),
 --- and a watcher that paints them all needs no new scene of it as the song
---- plays, unless the view says it moves all the same (`view:moves()`: the
+--- plays, unless the view says it moves all the same (`view:moving()`: the
 --- arrange view scrolls to follow the playhead).
 local function still(w, name)
   local view = paw.ui.views[name]
   local roles = view and view.live_roles
   if not roles then return false end
-  if view.moves and view:moves() then return false end
+  -- A view may draw other things that move, only at times (`view:moving()`).
+  if view.moving and view:moving() then return false end
   for _, role in ipairs(roles) do
     if not w.roles[role] then return false end
   end
   return true
+end
+
+--- How often a view that moves is drawn again while the song plays, in
+--- milliseconds: every tick, or less often if the view says so
+--- (`view.redraw_every`, for a view whose moving parts are small).
+local function every(name)
+  local view = paw.ui.views[name]
+  return view and view.redraw_every or 30
 end
 
 --- Draw again the windows of a connection whose drawing may have changed
@@ -72,7 +81,7 @@ local function push(client, all)
         if area.drawn then api.scene_forget(client, id) end
         area.drawn, area.view = nil, nil
       elseif area.drawn ~= redraws or area.view ~= what.view
-        or (all and now - area.at >= (playing and 30 or 1000) and not still(w, what.view)) then
+        or (all and now - area.at >= (playing and every(what.view) or 1000) and not still(w, what.view)) then
         area.drawn, area.view, area.at = redraws, what.view, now
         local ok, err = pcall(paw.ui.render_scene, what.view, area.w, area.h, w.cell, what.win)
         if not ok then api.log("the scene of " .. what.view .. " failed: " .. tostring(err)) end
@@ -104,10 +113,21 @@ local function live()
   end
   -- The master's, as track 0.
   meter(0)
-  return {
+  local out = {
     position = t.position, playing = t.playing, recording = t.take ~= nil, clock = paw.time.clock(t.position),
     cpu = paw.audio.load(e.cpu), meters = meters, peaks = peaks, clips = clips, inputs = inputs,
   }
+  -- What views add for their own bound nodes (`view.live_values()`, a
+  -- table of values by name): the device panel's parameters that lanes move.
+  for _, view in pairs(paw.ui.views) do
+    if type(view.live_values) == "function" then
+      local ok, values = pcall(view.live_values)
+      if ok and type(values) == "table" then
+        for k, v in pairs(values) do out[k] = v end
+      end
+    end
+  end
+  return out
 end
 
 M.live = live

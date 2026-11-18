@@ -326,15 +326,15 @@ paints the role gets the role without the kids.
 
 | Roles | Owner |
 | --- | --- |
-| `label`, `button`, `switch`, `knob`, `fader`, `meter`, `peak`, `chip` | The core: the widget roles. |
+| `label`, `button`, `switch`, `knob`, `fader`, `meter`, `peak`, `chip`, `param`, `power`, `band` | The core: the widget roles. |
 | `note`, `keyboard`, `playhead`, `scrollbar` | The core: the roles of the piano roll. |
 | `clip`, `beats`, `curve`, `hmeter` | The core: the roles of the arrange view. A `clip` names what it shows by `content`, a key that changes when its notes or its waveform change. The frontend gets them with `paw.frontend.preview(id)` or `paw.frontend.peaks(id, points)`, once for each key. |
 | Other names | An extension, with `paw.ui.role`. |
 
 A node with `bind` moves with the live values. Its props that the live
 values give are not in the scene: a meter's `levels`, `hold` and `clipped`,
-and a peak's `hold` and `clipped`. So a view does not send a new scene for
-them while the song plays.
+a peak's `hold` and `clipped`, and a parameter's `fraction` and `text`. So
+a view does not send a new scene for them while the song plays.
 
 A node with `hit` is a hit region. A press, a move or the wheel on it does
 what the view tells: `hit.kind` and the other fields are its action.
@@ -398,6 +398,7 @@ without a new scene, when they change:
 | `peaks` | The recent peak of each track. |
 | `clips` | The tracks whose clip light is on. A click on the peak clears it, as `paw.draw.clear_peak` does. |
 | `inputs` | The level at the input of each track. |
+| `params` | The parameters that lanes move, by their binding (`param:<device>:<key>`): `fraction`, where the slider is from 0 to 1, and `text`, the value in its unit. The device panel binds a parameter only while a lane moves it. |
 
 ## A remote terminal
 

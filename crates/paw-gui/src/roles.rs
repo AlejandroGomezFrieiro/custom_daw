@@ -11,12 +11,15 @@ use egui::{Align2, Color32, CornerRadius, Id, Painter, Pos2, Rect, Sense, Stroke
 use paw_scene::{Kind, Node};
 use serde_json::Value;
 
-use crate::theme::{T_SMALL, alpha, hex, mix, mono_medium, semi, th};
+use crate::theme::{T_BASE, T_SMALL, alpha, hex, mix, mono_medium, semi, th};
 use crate::widgets;
 
 /// The roles this window paints: it says so when it watches scenes, and
 /// is sent them without their cells.
-pub const KNOWN: &[&str] = &["label", "button", "switch", "knob", "fader", "meter", "peak", "chip", "note", "keyboard", "playhead", "scrollbar", "clip", "beats", "hmeter", "curve"];
+pub const KNOWN: &[&str] = &[
+    "label", "button", "switch", "knob", "fader", "meter", "peak", "chip", "note", "keyboard", "playhead", "scrollbar", "param", "power", "band", "clip",
+    "beats", "hmeter", "curve",
+];
 
 fn text(props: &Value, key: &str) -> String {
     props[key].as_str().unwrap_or("").to_string()
@@ -68,8 +71,29 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: 
                 Align2::CENTER_CENTER => rect.center(),
                 _ => rect.left_center(),
             };
+            // In the window's monospace font, unless it asks for words
+            // (`sans`) or a heading (`title`); cut to its rectangle.
             let size = (rect.height() * 0.7).clamp(8.0, T_SMALL + 1.0);
-            painter.text(at, align, text(props, "text"), mono_medium(size), tone(props, t.text_2));
+            let font = match props["font"].as_str() {
+                Some("sans") => crate::theme::sans(size + 0.5),
+                Some("title") => semi((rect.height() * 0.72).clamp(8.0, T_BASE)),
+                _ => mono_medium(size),
+            };
+            let colour = tone(props, t.text_2);
+            // Words may be a little wider than the cells they stand in: up
+            // to a cell more, which a view leaves free after a heading.
+            let mut said = text(props, "text").trim_end().to_string();
+            if props["capital"] == true
+                && let Some(first) = said.chars().next()
+            {
+                said = first.to_uppercase().chain(said.chars().skip(1)).collect();
+            }
+            let room = rect.width() + if props["font"].is_string() { cell.0 } else { 2.0 };
+            let shown = widgets::elide(ui, &said, font.clone(), room);
+            let drawn = painter.text(at, align, shown, font, colour);
+            if props["strike"] == true {
+                painter.hline(drawn.x_range(), drawn.center().y, Stroke::new(1.0, colour));
+            }
         }
         "button" => {
             // A quiet one shows a face only under the pointer or when on; one
@@ -79,19 +103,41 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: 
             let face = if under { t.control_hover } else if props["quiet"] == true { Color32::TRANSPARENT } else { t.control };
             let shape = rect.shrink2(vec2(1.0, 2.0));
             painter.rect_filled(shape, CornerRadius::same(4), if on { alpha(t.select, 0.85) } else { face });
-            let colour = if on { t.surface } else if props["off"] == true { t.text_3 } else { t.text };
+            let colour = if on { t.surface } else if props["off"] == true { t.text_3 } else { tone(props, t.text) };
             let font = font_for(rect, false);
             let whole = text(props, "text");
+            // An icon in place of the glyph that stands for it in cells: a
+            // text of one character is that glyph alone, a longer one the
+            // words after it.
+            let mut shape = shape;
+            if let Some(icon) = props["icon"].as_str().and_then(icon_named) {
+                let words = whole.trim().trim_start_matches(|c: char| !c.is_alphanumeric()).trim();
+                let side = (shape.height() - 4.0).clamp(8.0, 12.0);
+                if whole.trim().chars().count() <= 1 || words.is_empty() {
+                    widgets::icon_on(painter, Rect::from_center_size(shape.center(), vec2(side, side)), icon, colour);
+                    return true;
+                }
+                widgets::icon_on(painter, Rect::from_min_size(pos2(shape.left() + 5.0, shape.center().y - side / 2.0), vec2(side, side)), icon, colour);
+                shape.min.x += side + 4.0;
+                let room = shape.width() - 10.0;
+                let shown = widgets::elide(ui, words, font.clone(), room);
+                painter.text(pos2(shape.left() + 3.0, shape.center().y), Align2::LEFT_CENTER, shown, font, colour);
+                return true;
+            }
             let label = if menu { whole.trim().trim_end_matches(['▾', 'v']).trim_end() } else { whole.trim() };
-            let room = shape.width() - if menu { 22.0 } else { 10.0 };
+            // A small one keeps a narrow margin; a menu too narrow for its
+            // words and its caret shows the words alone.
+            let margin = if shape.width() < 30.0 { 2.0 } else if shape.width() < 40.0 { 4.0 } else { 10.0 };
+            let caret = menu && (label.is_empty() || widgets::text_width(ui, label, font.clone()) <= shape.width() - 16.0);
+            let room = shape.width() - if caret { 16.0 } else if menu { 6.0 } else { margin };
             let shown = widgets::elide(ui, label, font.clone(), room);
             let centred = !menu && widgets::text_width(ui, &shown, font.clone()) < room;
             if centred {
                 painter.text(shape.center(), Align2::CENTER_CENTER, shown, font, colour);
             } else {
-                painter.text(pos2(shape.left() + 5.0, shape.center().y), Align2::LEFT_CENTER, shown, font, colour);
+                painter.text(pos2(shape.left() + if menu { 3.0 } else { 5.0 }, shape.center().y), Align2::LEFT_CENTER, shown, font, colour);
             }
-            if menu {
+            if caret {
                 let (x, y) = (shape.right() - 10.0, shape.center().y);
                 painter.add(egui::Shape::convex_polygon(vec![pos2(x - 3.5, y - 1.5), pos2(x + 3.5, y - 1.5), pos2(x, y + 2.5)], t.text_2, Stroke::NONE));
             }
@@ -118,6 +164,24 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: 
             painter.vline(middle, (y - 3.0)..=(y + 3.0), Stroke::new(1.0, t.text_3));
             painter.hline(middle.min(at)..=middle.max(at), y, Stroke::new(2.0, t.select));
             painter.circle_filled(pos2(at, y), (rect.height() * 0.28).clamp(3.0, 6.0), if under { t.bright } else { t.thumb });
+        }
+        "param" => param(painter, rect, props, node.bind.as_deref(), live, cell, under),
+        "power" => {
+            // A power button, lit while the device plays.
+            let on = props["on"] == true;
+            let shape = Rect::from_center_size(rect.center(), vec2(rect.height().max(18.0).min(rect.width()), rect.height() - 2.0));
+            let face = if on { alpha(t.select, 0.85) } else if under { t.control_hover } else { t.control };
+            painter.rect_filled(shape, CornerRadius::same(4), face);
+            let side = (shape.height() - 5.0).clamp(8.0, 12.0);
+            widgets::icon_on(painter, Rect::from_center_size(shape.center(), vec2(side, side)), crate::icons::POWER, if on { t.surface } else { t.text_3 });
+        }
+        "band" => {
+            // A card's heading: a band across, a shade lighter than the panel;
+            // tinted where the keyboard's cursor is.
+            let shape = rect.shrink2(vec2(1.0, 0.5));
+            let face = if props["selected"] == true { mix(t.card, t.select, 0.72) } else if props["off"] == true { alpha(t.card, 0.6) } else { t.card };
+            painter.rect_filled(shape, CornerRadius::same(3), face);
+            painter.hline(shape.x_range(), shape.top() + 0.5, Stroke::new(1.0, alpha(t.card_line, 0.8)));
         }
         "note" => note(ui, painter, rect, props, under),
         "keyboard" => keyboard(painter, rect, props, row),
@@ -313,6 +377,56 @@ fn fader(painter: &Painter, rect: Rect, props: &Value, under: bool, row: f32) {
     let face = if props["selected"] == true || under { t.bright } else { t.thumb };
     painter.rect_filled(cap, CornerRadius::same(2), face);
     painter.hline((cap.left() + 2.0)..=(cap.right() - 2.0), y, Stroke::new(1.0, t.surface));
+}
+
+/// The icon a button names (`icon`), as the cells' glyph stands for it.
+fn icon_named(name: &str) -> Option<crate::icons::Icon> {
+    use crate::icons::*;
+    Some(match name {
+        "up" => CARET_UP,
+        "down" => CARET_DOWN,
+        "remove" => X,
+        "window" => ARROW_SQUARE_OUT,
+        "plus" => PH_PLUS,
+        "automate" => CHART_LINE,
+        "learn" | "plugs" => PLUGS,
+        "warning" => WARNING,
+        "circle" => CIRCLE,
+        _ => return None,
+    })
+}
+
+/// A parameter: a slider along its first `bar` cells, filled to where it
+/// sits (from the middle for one either side of zero), a mark for each
+/// choice of one that has a few, and its value at the right. Bound to a
+/// parameter a lane moves (`param:<device>:<key>`), where it sits and what
+/// it reads come from the live values.
+fn param(painter: &Painter, rect: Rect, props: &Value, bind: Option<&str>, live: &Value, (cw, _): (f32, f32), under: bool) {
+    let t = th();
+    let moved = bind.map(|b| &live["params"][b]).filter(|v| v.is_object());
+    let from = moved.unwrap_or(props);
+    let fraction = from["fraction"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0) as f32;
+    let said = from["text"].as_str().unwrap_or("");
+    let dim = props["dim"] == true;
+    let bar = (number(props, "bar") * cw).min(rect.width());
+    let rail = Rect::from_min_size(pos2(rect.left() + 4.0, rect.center().y - 1.5), vec2((bar - 10.0).max(4.0), 3.0));
+    painter.rect_filled(rail, CornerRadius::same(1), t.well);
+    let at = rail.left() + rail.width() * fraction;
+    let (x0, x1) = if props["centred"] == true { (rail.center().x.min(at), rail.center().x.max(at)) } else { (rail.left(), at) };
+    let lit = if moved.is_some() { t.play } else if under { t.text_2 } else { t.select };
+    painter.rect_filled(Rect::from_x_y_ranges(x0..=x1, rail.y_range()), CornerRadius::same(1), alpha(lit, if dim { 0.4 } else { 0.9 }));
+    let steps = props["steps"].as_u64().unwrap_or(0);
+    if (2..=12).contains(&steps) {
+        for i in 0..steps {
+            let x = rail.left() + rail.width() * i as f32 / (steps - 1) as f32;
+            painter.vline(x, (rail.top() - 2.0)..=(rail.bottom() + 2.0), Stroke::new(1.0, t.text_off));
+        }
+    }
+    let thumb = Rect::from_center_size(pos2(at, rail.center().y), vec2(7.0, (rect.height() - 5.0).clamp(8.0, 13.0)));
+    let face = if under { t.bright } else { t.thumb };
+    painter.rect(thumb, CornerRadius::same(2), alpha(face, if dim { 0.6 } else { 1.0 }), Stroke::new(1.0, Color32::from_black_alpha(0x60)), StrokeKind::Inside);
+    let size = (rect.height() * 0.68).clamp(8.0, T_SMALL);
+    painter.text(pos2(rect.right() - 2.0, rect.center().y), Align2::RIGHT_CENTER, said, mono_medium(size), if dim { t.text_3 } else { t.text });
 }
 
 /// The track a node is bound to the meter of (`meter:<id>`).

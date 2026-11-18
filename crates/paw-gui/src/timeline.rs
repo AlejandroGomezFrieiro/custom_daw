@@ -319,16 +319,6 @@ fn hmeter(ui: &Ui, painter: &Painter, props: &Value, bind: Option<&str>, live: &
 }
 
 impl View {
-    /// Automate a device's parameter of the selected track: it gets a
-    /// lane, and the track shows its lanes as rows, to draw on.
-    pub fn automate_param(&mut self, device: i64, key: &str) {
-        self.eval(
-            "local track, device, key = ...; paw.frontend.act.lane(track, 'param', device, key); \
-             if not paw.lanes.is_open(track) then paw.lanes.toggle(track) end",
-            json!([self.s.selected, device, key]),
-        );
-    }
-
     /// Fetch what clips' painters asked for in the frame, and draw them
     /// again with it; let go of the pictures of clips not painted in it.
     pub fn clip_pictures(&mut self, ctx: &egui::Context) {

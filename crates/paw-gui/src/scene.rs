@@ -73,8 +73,6 @@ pub struct Scenes {
     told: HashMap<String, [f32; 2]>,
     /// The windows drawn this frame.
     seen: HashSet<String>,
-    /// Where each window was last drawn, in points.
-    placed: HashMap<String, Rect>,
     /// The clip a drag in the arrange view moves, while the pointer is
     /// over the session view's slots, where letting go puts it.
     pub dragged_clip: Option<i64>,
@@ -415,7 +413,6 @@ impl View {
     pub fn scene(&mut self, ui: &Ui, id: &str, rect: Rect, clip: Rect) {
         let cell = self.scenes.cell();
         self.scenes.seen.insert(id.to_string());
-        self.scenes.placed.insert(id.to_string(), rect);
         if ui.rect_contains_pointer(clip) {
             self.scenes.hovering = Some(id.to_string());
         }
@@ -465,15 +462,6 @@ impl View {
         }
     }
 
-    /// The track whose header is under a point of the window, in a pane
-    /// that shows the arrange view.
-    pub fn header_at(&self, p: Pos2) -> Option<i64> {
-        let cell = self.scenes.cell();
-        let (id, rect) = self.scenes.placed.iter().find(|(_, r)| r.contains(p))?;
-        let at = p - rect.min;
-        self.ask("return paw.ui.views.arrange:header_track(...)", json!([id, at.x / cell.0, at.y / cell.1])).as_i64()
-    }
-
     /// At the end of a frame: the windows not drawn in it are gone, and
     /// the kernel is told (a size of nothing), so that it keeps nothing of
     /// them either.
@@ -485,7 +473,6 @@ impl View {
             self.call_later("scene.input", json!([left, { "kind": "leave" }]));
         }
         let seen = std::mem::take(&mut self.scenes.seen);
-        self.scenes.placed.retain(|id, _| seen.contains(id));
         let gone: Vec<String> = self.scenes.told.keys().filter(|id| !seen.contains(*id)).cloned().collect();
         for id in gone {
             self.scenes.told.remove(&id);

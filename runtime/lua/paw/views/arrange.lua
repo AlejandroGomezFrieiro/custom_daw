@@ -1018,7 +1018,7 @@ view.live_roles = { "playhead", "hmeter", "peak" }
 
 --- Whether the view must be drawn again although its live roles move on
 --- their own: the playhead it follows has left the time it shows.
-function view:moves()
+function view:moving()
   local g = self.geometry
   if not (g and g.span and paw.opt.follow) then return false end
   local t = api.transport_get()
