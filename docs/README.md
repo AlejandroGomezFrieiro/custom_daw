@@ -30,7 +30,7 @@ under the same headings; each extension has its own page besides
 - [Extensions](extensions.md): what belongs in the core, what an extension can own
 - [Lua API reference](reference/api.md): every function, made from the code
 - [The control protocol](protocol.md): the socket's messages
-- [What is missing](missing.md): what paw does not do yet
+- [Limits: what paw does not do yet](reference/limits.md): what paw does not do, and the known limits of what it does
 
 ## Explanation
 

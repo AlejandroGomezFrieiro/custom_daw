@@ -28,7 +28,7 @@ for the window, and a test checks that the two agree for every view
 (`tests/scene_parity.lua`). The mixer and the drum grid already draw from
 roles (faders, meters, buttons) that the window renders as real widgets; the
 arrange view and the piano roll still have native egui code that is being
-moved onto scenes (see [docs/missing.md](../../docs/missing.md)).
+moved onto scenes (see [docs/reference/limits.md](../../docs/reference/limits.md)).
 
 ## Pictures
 

@@ -1102,7 +1102,7 @@ tablature in the several-tracks view and as its own staff in MusicXML (the
 string and fret are on each note); D.C., D.S., segno and coda; endings and
 repeats played (they are written); trills and other ornaments played (they
 are written); percussion clefs; what MusicXML and LilyPond leave out
-(docs/missing.md); a mark's own room in the terminal when the
+(docs/reference/limits.md); a mark's own room in the terminal when the
 panel is low (dynamics then fall below what shows); in the cell view, a
 grace note's slash and a beam's slope (beams are flat). On the engraved page:
 page breaks of one's own (pages fill as systems come), the style as a

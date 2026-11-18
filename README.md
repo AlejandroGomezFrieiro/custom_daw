@@ -39,7 +39,7 @@ from the same Lua, and everything can be driven from
 > plays, edits, records and renders MIDI and audio through built-in devices
 > and CLAP, LV2 and VST3 plugins, but much of it has been tested against
 > stand-ins rather than real hardware, and things change without notice. See
-> [what is missing](docs/missing.md).
+> [what paw does not do yet](docs/reference/limits.md).
 
 [Try it](#try-it) · [Is paw for you?](#is-paw-for-you) ·
 [What it does](#what-it-does) · [A tour](#a-tour) ·
@@ -216,7 +216,7 @@ batch an agent makes is one named undo step. See
 | [Configuration](docs/configuration.md) and [scripting](docs/scripting.md) | options, the look, the `paw` module, `paw ctl` |
 | [Extensions](docs/extensions.md) and the [API](docs/reference/api.md) | what belongs in the core, what an extension can own, every function |
 | [Architecture](docs/architecture.md) and [protocol](docs/protocol.md) | the crates, the threads, the socket |
-| [What is missing](docs/missing.md) | what it does not do yet |
+| [Limits](docs/reference/limits.md) | what it does not do yet |
 
 ## Inspiration
 
