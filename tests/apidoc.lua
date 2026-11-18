@@ -7,12 +7,7 @@ local api = paw.api
 
 -- Functions in files another piece of work owns tonight (the scene: ui.lua,
 -- buf.lua, canvas.lua, frontend.lua), to be given comments there.
-local KNOWN_GAPS = {
-  ["paw.canvas.glyph_outline"] = true, ["paw.frontend.format_value"] = true, ["paw.frontend.state"] = true,
-  ["paw.frontend.step_input"] = true, ["paw.ui.close"] = true, ["paw.ui.render_screen"] = true,
-  ["paw.ui.start_ticker"] = true, ["paw.ui.toggle"] = true, ["paw.ui.Buf.fill"] = true,
-  ["paw.ui.Buf.sub"] = true, ["paw.ui.Buf.text"] = true,
-}
+local KNOWN_GAPS = {}
 
 -- What `paw -l tools/apidoc.lua check` says, run in a program of its own:
 -- a fresh runtime, with nothing a test has added.

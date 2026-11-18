@@ -285,7 +285,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
   local ops = paw.canvas.draw(function(g, px) g:rect(0, 0, px.w, 2, { fill = "#ffffff" }) end, { w = 80, h = 40 })
   ```
 - `paw.canvas.focus(name)`: Give a view in a window the keyboard, as a click in it does.
-- `paw.canvas.glyph_outline(font, codepoint)`
+- `paw.canvas.glyph_outline(font, codepoint)`: A music font's glyph as commands and numbers in staff spaces from its origin, y down, from the fonts built into the kernel, or nil.
 - `paw.canvas.key(name, keys)`: Keys typed in a view's window: they go to the key mappings with that view focused (or to a prompt that is open), as typed in the terminal. A view may give keys a meaning of its own in its window, as other programs do (`view.window_keys`, such as Ctrl-A for choosing every note), where the terminal keeps the one rule of every view.
 - `paw.canvas.leave(name)`: A view about to show in a window of its own leaves the layout, so as not to show twice: its windows in the tabs close, keeping their place. Returns the window that had the keyboard, to give it back to. A view a frontend draws itself (the arrange view, the mixer...) stays where it is as well: the window of its own is a second look at it.
 - `paw.canvas.open(name, opts)`: Show a view that paints in a graphical frontend and give it the keyboard: docked, as the terminal shows it, when it has a place in the layout (`paw.ui.dock`, or a window showing it); else, or with `window = true`, in a window of its own. A view already in a window of its own stays there. `opts`: `title`, `width`, `height` (what a window starts at), `window`.
@@ -308,7 +308,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
   ```
 
   (attributes add up 1 bold, 4 italic, 8 underline, 32 strike), and the window's title, which a view may change as it goes. `opts`: `cell`, the size `{ w, h }` of a cell of the window's monospace font (or of the terminal's, for a surface), `fresh` when the window has nothing yet, `glyphs` when the frontend draws glyph ops itself (else they come as paths, and the markers are left out), `surface` when the drawing goes into a terminal's cells (the view leaves out what the terminal's own bars show, and its background), `colors` `{ fg, bg }`, the terminal's, and `bars` from a frontend that shows a view in a window of its own, out of sight of its main window's bottom: the status line and the command line are drawn under the view there. The view's `paint` is given these in its context, as `cell`, `surface`, `fg` and `bg`. A view that draws cells answers `{ same = true }` when nothing would change.
-- `paw.canvas.paint_cells(name, window, width, height, opts, win)`: A view that draws cells, at a size in pixels: its snapshot (`paw.api.ui_view_snapshot`) as runs of text, a run of one style each. Drawn again only when a redraw has been asked for since, once a second for what changes on its own (times), and on every call while playing; `{ same = true }` when what it would draw is what it drew last. `window` keeps what was drawn. With `win`, a window of the layout (a pane of a frontend's main area), that window is drawn, and nothing under it: the frontend's own status line shows prompts and messages; without, the view in a window of its own, with a line under it for them and the view's keys, unless the frontend draws a status line there itself (`opts.status`).
+- `paw.canvas.paint_cells(name, window, width, height, opts)`: A view that draws cells, at a size in pixels: its snapshot (`paw.api.ui_view_snapshot`) as runs of text, a run of one style each. Drawn again only when a redraw has been asked for since, once a second for what changes on its own (times), and on every call while playing; `{ same = true }` when what it would draw is what it drew last. `window` keeps what was drawn. The view in a window of its own has a line under it for prompts, messages and the view's keys, unless the frontend draws a status line there itself (`opts.status`). A graphical frontend is sent its windows as scenes instead (`paw.ui.render_scene`).
 - `paw.canvas.pointer(name, event)`: Pass a pointer event from a frontend to a view, which then has the keyboard: to its `pointer` in pixels, or for a view in cells to its `on_mouse` as the terminal would.
 - `paw.canvas.shown(name)`: Whether a graphical frontend shows a view: in a window of its own, or docked where the seat's screen is a frontend's main area (one that has said its size to `paw.panes`, or the instance's own with no terminal).
 - `paw.canvas.windows()`: The windows that are open, for a frontend: `{ name, title, width, height, cells }` each, `cells` for a view drawn as the terminal draws it.
@@ -555,7 +555,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.ex.complete_pattern(line)`: Field names as they are typed in a pattern: `:%s/ve` offers `vel`.
 - `paw.ex.complete_range(line)`: What could finish a range being typed: marks after `'`, tracks after `t/`. Nil when the line is not in the middle of one.
 - `paw.ex.describe(r)`: What a range covers, in words: "bars 5–8 on 2 tracks".
-- `paw.ex.exec(line, ctx)`: Run a command line, as typed after `:`, with a range in front if it has one. A line with a range, or an Ex command, is one undo step named after the line.
+- `paw.ex.exec(line, ctx)`: Run a command line, as typed after `:`, with a range in front if it has one. A line with a range, or an Ex command, is one undo step named after the line (a line typed after `:` always is).
 - `paw.ex.field(name, spec)`: A field that `:s` and `:g` patterns can name (`lyric:la`): `level` (note, clip or track), `type`, `get(item)`, `set(item, value, change)`.
 - `paw.ex.go(r)`: Move to where a range starts, as `:5` does in Vim.
 - `paw.ex.item_of(uri)`: The item an address names, or nil.
@@ -620,7 +620,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.frontend.dialog_info()`: What the window needs to open the desktop's own file dialog: `native`, whether to (the option, and the dialogs shown are the kernel's own when the window is turned off), `dir`, where to start (where a file was last chosen, else beside the project, else home: as the list picker does), `name`, the project's file name, for "Save as", and `render`, the endings a render can write.
 - `paw.frontend.engine_menu()`: The menu where the audio devices are chosen: `info` (lines to show), `output`, `input`, `block`, `rate` and `backend`, each a list of `{ label, checked }`. `act.choose_engine` takes one by heading and place.
 - `paw.frontend.float(width, height)`: The floating window that is open (help, a list, a picker), drawn as text `width` columns wide: its title and its lines. Nil when there is none.
-- `paw.frontend.format_value(param, value)`
+- `paw.frontend.format_value(param, value)`: A parameter's value as text in its unit (see `paw.params.format`).
 - `paw.frontend.input_menu(track)`: The menu of a track's input: the choices of `paw.audio.choices` under their headings, `audio`, `midi` and `channel`, and where the track sends MIDI, `midi_out`, `midi_out_channel` and `midi_out_form`, each a list of `{ label, checked }`. `act.choose_input` takes one by heading and place.
 - `paw.frontend.lane_name(lane)`: What a lane moves, in words: `Volume`, `Pan`, `Synth · cutoff`.
 - `paw.frontend.lane_span(lane)`: The stretch of a lane's range that is worth drawing it over: a fader's travel for volume, the whole range for anything else.
@@ -649,8 +649,8 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.frontend.send_list(track)`: A track's sends as `{ name, level }`, the level in dB.
 - `paw.frontend.sidechain_menu(device)`: The menu of a device's side-chain: "None" first, then the tracks it can listen to, then whether it is taken before their fader; each `{ label, checked }`. `act.choose_sidechain` takes one by place.
 - `paw.frontend.slots(ids)`: The clips in the drawn tracks' slots: `{ id, track, row, name, midi, mode, legato, quantize, muted }` each, `track` by place from 0.
-- `paw.frontend.state(known)`
-- `paw.frontend.step_input()`
+- `paw.frontend.state(known)`: What a graphical frontend is told: transport, tracks, clips, devices and the modal state, as plain data; `known` lists what it already has.
+- `paw.frontend.step_input()`: Whether step input (notes entered from a MIDI keyboard) is on.
 - `paw.frontend.take_preview(id, take, points)`: What take `take` of a clip plays, for the picture in its take lane: a waveform as `M.peaks` gives one at `points` points for sound, the notes as `M.preview` gives them for MIDI, repeated as a looped clip repeats. The playing take's waveform is the clip's own, stretched; another's is its file squeezed or spread in time as far as the clip stretches it.
 - `paw.frontend.take_rows(clip)`: A clip's takes as its take lanes show them: `{ name, key }` each, `key` changing exactly when what the take plays does. Nil for a clip without takes, which has nothing in the lanes.
 - `paw.frontend.vca_words(id)`: What a track is in VCA terms, for a strip: a VCA's members by name, a member's VCAs by name, joined by commas.
@@ -951,6 +951,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 ## Module paw.layout
 
 - `paw.layout.all_windows()`: Every window of every tab, as `{ win, tab }`.
+- `paw.layout.alternate(win)`: Show again what a window (the current one) showed before what it shows now: Vim's alternate buffer, `Ctrl-^` and `:b#`.
 - `paw.layout.border_at(rects, x, y)`: The border between two windows at a cell of an arrangement (`paw.ui.arrange`): the rule between windows side by side, or the top row of a window below another.
 - `paw.layout.buf_create(type_name, target)`: A buffer of a type for a target, made if there is none. A view's type has one buffer, whatever the target.
 - `paw.layout.buf_delete(buf)`: Delete a buffer (`:bd`): its windows close, and a buffer of a type that has more than one is forgotten. A view's buffer stays, as the view does.
@@ -1043,8 +1044,9 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 
 ## Module paw.limit
 
+- `paw.limit.call(name, fn, ...)`: Call `fn(...)` with the time limit as `guard` does, but give its error to the caller instead of reporting it: for a call whose caller is told what went wrong, such as a request on the control socket.
 - `paw.limit.extend(ms)`: Give the running call more time, as `:lua` does: `ms` from now.
-- `paw.limit.guard(name, fn, ...)`: Call `fn(...)` as `paw.try` does (an error becomes a message), with the time limit. The kernel's ways into Lua go through here. Inside a call that is limited already, it is `paw.try`.
+- `paw.limit.guard(name, fn, ...)`: Call `fn(...)` under the time limit for Lua (`paw.opt.lua_limit`): a call that runs too long is stopped and reported as `name`; errors are reported, not raised. Returns what `fn` returned.
 - `paw.limit.named(name, fn, ...)`: Name what runs inside the limited call, for the error should it run away: `paw.limit.named("command `x`", fn, ...)`.
 - `paw.limit.unhurried(fn, ...)`: Run `fn(...)` with its time not counted, for work that is known to be long and to end: `paw.limit.unhurried(synthesise, phrase)`. Callbacks the kernel makes meanwhile (timers during a wait) get a limit of their own.
 - `paw.limit.untrusted(fn)`: Mark a function that is not the runtime's own. Where the limit reaches into compiled code this does nothing. Where it does not, the function and every function made inside it are kept out of the JIT compiler, so that the limit can stop their loops (unless the limit is turned off with `paw.opt.lua_limit = 0` before the code is loaded).
@@ -1218,8 +1220,16 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 
 ## Module paw.option
 
-- `paw.option.define(name, default)`: Give an option a default, for extensions that add options of their own.
+- `paw.option.check(name, value)`: Whether `value` is one that option `name` takes: true, or nil and an error that says what it takes. An option with no default takes anything.
+- `paw.option.define(name, default, spec)`: Give an option a default, for extensions that add options of their own. It then takes values of the default's type; `spec` says more:
+
+  ```lua
+  paw.option.define("lanes", 4, { min = 1, max = 16, integer = true })
+  paw.option.define("look", "plain", { values = { "plain", "fancy" } })
+  paw.option.define("size", "auto", { type = { "number", "string" }, min = 1, values = { "auto" } })
+  ```
 - `paw.option.list()`: Every option that has a default, by name: { name, default }.
+- `paw.option.read(name, text)`: The value typed text stands for in option `name` (`true`, `off`, a number, or the text), or nil and an error that says what it takes. A value that is not text is checked as it is.
 
 ## Module paw.panes
 
@@ -1228,8 +1238,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.panes.cells()`: The main area in cells, with the status line and the command line under it as on a terminal: what the seat's screen is. Nil until the frontend has said.
 - `paw.panes.close(id)`: Close a pane's window, as `:close` in it would.
 - `paw.panes.focus(id)`: Give a pane's window the keyboard, as a click in it does.
-- `paw.panes.paint(id, width, height, opts)`: Paint a pane that the frontend does not draw itself, at its size: what `paw.canvas.paint` gives (`opts` as there).
-- `paw.panes.pointer(id, event)`: A pointer event in a pane, in pixels from its corner (as `paw.canvas.pointer` takes them): a press gives it the keyboard first.
+- `paw.panes.pointer(id, event, drawn)`: A pointer event in a pane, in pixels from its corner (as `paw.canvas.pointer` takes them): a press gives it the keyboard first. `drawn`, for a pane drawn in cells, says how: its `cell` and its size in them, `cols` and `rows`; it keeps the button held in a drag.
 - `paw.panes.state()`: Where everything goes in the main area, for a frontend's state: `panes`, each `{ win, view, kind ("native", "paint", "cells"), title, x, y, w, h, focused }`; `borders`, each `{ dir ("h": a rule between panes side by side, "v": one between panes one above another), x, y, length }`, by their place in the list; `tabs`, each `{ title }`, and `tab`, the current one; `top`, where the panes start under the row of tabs. Nil until the frontend has said how big its area is.
 - `paw.panes.tab(i)`: A click on tab `i` goes to it.
 
@@ -1466,6 +1475,12 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.routes.sidechain_text(d)`: What a device listens to, as text: the track's name, with "pre" when taken before its fader; nil without one.
 - `paw.routes.spread(device)`: Make a track for each output pair of a device that plays nowhere yet, named after the pair, and route the pair there. The new tracks and the device's own are put in a group (or the group the device's track is already in), since the device's track cannot be the group itself: its pairs feed the new tracks, which would then feed it back. Returns the new tracks.
 
+## Module paw.scene
+
+- `paw.scene.closed(client)`: A connection closed or stopped watching: nothing more is kept for it.
+- `paw.scene.turn()`: After a turn of the kernel: the windows whose drawing may have changed are pushed now, not at the next tick.
+- `paw.scene.watchers()`: Who is watching: `{ client, windows }` each, `windows` the names of those it has said the size of.
+
 ## Module paw.scope
 
 - `paw.scope.apply(scope)`: Tell the engine what the rest of the song does for a scope: the one of the tab in front, which the last seat to change tabs (a terminal or a window) chose.
@@ -1695,7 +1710,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 
   Options: `show(value)` for how the value now is written, `parse(text)` for reading one absolute value, `min` and `max` to keep it within.
 - `paw.ui.box(buf, title, style)`: Draw a box around a buffer's edge and return a buffer for the inside.
-- `paw.ui.close()`
+- `paw.ui.close()`: Close the floating window that has the keys, or a view's own window.
 - `paw.ui.dock(name, opts)`: Add a view to the layout along one side of the screen.
 
   ```lua
@@ -1743,11 +1758,12 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.ui.recolour()`: Set every group again: after `paw.opt.termcolors` has changed.
 - `paw.ui.redraw`: the same as `paw.api.ui_redraw`.
 - `paw.ui.render(buf)`: Draw the whole screen. Called by the kernel.
-- `paw.ui.render_screen(buf)`
+- `paw.ui.render_scene(name, w, h, cell, win)`: Draw one view by itself as a scene for a graphical frontend (see crates/paw-scene), `w` by `h` units big (fractions allowed), `cell` the frontend's cell `{ w, h }` in pixels, `win` the window of the layout it shows in, if any. What `render_view` writes in the whole cells is the scene's runs and fills, and the strips the view keeps under them its pictures; a view that paints is one picture of the whole. The scene stays with the kernel for `paw.api.scene_end` to say what changed of it.
+- `paw.ui.render_screen(buf)`: Draw the whole screen into `buf`: the tab's windows, floats, the status and command lines.
 - `paw.ui.render_view(name, buf)`: Draw one view by itself on a buffer of its own, as a window of a graphical frontend shows it (see `paw.canvas.open_view`), or a pane of its main area shows a window of the layout (`M.view_win`, while it is drawn). Braille is drawn there as dots (`paw.canvas`), as the font has none.
 - `paw.ui.show(name)`: Show a view: in its window if it has one in this tab, else where it was docked. A view has one window at a time: one on screen in another tab moves here.
 - `paw.ui.size()`: The size of the screen in cells: the terminal's, or for the seat of a graphical frontend that has said how big its main area is, that area's (`paw.panes`), so that a split there is measured on what it shows.
-- `paw.ui.start_ticker()`
+- `paw.ui.start_ticker()`: Redraw at `paw.opt.fps` while playing or just after activity.
 - `paw.ui.strip(buf, x, y, w, h, opts)`: Keep an area of a buffer for pixels: see `Buf:strip`. Where it is kept is in `paw.ui.rects.surfaces`: `{ key, name, win, x, y, w, h, cell = { w, h }, under, draw, paint }` each, in cells of the screen (`name` the view that kept it, `win` the id of its window, `paint` for a view's whole drawing, `buf:surface`).
 - `paw.ui.surface(buf, x, y, w, h, name)`: Keep an area of a buffer for a view's pixels: see `Buf:surface`. A strip, kept for the view's window, whose drawing is the view's `paint`.
 - `paw.ui.theme(groups)`: Define many highlight groups at once.
@@ -1756,7 +1772,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
   ```lua
   local body = paw.ui.titlebar(buf, { name = "Mixer", context = "5 tracks", focused = ctx.focused })
   ```
-- `paw.ui.toggle(name)`
+- `paw.ui.toggle(name)`: Show the view `name` in its window, or hide it if it is showing.
 - `paw.ui.view(name, def)`: Register a view, replacing any view of the same name.
 
   ```lua
@@ -1768,7 +1784,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 
 ## Module paw.ui.Buf
 
-- `paw.ui.Buf.fill(self, x, y, w, h, char, style)`
+- `paw.ui.Buf.fill(self, x, y, w, h, char, style)`: Fill a `w` by `h` area at `x`, `y` with `char` in `style`, clipped.
 - `paw.ui.Buf.root(width, height)`: The buffer covering a whole screen of the given size.
 - `paw.ui.Buf.strip(self, x, y, w, h, opts)`: Keep an area for pixels drawn by `opts.draw(g, px)`, where the terminal shows images: `g` a painter of `paw.canvas`, `px` `{ w, h, cell = { w, h }, fg, bg, view }`, the strip's size and the terminal's cell in pixels and its colours, and for a strip partly off its window the part that shows (`view`: x, y, w, h). Called once the screen is drawn. `opts.key` names the strip (images are kept by it: put the window's id in it for a view that can be in two windows; the view and its window by default). With `opts.under`, the cells the view draws there stay, above the picture (its cursor, labels, the playhead); else they are left blank. False where there are no pixels (`paw.opt.graphics` off, a terminal without images, tmux, or one that cannot put text over an image under it), for the view to draw cells there instead:
 
@@ -1778,13 +1794,13 @@ functions (`paw.api`, plain data in and out) are listed at the end.
     draw = function(g, px) paw.plot.curve(g, px, { ... }) end,
   })
   ```
-- `paw.ui.Buf.sub(self, x, y, w, h)`
+- `paw.ui.Buf.sub(self, x, y, w, h)`: A buffer for the area `x`, `y`, `w` by `h` of this one, clipped to it.
 - `paw.ui.Buf.surface(self, x, y, w, h, name)`: Keep an area for the pixels of a view that paints (`name`, the view being drawn by default), where the terminal shows images: its `paint` draws there at the terminal's cell size, after the screen is drawn. The cells are left blank. False where the terminal shows cells only, for the view to draw them instead:
 
   ```lua
   if buf:surface(0, 1, buf.width, buf.height - 1) then return end
   ```
-- `paw.ui.Buf.text(self, x, y, text, style)`
+- `paw.ui.Buf.text(self, x, y, text, style)`: Write `text` at column `x`, row `y` of this buffer in highlight group `style`, clipped to it; returns the columns written.
 
 ## Module paw.ui.keybar
 
@@ -1976,6 +1992,13 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.api.rpc_clients()`
 - `paw.api.rpc_push(client, event, payload)`: Connections on the control socket (crates/paw-core/src/rpc.rs): push an event to one (false when it has closed), list them, say which one's terminal the input being handled came from (0 for the program's own), and let a connection's terminal go.
 - `paw.api.rpc_version()`
+- `paw.api.scene_begin(...)`
+- `paw.api.scene_blob(...)`
+- `paw.api.scene_cells(...)`
+- `paw.api.scene_draw(...)`
+- `paw.api.scene_end(...)`
+- `paw.api.scene_forget(...)`
+- `paw.api.scene_picture(...)`
 - `paw.api.signature_remove(...)`
 - `paw.api.signature_set(...)`
 - `paw.api.sleep(ms)`
@@ -2050,7 +2073,7 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.api.undo_join(id)`: The edits of this turn join undo state `id`, the current one, instead of making a step of their own: a snippet's choice changed.
 - `paw.api.undo_keep(id, keep)`
 - `paw.api.undo_keys(text)`
-- `paw.api.undo_label(text)`
+- `paw.api.undo_label(text)`: Name the open step; the first name given wins. nil takes back a name given while the step has changed nothing yet.
 - `paw.api.undo_name(name, id)`
 - `paw.api.undo_pending()`: Whether this turn's edits will close as a step, and putting back what they changed instead (`edit.before`, paw/hooks.lua).
 - `paw.api.undo_project(id)`: A state's project as a project file holds it (the current state's by default), and the text of a project file for a project given as data: see extensions/projdiff.

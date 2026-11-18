@@ -14,6 +14,7 @@ end
 
 -- Values as text in their unit, and sliders on a log scale for frequencies
 -- and times: see `paw.params`.
+--- A parameter's value as text in its unit (see `paw.params.format`).
 local function format_value(param, value) return paw.params.format(param, value) end
 M.format_value = format_value
 
@@ -524,6 +525,8 @@ function M.vca_words(id)
   return table.concat(names, ", ")
 end
 
+--- What a graphical frontend is told: transport, tracks, clips, devices and
+--- the modal state, as plain data; `known` lists what it already has.
 function M.state(known)
   M.polled = api.now() -- someone is looking: see `paw.fx.interactive`
   local t, e = api.transport_get(), api.engine_get()
@@ -2711,6 +2714,7 @@ end
 -- on when the last of them is let go.
 local stepping = { on = false, held = {}, entered = false }
 
+--- Whether step input (notes entered from a MIDI keyboard) is on.
 function M.step_input() return stepping.on end
 
 function A.toggle_step_input()

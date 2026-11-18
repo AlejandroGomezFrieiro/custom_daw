@@ -106,6 +106,7 @@ function M.hide(name)
   api.ui_redraw()
 end
 
+--- Show the view `name` in its window, or hide it if it is showing.
 function M.toggle(name)
   local win = L.find(M.layout, name)
   if (win and not win.hidden) or not (win or L.homes[name]) then
@@ -602,6 +603,8 @@ function M.render(buf)
   M.screen = false
 end
 
+--- Draw the whole screen into `buf`: the tab's windows, floats, the status
+--- and command lines.
 function M.render_screen(buf)
   buf:fill(0, 0, buf.width, buf.height, " ", "Normal")
   api.ui_mouse(paw.opt.mouse ~= false)
@@ -783,6 +786,7 @@ function M.open(name, opts)
   api.ui_redraw()
 end
 
+--- Close the floating window that has the keys, or a view's own window.
 function M.close()
   if not M.float then
     -- A view drawn in a window of its own (`paw.canvas.open_view`) closes
@@ -1021,6 +1025,7 @@ function M.poke(ms)
   active_until = math.max(active_until, api.now() + (ms or 1500))
 end
 
+--- Redraw at `paw.opt.fps` while playing or just after activity.
 function M.start_ticker()
   paw.every(1000 / paw.opt.fps, function()
     if api.ui_attached() and (api.transport_get().playing or api.now() < active_until) then api.ui_redraw() end

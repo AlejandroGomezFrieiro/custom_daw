@@ -215,6 +215,9 @@ paw.roll_draw = {}
 ---@class paw.routes
 paw.routes = {}
 
+---@class paw.scene
+paw.scene = {}
+
 ---@class paw.scope
 paw.scope = {}
 
@@ -1166,6 +1169,8 @@ function paw.canvas.draw(draw, px) end
 ---@param name any
 function paw.canvas.focus(name) end
 
+--- A music font's glyph as commands and numbers in staff spaces from its
+--- origin, y down, from the fonts built into the kernel, or nil.
 ---@param font any
 ---@param codepoint any
 function paw.canvas.glyph_outline(font, codepoint) end
@@ -1247,19 +1252,16 @@ function paw.canvas.paint(name, width, height, opts) end
 --- Drawn again only when a redraw has been asked for since, once a second
 --- for what changes on its own (times), and on every call while playing;
 --- `{ same = true }` when what it would draw is what it drew last.
---- `window` keeps what was drawn. With `win`, a window of the layout (a
---- pane of a frontend's main area), that window is drawn, and nothing
---- under it: the frontend's own status line shows prompts and messages;
---- without, the view in a window of its own, with a line under it for
---- them and the view's keys, unless the frontend draws a status line there
---- itself (`opts.status`).
+--- `window` keeps what was drawn. The view in a window of its own has a
+--- line under it for prompts, messages and the view's keys, unless the
+--- frontend draws a status line there itself (`opts.status`). A graphical
+--- frontend is sent its windows as scenes instead (`paw.ui.render_scene`).
 ---@param name any
 ---@param window any
 ---@param width any
 ---@param height any
 ---@param opts any
----@param win any
-function paw.canvas.paint_cells(name, window, width, height, opts, win) end
+function paw.canvas.paint_cells(name, window, width, height, opts) end
 
 --- Pass a pointer event from a frontend to a view, which then has the
 --- keyboard: to its `pointer` in pixels, or for a view in cells to its
@@ -2257,7 +2259,7 @@ function paw.ex.describe(r) end
 
 --- Run a command line, as typed after `:`, with a range in front if it
 --- has one. A line with a range, or an Ex command, is one undo step named
---- after the line.
+--- after the line (a line typed after `:` always is).
 ---@param line any
 ---@param ctx any
 function paw.ex.exec(line, ctx) end
@@ -2532,6 +2534,7 @@ function paw.frontend.engine_menu() end
 ---@param height any
 function paw.frontend.float(width, height) end
 
+--- A parameter's value as text in its unit (see `paw.params.format`).
 ---@param param any
 ---@param value any
 function paw.frontend.format_value(param, value) end
@@ -2647,9 +2650,12 @@ function paw.frontend.sidechain_menu(device) end
 ---@param ids any
 function paw.frontend.slots(ids) end
 
+--- What a graphical frontend is told: transport, tracks, clips, devices and
+--- the modal state, as plain data; `known` lists what it already has.
 ---@param known any
 function paw.frontend.state(known) end
 
+--- Whether step input (notes entered from a MIDI keyboard) is on.
 function paw.frontend.step_input() end
 
 --- What take `take` of a clip plays, for the picture in its take lane: a
@@ -3841,6 +3847,11 @@ function paw.launcher.write_captured(position) end
 --- Every window of every tab, as `{ win, tab }`.
 function paw.layout.all_windows() end
 
+--- Show again what a window (the current one) showed before what it shows
+--- now: Vim's alternate buffer, `Ctrl-^` and `:b#`.
+---@param win any
+function paw.layout.alternate(win) end
+
 --- The border between two windows at a cell of an arrangement
 --- (`paw.ui.arrange`): the rule between windows side by side, or the top
 --- row of a window below another.
@@ -4195,13 +4206,20 @@ function paw.learn.unbind(which) end
 --- the parameter under the device panel's cursor, the mixer's fader.
 function paw.learn.under_cursor() end
 
+--- Call `fn(...)` with the time limit as `guard` does, but give its error
+--- to the caller instead of reporting it: for a call whose caller is told
+--- what went wrong, such as a request on the control socket.
+---@param name any
+---@param fn any
+function paw.limit.call(name, fn, ...) end
+
 --- Give the running call more time, as `:lua` does: `ms` from now.
 ---@param ms any
 function paw.limit.extend(ms) end
 
---- Call `fn(...)` as `paw.try` does (an error becomes a message), with the
---- time limit. The kernel's ways into Lua go through here. Inside a call
---- that is limited already, it is `paw.try`.
+--- Call `fn(...)` under the time limit for Lua (`paw.opt.lua_limit`): a
+--- call that runs too long is stopped and reported as `name`; errors are
+--- reported, not raised. Returns what `fn` returned.
 ---@param name any
 ---@param fn any
 function paw.limit.guard(name, fn, ...) end
@@ -4809,13 +4827,31 @@ function paw.music.name(pitch) end
 ---@param note any
 function paw.music.pitch(note) end
 
+--- Whether `value` is one that option `name` takes: true, or nil and an
+--- error that says what it takes. An option with no default takes anything.
+---@param name any
+---@param value any
+function paw.option.check(name, value) end
+
 --- Give an option a default, for extensions that add options of their own.
+--- It then takes values of the default's type; `spec` says more:
+---   paw.option.define("lanes", 4, { min = 1, max = 16, integer = true })
+---   paw.option.define("look", "plain", { values = { "plain", "fancy" } })
+---   paw.option.define("size", "auto", { type = { "number", "string" }, min = 1, values = { "auto" } })
 ---@param name any
 ---@param default any
-function paw.option.define(name, default) end
+---@param spec any
+function paw.option.define(name, default, spec) end
 
 --- Every option that has a default, by name: { name, default }.
 function paw.option.list() end
+
+--- The value typed text stands for in option `name` (`true`, `off`, a
+--- number, or the text), or nil and an error that says what it takes.
+--- A value that is not text is checked as it is.
+---@param name any
+---@param text any
+function paw.option.read(name, text) end
 
 --- The main area's size in pixels, from the frontend: once at the start
 --- and whenever it changes. The first time a seat's window says it, the
@@ -4845,19 +4881,14 @@ function paw.panes.close(id) end
 ---@param id any
 function paw.panes.focus(id) end
 
---- Paint a pane that the frontend does not draw itself, at its size: what
---- `paw.canvas.paint` gives (`opts` as there).
----@param id any
----@param width any
----@param height any
----@param opts any
-function paw.panes.paint(id, width, height, opts) end
-
 --- A pointer event in a pane, in pixels from its corner (as
 --- `paw.canvas.pointer` takes them): a press gives it the keyboard first.
+--- `drawn`, for a pane drawn in cells, says how: its `cell` and its size in
+--- them, `cols` and `rows`; it keeps the button held in a drag.
 ---@param id any
 ---@param event any
-function paw.panes.pointer(id, event) end
+---@param drawn any
+function paw.panes.pointer(id, event, drawn) end
 
 --- Where everything goes in the main area, for a frontend's state: `panes`,
 --- each `{ win, view, kind ("native", "paint", "cells"), title, x, y, w, h,
@@ -5600,6 +5631,18 @@ function paw.routes.sidechain_text(d) end
 --- new tracks.
 ---@param device any
 function paw.routes.spread(device) end
+
+--- A connection closed or stopped watching: nothing more is kept for it.
+---@param client any
+function paw.scene.closed(client) end
+
+--- After a turn of the kernel: the windows whose drawing may have changed
+--- are pushed now, not at the next tick.
+function paw.scene.turn() end
+
+--- Who is watching: `{ client, windows }` each, `windows` the names of
+--- those it has said the size of.
+function paw.scene.watchers() end
 
 --- Tell the engine what the rest of the song does for a scope: the one of
 --- the tab in front, which the last seat to change tabs (a terminal or a
@@ -6533,6 +6576,7 @@ function paw.ui.ask_value(opts, set) end
 ---@param style any
 function paw.ui.box(buf, title, style) end
 
+--- Close the floating window that has the keys, or a view's own window.
 function paw.ui.close() end
 
 --- Add a view to the layout along one side of the screen.
@@ -6678,6 +6722,22 @@ paw.ui.redraw = paw.api.ui_redraw
 ---@param buf any
 function paw.ui.render(buf) end
 
+--- Draw one view by itself as a scene for a graphical frontend (see
+--- crates/paw-scene), `w` by `h` units big (fractions allowed), `cell` the
+--- frontend's cell `{ w, h }` in pixels, `win` the window of the layout it
+--- shows in, if any. What `render_view` writes in the whole cells is the
+--- scene's runs and fills, and the strips the view keeps under them its
+--- pictures; a view that paints is one picture of the whole. The scene
+--- stays with the kernel for `paw.api.scene_end` to say what changed of it.
+---@param name any
+---@param w any
+---@param h any
+---@param cell any
+---@param win any
+function paw.ui.render_scene(name, w, h, cell, win) end
+
+--- Draw the whole screen into `buf`: the tab's windows, floats, the status
+--- and command lines.
 ---@param buf any
 function paw.ui.render_screen(buf) end
 
@@ -6700,6 +6760,7 @@ function paw.ui.show(name) end
 --- (`paw.panes`), so that a split there is measured on what it shows.
 function paw.ui.size() end
 
+--- Redraw at `paw.opt.fps` while playing or just after activity.
 function paw.ui.start_ticker() end
 
 --- Keep an area of a buffer for pixels: see `Buf:strip`. Where it is kept
@@ -6739,6 +6800,7 @@ function paw.ui.theme(groups) end
 ---@param opts any
 function paw.ui.titlebar(buf, opts) end
 
+--- Show the view `name` in its window, or hide it if it is showing.
 ---@param name any
 function paw.ui.toggle(name) end
 
@@ -6756,6 +6818,7 @@ function paw.ui.view(name, def) end
 ---@param name any
 function paw.ui.visible(name) end
 
+--- Fill a `w` by `h` area at `x`, `y` with `char` in `style`, clipped.
 ---@param self any
 ---@param x any
 ---@param y any
@@ -6794,6 +6857,7 @@ function paw.ui.Buf.root(width, height) end
 ---@param opts any
 function paw.ui.Buf.strip(self, x, y, w, h, opts) end
 
+--- A buffer for the area `x`, `y`, `w` by `h` of this one, clipped to it.
 ---@param self any
 ---@param x any
 ---@param y any
@@ -6815,6 +6879,8 @@ function paw.ui.Buf.sub(self, x, y, w, h) end
 ---@param name any
 function paw.ui.Buf.surface(self, x, y, w, h, name) end
 
+--- Write `text` at column `x`, row `y` of this buffer in highlight group
+--- `style`, clipped to it; returns the columns written.
 ---@param self any
 ---@param x any
 ---@param y any
@@ -7596,6 +7662,27 @@ function paw.api.rpc_push(client, event, payload) end
 function paw.api.rpc_version() end
 
 ---@type fun(...): any
+paw.api.scene_begin = nil
+
+---@type fun(...): any
+paw.api.scene_blob = nil
+
+---@type fun(...): any
+paw.api.scene_cells = nil
+
+---@type fun(...): any
+paw.api.scene_draw = nil
+
+---@type fun(...): any
+paw.api.scene_end = nil
+
+---@type fun(...): any
+paw.api.scene_forget = nil
+
+---@type fun(...): any
+paw.api.scene_picture = nil
+
+---@type fun(...): any
 paw.api.signature_remove = nil
 
 ---@type fun(...): any
@@ -7851,7 +7938,9 @@ function paw.api.undo_keep(id, keep) end
 ---@param text string
 function paw.api.undo_keys(text) end
 
----@param text string
+--- Name the open step; the first name given wins. nil takes back a
+--- name given while the step has changed nothing yet.
+---@param text string?
 function paw.api.undo_label(text) end
 
 ---@param name string?
