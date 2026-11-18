@@ -161,6 +161,22 @@ test("the piano roll names the rows of a track with the drums device: kick, snar
   eq(screen:find("Snare", 1, true) ~= nil and screen:find("Kick", 1, true) ~= nil, true, "the rows show them:\n" .. screen)
 end)
 
+test("ext.unload takes away the key bar lines that the extension set", function()
+  start()
+  local dir = T.scratch .. "/barext"
+  os.execute("mkdir -p '" .. dir .. "'")
+  T.write_file(dir .. "/init.lua", [[
+paw.keymap.set("Z1", function() end, { view = "barview", desc = "test" })
+paw.ui.keybar.set("barview", "n", { { "Z1", "one" } })
+]])
+  local entry = paw.ext.load(dir)
+  eq(entry.ok, true, "loads")
+  eq(paw.ui.keybar.lines.barview ~= nil, true, "its line is there")
+  eq(paw.ext.unload("barext"), true, "unloads")
+  eq(paw.ui.keybar.lines.barview, nil, "and its line is gone")
+  eq(table.concat(paw.ui.keybar.check(), ", "), "", "no line shows a key that is not mapped")
+end)
+
 test("a count before Alt-j and Alt-k moves the track that many places, and before & makes that many copies", function()
   start()
   for _, name in ipairs({ "A", "B", "C", "D", "E" }) do paw.add_track({ name = name }) end
