@@ -62,7 +62,7 @@ test("panes: the window's area is laid out as the terminal lays out the tab, the
   paw.ui.show("devices")
   local by, focused = panes()
   eq(by.arrange ~= nil and by.devices ~= nil, true, "the arrange view and the device panel")
-  eq(by.arrange.kind .. " " .. by.devices.kind, "native native", "both drawn by the window itself")
+  eq(by.arrange.kind .. " " .. by.devices.kind, "native cells", "the window draws the one, the kernel's scene the other")
   eq(by.devices.x + by.devices.w, W, "the panel along the right edge")
   eq(by.arrange.x + by.arrange.w, by.devices.x, "the arrange view beside it")
   eq(by.arrange.h, H, "the whole height")

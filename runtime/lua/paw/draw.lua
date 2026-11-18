@@ -120,6 +120,7 @@ local unicode = {
   play = "▶", stop = "■", rec = "●", modified = "●", bypass = "◌", on = "●", ellipsis = "…",
   cursor = "▶", warn = "!", error = "✗", hairline = "▏", strip_sep = "┃",
   tl = "╭", tr = "╮", bl = "╰", br = "╯", h = "─", v = "│", mark = "▌",
+  move_up = "↑", move_down = "↓", remove = "×", editor = "⧉",
   eighths = { "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█" },
 }
 local ascii = {
@@ -132,6 +133,7 @@ local ascii = {
   play = ">", stop = "#", rec = "*", modified = "*", bypass = "o", on = "*", ellipsis = "~",
   cursor = ">", warn = "!", error = "x", hairline = "|", strip_sep = "|",
   tl = "+", tr = "+", bl = "+", br = "+", h = "-", v = "|", mark = "|",
+  move_up = "^", move_down = "v", remove = "x", editor = "#",
   eighths = { ".", ".", "-", "-", "=", "=", "#", "#" },
 }
 

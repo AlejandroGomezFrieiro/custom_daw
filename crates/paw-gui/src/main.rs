@@ -16,7 +16,6 @@ mod arrange;
 mod canvas;
 mod chrome;
 mod client;
-mod devices;
 mod dialogs;
 mod headers;
 mod icons;

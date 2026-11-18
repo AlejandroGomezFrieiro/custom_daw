@@ -4,7 +4,12 @@
 
 The device panel shows the devices of a track. `,d` shows it. It is a grid
 of rows: the heading of a device, then its parameters, then the next
-device.
+device. Under the last device are the add line, the track that this track
+plays into, and its sends.
+
+The terminal and the graphical window show the same panel, from the same
+Lua view (`runtime/lua/paw/views/devices.lua`). The window paints its parts
+as widgets: sliders, a power button, buttons with icons.
 
 ## Keys
 
@@ -41,8 +46,42 @@ device.
 | `:device.copy_to <track>` | Copies the selected device to a track. |
 | `:device.move_to <track>` | Moves the selected device to a track. |
 
-A right click on a parameter offers to automate it, and to open its curve.
+## The parts of a row
 
-In the graphical window, drag a device card by its name onto the header of
-a track to move the device there. With `Ctrl`, the drag copies it. A drag
-up or down the list changes the order.
+| Row | Parts, from the left |
+| --- | --- |
+| Heading of a device | The name. The preset, or a caret when no preset is loaded. At the right: the buttons `⧉` `↑` `↓` `×`, the format, the wet mix, the outputs and the side-chain, and the power chip (`on` or `off`). A device that does not run shows its state in place of the chip. |
+| Picture | What a built-in effect does: the curve of the equalizer, the gain reduction, the loudness, the needle of the tuner. |
+| Parameter | The name, a slider, the value in its unit, and, when the panel is 36 columns wide or more, `A` (automate) and `L` (learn). |
+| Add line | `+ add a device`. |
+| Output | The track that this track plays into, and `+ send`. The master has no output row. |
+| Send | The track, a slider for the level, the level in dB, `pre` and `×`. |
+
+A parameter that a lane moves shows the value of the lane at the playhead.
+In the graphical window, its slider is amber and moves while the song
+plays.
+
+## The pointer
+
+The pointer works in the same way in the terminal and in the graphical
+window.
+
+| Gesture | Effect |
+| --- | --- |
+| Click a row | Selects the row. |
+| Click or drag a slider | Sets the parameter. With `Shift`, the drag moves in small steps. While you hold it, the slider writes automation in touch mode. |
+| Double-click a slider | Sets the parameter to its default. |
+| `Ctrl` and the wheel over a slider | Changes the parameter in steps of 1/100. |
+| Wheel | Moves the cursor from row to row. |
+| Right-click a row | A menu: automate the parameter, edit its curve, and what the language servers say about it. |
+| Drag the name of a device up or down | Moves the device. On a later device, it goes after it. On an earlier device, it goes before it. With `Ctrl`, the drag copies it. |
+| `on`, `off` | Bypasses the device, or lets it play again. |
+| The preset, or the caret | A menu of the presets: load one, save one, make one the default. |
+| `⧉` `↑` `↓` `×` | Show the window of the plugin, move the device up or down the chain, remove it. |
+| `outs`, `key` | A menu of where the further outputs play, or of the track that the device listens to. |
+| `offline: o`, `stopped: R restarts` | Puts the plugin online again, or starts it again. |
+| `A`, `L` | Automates the parameter, as the menu does. Learns a MIDI controller for it. |
+| `+ add a device` | Opens the picker of devices, as `a` does. |
+| The output, `+ send` | A menu of the tracks to play into, or to send to. |
+| Slider of a send | Sets the level, from -60 dB to +6 dB. A double-click sets 0 dB. |
+| `pre`, `×` of a send | Takes the send before the fader. Removes the send. |
