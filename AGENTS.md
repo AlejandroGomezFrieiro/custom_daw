@@ -62,8 +62,8 @@ Other rules for documentation:
 - The user guide is for musicians first. Write about what the user
   wants to do, in the words of the user.
 - Each fact is true. Examine the code, or run paw to see the result. The
-  steps of a guide have a test in `tests/guides.lua` (tutorials) or
-  `tests/guides_howto.lua` (how-to guides).
+  steps of a guide have a test: tutorials in `tests/guides.lua`, how-to
+  guides in `tests/guides_howto.lua` and the other `tests/guides_*.lua`.
 - Never edit generated files. `docs/reference/api.md` comes from the doc
   comments through `tools/apidoc.lua`. The course in
   `docs/tutorials/course` comes from the tutor's lessons.

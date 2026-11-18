@@ -283,8 +283,7 @@ nix develop -c tools/vale.sh docs/how-to/*.md
 
 Vale skips code blocks and code spans. Errors must be fixed. A warning
 is fixed or kept on purpose (a technical name, a quoted UI label).
-`tools/ste-check.lua` is the older checker; prefer Vale. Vale is a help,
-not the standard: read every sentence yourself too.
+Vale is a help, not the standard: read every sentence yourself too.
 
 ## Workflow
 
