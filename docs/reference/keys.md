@@ -103,20 +103,20 @@ lane off and on.
 
 In the **curve editor**:
 
-| Keys | |
+| What | Keys |
 | --- | --- |
-| `h` `l` `j` `k` | move the cursor in time and value |
-| `w` `b` | from point to point |
-| `o` `A` | add a point |
-| `x` | remove it |
-| `+` `-` | raise and lower it |
-| `c` | type its value |
-| `~` | its shape |
-| `[` `]` | its bend |
-| `i` | draw with the cursor until `<Esc>` |
-| `d` `y` `p` `>` `<` | points |
-| `gs` `gS` `gq` | smooth, thin, quantize |
-| `g~` | a wave (then `<Tab>` `<C-n>` `<C-y>`) |
+| move the cursor in time and value | `h` `l` `j` `k` |
+| from point to point | `w` `b` |
+| add a point | `o` `A` |
+| remove it | `x` |
+| raise and lower it | `+` `-` |
+| type its value | `c` |
+| its shape | `~` |
+| its bend | `[` `]` |
+| draw with the cursor until `<Esc>` | `i` |
+| points | `d` `y` `p` `>` `<` |
+| smooth, thin, quantize | `gs` `gS` `gq` |
+| a wave (then `<Tab>` `<C-n>` `<C-y>`) | `g~` |
 
 | Keys | M |
 | --- | --- |
