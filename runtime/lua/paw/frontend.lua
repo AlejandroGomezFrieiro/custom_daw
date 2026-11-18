@@ -639,7 +639,7 @@ paw.option.define("native_dialogs", true) -- the window opens the desktop's file
 -- the pointer and edits are drawn at once all the same.
 paw.option.define("window_fps", "auto", { type = { "number", "string" }, min = 1, max = 60, values = { "auto" } })
 -- The window keeps what does not move in a pane as textures, and paints a
--- part again only when it changes: true, false, or "auto", on the processor only.
+-- part again only when it changes: true, false, or "auto" (on).
 paw.option.define("window_cache", "auto", { type = { "boolean", "string" }, values = { "auto", true, false } })
 
 --- What the graphical window said of the OpenGL that draws it when it

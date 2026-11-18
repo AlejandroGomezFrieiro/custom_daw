@@ -104,7 +104,7 @@ meters at most `paw.opt.window_fps` times a second. The value `"auto"`
 each frame costs much more. A key, the pointer and an edit show in the
 next frame all the same.
 
-On the processor, the window also keeps the parts of the panes that do
+The window also keeps the parts of the panes that do
 not move in a texture of the size of the window (`paw.opt.window_cache`).
 Each frame copies the texture to the screen. Then it draws the parts that
 move over it. These are the playhead, the meters, the live values and the
@@ -118,16 +118,18 @@ only the notes, lines and points near the visible area. So a clip of
 thousands of notes opens and scrolls as fast as a short clip.
 
 Measured with the demo song in a 1500x960 window on llvmpipe, without a
-graphics card, with `LP_NUM_THREADS=4`:
+graphics card, with `LP_NUM_THREADS=4`. Other programs used the computer
+at the same time, so the values are not exact:
 
 | State | Load |
 | --- | --- |
 | At rest | 0% of a core |
-| While the song plays, the arrange view | about 90% of a core (190% with 25 frames a second and no texture) |
-| While the song plays, with the mixer or the piano roll | about 100% of a core (200% with 25 frames a second and no texture) |
+| While the song plays, the arrange view | about 80% of a core (155% with 25 frames a second and no texture) |
+| While the song plays, the mixer or the piano roll | about 40% of a core (120% to 145% with 25 frames a second and no texture) |
 
-Most of the load is llvmpipe, which fills pixels on its threads. The
-window's own work is less than 20% of a core.
+Most of the load is llvmpipe, which fills pixels on its threads. While the
+song plays, the window paints no square of the texture again: only the
+parts that move change.
 
 llvmpipe uses as many threads as the processor has free. So the load
 that you measure changes with what else runs. To compare two windows, set

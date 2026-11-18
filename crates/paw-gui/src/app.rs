@@ -86,11 +86,12 @@ pub fn frame_rate(option: &Value, software: bool) -> f64 {
     }
 }
 
-/// Whether the still part of the panes is kept as textures, by
-/// `paw.opt.window_cache`: true, false, or `auto`: on the processor only,
-/// where it saves the most.
-pub fn cache_on(option: &Value, software: bool) -> bool {
-    option.as_bool().unwrap_or(software)
+/// Whether the still part of the panes is kept in a texture, by
+/// `paw.opt.window_cache`: true, false, or `auto`, which is on: it saves
+/// processor time on a graphics card too, where the texture costs a few
+/// megabytes of its memory.
+pub fn cache_on(option: &Value) -> bool {
+    option.as_bool().unwrap_or(true)
 }
 
 /// What the kernel last said, read.
@@ -327,7 +328,7 @@ impl View {
             self.fps = fps;
             self.k.borrow_mut().set_pace(fps);
         }
-        self.cache = cache_on(&state["window_cache"], self.software);
+        self.cache = cache_on(&state["window_cache"]);
         self.s.playing = flag(&state["playing"]);
         self.s.recording = flag(&state["recording"]);
         if state.get("project").is_some_and(Value::is_object) {
@@ -826,6 +827,7 @@ mod tests {
         assert_eq!(frame_rate(&Value::Null, true), 15.0, "a kernel without the option");
         assert_eq!(frame_rate(&json!(10), true), 10.0);
         assert_eq!(frame_rate(&json!(500), false), 60.0);
+        assert!(cache_on(&json!("auto")) && cache_on(&json!(true)) && !cache_on(&json!(false)));
         let paces = Rc::new(RefCell::new(Vec::new()));
         let mut view = View::new(Box::new(Paced(paces.clone())), true);
         view.software = true;
