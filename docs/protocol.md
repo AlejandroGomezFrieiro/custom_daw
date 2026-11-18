@@ -154,7 +154,7 @@ it would draw has changed, at most once every `interval` milliseconds:
 ```json
 {"event": "frontend.state", "payload": {
   "revision": 41, "playing": true, "position": 12.5, "time": "4.1.50",
-  "levels": [0.31, 0.3, 0, 0], "cpu": 0.07, "modal": { "mode": "n" },
+  "levels": [0.31, 0.3, 0, 0], "cpu": 0.075, "modal": { "mode": "n" },
   "sections": { "tracks": [ … ], "clips": [ … ] }
 }}
 ```
@@ -226,7 +226,7 @@ values a frontend moves things by without a new scene:
 
 ```json
 {"event": "scene.live", "payload": {"position": 12.5, "playing": true, "recording": false,
-  "clock": "0:07.0", "cpu": 0.07, "meters": {"4": [0.31, 0.3]}, "inputs": {"4": 0}}}
+  "clock": "0:07.0", "cpu": 0.075, "meters": {"4": [0.31, 0.3]}, "inputs": {"4": 0}}}
 ```
 
 ## A terminal somewhere else
