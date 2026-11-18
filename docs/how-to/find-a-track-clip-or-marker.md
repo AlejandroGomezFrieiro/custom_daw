@@ -37,7 +37,9 @@ press `*`.
 - Type `:marker.goto Chorus` to go to a marker by its name, or
   `:marker.goto 2` by its number.
 
-To put a marker at the cursor, press `g'`. To name it, type
+To put a marker at the cursor, press `g'`. Type its name, for example
+`Chorus`, and press `Enter`. If you type no name, paw calls it `Marker 1`,
+`Marker 2` and so on. To change the name later, type
 `:marker.rename Chorus`.
 
 ## See also

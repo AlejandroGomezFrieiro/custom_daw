@@ -4830,6 +4830,9 @@ function paw.markers.add(beat, name, opts) end
 ---@param reach any
 function paw.markers.at(beat, reach) end
 
+--- A name for a new marker that has none: "Marker 3" for the third.
+function paw.markers.default_name() end
+
 --- The marker or region of a number (its place in the song), of an id
 --- given as `{ id = n }`, or of a name. Nil if there is none.
 ---@param which any

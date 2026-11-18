@@ -1190,6 +1190,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 - `paw.markers.add(beat, name, opts)`: Add a marker at a beat. With `opts.length`, add a region from there. Returns it.
 - `paw.markers.at(beat, reach)`: The marker or region start nearest a beat within `reach` beats (half a grid step by default), or the region the beat is inside.
+- `paw.markers.default_name()`: A name for a new marker that has none: "Marker 3" for the third.
 - `paw.markers.find(which)`: The marker or region of a number (its place in the song), of an id given as `{ id = n }`, or of a name. Nil if there is none.
 - `paw.markers.label(marker)`: What a marker is called on screen: its name, or its number in the song.
 - `paw.markers.list()`: Each marker and region, in order of time: { id, beat, name, length, color }. A region has a `length` in beats. A marker has no length.

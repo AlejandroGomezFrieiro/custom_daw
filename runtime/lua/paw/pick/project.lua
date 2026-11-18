@@ -56,6 +56,8 @@ return function(pick, S)
       return string.format("%-7s %-24s %s", m.length and "region" or "marker", paw.markers.label(m), where)
     end,
     primary = function(m) return paw.markers.label(m) end,
+    -- What is typed finds a name, not a number of the time: `Chorus 2`.
+    search = function(m) return paw.markers.label(m) .. " " .. (m.length and "region" or "marker") end,
     location = function(m) return { uri = A.marker(m.id), selector = { time = { m.beat, m.beat } } } end,
     on_choose = function(m)
       paw.keymap.push_jump()

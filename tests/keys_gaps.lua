@@ -121,6 +121,27 @@ test("the device panel's cursor starts on the first device of another track, so 
   eq(row.param == nil and row.device.kind, "delay", "w goes to the next device")
 end)
 
+test("g' asks for the marker's name and never makes one without, and the list of markers finds names, not its line numbers", function()
+  start()
+  for i, name in ipairs({ "Intro", "Verse", "Chorus", "Bridge" }) do paw.markers.add((i - 1) * 16, name) end
+  paw.markers.add(64, "Chorus 2")
+  paw.cursor.set_beat(80)
+  keys("g'")
+  eq(#paw.markers.list(), 5, "a prompt asks first")
+  keys("<CR>")
+  local last = paw.markers.list()[#paw.markers.list()]
+  eq(last.name, "Marker 6", "Enter alone keeps the name it offers")
+  keys('g"')
+  keys("Chorus 2")
+  local lines = paw.pick.state().matches
+  eq(lines[1]:find("Chorus 2", 1, true) ~= nil, true, "Chorus 2 first: " .. tostring(lines[1]))
+  for _, line in ipairs(lines) do
+    eq(line:find("Verse", 1, true), nil, "line 2 (Verse) does not match by its number: " .. line)
+  end
+  keys("<CR>")
+  eq(paw.cursor.beat, 64, "and Enter goes there")
+end)
+
 test("a count before Alt-j and Alt-k moves the track that many places, and before & makes that many copies", function()
   start()
   for _, name in ipairs({ "A", "B", "C", "D", "E" }) do paw.add_track({ name = name }) end
