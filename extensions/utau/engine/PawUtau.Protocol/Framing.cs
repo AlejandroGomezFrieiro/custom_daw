@@ -1,10 +1,10 @@
 // Frame layer: `u32 LE length | u8 msgType | body` (length = 1 + body length). Types >= 0x80 carry a raw payload:
-// body = `u32 LE metaLen | msgpack meta | payload`. Mirror of native/common/protocol.{h,cpp}.
+// body = `u32 LE metaLen | msgpack meta | payload`. lua/utau/proto.lua is the other side.
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using MessagePack;
 
-namespace ReaUtau.Protocol;
+namespace PawUtau.Protocol;
 
 public sealed class Frame
 {

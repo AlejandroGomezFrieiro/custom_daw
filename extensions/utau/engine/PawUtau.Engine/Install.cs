@@ -5,10 +5,10 @@ using SharpCompress.Archives;
 using SharpCompress.Common;
 using SharpCompress.Readers;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>
-/// One-shot singer installer (P3.4): <c>reautau-engine --install &lt;file&gt;</c>, as OpenUtau's GUI installs dropped files:
+/// One-shot singer installer: <c>paw-utau-engine --install &lt;file&gt;</c>, as OpenUtau's GUI installs dropped files:
 /// a voicebank archive (zip/rar/7z/uar) via <see cref="OpenUtau.Classic.VoicebankInstaller"/>, a Vogen singer (.vogeon) or a
 /// dependency package (.oudep, e.g. a vocoder). The target is the OpenUtau data folder (--openutau-dir, default
 /// ~/.local/share/OpenUtau), which the engine's Singers/Dependencies link to. Singer type and archive file name encoding are
@@ -38,7 +38,7 @@ static class Install
     /// <summary>The error goes to stdout too ("error: ..."): wrappers may send stderr to a log file.</summary>
     static int Fail(string message)
     {
-        Console.Error.WriteLine("reautau-engine: install failed: " + message);
+        Console.Error.WriteLine("paw-utau-engine: install failed: " + message);
         Console.Out.WriteLine("error: " + message);
         return 1;
     }

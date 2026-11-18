@@ -4,7 +4,7 @@ using OpenUtau.Core.DiffSinger;
 using OpenUtau.Core.Render;
 using Serilog;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>
 /// SynthV-style automatic pitch: a renderer with a pitch model (DiffSinger dspitch) sings its own AI pitch, and the
@@ -15,7 +15,7 @@ namespace ReaUtau.Engine;
 /// OpenUtau's xsy variants), so the renderer's own disk cache keeps AI and manual renders apart while the scheduler
 /// keeps identifying the phrase by its original hash.
 ///
-/// Takes (P4.1): the pitch model is a diffusion sampler with no seed, so every call draws a new melody. Each phrase
+/// Takes: the pitch model is a diffusion sampler with no seed, so every call draws a new melody. Each phrase
 /// content (<see cref="TakeKey"/>) owns a set of takes and a current one; the set is persisted under the engine cache
 /// (ai-takes/), so a melody stays the same across edits of other phrases, pitch edits and sessions until the user asks
 /// for a retake (whole phrase or selected notes, OpenUtau's partial retake) or picks another take.

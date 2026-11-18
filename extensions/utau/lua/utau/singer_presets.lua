@@ -5,8 +5,7 @@
 -- voice colour, the engine's other track options (AI pitch mode, unison,
 -- key shift, ...) and the value each curve holds where it has no lane. It is
 -- a JSON file in `<data dir>/utau/presets/<name>.json` (`~/.local/share/paw`
--- by default; `paw.opt.utau_presets_dir` puts them elsewhere), in the shape
--- ReaUtau's singer presets have, so presets made there can be used here.
+-- by default; `paw.opt.utau_presets_dir` puts them elsewhere).
 -- Applying one replaces the track's voice whole: options it does not name
 -- are cleared.
 local api = paw.api

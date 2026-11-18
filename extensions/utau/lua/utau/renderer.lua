@@ -3,11 +3,11 @@
 -- engine's track options. These are DiffSinger's (and similar engines');
 -- a classic UTAU voicebank sings the same without them.
 --
--- Takes are kept by the engine (ReaUtau's AiPitch.cs, in its cache folder,
+-- Takes are kept by the engine (engine/PawUtau.Engine/AiPitch.cs, in its cache folder,
 -- across sessions); this side asks for them with the `retake` batch edit
 -- and keeps what the engine answers about each note. Timing takes are
 -- stored in the project instead: a seeded offset of each note's first
--- phoneme, as in ReaUtau.
+-- phoneme.
 local api = paw.api
 local utau = require("utau")
 local proto = require("utau.proto")

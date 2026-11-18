@@ -1,6 +1,6 @@
-using ReaUtau.Protocol;
+using PawUtau.Protocol;
 
-namespace ReaUtau.Engine;
+namespace PawUtau.Engine;
 
 /// <summary>
 /// The outbound half of the engine &lt;-&gt; extension stream. Split out from <see cref="Connection"/> so the message

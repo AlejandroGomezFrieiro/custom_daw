@@ -27,5 +27,5 @@ runCommand "paw-extension-utau" {
   cp -r ${lua} $dir
   chmod -R u+w $dir
   mkdir -p $dir/bin
-  ln -s ${engine}/bin/reautau-engine $dir/bin/reautau-engine
+  ln -s ${engine}/bin/paw-utau-engine $dir/bin/paw-utau-engine
 ''

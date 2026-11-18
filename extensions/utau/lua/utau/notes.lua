@@ -52,7 +52,7 @@ function M.set_lyric(clip_id, index, lyric)
   end, { [index] = true })
 end
 
---- Change the ReaUtau properties (`note.meta.utau`) of notes with `fn(props, note)`.
+--- Change the utau properties (`note.meta.utau`) of notes with `fn(props, note)`.
 function M.change_props(clip_id, fn, which)
   return M.change(clip_id, function(note, index)
     local props = copy(note.meta.utau) or {}

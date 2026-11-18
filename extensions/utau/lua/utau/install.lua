@@ -1,10 +1,10 @@
--- Installing singers, by ReaUtau's route: `reautau-engine --install` puts a
+-- Installing singers: `paw-utau-engine --install` puts a
 -- voicebank archive (zip, rar, 7z, uar), a Vogen singer (.vogeon) or a
 -- dependency package (.oudep) into OpenUtau's data folder, as OpenUtau's
 -- own window does, finding the singer type and the file name encoding by
 -- itself. A voicebank that is already a folder is copied into the
 -- `Singers` folder there. The folder is `paw.opt.utau_openutau_dir`, else
--- `$REAUTAU_OPENUTAU_DIR`, else `~/.local/share/OpenUtau` (under
+-- `$PAW_UTAU_OPENUTAU_DIR`, else `~/.local/share/OpenUtau` (under
 -- `$XDG_DATA_HOME`); the engine reads voicebanks from it. After an install
 -- the running engine looks for singers again.
 local api = paw.api
@@ -69,7 +69,7 @@ function M.install(path, opts)
       if kind then installed[#installed + 1] = { kind = kind, path = where } end
     end
     if code ~= 0 then
-      local why = out:match("error: ([^\n]+)") or out:match("reautau%-engine: ([^\n]+)") or ("exit code " .. tostring(code))
+      local why = out:match("error: ([^\n]+)") or out:match("paw%-utau%-engine: ([^\n]+)") or ("exit code " .. tostring(code))
       error("could not install " .. path:match("([^/]+)$") .. ": " .. why, 0)
     end
   end
