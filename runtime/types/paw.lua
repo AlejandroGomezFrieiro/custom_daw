@@ -4141,7 +4141,7 @@ function paw.layout.move_to_edge(edge) end
 ---@param count any
 function paw.layout.neighbour(dir, count) end
 
---- Whether a view is shown in one window at a time: a view without a
+--- True if a view is shown in one window at a time: a view without a
 --- state for each window. A buffer type is not.
 ---@param name any
 function paw.layout.one_window(name) end
@@ -4978,8 +4978,8 @@ function paw.mouse.has(event, letter) end
 
 --- Show on the status line what is under the pointer, or what it would do.
 --- nil shows nothing. A view calls it while the pointer moves over it.
---- `shape` is the shape a window gives the pointer there: "resize_h" over
---- an edge dragged sideways, "resize_v" over one dragged up or down.
+--- `shape` is the shape a window gives the pointer there: `"resize_h"` over
+--- an edge dragged sideways, `"resize_v"` over one dragged up or down.
 ---@param text any
 ---@param shape any
 function paw.mouse.hint(text, shape) end

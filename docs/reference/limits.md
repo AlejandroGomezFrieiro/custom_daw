@@ -60,13 +60,13 @@ gets the function.
   loudness: there is no darker inner band for the RMS. The graphical window
   draws the peaks of a clip from the same data as before (`paw.frontend.peaks`:
   the lowest, the highest and the loudness of each point).
-- Windows, buffers and tabs (phase 1 is complete):
-  - A built-in view is one buffer, shown in one window at a time, because its state (cursor, scroll, the open clip) is one table. Phase 2 will put the state of a view in its buffer and its windows. Then two windows can show two clips in piano rolls, or one clip two times.
-  - A view's locator (`paw.ui.locator`, the place of the cursor of the view in the project) belongs to the view, not to each of its windows. Phase 2 makes it a property of each window.
+- Windows, buffers and tabs:
+  - The arrange view, the piano roll and the notation view have a state for each window. The mixer, the device panel and the session view are one buffer each, shown in one window at a time, because their state is one table.
+  - The edit cursor of the arrange view (the track and the time) and the selections are one for all the windows of a frontend.
+  - The piano roll and the notation view of the graphical window also show in a window of their own (`Ctrl-w f`). That window shows the state of the pane of the view that had the keyboard last.
   - Floats (help, pickers, pages) are not windows of a tab yet.
   - Each view draws its own window title bar (the winbar of Neovim).
-  - The project does not keep layouts.
-  - The graphical frontend keeps its own layout of panels.
+  - The project keeps one layout: that of the frontend that saved it. It does not keep a layout for each seat, because seats do not last after the program ends.
   - `:new` starts a new project. `:vnew` and `Ctrl-w n` open an empty window.
 - The quickfix list:
   - `:g/pattern/` and `:vimgrep` fill it. paw has no `:grep`, because it has no files to run a program on. `/` does not fill it.

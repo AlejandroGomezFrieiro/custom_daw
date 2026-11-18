@@ -63,10 +63,11 @@ window attached to a kernel that runs already also finds the file.
 | --- | --- |
 | `width`, `height` | The size of the window. |
 | `x`, `y` | The position of the window on the screen, on X11 only. |
-| `mixer` | `true` when the mixer shows. |
 
 The zoom and the height of the tracks are the kernel's options
 (`paw.opt.zoom`, `paw.opt.track_height`), the same as in the terminal.
+What the panes show is the kernel's layout. The project keeps it (see
+[Layouts](windows.md#layouts)), not `window.json`.
 
 On Wayland, the compositor decides the position of a window. So the
 window keeps no position there. If no screen shows a saved position, the
@@ -738,12 +739,17 @@ So these keys and commands do in the window what they do in the terminal.
 | Gesture | Effect |
 | --- | --- |
 | Press in a pane | Gives the pane the keyboard. A ring in the color of the selection shows that pane, when there is more than one pane. |
-| Drag a border between panes | Shares the space. The panes keep a size of whole cells, as `Ctrl-w +` does. |
+| Drag a border between panes | Shares the space. The panes keep a size of whole cells, as `Ctrl-w +` does. The kernel moves the border with the code that moves it in the terminal (`paw.layout.drag_border`). |
 | Click a tab | Goes to the tab. The row of tabs shows when there is more than one tab. |
+| The close button of a pane | Closes its window, as `Ctrl-w c` does. The last window of a tab stays. |
 
-Each attached window has its own tabs and windows. When a window first
-shows its main area, the kernel puts the device panel beside the arrange
-view.
+Two panes of one view (two piano rolls) are two scenes, each with the
+state of its window: its clip, cursor and scroll.
+
+Each attached window has its own tabs and windows. A window shows its
+main area for the first time. Then the kernel shows the device panel if
+the tab has its closed place, as the default start layout has. A start layout of the
+configuration (`paw.ui.start_layout`) shows as it is.
 
 A tab narrowed to a group (`:narrow Strings`, `zn`, see
 [Narrowed tabs](narrowing.md))

@@ -185,7 +185,7 @@ function M.window_fields(name, tbl, keys, fresh, key)
     end, key or "fields")
 end
 
---- Whether a view is shown in one window at a time: a view without a
+--- True if a view is shown in one window at a time: a view without a
 --- state for each window. A buffer type is not.
 function M.one_window(name)
   return not M.types[name] and not M.keepers[name]

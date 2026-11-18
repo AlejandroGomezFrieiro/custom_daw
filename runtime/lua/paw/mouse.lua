@@ -114,8 +114,8 @@ end
 
 --- Show on the status line what is under the pointer, or what it would do.
 --- nil shows nothing. A view calls it while the pointer moves over it.
---- `shape` is the shape a window gives the pointer there: "resize_h" over
---- an edge dragged sideways, "resize_v" over one dragged up or down.
+--- `shape` is the shape a window gives the pointer there: `"resize_h"` over
+--- an edge dragged sideways, `"resize_v"` over one dragged up or down.
 function M.hint(text, shape)
   state.hinted = true
   if text ~= state.hint or shape ~= state.shape then

@@ -52,6 +52,7 @@ writers of extensions come after them.
 - [How to undo, and return to an earlier state](how-to/undo-and-return-to-an-earlier-state.md): the undo tree
 - [How to fit audio to the tempo](how-to/fit-audio-to-the-tempo.md)
 - [How to work on one group of a large project](how-to/work-on-one-group.md)
+- [How to arrange your screen: windows, tabs and layouts](how-to/arrange-your-screen.md): one view full screen, two clips side by side, a layout of your own
 
 ### Find things
 
