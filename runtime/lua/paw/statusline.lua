@@ -305,10 +305,10 @@ end })
 -- How busy the engine is, and dropouts since it started.
 spec("cpu", { min = 90, rank = 6, key = function(ctx)
   local e = ctx.engine
-  return math.floor(math.max(0, math.min(1, e.cpu or 0)) * 100 + 0.5) .. ":" .. (e.xruns or 0)
+  return paw.audio.load(e.cpu) .. ":" .. (e.xruns or 0)
 end, fn = function(ctx)
   local e = ctx.engine
-  local load = math.max(0, math.min(1, e.cpu or 0))
+  local load = math.max(0, math.min(1, paw.audio.load(e.cpu)))
   local out = { { "cpu " .. ctx.g.eighths[1 + math.floor(load * 7.99)] .. string.format(" %d%%", math.floor(load * 100 + 0.5)),
     load > 0.8 and "StatusError" or load > 0.5 and "StatusWarn" or "StatusDim" } }
   if (e.xruns or 0) > 0 then out[#out + 1] = { " xrun " .. e.xruns, "StatusWarn" } end

@@ -139,13 +139,15 @@ pub struct Plane {
     pub y: Axis,
 }
 
-/// What a press landed on: the node's key and hit, and where, in the
-/// domain of the innermost plane it is in (in units of the scene else).
+/// What a press landed on: the node's key and hit, where, in the domain of
+/// the innermost plane it is in (in units of the scene else), and the part
+/// of the scene the hit region covers, in units (x, y, width, height).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Hit {
     pub key: String,
     pub hit: Value,
     pub at: [f64; 2],
+    pub rect: [f64; 4],
 }
 
 /// A scene: the nodes of one window by key, in order from the root.
@@ -371,10 +373,54 @@ impl Scene {
             }
             if let Some(hit) = &node.hit {
                 let space = if matches!(node.kind, Kind::Plane(_)) { map.inside(node) } else { map };
-                return Some(Hit { key: node.key.clone(), hit: hit.clone(), at: space.back(at) });
+                let rect = [rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]];
+                return Some(Hit { key: node.key.clone(), hit: hit.clone(), at: space.back(at), rect });
             }
         }
         None
+    }
+
+    /// Every node reachable from the root, in drawing order, with where it
+    /// is in units of the scene and what it is cut to there (each as left,
+    /// top, right, bottom): what a frontend paints a role by.
+    pub fn placed(&self, f: &mut dyn FnMut(&Node, [f64; 4], [f64; 4])) {
+        let all = [0.0, 0.0, self.size[0] as f64, self.size[1] as f64];
+        self.placed_in(&self.root, Map::UNITS, all, f, 0);
+    }
+
+    fn placed_in(&self, keys: &[String], map: Map, cut: [f64; 4], f: &mut dyn FnMut(&Node, [f64; 4], [f64; 4]), depth: usize) {
+        if depth > 64 {
+            return;
+        }
+        for key in keys {
+            let Some(node) = self.nodes.get(key) else { continue };
+            let mut cut = cut;
+            if let Some(clip) = &node.clip {
+                cut = overlap(cut, map.rect(clip));
+            }
+            let rect = map.rect(&node.rect);
+            f(node, rect, cut);
+            self.placed_in(&node.kids, map.inside(node), overlap(cut, rect), f, depth + 1);
+        }
+    }
+
+    /// Lower the scene for a frontend that draws the roles `known` itself:
+    /// such a role's kids (its cells, for a frontend that does not) are
+    /// left out.
+    pub fn lower(&mut self, known: &dyn Fn(&str) -> bool) {
+        let mut gone = Vec::new();
+        for node in self.nodes.values_mut() {
+            if let Kind::Role { role, .. } = &node.kind
+                && known(role)
+            {
+                gone.append(&mut node.kids);
+            }
+        }
+        while let Some(key) = gone.pop() {
+            if let Some(mut node) = self.nodes.remove(&key) {
+                gone.append(&mut node.kids);
+            }
+        }
     }
 
     /// The scene as a terminal shows it: its runs and fills written in
@@ -547,10 +593,25 @@ mod tests {
         // In the plane's domain: 2.5 units into it is beat 4 + 2.5 / 2,
         // 2.5 rows down is pitch 65 - 2.5.
         assert_eq!(on_note.at, [5.25, 62.5]);
+        assert_eq!(on_note.rect, [4.0, 3.0, 3.0, 1.0], "the note's place in units");
         let empty = scene.hit([10.0, 1.5]).unwrap();
         assert_eq!((empty.key.as_str(), empty.at), ("roll", [8.0, 64.5]));
         assert_eq!(scene.hit([0.5, 0.5]), None, "the background is no hit region");
         assert_eq!(scene.hit([19.0, 5.5]), None, "nor is anything outside the plane");
+    }
+
+    #[test]
+    fn a_role_known_to_a_frontend_goes_without_its_cells_and_is_placed() {
+        let mut scene = roll();
+        let mut lowered = scene.clone();
+        lowered.lower(&|role| role == "note");
+        assert!(lowered.nodes["note:1"].kids.is_empty() && !lowered.nodes.contains_key("note:1/cells"));
+        assert!(!lowered.to_cells().cells.iter().any(|c| c.ch == '█'), "no cells for it: the frontend paints it");
+        scene.lower(&|role| role == "clip");
+        assert_eq!(scene, roll(), "a role it does not know keeps its cells");
+        let mut seen = Vec::new();
+        lowered.placed(&mut |node, rect, _| seen.push((node.key.clone(), rect)));
+        assert_eq!(seen.last(), Some(&("note:1".to_string(), [4.0, 3.0, 7.0, 4.0])), "where the note is in units");
     }
 
     #[test]

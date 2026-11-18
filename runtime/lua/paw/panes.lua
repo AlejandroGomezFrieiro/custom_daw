@@ -6,9 +6,10 @@
 -- state (`state`) where every window of the current tab goes, which has the
 -- keyboard, the borders between them and the tabs. It draws the views it
 -- has its own drawing for (`native`: the arrange view, the device panel,
--- the piano roll, the mixer, the session view) in their panes, and is sent
+-- the piano roll, the session view) in their panes, and is sent
 -- every other as a scene (paw/scene.lua): a view that paints as a picture
--- at the pane's size, any other cell by cell as the terminal draws it.
+-- at the pane's size, any other cell by cell as the terminal draws it,
+-- with the roles it marks (paw/roles.lua) as widgets where it knows them.
 -- Pointer events in a pane come to `pointer`; a press anywhere in one gives
 -- it the keyboard (`focus`). Keys need nothing: they go to the key mappings
 -- with the focused window, as from the terminal.
@@ -17,8 +18,8 @@ local L = require("paw.layout")
 
 local M = {
   -- Views a frontend draws in its own way.
-  native = { arrange = true, devices = true, pianoroll = true, mixer = true, session = true },
-  -- The least room, in pixels, a frontend's own drawing of a view needs.
+  native = { arrange = true, devices = true, pianoroll = true, session = true },
+  -- The least room, in pixels, a view needs in a frontend.
   least = {
     arrange = { w = 320, h = 120 }, devices = { w = 260 }, pianoroll = { h = 200 },
     mixer = { h = 280 }, session = { h = 150 },

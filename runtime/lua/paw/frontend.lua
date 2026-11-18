@@ -551,7 +551,7 @@ function M.state(known)
     time = paw.time.format(t.position), clock = paw.time.clock(t.position),
     -- The tempo and signature where the playhead is.
     tempo = math.floor(paw.tempo.at(t.position) * 100 + 0.5) / 100, signature = num .. "/" .. den,
-    cpu = e.cpu, levels = levels, inputs = inputs, modal = modal(), armed = t.recording,
+    cpu = paw.audio.load(e.cpu), levels = levels, inputs = inputs, modal = modal(), armed = t.recording,
     -- What went wrong while playing (see `:engine.status`).
     xruns = e.xruns, late_blocks = e.late_blocks, midi_dropped = e.midi_dropped,
     record_dropped = e.record_dropped, devices_stopped = e.devices_stopped,

@@ -100,12 +100,9 @@ function M.push(client)
     end
     for _, key in ipairs(SECTION_KEYS) do state[key] = nil end
   end
-  -- Numbers that tremble (the engine's load, a meter falling towards
-  -- nothing) are rounded to what a frontend can show, so that an idle
-  -- program has nothing new to say: the load in steps of 2.5%, a pixel of
-  -- the window's bar for it (to hundredths it changed many times a second
-  -- with nothing playing).
-  state.cpu = math.floor((state.cpu or 0) * 40 + 0.5) / 40
+  -- Numbers that tremble (a meter falling towards nothing) are rounded to
+  -- what a frontend can show, so that an idle program has nothing new to
+  -- say; the engine's load comes steady already (`paw.audio.load`).
   for _, key in ipairs({ "levels", "inputs" }) do
     for i, level in ipairs(state[key] or {}) do state[key][i] = math.floor(level * 10000 + 0.5) / 10000 end
   end

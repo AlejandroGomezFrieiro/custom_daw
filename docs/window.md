@@ -78,17 +78,20 @@ shorter: at the shortest only the first line. Meters are coloured by level
 (green to −18 dB, then yellow-green, yellow, orange, red from 0 dB), hold
 their peak for a moment as a thin line, and light the clip light when a
 level reaches 0 dB; it stays lit until it is clicked or the transport starts
-playing again. The mixer has a strip
-per track from its left edge, with the master at the right: where it plays
-into (the master's own output), its devices
-(a click on one picks it in the device panel), its sends with their levels,
-pan, a fader with a scale (+6, 0, −6, −12, −24, −48, as in the terminal)
-beside its meters, the fader's level and the peak held, `M` `S` `R`, and
-its name on its colour. Every strip keeps rows for as many sends as the
-track with most has, so the faders share a baseline. A VCA has a strip too, after the tracks, naming the
-tracks under it; right-click a strip or a track's header to make a VCA with the
-track, put it under one or take it out. The status line at the bottom says what the pointer
-does wherever it is.
+playing again. The mixer is the terminal's (see
+[Mixing](mixing.md)), laid out in cells of the window's font: a strip per
+track with its name on a plate in its colour, its first devices and its
+sends, the meters beside a fader with its scale, the peak and the level,
+the pan and `M` `S` `R` `I`, the master after them. The window paints its
+parts as widgets (the kernel sends them as roles: see "Roles" in
+[Scripting](scripting.md#roles)): the faders' caps at any place along
+their travel, the meters moved thirty times a second by the live values,
+lit switches. The pointer does what it does in the terminal, through the
+same hit regions, in fractions of a cell: a fader follows the pointer
+smoothly. VCAs have strips after the tracks; right-click a strip or a
+track's header to make a VCA with the track, put it under one or take it
+out. The status line at the bottom says what the pointer does wherever it
+is.
 
 | Where | What the pointer does |
 | --- | --- |
@@ -103,7 +106,7 @@ does wherever it is.
 | Routing | above the selected track's devices: "Output" chooses the track it plays into, "+ Send" a track its sound is sent to as well; each send has a level to drag, `pre` to take it ahead of the fader, and a cross to take it away |
 | Templates | with the templates extension: a track's menu saves it (or, on a group, the whole group) and saves its devices as a chain; `Track` → "From a template…" makes one again, and "Add devices from a template…" puts a saved chain on the track |
 | Session | the Session button shows the clip launcher under the timeline: a slot's play mark launches it (let go stops a gate clip), a click chooses it, a double click opens its notes (an empty slot gets a new MIDI clip first), a drag moves it to another slot (Ctrl copies), a clip dragged from the timeline onto a slot is copied there, the dot of an empty slot records into it; scenes down the right launch their rows, and the bar along the top sets the quantize, captures, sends every track back and stops every clip. See [Live performance](live.md) |
-| Mixer | drag a fader (0 dB sits at 72% of its travel) or turn the pan knob by dragging up and down, with Shift finely; double click for 0 dB or centre; the wheel nudges. A click on a device in a strip picks it in the device panel, a click on the clip light or the peak readout clears it. With the keyboard in the mixer, the row its cursor is on (an insert, the sends, the pan, the fader, mute, solo, arm) is outlined on its strip, as the device panel outlines its row |
+| Mixer | as in the terminal: drag a fader up and down (with Shift finely) or the level sideways, click or drag along the pan; double click for 0 dB or the centre; the wheel moves the fader, with Shift the strips. A click on a device in a strip picks it in the device panel, on a send drags its level, on `M` `S` `R` `I` switches it; a right click opens the track's menu. With the keyboard in the mixer, the row its cursor is on is marked on its strip, as in the terminal |
 | Devices | type part of a name to find a device or plugin, Enter or a click adds it (Esc lets go of the box); drag a parameter, wheel to nudge it, double click to put it back; the power button turns a device off and on, the arrows move it along the chain, the window button opens a plugin's own editor |
 | Transport | back to the start, stop, play or pause, record, loop and metronome; drag or wheel over the tempo to change it, double click to type it; click the project's name for the file menu: new, open, open recent (a submenu, with "Clear the list" at its end), recover, save, save as, import, render, quit (a dot beside it means there are changes); Mixer, Automation and Piano roll show and hide those views, and More lists every other view the kernel has (the extensions' among them), each to open in a pane: where it docks, else split from the pane with the keyboard; click the engine indicator (`pipewire · UR22mkII · 48 kHz`) for a menu of output and input devices and block sizes, headed by the sample rate, block size and latencies |
 | File | New, Open and Quit ask first when there are changes: save them (a project with no file yet is asked where it goes), don't, or stay. So does closing the window. Render… opens a dialog: the file, the range (the song, the loop, the selection, a region), WAV or FLAC (and MP3, Ogg or Opus when ffmpeg is installed: the sample size and dither give way to a quality of Low, Medium, High or Best), the sample size, the tail, normalizing, dither, mono, a file per track, and under Tags the title, artist, album, track, year, genre, comment and cover that the files carry (kept with the project); the render runs in the background with its progress and a Cancel in the status line. Open…, Save as…, Import and the render's `…` button show the desktop's own file dialog (see below) |
@@ -176,15 +179,17 @@ as the terminal does: each window of the current tab is a pane of the main
 area, between the transport bar and the status line, laid out by the same
 rules, a size in cells taken as so many of the monospace font's cells in
 pixels (and never less than what the window's own drawing of a view needs).
-The arrange view, the device panel, the piano roll, the mixer and the
+The arrange view, the device panel, the piano roll and the
 session view are drawn by the window itself in their panes; any other
 buffer is drawn by the kernel at the pane's size, inset a little, under
 the window's own title with buttons to pop it out and to close it: a view
-that paints (the notation, the drum grid, the vocal editor, the undo tree)
+that paints (the notation, the vocal editor, the undo tree)
 as a picture, any other (a curve `paw://lane/3`, the quickfix list, a text
 buffer `paw://tracks`, an empty window) cell by cell in the monospace font
 as the terminal draws it, the title row the terminal gives it hidden under
-the window's title. The kernel sends each such pane, and each view in a
+the window's title. The mixer and the drum grid are such views: the window paints
+the controls they mark (faders, meters, switches, buttons) as widgets, and
+the pointer works them through the same hit regions as in the terminal. The kernel sends each such pane, and each view in a
 window of its own, as a scene and then as what changed of it, pushed after
 the turn that changed it (see "Scenes" in [the protocol](protocol.md)): the
 window asks for nothing, draws the text crisp at any size, and an idle

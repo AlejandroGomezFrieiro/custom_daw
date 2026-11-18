@@ -206,6 +206,9 @@ paw.regex = {}
 ---@class paw.remote
 paw.remote = {}
 
+---@class paw.roles
+paw.roles = {}
+
 ---@class paw.roll_clips
 paw.roll_clips = {}
 
@@ -974,6 +977,16 @@ function paw.audio.label(t) end
 function paw.audio.level(t, levels) end
 
 paw.audio.levels = paw.api.input_levels
+
+--- How busy the engine is, 0 to 1, as the status line and every frontend
+--- show it: the load of its blocks averaged over about a second, given in
+--- steps of 2.5% and moved only when the average has left the step shown.
+--- A block's own load wavers all the time, the more so on a busy machine,
+--- and each change of it would be drawn again in the terminal and sent to
+--- every window, which then drew a frame for it. `cpu`: the load just read
+--- (`api.engine_get().cpu`), when the caller has it.
+---@param cpu any
+function paw.audio.load(cpu) end
 
 --- A device's name made short enough for a track header: the maker's name
 --- goes when a model number follows it, and so does a trailing number.
@@ -4765,6 +4778,12 @@ function paw.mouse.hint(text) end
 --- What the status line says about the pointer, if anything.
 function paw.mouse.hint_text() end
 
+--- Whether a press is the second of a double click: the same button on the
+--- same cell soon after the first, which was not itself a second. A
+--- window's pointer, in fractions of a cell, counts by the cell it is in.
+---@param event any
+function paw.mouse.mark_double(event) end
+
 --- How a click with modifiers chooses: "toggle" with Ctrl, "add" with
 --- Shift, else "only".
 ---@param event any
@@ -5383,6 +5402,70 @@ function paw.remote.listeners() end
 --- last sent anything: nothing at all when nothing has.
 ---@param client any
 function paw.remote.push(client) end
+
+--- A view is about to be drawn on the terminal's screen (`win`, the id of
+--- its window, if any): its hit regions start afresh.
+---@param name any
+---@param win any
+function paw.roles.begin(name, win) end
+
+--- Define a role: `spec.cells(buf, props, ctx)` draws it in cells (it is
+--- required: the terminal comes first); `spec.props` names its props and
+--- what they hold, for documentation and `paw.ui.roles`; `spec.bound` the
+--- props a frontend takes from the live value instead when the mark is
+--- bound to one, which are not sent to it.
+---@param name any
+---@param spec any
+function paw.roles.define(name, spec) end
+
+--- The view being drawn is done: what it marks after is no hit region.
+function paw.roles.finish() end
+
+--- An event on a hit region (`e.hit`, `e.rect`) to its view: true when it
+--- was taken.
+---@param view any
+---@param e any
+function paw.roles.gesture(view, e) end
+
+--- `buf:hit(x, y, w, h, action)`: see the top of this file.
+---@param buf any
+---@param x any
+---@param y any
+---@param w any
+---@param h any
+---@param action any
+function paw.roles.hit(buf, x, y, w, h, action) end
+
+--- A pointer event from a frontend that is sent scenes (paw/scene.lua),
+--- in units of its window `id`, over the view `view` (its window of the
+--- layout `win`, if any): on a hit region of the scene it was sent, to the
+--- region's gesture, with `x` and `y` in units; a drag begun there goes on
+--- in units (`held`, what the frontend's watcher keeps). True when taken.
+---@param client any
+---@param id any
+---@param view any
+---@param win any
+---@param event any
+---@param held any
+function paw.roles.input(client, id, view, win, event, held) end
+
+--- `buf:mark(role, x, y, w, h, props)`: see the top of this file.
+---@param buf any
+---@param role any
+---@param x any
+---@param y any
+---@param w any
+---@param h any
+---@param props any
+function paw.roles.mark(buf, role, x, y, w, h, props) end
+
+--- A mouse event in the terminal, in the cells of the view it is over (as
+--- its `on_mouse` takes it, with `view_x`, `view_y`, `win`): to the gesture
+--- of the hit region under it. True when it was taken.
+---@param view any
+---@param name any
+---@param event any
+function paw.roles.pointer(view, name, event) end
 
 --- Make a clip the active one. One that is not editable yet takes the old
 --- active clip's place in the set; the cursor stays where it is in the song.
@@ -6749,6 +6832,8 @@ function paw.ui.render_screen(buf) end
 ---@param buf any
 function paw.ui.render_view(name, buf) end
 
+paw.ui.role = paw.roles.define
+
 --- Show a view: in its window if it has one in this tab, else where it was
 --- docked. A view has one window at a time: one on screen in another tab
 --- moves here.
@@ -6818,6 +6903,15 @@ function paw.ui.view(name, def) end
 ---@param name any
 function paw.ui.visible(name) end
 
+--- Buffers side by side across this one, a width each from the left with
+--- `gap` columns between (0 by default); a width of "*" takes what the
+--- others leave. What does not fit is left out.
+---   local name, body = buf:columns({ 12, "*" })
+---@param self any
+---@param widths any
+---@param gap any
+function paw.ui.Buf.columns(self, widths, gap) end
+
 --- Fill a `w` by `h` area at `x`, `y` with `char` in `style`, clipped.
 ---@param self any
 ---@param x any
@@ -6827,6 +6921,30 @@ function paw.ui.visible(name) end
 ---@param char any
 ---@param style any
 function paw.ui.Buf.fill(self, x, y, w, h, char, style) end
+
+--- Make an area a hit region: a press, a move or the wheel there goes to
+--- the view's gesture for `action.kind` (paw/roles.lua), in either frontend.
+---@param self any
+---@param x any
+---@param y any
+---@param w any
+---@param h any
+---@param action any
+function paw.ui.Buf.hit(self, x, y, w, h, action) end
+
+--- Mark a role (paw/roles.lua) over an area: drawn there with the role's
+--- cells in a terminal, painted as what it is by a frontend that knows it.
+--- `props.hit` makes it a hit region, `props.bind` ties it to a live value.
+--- Returns the buffer of the area.
+---   buf:mark("fader", 4, 2, 3, 12, { at = 0.8, hit = { kind = "fader", track = id } })
+---@param self any
+---@param role any
+---@param x any
+---@param y any
+---@param w any
+---@param h any
+---@param props any
+function paw.ui.Buf.mark(self, role, x, y, w, h, props) end
 
 --- The buffer covering a whole screen of the given size.
 ---@param width any
@@ -7671,6 +7789,9 @@ paw.api.scene_blob = nil
 paw.api.scene_cells = nil
 
 ---@type fun(...): any
+paw.api.scene_close = nil
+
+---@type fun(...): any
 paw.api.scene_draw = nil
 
 ---@type fun(...): any
@@ -7680,7 +7801,16 @@ paw.api.scene_end = nil
 paw.api.scene_forget = nil
 
 ---@type fun(...): any
+paw.api.scene_hit = nil
+
+---@type fun(...): any
+paw.api.scene_open = nil
+
+---@type fun(...): any
 paw.api.scene_picture = nil
+
+---@type fun(...): any
+paw.api.scene_roles = nil
 
 ---@type fun(...): any
 paw.api.signature_remove = nil

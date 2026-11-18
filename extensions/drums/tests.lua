@@ -71,7 +71,7 @@ test("drums: drums.track makes a track ready for drums in one step", function()
   eq(clip.length, paw.time.bar(), "a bar to program")
   eq(paw.ui.focused, "drums", "open in the drum grid")
   eq(paw.ui.views.drums.clip_id, clip.id, "on its clip")
-  eq(paw.ui.visible("drums") and paw.canvas.titles.drums, "Drum grid", "and docked for a graphical frontend, under its title")
+  eq(paw.ui.visible("drums") and paw.ui.views.drums.title, "Drum grid", "docked, under its title in a window's pane")
   eq(paw.ui.message.text:find("Ctrl-w p goes back", 1, true) ~= nil, true, "the message names the key that goes back")
   paw.ui.focus("arrange")
   local screen = table.concat(api.ui_snapshot(120, 30), "\n")
@@ -323,31 +323,44 @@ test("drums: the key bar shows only keys that are mapped", function()
   eq(table.concat(paw.ui.keybar.check(), ", "), "", "keys shown with nothing mapped to them")
 end)
 
--- The window ------------------------------------------------------------------------
+-- The pointer ----------------------------------------------------------------------
+-- The grid is one view for both frontends: a window is sent its scene
+-- (paw/scene.lua) and a press there goes through the grid's hit regions in
+-- fractions of a cell (paw/roles.lua), as one in the terminal goes in cells.
 
-local function paint(w, h) return paw.canvas.paint("drums", w or 1040, h or 560) end
+local CELL = { w = 8, h = 16 }
+local held = {}
 
---- Where the drum grid paints a row and a cell, from its own layout.
+--- The grid drawn for a window, 100 by 30 units: the patch that makes it.
+local function scene()
+  api.scene_forget(0, "drums")
+  paw.ui.render_scene("drums", 100, 30, CELL)
+  return api.json_decode(api.scene_end(0, "drums"))
+end
+
+--- The middle of a row's step, in the grid's cells, as the grid lays it out.
 local function at(row, cell)
-  local gui = require("drums.gui")
-  local l = gui.layout
-  return 132 + cell * l.cellw + l.cellw / 2 - gui.scroll, 40 + 24 + (row - 1 - gui.top) * 26 + 13
+  local grid = paw.ui.views.drums
+  local g = grid.geometry
+  return g.namew + (cell - grid.scroll) * 3 + 1.5, g.head + (row - grid.first) + 0.5
 end
 
 local function pointer(kind, x, y, extra)
-  paw.canvas.pointer("drums", paw.util.merge({ kind = kind, x = x, y = y, button = "left" }, extra or {}))
+  local e = paw.util.merge({ kind = kind, x = x, y = y, button = "left" }, extra or {})
+  return paw.roles.input(0, "drums", paw.ui.views.drums, nil, e, held)
 end
 
 local function click(row, cell, button)
+  scene()
   local x, y = at(row, cell)
   pointer("down", x, y, { button = button or "left" })
   pointer("up", x, y, { button = button or "left" })
+  paw.mouse.forget()
 end
 
-test("drums: the window opens on a double click of a drum track's clip only", function()
+test("drums: the grid opens on a double click of a drum track's clip only", function()
   load()
   fresh()
-  paw.canvas.close("drums")
   local keys_track = paw.add_track({ name = "Keys" })
   keys_track:add_device("synth")
   local other = keys_track:add_clip({ start = 0, length = 4 })
@@ -361,30 +374,27 @@ test("drums: the window opens on a double click of a drum track's clip only", fu
   eq(paw.ui.views.drums.clip_id, clip.id, "on that clip")
 end)
 
-test("drums: the window paints rows by name and hits by velocity", function()
+test("drums: a window is sent the grid's rows by name and its hits as roles by velocity", function()
   local _, clip = drum_track()
   clip:add_notes({ { pitch = 36, start = 0, length = 0.25, velocity = 127 }, { pitch = 38, start = 1, length = 0.25, velocity = 40 } })
-  local drawing = paint()
-  local texts = {}
-  for _, op in ipairs(drawing.ops) do
-    if op[1] == "t" then texts[op[4]] = true end
+  local patch = scene()
+  local texts, hit_roles, steps, buttons = {}, {}, 0, {}
+  for _, node in ipairs(patch.set) do
+    if node.t == "run" then texts[node.text] = true end
+    if node.role == "hit" then hit_roles[#hit_roles + 1] = node.props.velocity end
+    if node.role == "step" then steps = steps + 1 end
+    if node.role == "button" then buttons[#buttons + 1] = node.props.text end
   end
   eq(texts.Kick and texts.Snare and texts["Ride bell"] or false, true, "every row is named")
-  local function fill_at(x, y)
-    local found
-    for _, op in ipairs(drawing.ops) do
-      if op[1] == "r" and op[6] ~= "" and x >= op[2] and x < op[2] + op[4] and y >= op[3] and y < op[3] + op[5] then found = op[6] end
-    end
-    return found
-  end
-  local loud, soft = fill_at(at(1, 0)), fill_at(at(2, 4))
-  local empty = fill_at(at(1, 1))
-  eq(loud ~= soft and soft ~= empty and loud ~= nil, true, "a loud hit, a soft hit and no hit look different")
+  table.sort(hit_roles)
+  eq(table.concat(hit_roles, " "), "40 127", "a hit is a role with its velocity")
+  eq(steps > 100, true, "and every other step a step")
+  eq(table.concat(buttons, "|"):find(" 1/16 ", 1, true) ~= nil, true, "the toolbar's buttons: " .. table.concat(buttons, "|"))
+  api.scene_forget(0)
 end)
 
-test("drums: clicking a cell in the window adds a hit, clicking it again removes it", function()
+test("drums: clicking a cell adds a hit, clicking it again removes it, in a window and in the terminal", function()
   local _, clip = drum_track()
-  paint()
   click(1, 0)
   eq(hits(clip, true), "36@0:100", "a kick")
   click(2, 4)
@@ -393,55 +403,75 @@ test("drums: clicking a cell in the window adds a hit, clicking it again removes
   eq(hits(clip), "38@1", "the kick is gone")
   click(2, 4, "right")
   eq(hits(clip), "", "right click removes")
+  -- The terminal: the same cell, in screen cells.
+  paw.ui.focus("drums")
+  api.ui_snapshot(120, 40)
+  local rect
+  for _, r in ipairs(paw.ui.rects) do if r.name == "drums" then rect = r end end
+  local x, y = at(1, 2)
+  paw.ui.mouse({ kind = "down", x = rect.x + math.floor(x), y = rect.y + math.floor(y), button = "left", mods = "" })
+  paw.ui.mouse({ kind = "up", x = rect.x + math.floor(x), y = rect.y + math.floor(y), button = "left", mods = "" })
+  eq(hits(clip), "36@0.5", "a kick on the third step, from the terminal")
+  api.scene_forget(0)
 end)
 
 test("drums: dragging along a row paints hits, or erases them, as one undo step", function()
   local _, clip = drum_track()
-  paint()
+  scene()
   local x0, y = at(5, 0)
   pointer("down", x0, y)
   for cell = 1, 7 do
     local x = at(5, cell)
-    pointer("move", x, y + 30)
+    pointer("move", x, y + 2)
   end
-  pointer("up", at(5, 7), y)
+  pointer("up", (at(5, 7)), y)
+  paw.mouse.forget()
   api.undo_checkpoint()
   eq(hits(clip), "42@0 42@0.25 42@0.5 42@0.75 42@1 42@1.25 42@1.5 42@1.75", "eight hats along the row, though the pointer wandered off it")
-  local x2 = at(5, 2)
-  pointer("down", x2, y)
-  pointer("move", at(5, 5), y)
-  pointer("up", at(5, 5), y)
+  scene()
+  pointer("down", (at(5, 2)), y)
+  pointer("move", (at(5, 5)), y)
+  pointer("up", (at(5, 5)), y)
+  paw.mouse.forget()
   api.undo_checkpoint()
   eq(hits(clip), "42@0 42@0.25 42@1.5 42@1.75", "a drag from a hit erases")
   paw.undo()
   eq(#clip:notes(), 8, "one undo brings the erased ones back")
   paw.undo()
   eq(#clip:notes(), 0, "and one more takes the painted ones away")
+  api.scene_forget(0)
 end)
 
 test("drums: the velocity lane sets how hard the row's hits are", function()
   local _, clip, grid = drum_track()
   clip:add_notes({ { pitch = 36, start = 0, length = 0.25 }, { pitch = 36, start = 0.5, length = 0.25 }, { pitch = 38, start = 0.5, length = 0.25 } })
   grid.row = 1
-  paint(1040, 560)
-  local l = require("drums.gui").layout
-  local lane_top = 40 + 24 + l.body_h
+  scene()
+  local lane = 30 - grid.geometry.lane
   local x0 = at(1, 0)
-  pointer("down", x0, lane_top + 6)
-  pointer("move", at(1, 2), lane_top + 6)
-  pointer("up", at(1, 2), lane_top + 6)
+  pointer("down", x0, lane)
+  pointer("move", (at(1, 2)), lane)
+  pointer("up", (at(1, 2)), lane)
+  paw.mouse.forget()
   eq(hits(clip, true), "36@0:127 36@0.5:127 38@0.5:100", "a stroke at the top makes the kicks it crosses as hard as can be")
-  pointer("down", x0, lane_top + 72 - 6 - 60 / 2)
-  pointer("up", x0, lane_top + 72 - 6 - 60 / 2)
+  scene()
+  pointer("down", x0, lane + 1)
+  pointer("up", x0, lane + 1)
+  paw.mouse.forget()
   near(clip:notes()[1].velocity, 64, 2, "halfway up is half as hard")
+  api.scene_forget(0)
 end)
 
-test("drums: the window's toolbar sets the step and the clip's length", function()
+test("drums: the toolbar's buttons set the step and the clip's length", function()
   local _, clip, grid = drum_track()
   local function press(label)
-    paint()
-    for _, b in ipairs(require("drums.gui").buttons) do
-      if b.label == label then return pointer("down", b.x + 4, b.y + 4) end
+    for _, node in ipairs(scene().set) do
+      if node.role == "button" and node.props.text == " " .. label .. " " then
+        pointer("down", node.r[1] + 1.5, node.r[2] + 0.5)
+        pointer("up", node.r[1] + 1.5, node.r[2] + 0.5)
+        paw.mouse.forget()
+        return
+      end
     end
     error("no button " .. label)
   end
@@ -453,28 +483,36 @@ test("drums: the window's toolbar sets the step and the clip's length", function
   eq(clip.length, 2 * paw.time.bar(), "two bars")
   press("−")
   eq(clip.length, paw.time.bar(), "one again")
+  api.scene_forget(0)
 end)
 
-test("drums: clicking a row's name in the window plays the piece", function()
+test("drums: clicking a row's name plays the piece", function()
   local track, _, grid = drum_track()
-  paint()
+  scene()
   local _, y = at(2, 0)
-  pointer("down", 20, y)
+  pointer("down", 2.5, y)
+  paw.mouse.forget()
   eq(grid:piece().name, "Snare", "the row is chosen")
   paw.wait(30)
   local l, r = track:meter()
   eq(math.max(l, r) > 0, true, "and heard")
+  api.scene_forget(0)
 end)
 
-test("drums: the window shows the playhead", function()
-  local _, clip = drum_track()
-  paw.transport.seek(clip.start + 1)
-  local drawing = paint()
+test("drums: the ruler moves the playhead, which the grid shows", function()
+  local _, clip, grid = drum_track()
+  scene()
+  local x = at(1, 4)
+  pointer("down", x, grid.geometry.head - 0.5)
+  paw.mouse.forget()
+  near(paw.transport.position, clip.start + 1, 1e-9, "on the fifth step")
+  local snap = api.ui_view_snapshot("drums", 100, 30)
   local found = false
-  for _, op in ipairs(drawing.ops) do
-    if op[1] == "p" and op[3] == require("paw.canvas").palette.play then found = true end
+  for _, run in ipairs(snap.rows[grid.geometry.head]) do
+    if run.text:find(paw.draw.g.cap, 1, true) then found = true end
   end
-  eq(found, true, "a line in the playhead's colour")
+  eq(found, true, "the playhead's cap on the ruler")
+  api.scene_forget(0)
 end)
 
 -- The sound ---------------------------------------------------------------------------

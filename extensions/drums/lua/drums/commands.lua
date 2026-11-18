@@ -7,12 +7,10 @@ local grid = require("drums.grid")
 local keymap = paw.keymap
 local command, map = paw.command, keymap.set
 
---- Open a clip in the drum grid: in the terminal, and in a window when a
---- graphical frontend is attached.
+--- Open a clip in the drum grid, which a graphical frontend shows in a
+--- pane as the terminal shows it.
 local function open(clip)
   grid:edit(clip)
-  local gui = package.loaded["drums.gui"]
-  if gui then gui.open() end
 end
 drums.open = open
 

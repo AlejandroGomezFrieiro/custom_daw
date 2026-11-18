@@ -1,7 +1,7 @@
 -- Drum tracks. A drum track is an ordinary track whose clips are ordinary
 -- MIDI clips; what makes it one is a drum map kept in `track.meta.drums`:
 -- which notes are which pieces, in which order, with what names. The drum
--- grid (`drums.grid` in the terminal, `drums.gui` in a window) shows a clip
+-- grid (`drums.grid`, one view for the terminal and a window) shows a clip
 -- through that map, whatever instrument plays it.
 --
 --   local drums = require("drums")

@@ -226,16 +226,28 @@
   a scrolled strip sends again the pieces at its edges, whose painted
   backgrounds changed.
 - Scenes (the window's panes and windows of views the kernel draws; see
-  "Scenes" in [the protocol](protocol.md)): only at the level of cells so
-  far. A scene is runs, fills and pictures as a view writes them; there are
-  no roles (`buf:mark`), hit regions (`buf:hit`), planes or gestures by hit
-  yet, so the pointer goes to a view's `on_mouse` in cells as before, and
-  `scene.live` values move nothing in the window. The arrange view, the
-  piano roll, the mixer, the device panel and the session view are still
-  the window's own drawings, fed by `frontend.watch`. Pictures are made
-  into images by paw-raster when their drawing changes, not drawn as egui
-  shapes. Nodes are named by where they are written, so a view that scrolls
-  sends what scrolled again.
+  "Scenes" in [the protocol](protocol.md)): runs, fills, pictures, the
+  widget roles and hit regions (`buf:mark`, `buf:hit`), but no planes (a
+  domain such as beats and pitches mapped onto a rectangle) and no roles
+  for clips, notes or curves yet. The window paints the widget roles only;
+  an extension's own role (`paw.ui.role`) shows in its cells there, as it
+  has no `pixels` drawing yet. The arrange view, the piano roll, the device
+  panel and the session view are still the window's own drawings, fed by
+  `frontend.watch`. Pictures are made into images by paw-raster when their
+  drawing changes, not drawn as egui shapes. Nodes are named by where they
+  are written, so a view that scrolls sends what scrolled again. A drag on
+  a hit region costs a turn of the kernel for each move, also over
+  `--connect`.
+- The window's mixer is the terminal's, laid out in cells: its switches
+  are a cell wide, and it lost what only the window's own mixer had: the
+  row naming where a track plays into, a fourth device, the clip light and
+  the peak held that a click cleared. The theme's accent still differs
+  between the terminal (amber focus) and the window (blue selection): the
+  owner's decision.
+- The drum grid is one view for both frontends, in cells: in a window a
+  step is three cells wide whatever the clip's length, the wheel does not
+  zoom the steps or scroll them sideways (the grid follows the cursor), and
+  a hit is drawn as a block character, not a box shaded by velocity.
 - A tempo curve that is smooth: a drawn stroke makes a change a beat or so,
   each ramping to the next (the curve editor writes a smooth stretch of it
   as ramps a sixteenth of a beat long).
