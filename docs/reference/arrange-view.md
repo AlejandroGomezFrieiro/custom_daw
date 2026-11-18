@@ -48,7 +48,9 @@ color. The track of the cursor has a brighter header and a tinted lane.
 | `Alt-h` `Alt-l` | Shortens and lengthens the clip. |
 | `vic` `Ctrl-a` | Transposes the clip. On a selection, `Ctrl-a` `Ctrl-x` change the pitch of the clips. |
 | `gw` `gW` | Puts a warp marker on the audio clip at the cursor. Removes the warp marker nearest to the cursor. |
-| `,cf` | Types the fade in and fade out of the audio clip, in beats (`1 2`, or one length for both). |
+| `,cf`, `\ff` | Types the fade in and fade out of the audio clip, in beats (`1 2`, or one length for both). |
+| `\fi` `\fo` | Fades the audio clip in from its start to the cursor. Fades it out from the cursor to its end. A count gives the beats: `2\fo`. |
+| `\fx` | Crossfades the audio clip into the next clip, over a grid step. A count gives the beats. |
 | `grC` | Chooses the color of the track from the colors of the theme. |
 | `Enter` | Edits the notes of the clip in the piano roll. |
 | `K` | Describes what is under the cursor. A kind of track also says what it is. |

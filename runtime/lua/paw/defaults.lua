@@ -1103,6 +1103,22 @@ command("clip.fade", function(ctx)
   if fade_out then clip.fade_out = math.min(math.max(0, fade_out), clip.length) end
   paw.notify(string.format("%s fades in over %g beats and out over %g", clip.name, clip.fade_in, clip.fade_out))
 end, { desc = "Fade an audio clip in and out, in beats: `clip.fade in=1 out=2`, `clip.fade 0.5`, `clip.fade 0`; alone, it asks" })
+command("clip.fade.cursor", function(ctx)
+  local which = tostring(ctx.args[1] or "")
+  if which ~= "in" and which ~= "out" then return paw.notify("usage: clip.fade.cursor in|out", "warn") end
+  local clip = need_clip()
+  if not clip then return end
+  if clip.kind ~= "audio" then return paw.notify("only audio clips fade", "warn") end
+  -- A count is the length in beats; else the fade reaches the cursor.
+  local beats = ctx.count
+  if not beats then
+    beats = which == "in" and cursor.beat - clip.start or clip.start + clip.length - cursor.beat
+  end
+  beats = math.min(math.max(0, beats), clip.length)
+  if which == "in" then clip.fade_in = beats else clip.fade_out = beats end
+  if beats == 0 then return paw.notify(string.format("%s has no fade-%s", clip.name, which)) end
+  paw.notify(string.format("%s fades %s over %g beat%s", clip.name, which, beats, beats == 1 and "" or "s"))
+end, { desc = "Fade the audio clip in from its start to the cursor (`in`), or out from the cursor to its end (`out`); a count gives the beats", label = "Fade the clip" })
 command("clip.crossfade", function(ctx)
   local clip = need_clip()
   if not clip then return end
@@ -1117,7 +1133,7 @@ command("clip.crossfade", function(ctx)
   end
   -- Let this clip run on under the start of the next for as long as its
   -- file has sound, and fade the two across each other there.
-  local beats = tonumber(ctx.args[1]) or paw.opt.grid
+  local beats = tonumber(ctx.args[1]) or ctx.count or paw.opt.grid
   local overlap = math.min(beats, next_clip.length)
   local file_end = clip.start + api.clip_source_length(clip.id)
   local reach = math.min(next_clip.start + overlap, file_end)
@@ -3258,6 +3274,12 @@ lmap("<C-x>", "lane.point.nudge by=-1", "Lower the point under the cursor by the
 lmap("gc", "lane.toggle", "Turn the lane's automation off or on", { role = "mute" })
 keymap.classic("gc", "curve.open", { view = "arrange.lane", desc = "Edit this lane's curve" })
 amap("<leader>cf", "clip.fade", "Fade the clip in and out: type the lengths")
+-- The clip's own keys, on the local leader: fades.
+keymap.group("<localleader>f", "fades", { view = "arrange" })
+amap("<localleader>fi", "clip.fade.cursor in", "Fade the clip in up to the cursor; a count gives the beats")
+amap("<localleader>fo", "clip.fade.cursor out", "Fade the clip out from the cursor; a count gives the beats")
+amap("<localleader>ff", "clip.fade", "Fade the clip in and out: type the lengths")
+amap("<localleader>fx", "clip.crossfade", "Crossfade the clip into the next one over a grid step")
 for _, name in ipairs({ "arrange", "mixer" }) do
   map("grC", "track.color.pick", { view = name, desc = "Choose the track's colour" })
 end

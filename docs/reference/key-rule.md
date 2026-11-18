@@ -57,7 +57,7 @@ For the reasons of the rule, see [About the key rule](../explanation/about-the-k
 | Leader | Meaning |
 | --- | --- |
 | The leader | `<leader>` in a mapping. It is `paw.opt.leader`, `,` by default. It starts the keys that mean the same in every view: `,m` the mixer, `,d` the device panel. |
-| The local leader | `<localleader>` in a mapping. It is `paw.opt.localleader`, a backslash by default, as in Vim. It starts the keys of one view, for example the notation popovers: `\d` dynamics, `\t` tempo. |
+| The local leader | `<localleader>` in a mapping. It is `paw.opt.localleader`, a backslash by default, as in Vim. It starts the keys of one view, for example the notation popovers (`\d` dynamics, `\t` tempo) and the fades of a clip in the arrange view (`\fi`, `\fo`). |
 
 A key of one view must not use a key of the global leader.
 `:lua =paw.keyrule.broken()` lists the keys that do. `:map` and the key
