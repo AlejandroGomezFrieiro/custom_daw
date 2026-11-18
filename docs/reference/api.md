@@ -1005,7 +1005,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.layout.find_id(root, id)`: The window of an id in the tree under `root`.
 - `paw.layout.focusable_windows()`: The windows of the current tab that take the keyboard.
 - `paw.layout.get(id)`: A window by its number, and the tab it is in.
-- `paw.layout.hand_over(from, to)`: Give the state of the window `from` to the window `to` of the same view, in place of its own: a view in a window of its own that goes back into its pane takes what it showed there.
+- `paw.layout.hand_over(from, to)`: Give the state of the window `from` to the window `to` of the same view, in place of its own: a view in a window of its own that returns into its pane takes what it showed there.
 - `paw.layout.import(spec)`: A node as saved, or as a configuration writes it: `"roll"` or `{ view = "roll", size = 20 }` for a window, `{ dir = "h", "arrange", "roll" }` (or with `children`) for a split. Windows of views that are not there (an extension not loaded) are left out.
 - `paw.layout.layout_names()`: The names of the layouts there are: the configuration's and those saved.
 - `paw.layout.leaf(view, fields)`: A new window that shows `view`, with fields such as `size` or `hidden`.

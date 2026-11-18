@@ -4121,8 +4121,8 @@ function paw.layout.focusable_windows() end
 function paw.layout.get(id) end
 
 --- Give the state of the window `from` to the window `to` of the same
---- view, in place of its own: a view in a window of its own that goes
---- back into its pane takes what it showed there.
+--- view, in place of its own: a view in a window of its own that returns
+--- into its pane takes what it showed there.
 ---@param from any
 ---@param to any
 function paw.layout.hand_over(from, to) end
