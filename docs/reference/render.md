@@ -6,6 +6,18 @@ A render writes the song, a part of it, or its tracks to sound files. For
 the steps, see [How to render a song](../how-to/render-a-song.md) and
 [How to render stems](../how-to/render-stems.md).
 
+## Commands
+
+| Command | Effect |
+| --- | --- |
+| `:render mix.flac` | Render the song to a file (see below). |
+| `:render.cancel` | Stop the render. |
+| `:render.tags` | Show or set the tags of the project (see Tags). |
+| `:render stems` | Render one file for each group (see Stems). |
+| `:render.regions out` | Render each region to a file of its own (see Regions). |
+| `:stems out` | Render one file for each track into `out` (default: `stems`), as `paw.render_stems`. |
+| `:track.bounce` | Render a track to a new audio track (see Bounce). |
+
 ## `:render`
 
 `:render mix.flac` renders the song to a file. The extension of the file
@@ -157,6 +169,7 @@ in a file, not on its command line.
 
 | Function | Result |
 | --- | --- |
+| `paw.render(path, opts)` | Render a file with the options above. |
 | `paw.render_status()` | The render that runs: `{ path, fraction, seconds, cancelling, stage, queued }`. |
 | `paw.render_cancel()` | Stop it. |
 | `paw.render_ranges.chorus = function() return 32, 48 end` | Add a named range. |

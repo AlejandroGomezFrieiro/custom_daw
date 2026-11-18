@@ -49,6 +49,6 @@ module is `paw.freeze`. For the steps, see
 | `paw.freeze.freeze(track, { tail = 2 })` | Freeze a track or a group. |
 | `paw.freeze.unfreeze(track)` | Unfreeze it. |
 | `paw.freeze.state(track)` | `"frozen"`, `"held"` or nil. |
-| `paw.render(path, { freeze = id })` | Render what a freeze of `id` renders. |
+| the `freeze` option of a render | `paw.render(path, { freeze = id })` renders what a freeze of `id` renders. |
 
 The core part is `crates/paw-core/src/freeze.rs`.

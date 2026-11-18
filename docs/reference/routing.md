@@ -1,6 +1,6 @@
 # Routing: groups, VCAs, sends and side-chains
 
-<!-- tags: routing groups vca sends side-chain outputs -->
+<!-- tags: mixing routing groups vca sends side-chain outputs -->
 
 A track plays into the master, or into a different track. It can also send
 its sound to other tracks, and key a device on a different track. An
@@ -79,6 +79,14 @@ drums.volume = -3                 -- every member 3 dB quieter
 drums:automate("volume"):set_points({ { 0, 0 }, { 16, -12 } })
 paw.vca.assign(room, drums)       -- also `unassign`, `members`, `of`, `dissolve`
 ```
+
+| Function | Effect |
+| --- | --- |
+| `paw.vca.make(tracks, name)` | Make a VCA over the tracks. Returns the VCA. |
+| `paw.vca.assign(track, vca)`, `paw.vca.unassign(track, vca)` | Put a track under a VCA, or take it out. |
+| `paw.vca.members(vca)` | The members of a VCA. |
+| `paw.vca.of(track)` | The VCAs of a track. |
+| `paw.vca.dissolve(vca)` | Remove a VCA. |
 
 The sync adds the VCAs into each member. A fixed fader goes into the gain
 of the member. Lanes go into one lane for the member: the sum of the

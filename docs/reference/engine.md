@@ -24,7 +24,7 @@ Playback and renders use one thread for each core.
 | `paw.opt.threads = 4`, `:engine threads=4` | Use four threads. |
 | `paw.opt.threads = 1` | Use the audio thread only. |
 | `paw.opt.threads = 0` | Default: one thread for each core. |
-| `paw.render(path, { threads = 1 })` | The number of threads for one render. |
+| the `threads` option of a render | The number of threads for one render: `paw.render(path, { threads = 1 })`. |
 
 - `paw.api.engine_get().threads` gives the number of threads in use.
 - When the audio thread has real-time priority, the worker threads get the

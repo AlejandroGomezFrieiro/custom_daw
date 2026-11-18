@@ -20,8 +20,10 @@ the project saves them. The module is `paw.markers`.
 | `:marker.move` | Move the marker at the cursor. |
 | `:marker.remove` | Remove the marker at the cursor. |
 | `:region.loop Verse` | Loop a region. |
-| `:render out.wav range=Verse` | Render a region (see [Render](render.md)). |
 | `:render.regions out` | Render each region to a file of its own: `01 Intro.wav`, and the next files. |
+
+A region is also a range for `:render`: `:render out.wav range=Verse`
+(see [Render](render.md)).
 
 ## Graphical window
 
