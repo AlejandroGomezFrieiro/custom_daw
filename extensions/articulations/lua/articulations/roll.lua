@@ -85,41 +85,6 @@ roll.layer("articulations", 22, function(L)
       end
     end
   end
-end, function(clip_id)
-  -- The window: each note with an articulation tinted and named.
-  local ok, c = pcall(api.clip_get, clip_id)
-  if not ok then return {} end
-  local out = {}
-  for _, note in ipairs(api.clip_notes(clip_id)) do
-    local attr = art.attr_of(note)
-    if attr then
-      local tag, a = art.tag_of(c.track, note)
-      out[#out + 1] = { pitch = note.pitch, start = note.start, length = note.length, fill = a and a.colour or art.maps.colour(),
-        alpha = 0.55, label = tag, tip = (a and a.name .. " · " or "") .. m2.describe(attr) }
-    end
-  end
-  return out
-end)
-
--- The core's own chip for a note's attribute says less than the layer above.
-roll.layer("attr", nil)
-
--- The window, under the notes: the rows outside the range shaded and the
--- keyswitch rows tinted and named (the terminal shades them as it draws them).
-roll.layer("articulations.rows", 5, nil, function(clip_id)
-  local ok, c = pcall(api.clip_get, clip_id)
-  local map = ok and art.map_of(c.track)
-  if not map then return {} end
-  local out = {}
-  for pitch = 0, 127 do
-    local look = M.row(map, pitch)
-    if look then
-      out[#out + 1] = { pitch = pitch, start = 0, length = c.length, fill = look.art and look.art.colour or "#000000",
-        alpha = look.art and 0.12 or (look.shade == "ArtUncomfortable" and 0.2 or 0.4), label = look.art and look.art.tag or nil,
-        tip = look.art and (look.art.name .. ": keyswitch " .. paw.music.name(pitch)) or nil }
-    end
-  end
-  return out
 end)
 
 --- The articulation of the active clip in time, as segments `{ from, to,

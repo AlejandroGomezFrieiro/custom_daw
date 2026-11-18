@@ -27,7 +27,6 @@ mod panes;
 mod pictures;
 mod portal;
 mod roles;
-mod roll;
 mod ruler;
 mod scene;
 mod session;

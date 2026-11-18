@@ -1865,6 +1865,56 @@ fn the_mixer_is_the_kernels_scene_and_its_faders_and_switches_take_the_pointer()
     w.assert_alive("after working the mixer");
 }
 
+/// Where a point of the piano roll is in the window, from the kernel: a
+/// pitch and a beat (Lua), in the middle of the pitch's row.
+fn roll_point(w: &Scene, pitch: &str, beat: &str) -> Point {
+    let lua = format!(
+        "local r = paw.ui.views.pianoroll
+         local g = r.geometry
+         for _, p in ipairs(paw.panes.state().panes) do
+           if p.view == 'pianoroll' then
+             local c = paw.canvas.cell
+             local x, y = g.keys + ({beat} - r.scroll) * g.zoom, g.head + r.top - ({pitch}) + 0.5
+             return math.floor(p.x + 6 + x * c.w) .. ',' .. math.floor({top} + p.y + 24 - c.h + y * c.h)
+           end
+         end",
+        top = place::AREA_TOP
+    );
+    let text = w.ctl(&lua);
+    let (x, y) = text.trim_matches('"').split_once(',').unwrap_or_else(|| panic!("no roll pane: {text}"));
+    (x.parse().unwrap(), y.parse().unwrap())
+}
+
+#[test]
+fn the_piano_roll_is_the_kernels_scene_and_its_pencil_draws_and_moves_notes() {
+    let mut w = scene!(
+        "roll-scene",
+        "local t = paw.add_track({ name = 'Lead' })
+         local c = t:add_clip({ start = 0, length = 8, name = 'Hook', notes = { { pitch = 60, start = 1, length = 1 } } })
+         paw.api.undo_checkpoint()
+         paw.ui.views.pianoroll:edit(c)
+         paw.ui.views.pianoroll.pitch, paw.ui.views.pianoroll.top = 60, 66"
+    );
+    w.expect(
+        "the roll sent as a scene",
+        "(function() for _, p in ipairs(paw.panes.state().panes) do if p.view == 'pianoroll' then return p.kind == 'cells' end end end)()",
+    );
+    w.expect("drawn", "paw.ui.views.pianoroll.geometry ~= nil");
+    let notes = "(function() local o = {} for _, n in ipairs(paw.ui.views.pianoroll:clip():notes()) do o[#o + 1] = n.pitch .. '@' .. n.start .. '+' .. n.length end return table.concat(o, ' ') end)()";
+    // A click on empty grid: a note of the roll's length, on the step clicked.
+    let empty = roll_point(&w, "64", "3.1");
+    w.click(empty);
+    w.expect("a click draws a note", &format!("{notes} == '60@1+1 64@3+0.25'"));
+    w.shot("roll-scene.png");
+    // The first note dragged a beat on and two rows up.
+    let note = roll_point(&w, "60", "1.4");
+    let to = roll_point(&w, "62", "2.4");
+    w.drag(note, to);
+    w.expect("a drag moves it", &format!("{notes} == '62@2+1 64@3+0.25'"));
+    w.shot("roll-scene-after.png");
+    w.assert_alive("after working the roll");
+}
+
 #[test]
 fn the_command_line_lists_what_it_could_complete() {
     let mut w = scene!("complete", DEMO);
@@ -1950,10 +2000,13 @@ fn the_piano_roll_scrolls_to_the_cursor_and_opens_on_it() {
     w.ctl("paw.ui.views.pianoroll.pitch = 38 paw.api.ui_redraw()");
     w.pause(0.8);
     w.shot("roll-low.png");
-    assert!(w.shows("C2", 5), "the octave of the cursor is in view");
+    let in_view = "(function(r) return r.pitch <= r.top and r.pitch > r.top - r.geometry.rows end)(paw.ui.views.pianoroll)";
+    w.expect("the row of the cursor in view", in_view);
+    assert!(w.shows("quantize", 5), "the roll drawn from its scene, its row of tools as buttons");
     w.ctl("paw.ui.views.pianoroll.pitch = 124 paw.api.ui_redraw()");
     w.pause(0.8);
     w.shot("roll-high.png");
+    w.expect("the row of the cursor in view", in_view);
     w.assert_alive("after the roll");
 }
 

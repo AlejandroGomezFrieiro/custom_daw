@@ -61,20 +61,6 @@ local function paint(L)
   end
 end
 
---- What the window is handed: the outline, as a mark of the roll in the
---- clip's beats.
-local function marks(id)
-  local outline = M.partner("pianoroll")
-  if not outline then return {} end
-  for _, n in ipairs(paw.clip(id):notes()) do
-    if n.id == outline then
-      return { { pitch = n.pitch, start = n.start, length = n.length, fill = "#ffffff", alpha = 0, edge = "#ffd34d",
-        tip = "the note under the cursor of the notation window" } }
-    end
-  end
-  return {}
-end
-
-roll.layer("notation", 36, paint, marks)
+roll.layer("notation", 36, paint)
 
 return M

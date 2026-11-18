@@ -39,8 +39,6 @@ impl Kernel for Fake {
         let code = params[0].as_str().unwrap_or("");
         Ok(if code.contains("paw.frontend.menu(") {
             json!([{ "label": "First" }, { "separator": true }, { "label": "More", "items": [{ "label": "Inner" }] }, { "label": "Quit", "window": "quit" }])
-        } else if code.contains("paw.frontend.clip(") {
-            fixture["clip"].clone()
         } else if code.contains("search_devices") {
             json!([{ "line": "Synth  · builtin instrument", "kind": "synth" }])
         } else if code.contains("paw.frontend.closing()") {
@@ -76,12 +74,13 @@ impl Kernel for Fake {
 }
 
 /// The main area as the kernel lays it out for a window of 1500 by 960:
-/// the arrange view over the piano roll, the device panel beside them.
+/// the arrange view over the piano roll (which the kernel draws), the
+/// device panel beside them.
 fn panes() -> Value {
     json!({
         "panes": [
             { "win": 1, "view": "arrange", "kind": "native", "x": 0, "y": 0, "w": 1088, "h": 500, "focused": true },
-            { "win": 2, "view": "pianoroll", "kind": "native", "x": 0, "y": 500, "w": 1088, "h": 396, "focused": false },
+            { "win": 2, "view": "pianoroll", "kind": "cells", "x": 0, "y": 500, "w": 1088, "h": 396, "focused": false },
             { "win": 3, "view": "devices", "kind": "native", "x": 1088, "y": 0, "w": 412, "h": 896, "focused": false },
         ],
         "borders": [{ "dir": "v", "x": 0, "y": 500, "length": 1088 }],
@@ -464,67 +463,85 @@ fn a_take_lane_takes_a_click_and_a_swipe() {
 
 // ---------------------------------------------------------- the piano roll
 
-const ROLL_TOP: f32 = AREA_TOP + 500.0;
+/// The piano roll as the kernel sends it to a window that paints notes
+/// (paw/views/pianoroll.lua): its grid a plane of beats along, four units a
+/// beat, and pitches up from 64 on its first row; a note in it between
+/// cells, with its hit region; a button of its row of tools.
+fn roll_scene() -> paw_scene::Patch {
+    use paw_scene::{Axis, Kind, Node, Plane};
+    let mut scene = paw_scene::Scene::new([80.0, 20.0]);
+    (scene.fg, scene.bg) = ("#c9ced8".into(), "#101216".into());
+    let plane = Plane { x: Axis { domain: "beat".into(), from: 0.0, per: 4.0 }, y: Axis { domain: "pitch".into(), from: 65.0, per: -1.0 } };
+    let mut grid = Node::new("roll", Kind::Plane(plane), [5.0, 3.0, 60.0, 10.0]);
+    grid.hit = Some(json!({ "kind": "grid" }));
+    scene.push(None, grid);
+    let props = json!({ "label": "C4", "color": "#5fb56a", "velocity": 100 });
+    let mut note = Node::new("roll/note:2:1", Kind::Role { role: "note".into(), props }, [1.5, 60.0, 0.5, 1.0]);
+    note.hit = Some(json!({ "kind": "note", "clip": 2, "place": 1 }));
+    scene.push(Some("roll"), note);
+    let props = json!({ "text": " quantize ", "label": "quantize" });
+    let mut tool = Node::new("button@1,1", Kind::Role { role: "button".into(), props }, [1.0, 1.0, 10.0, 1.0]);
+    tool.hit = Some(json!({ "kind": "tool", "name": "quantize" }));
+    scene.push(None, tool);
+    let mut patch = paw_scene::Scene::diff(&paw_scene::Scene::default(), &scene, "2");
+    patch.full = true;
+    patch
+}
 
-/// The grid's top, under the toolbar and the ruler (and the chords' row
-/// when there are chords).
-fn roll_grid_top(h: &Harness<View>) -> f32 {
-    let chords = h.state().s.modal["roll"]["chords"].as_array().is_some_and(|c| !c.is_empty());
-    ROLL_TOP + 32.0 + 22.0 + if chords { 16.0 } else { 0.0 }
+/// The piano roll's pane, drawn from its scene, and the patches it is sent.
+fn roll_window() -> (Harness<'static, View>, Calls, Patches) {
+    let (mut h, calls, patches) = window_and_patches(|_| {});
+    patches.borrow_mut().push(serde_json::to_value(roll_scene()).unwrap());
+    h.run_steps(2);
+    calls.borrow_mut().clear();
+    (h, calls, patches)
 }
 
 #[test]
-fn the_piano_roll_draws_chooses_moves_and_removes_notes() {
-    let (mut h, calls) = window();
-    h.run_steps(3);
-    let top = roll_grid_top(&h);
-    let roll = &h.state().roll;
-    let (zoom, row) = (roll.zoom, 12.0);
-    let scroll = h.state().roll.scrolled();
-    let at = |beat: f32, pitch: i64| pos2(64.0 + beat * zoom - scroll.x + 3.0, top + (127 - pitch) as f32 * row - scroll.y + 5.0);
-    // A note: a click chooses it, a drag moves it.
-    click(&mut h, at(0.3, 60));
-    assert_eq!(act(&calls, "select_note"), [json!(2), json!(1), json!("only")]);
-    drag(&mut h, at(0.3, 60), at(1.3, 62));
-    let args = act(&calls, "drag_notes");
-    assert_eq!(args[2].as_f64().map(|b| (b * 10.0).round()), Some(10.0), "a beat later: {args:?}");
-    assert_eq!(args[3], 2.0, "two semitones up");
-    // Empty grid: a drag draws a note.
-    drag(&mut h, at(3.0, 72), at(3.9, 72));
-    let args = act(&calls, "add_note");
-    assert_eq!(args[1], 72);
-    // The right button removes a note it clicks, and its box chooses.
-    right_click(&mut h, at(1.3, 64));
-    assert_eq!(act(&calls, "remove_note"), [json!(2), json!(2)]);
-    drag_with(&mut h, at(0.1, 70), at(2.9, 58), PointerButton::Secondary, Modifiers::NONE);
-    let args = act(&calls, "select_notes_box");
-    assert_eq!(args[5], "only");
+fn the_piano_roll_is_the_kernels_scene_its_notes_painted_between_cells() {
+    let (h, _, _) = roll_window();
+    let watch = h.state().scenes.cell.unwrap();
+    // Where the kernel's plane puts it: beat 1.5 is six units into the
+    // plane (5 in), pitch 60 its fifth row (3 down); half a beat is two units.
+    let origin = pos2(6.0, AREA_TOP + 500.0 + 24.0 - watch.1);
+    let note = h.get_by_label("C4").rect();
+    assert!((note.left() - (origin.x + 11.0 * watch.0)).abs() < 0.5, "{note:?}");
+    assert!((note.top() - (origin.y + 7.0 * watch.1)).abs() < 0.5 && (note.width() - 2.0 * watch.0).abs() < 0.5, "{note:?}");
+    assert!(h.query_by_label("quantize").is_some(), "the row of tools, as buttons");
 }
 
 #[test]
-fn the_rolls_keyboard_sounds_keys_and_its_strip_draws_velocities() {
-    let (mut h, calls) = window();
-    h.run_steps(3);
-    let top = roll_grid_top(&h);
-    let scroll = h.state().roll.scrolled();
-    click(&mut h, pos2(20.0, top + (127.0 - 60.0) * 12.0 - scroll.y + 6.0));
-    assert_eq!(act(&calls, "audition")[1], 60);
-    let strip = ROLL_TOP + 396.0 - 40.0;
-    drag(&mut h, pos2(80.0, strip + 30.0), pos2(400.0, strip - 30.0));
-    let args = act(&calls, "draw_velocities");
-    assert_eq!(args[0], 2);
+fn a_drag_of_a_note_and_a_click_on_a_tool_go_back_in_units_with_fractions() {
+    let (mut h, calls, _) = roll_window();
+    let cell = h.state().scenes.cell.unwrap();
+    let note = h.get_by_label("C4").rect();
+    drag(&mut h, note.left_center() + vec2(2.0, 0.0), note.left_center() + vec2(2.0 + 1.5 * cell.0, -cell.1));
+    let inputs: Vec<Value> = calls.borrow().iter().filter(|(m, p)| m == "scene.input" && p[0] == "2").map(|(_, p)| p[1].clone()).collect();
+    let down = inputs.iter().find(|e| e["kind"] == "down").expect("the press passed on");
+    let x = 11.0 + 2.0 / cell.0 as f64;
+    assert!((num(&down["x"]) - x).abs() < 0.05 && (num(&down["y"]) - 7.5).abs() < 0.05, "on the note, in units: {down}");
+    let last = inputs.iter().rev().find(|e| e["kind"] == "move").expect("the drag passed on");
+    assert!((num(&last["x"]) - (x + 1.5)).abs() < 0.05 && (num(&last["y"]) - 6.5).abs() < 0.05, "a cell and a half on, a row up: {last}");
+    assert!(inputs.iter().any(|e| e["kind"] == "up"));
+    calls.borrow_mut().clear();
+    let tool = h.get_by_label("quantize").rect().center();
+    click(&mut h, tool);
+    assert!(calls.borrow().iter().any(|(m, p)| m == "scene.input" && p[1]["kind"] == "down"), "the tool's press to the kernel, whose gesture it is");
 }
 
 #[test]
-fn the_rolls_toolbar_quantizes_snaps_and_closes() {
-    let (mut h, calls) = window();
-    h.run_steps(3);
-    let target = h.get_by_label("Quantize").rect().center();
-    click(&mut h, target);
-    assert_eq!(act(&calls, "quantize_notes"), [json!(2)]);
-    let target = h.get_by_label("List").rect().center();
-    click(&mut h, target);
-    assert_eq!(act(&calls, "open_event_list"), [json!(2)]);
+fn a_menu_the_kernel_opens_is_shown_by_the_window_and_chosen_or_let_go() {
+    let (mut h, calls) = window_with(|s| s["modal"]["menu"] = json!(1));
+    let menu = h.state().menu.as_ref().expect("the kernel's menu shown");
+    assert!(matches!(&menu.source, crate::menu::Source::Kernel { kind, .. } if kind == "shown"));
+    let first = menu.at + vec2(40.0, 4.0 + 12.0);
+    click(&mut h, first);
+    let choose = act(&calls, "menu_choose");
+    assert_eq!((choose[0].clone(), choose[2].clone()), (json!("shown"), json!([1])), "its first entry, done by the kernel");
+    let (mut h, calls) = window_with(|s| s["modal"]["menu"] = json!(1));
+    h.event(Event::Key { key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+    h.run_steps(2);
+    assert!(h.state().menu.is_none() && acted(&calls, "menu_dismiss").is_some(), "Esc lets go of it, in the kernel too");
 }
 
 // -------------------------------------------------- devices, mixer, transport
@@ -809,6 +826,7 @@ fn a_devices_buttons_remove_and_move_it() {
 fn the_session_views_bar_stops_goes_back_captures_and_quantizes() {
     let (mut h, calls) = window_with(|s| {
         s["modal"]["panes"]["panes"][1]["view"] = json!("session");
+        s["modal"]["panes"]["panes"][1]["kind"] = json!("native");
         s["modal"]["session"] = json!(true);
     });
     let at = h.get_by_label("Stop all").rect().center();
@@ -860,7 +878,6 @@ fn what_the_window_writes_has_glyphs() {
         include_str!("roles.rs"),
         include_str!("model.rs"),
         include_str!("panes.rs"),
-        include_str!("roll.rs"),
         include_str!("ruler.rs"),
         include_str!("session.rs"),
         include_str!("widgets.rs"),

@@ -11,12 +11,12 @@ use egui::{Align2, Color32, CornerRadius, Id, Painter, Pos2, Rect, Sense, Stroke
 use paw_scene::{Kind, Node};
 use serde_json::Value;
 
-use crate::theme::{T_SMALL, alpha, hex, mono_medium, semi, th};
+use crate::theme::{T_SMALL, alpha, hex, mix, mono_medium, semi, th};
 use crate::widgets;
 
 /// The roles this window paints: it says so when it watches scenes, and
 /// is sent them without their cells.
-pub const KNOWN: &[&str] = &["label", "button", "switch", "knob", "fader", "meter", "chip"];
+pub const KNOWN: &[&str] = &["label", "button", "switch", "knob", "fader", "meter", "chip", "note"];
 
 fn text(props: &Value, key: &str) -> String {
     props[key].as_str().unwrap_or("").to_string()
@@ -102,6 +102,7 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, row: f
             painter.hline(middle.min(at)..=middle.max(at), y, Stroke::new(2.0, t.select));
             painter.circle_filled(pos2(at, y), (rect.height() * 0.28).clamp(3.0, 6.0), if under { t.bright } else { t.thumb });
         }
+        "note" => note(painter, rect, props, under),
         "fader" => fader(painter, rect, props, under, row),
         "meter" => meter(painter, rect, props, node.bind.as_deref(), live),
         "chip" => {
@@ -123,6 +124,37 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, row: f
         _ => return false,
     }
     true
+}
+
+/// A note where it is between cells: its track's colour, deeper the harder
+/// it is played; light with a white edge when chosen, outlined where the
+/// keyboard's cursor is; one being drawn see-through with a bright edge.
+/// Its name inside when there is room.
+fn note(painter: &Painter, rect: Rect, props: &Value, under: bool) {
+    let t = th();
+    let colour = props["color"].as_str().and_then(hex).unwrap_or(t.select);
+    let velocity = (number(props, "velocity") / 127.0).clamp(0.0, 1.0);
+    let shape = Rect::from_min_max(rect.min + vec2(0.0, 0.5), rect.max - vec2(1.0, 0.5));
+    let shape = if shape.width() < 3.0 { Rect::from_min_size(shape.min, vec2(3.0, shape.height())) } else { shape };
+    let (face, edge) = if props["pending"] == true {
+        (alpha(colour, 0.35), Stroke::new(1.0, colour))
+    } else if props["selected"] == true {
+        (mix(colour, Color32::WHITE, 0.7), Stroke::new(1.0, Color32::WHITE))
+    } else if under {
+        (mix(colour, Color32::WHITE, 0.85), Stroke::new(1.0, Color32::from_black_alpha(0x60)))
+    } else {
+        (mix(colour, t.surface, 0.45 + 0.55 * velocity), Stroke::new(1.0, Color32::from_black_alpha(0x60)))
+    };
+    painter.rect(shape, CornerRadius::same(2), face, edge, StrokeKind::Inside);
+    if props["cursor"] == true {
+        painter.rect_stroke(shape.expand(1.0), CornerRadius::same(3), Stroke::new(1.5, t.play), StrokeKind::Inside);
+    }
+    let label = text(props, "label");
+    if !label.is_empty() && shape.width() >= 24.0 {
+        let font = semi((rect.height() * 0.6).clamp(8.0, T_SMALL));
+        let ink = if props["pending"] == true { t.text } else { t.on_hue };
+        painter.with_clip_rect(shape.intersect(painter.clip_rect())).text(pos2(shape.left() + 4.0, shape.center().y), Align2::LEFT_CENTER, label, font, ink);
+    }
 }
 
 /// A fader: a rail down the middle, 0 dB marked, a cap with a line across

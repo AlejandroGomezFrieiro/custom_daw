@@ -134,7 +134,7 @@ impl View {
         }
         x = add.right() + 8.0;
         // Which views show: one segmented switch.
-        let roll_open = self.roll.open.is_some();
+        let roll_open = rows(&self.s.modal["panes"]["panes"]).iter().any(|p| p["view"] == "pianoroll");
         let views: [(&str, icons::Icon, bool, &str); 5] = [
             ("Session", icons::GRID_FOUR, flag(&self.s.modal["session"]), "session: clips in slots under each track, launched while the song plays"),
             ("Mixer", icons::FADERS, flag(&self.s.modal["mixer"]), ""),
@@ -283,8 +283,10 @@ impl View {
             right -= widgets::text_width(ui, &note, sans(T_SMALL)) + 10.0;
         }
         let room = (right - x).max(0.0);
+        // What the pointer is over: in the window's own drawing, or in a
+        // pane the kernel draws.
         let hint = widgets::take_hint();
-        let roll_hint = self.roll.hint.clone();
+        let hint = if hint.is_empty() { text(&modal["hint"]) } else { hint };
         let message = self.status_message();
         let keys = rows(&modal["keys"]);
         if prompt_open {
@@ -312,8 +314,6 @@ impl View {
                     break;
                 }
             }
-        } else {
-            widgets::text_in(ui, pos2(x, y), &roll_hint, sans(T_SMALL), t.text_2, room);
         }
     }
 

@@ -59,6 +59,8 @@ struct Shown {
     /// The roles painted here, where they are and what they are cut to, in
     /// units (left, top, right, bottom).
     roles: Vec<(Node, [f64; 4], [f64; 4])>,
+    /// The runs and fills drawn over those roles, painted over them again.
+    over: Vec<(Node, [f64; 4], [f64; 4])>,
     /// The shapes of the cells' backgrounds and of their text, and where,
     /// on what cell and at what scale they were made.
     shapes: Option<(Vec<Shape>, Vec<Shape>, [f32; 5])>,
@@ -182,7 +184,54 @@ impl Shown {
             }
         });
         self.roles = placed;
+        self.over = self.scene.over_roles(&|role| roles::KNOWN.contains(&role));
         self.shapes = None;
+    }
+
+    /// Paint the runs and fills a view drew over the roles painted here,
+    /// over them, as a terminal shows them: text and its background where
+    /// it has one; a fill that only restyles (the selection, the cursor) a
+    /// tint, so that what it covers still shows through.
+    fn paint_over(&self, ctx: &egui::Context, painter: &egui::Painter, at: Pos2, (cw, ch): (f32, f32)) {
+        let (fg, bg) = self.scene.colors();
+        let colour = |c: Option<paw_scene::cells::Color>, or: (u8, u8, u8)| {
+            c.map(|c| {
+                let (r, g, b) = paw_scene::cells::rgb(c, or);
+                Color32::from_rgb(r, g, b)
+            })
+        };
+        for (node, rect, cut) in &self.over {
+            let cells = |l: f64, t: f64, r: f64, b: f64| {
+                Rect::from_min_max(pos2(at.x + l.floor() as f32 * cw, at.y + t.floor() as f32 * ch), pos2(at.x + r.floor() as f32 * cw, at.y + b.floor() as f32 * ch))
+            };
+            let shown = cells(rect[0], rect[1], rect[2], rect[3]);
+            let p = painter.with_clip_rect(cells(cut[0], cut[1], cut[2], cut[3]).intersect(painter.clip_rect()));
+            let back = colour(node.style.bg, bg);
+            let ink = colour(node.style.fg, fg).unwrap_or(Color32::from_rgb(fg.0, fg.1, fg.2));
+            let font = if node.style.on & BOLD != 0 { mono_medium(MONO_SIZE) } else { mono(MONO_SIZE) };
+            let text = match &node.kind {
+                Kind::Run { text } => Some(text.clone()),
+                Kind::Fill { ch: Some(c) } => Some(c.to_string().repeat(shown.width().div_euclid(cw).max(1.0) as usize)),
+                Kind::Fill { ch: None } => {
+                    if let Some(back) = back {
+                        p.rect_filled(shown, CornerRadius::ZERO, back.gamma_multiply(0.45));
+                    }
+                    None
+                }
+                _ => None,
+            };
+            let Some(text) = text else { continue };
+            if let Some(back) = back {
+                p.rect_filled(shown, CornerRadius::ZERO, back);
+            }
+            if text.trim().is_empty() {
+                continue;
+            }
+            for row in 0..(shown.height() / ch).round().max(1.0) as usize {
+                let galley = ctx.fonts_mut(|f| f.layout_no_wrap(text.clone(), font.clone(), ink));
+                p.galley(pos2(shown.left(), shown.top() + row as f32 * ch), galley, ink);
+            }
+        }
     }
 
     /// The shapes of the cells' backgrounds and text, from `at`.
@@ -272,6 +321,7 @@ impl Shown {
             let salt = Id::unique(("scene-role", id, &node.key));
             roles::paint(ui, &role_painter, salt, node, roles::rect_of(*at, rect.min, cell), cell.1, live);
         }
+        self.paint_over(ui.ctx(), &painter, rect.min, cell);
         self.pictures(ui, &painter, rect.min, cell, false);
         if let Some([x, y]) = self.scene.cursor {
             let bar = Rect::from_min_size(pos2(rect.min.x + x * cell.0, rect.min.y + y * cell.1), vec2(2.0, cell.1));

@@ -1739,24 +1739,7 @@ local function paint_roll(p)
   end
 end
 
--- What the window draws of the same, as the roll's marks.
-local function roll_marks(clip_id)
-  local s = view_state
-  local marks = s and s.notes[clip_id]
-  if not marks then return {} end
-  local out = {}
-  for _, m in pairs(marks) do
-    local n = m.item.note
-    out[#out + 1] = { pitch = n.pitch, start = n.start, length = n.length, edge = "#f5a95c", alpha = 0 }
-    local c = m.change
-    if c and (c.pitch or c.length or c.start) then
-      out[#out + 1] = { pitch = c.pitch or n.pitch, start = c.start or n.start, length = c.length or n.length, fill = "#ac93e6", alpha = 0.45 }
-    end
-  end
-  return out
-end
-
-paw.ui.views.pianoroll.layer("ex", 45, paint_roll, roll_marks)
+paw.ui.views.pianoroll.layer("ex", 45, paint_roll)
 
 -- The arrange view: the range on the ruler, its tracks marked in the
 -- headers, clips that match (or hold notes that do) lit with how many.

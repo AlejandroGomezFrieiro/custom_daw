@@ -33,10 +33,14 @@ test("the frontend is told colours, chains, both meter sides and when notes chan
   local flat = paw.frontend.preview(clip.id)
   eq(#flat, 6, "the notes for the clip's picture, three numbers each")
   eq(flat[3], 60, "start, length, pitch")
-  local roll = paw.frontend.clip(clip.id)
-  eq(roll.track_name, "a", "the piano roll is told the track")
-  eq(roll.color, state.tracks[1].color, "and its colour")
-  eq(roll.notes[2].velocity, 80, "and how hard each note is played")
+  -- The piano roll as a window is sent it: notes in the track's colour,
+  -- with how hard each is played.
+  paw.ui.views.pianoroll:edit(clip)
+  local notes = T.roll_notes()
+  eq(notes[1].props.color, state.tracks[1].color, "the notes in the track's colour")
+  eq(notes[2].props.velocity, 80, "and how hard each note is played")
+  paw.ui.hide("pianoroll")
+  paw.ui.focus("arrange")
   a.color = "#abcdef"
   eq(paw.frontend.state(-1).tracks[1].color, "#abcdef", "a colour of the track's own is passed on")
 end)
@@ -71,9 +75,9 @@ test("the pointer selects, moves, copies, resizes and makes clips", function()
   eq(made.length, 4, "a bar long")
 
   act.open_clip(clip.id)
-  eq(paw.frontend.state(-1).modal.roll.clip, clip.id, "a double click on a clip opens its notes")
+  eq(paw.ui.visible("pianoroll") and paw.ui.views.pianoroll:clip().id, clip.id, "a double click on a clip opens its notes")
   act.close_roll()
-  eq(paw.frontend.state(-1).modal.roll, nil, "and they close again")
+  eq(paw.ui.visible("pianoroll"), false, "and they close again")
   eq(paw.ui.focused, "arrange", "leaving the arrange view with the keyboard")
 end)
 
@@ -234,7 +238,7 @@ test("controller moves are drawn into a clip with a pencil", function()
     if c.type == "bend" and c.value ~= 0 then flat = false end
   end
   eq(flat, true, "drawing over a stretch replaces what was there")
-  eq(#paw.frontend.clip(clip.id).controls, #clip:controls(), "the frontend is given them with the notes")
+  eq(#paw.controls.chosen(clip.id) >= 0 and #clip:controls() > 0, true, "the clip holds them")
   act.clear_controls(clip.id, "cc", 1)
   local left = 0
   for _, c in ipairs(clip:controls()) do
@@ -464,7 +468,7 @@ test("notes are drawn, chosen with clicks and a box, and moved and stretched tog
   eq(chosen(), "2 3", "Shift click adds one")
   act.select_note(id, 2, "toggle")
   eq(chosen(), "3", "or takes it out")
-  eq(paw.frontend.state(-1).modal.roll.selected[1], 3, "the frontend is told which are chosen")
+  eq(paw.frontend.chosen_notes(clip.id)[1], 3, "the chosen, which the roll draws lit in both frontends")
 
   -- A box.
   eq(act.select_notes_box(id, 0.5, 59, 2.5, 66, "only"), 2, "a box takes the notes it touches")
@@ -686,8 +690,11 @@ test("either edge of chosen clips is trimmed, hiding notes, and Alt slips what p
   eq(place(c["1.2"]) .. " " .. notes(), "2+4 60@2 64@3.5", "dragged out again the hidden note comes back, and the clip reaches further")
   act.trim_clips(c["1.2"], "start", 9, false, false)
   eq(place(c["1.2"]), "5+1", "never shorter than a grid step")
-  local roll = paw.frontend.clip(clip.id)
-  eq(#roll.notes .. " " .. roll.hidden .. " " .. roll.notes[1].pitch, "1 1 64", "the piano roll is not given the hidden note, and told how many come before")
+  paw.ui.views.pianoroll:edit(paw.clip(clip.id))
+  local shown = T.roll_notes()
+  eq(#shown .. " " .. shown[1].hit.place .. " " .. shown[1].props.label, "1 2 E4", "the piano roll does not show the hidden note, and names the other by its place")
+  paw.ui.hide("pianoroll")
+  paw.ui.focus("arrange")
   act.select_all_notes(clip.id)
   eq(table.concat(paw.frontend.chosen_notes(clip.id), " "), "2", "nor can it be chosen")
 
@@ -891,7 +898,7 @@ test("the piano roll's other gestures: erase, keyboard ranges, velocity strokes,
   eq(clip:notes()[at].length, 1, "a click gives the roll's note length")
   at = act.add_note(id, 51, 6, 0.5)
   eq(clip:notes()[at].length, 0.5, "a drawn note is as long as it was drawn")
-  eq(paw.frontend.state(-1).modal.roll.step, 0.5, "and its length becomes the note length")
+  eq(paw.ui.views.pianoroll:step_length(), 0.5, "and its length becomes the note length")
   at = act.add_note(id, 52, 6, 0)
   eq(clip:notes()[at].length, 0.5, "which the next click gives")
   act.set_note_length(0)
@@ -904,7 +911,7 @@ test("the piano roll's other gestures: erase, keyboard ranges, velocity strokes,
   act.drag_notes(id, at, 0.07, 0, false, false)
   eq(select(2, clip:note_at(53, 6.17)) ~= nil, true, "and moved off the grid")
   paw.opt.note_snap = true
-  eq(paw.frontend.state(-1).modal.roll.snap, true, "the frontend is told whether notes snap")
+  eq(paw.opt.note_snap, true, "notes snap again")
 
   act.toggle_note_snap()
   eq(paw.opt.note_snap, false, "the snap button turns snap off")
@@ -936,7 +943,7 @@ test("the piano roll's other gestures: erase, keyboard ranges, velocity strokes,
 
   -- The other clips of the track show faintly where they overlap this one.
   local other = track:add_clip({ start = 22, length = 4, notes = { { pitch = 70, start = 0, length = 1 }, { pitch = 71, start = 3, length = 1 } } })
-  local ghosts = paw.frontend.clip(q.id).ghosts
+  local ghosts = paw.roll_clips.context()
   eq(#ghosts, 1, "only the notes that sound during this clip")
   eq(ghosts[1].pitch .. "@" .. ghosts[1].start, "70@2", "placed in this clip's beats")
   other:remove()
@@ -951,7 +958,7 @@ test("the piano roll's other gestures: erase, keyboard ranges, velocity strokes,
   paw.flush()
   eq(#s:notes(), 0, "with step input off a played note is not entered")
   paw.commands.exec("notes.step_input")
-  eq(paw.frontend.state(-1).modal.roll.step_input, true, "the command turns it on, and the frontend is told")
+  eq(paw.frontend.step_input(), true, "the command turns it on, which the roll's step button shows")
   paw.midi.note_on(60, 90)
   paw.midi.note_on(64, 80)
   paw.midi.note_off(64)

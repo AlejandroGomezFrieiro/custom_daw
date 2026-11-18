@@ -615,7 +615,6 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.frontend.chosen_notes(clip)`: The places of the chosen notes of `clip`, in order; none if the clip's notes have changed under them.
 - `paw.frontend.chosen_refs()`: Every chosen note of the clips the roll edits, as `{ clip, place }`.
 - `paw.frontend.chosen_text(clip)`: The chosen notes of `clip` (and of the clips edited with it) in words, for a toolbar: "3 notes · 5.1.00 – 5.3.00", or "" with none chosen.
-- `paw.frontend.clip(id)`: One clip with its notes and controller moves, for a piano roll, and the name and colour of the track it is on. Nil when the clip is gone.
 - `paw.frontend.closing()`: Whether closing now would lose anything: { modified, name, path }.
 - `paw.frontend.completions(prompt)`: The candidates a prompt offers, as the terminal lists them above the line: the ones in view around the one chosen, `{ label, desc }`, with `chosen` the place of the one chosen among them (0 for none).
 - `paw.frontend.dialog_info()`: What the window needs to open the desktop's own file dialog: `native`, whether to (the option, and the dialogs shown are the kernel's own when the window is turned off), `dir`, where to start (where a file was last chosen, else beside the project, else home: as the list picker does), `name`, the project's file name, for "Save as", and `render`, the endings a render can write.
@@ -635,7 +634,6 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.frontend.recent_menu()`: The recent projects the File menu lists: `{ label, path }` each.
 - `paw.frontend.refresh()`: Have the frontend fetch the project's state again, though nothing in the project has changed: for what an extension adds to it.
 - `paw.frontend.render_dialog()`: What the render dialog starts from: the file a render would go to, the ranges that can be rendered (`{ name, label }`: the song, the loop, the selection, every region), the engine's sample rate, and which lossy formats ffmpeg can make here (`formats`: `{ mp3 = true, ogg = false, ... }`).
-- `paw.frontend.roll_chords(clip)`: The chord symbols over a clip, as `paw.opt.chords` asks for them: `{ start, length, label }` in the clip's beats; none when it is off.
 - `paw.frontend.routing(track)`: Where a track's sound goes, for a frontend to show and change:
 
   ```lua
@@ -1428,13 +1426,14 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.roles.hit(buf, x, y, w, h, action)`: `buf:hit(x, y, w, h, action)`: see the top of this file.
 - `paw.roles.input(client, id, view, win, event, held)`: A pointer event from a frontend that is sent scenes (paw/scene.lua), in units of its window `id`, over the view `view` (its window of the layout `win`, if any): on a hit region of the scene it was sent, to the region's gesture, with `x` and `y` in units; a drag begun there goes on in units (`held`, what the frontend's watcher keeps). True when taken.
 - `paw.roles.mark(buf, role, x, y, w, h, props)`: `buf:mark(role, x, y, w, h, props)`: see the top of this file.
+- `paw.roles.plane(buf, x, y, w, h, opts)`: `buf:plane(x, y, w, h, opts)`: see above.
 - `paw.roles.pointer(view, name, event)`: A mouse event in the terminal, in the cells of the view it is over (as its `on_mouse` takes it, with `view_x`, `view_y`, `win`): to the gesture of the hit region under it. True when it was taken.
 
 ## Module paw.roll_clips
 
 - `paw.roll_clips.activate(id)`: Make a clip the active one. One that is not editable yet takes the old active clip's place in the set; the cursor stays where it is in the song.
 - `paw.roll_clips.active()`: The id of the active clip, or nil with no clip open.
-- `paw.roll_clips.context()`: The context notes: those of the shown tracks' clips (not the editable ones) that sound within the editable clips' stretch, in the roll's beats: `{ pitch, start, length, velocity, clip, track, color }` each, at most `paw.opt.roll_context_max` of them. Kept until the project, the set of clips or the toggles change.
+- `paw.roll_clips.context()`: The context notes: those of the active clip's track's other clips and of the shown tracks' clips (not the editable ones) that sound within the editable clips' stretch, in the roll's beats: `{ pitch, start, length, velocity, clip, track, color }` each, at most `paw.opt.roll_context_max` of them. Kept until the project, the set of clips or the toggles change.
 - `paw.roll_clips.context_at(pitch, beat)`: The context note on `pitch` sounding at roll beat `beat`, if any.
 - `paw.roll_clips.cycle(n)`: Make the clip `n` places after the active one (before it, with a negative `n`) active, the editable clips taken in the order they start.
 - `paw.roll_clips.editable(id)`: Whether a clip is one of the editable ones.
@@ -1543,7 +1542,6 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 - `paw.snippet.remove(name)`: Remove a snippet.
 - `paw.snippet.step(dir)`: Step the current choice (the first when none is) to its next value (`dir` 1) or the one before (-1), and rewrite the notes.
 - `paw.snippet.take_cmdline_selection()`: The selection the command line was opened over, once: what `:snippet` works on.
-- `paw.snippet.window_marks(clip_id)`: The same for the window (the layer's marks, in the clip's beats): ghosts of what the picker would write, the active snippet's notes, and a chip under its lowest note saying what Tab and `<C-n>` work on.
 
 ## Module paw.statusline
 
@@ -1809,6 +1807,13 @@ functions (`paw.api`, plain data in and out) are listed at the end.
 
   ```lua
   buf:mark("fader", 4, 2, 3, 12, { at = 0.8, hit = { kind = "fader", track = id } })
+  ```
+- `paw.ui.Buf.plane(self, x, y, w, h, opts)`: A plane over an area (paw/roles.lua, "Planes"): what is marked in it is placed by a domain of its own along each axis, `opts.x` and `opts.y` (`{ domain, from, per }`: `per` cells a unit of the domain, `from` at the area's edge); a terminal shows it on the cells it rounds to, a window where it is.
+
+  ```lua
+  local roll = buf:plane(5, 2, 60, 20, { key = "roll", x = { domain = "beat", from = 0, per = 4 },
+    y = { domain = "pitch", from = 73, per = -1 }, hit = { kind = "grid" } })
+  roll:mark("note", 1.5, 60, 0.5, 1, { label = "C4" })
   ```
 - `paw.ui.Buf.root(width, height)`: The buffer covering a whole screen of the given size.
 - `paw.ui.Buf.strip(self, x, y, w, h, opts)`: Keep an area for pixels drawn by `opts.draw(g, px)`, where the terminal shows images: `g` a painter of `paw.canvas`, `px` `{ w, h, cell = { w, h }, fg, bg, view }`, the strip's size and the terminal's cell in pixels and its colours, and for a strip partly off its window the part that shows (`view`: x, y, w, h). Called once the screen is drawn. `opts.key` names the strip (images are kept by it: put the window's id in it for a view that can be in two windows; the view and its window by default). With `opts.under`, the cells the view draws there stay, above the picture (its cursor, labels, the playhead); else they are left blank. False where there are no pixels (`paw.opt.graphics` off, a terminal without images, tmux, or one that cannot put text over an image under it), for the view to draw cells there instead:

@@ -448,10 +448,15 @@ test("the piano roll writes a note's articulation on it, and K names it", functi
   eq(screen:find("pz", 1, true) ~= nil, true, "the tag on the note")
   local said = roll:describe()
   eq(said[3], "  articulation: Pizzicato (11.A)", "K")
-  local _, over = roll:marks(clip.id)
-  local chip
-  for _, m in ipairs(over) do if m.label == "pz" then chip = m end end
-  eq(chip and chip.tip, "Pizzicato (11.A)", "the window gets a chip with it")
+  -- A window is sent the note named by it.
+  api.scene_forget(0)
+  api.scene_roles(0, { "note" })
+  paw.ui.render_scene("pianoroll", 160, 50, { w = 8, h = 16 })
+  local patch = api.json_decode(api.scene_end(0, "attr"))
+  api.scene_forget(0)
+  local named
+  for _, n in ipairs(patch.set) do if n.role == "note" and n.props.label == "pz" then named = n end end
+  eq(named ~= nil, true, "the window's note says it too")
 end)
 
 test("Ex matches and sets a note's articulation by its code", function()
