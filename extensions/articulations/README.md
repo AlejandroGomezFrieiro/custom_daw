@@ -1,8 +1,8 @@
 # Articulations
 
-Which way each note is played (sustain, staccato, pizzicato, a trill),
-written on the note itself, and told to whatever plays the track: a
-sampler that reads MIDI 2.0, or any MIDI 1.0 instrument through its
+How each note is played (sustain, staccato, pizzicato, a trill), written
+on the note, and sent to the instrument of the track. The instrument can
+be a sampler that reads MIDI 2.0, or any MIDI 1.0 instrument through its
 keyswitches, controllers or programs.
 
 ```lua
@@ -11,29 +11,85 @@ paw.ext.load("/path/to/paw/extensions/articulations")
 
 ![The demo song's melody under the example violin map: :%art sus tags every note and the band above names the run, \a on a note makes it staccato (each articulation heard as the highlight rests on it), three notes made pizzicato in visual mode, and K saying how the instrument is told](images/tui-articulations.gif)
 
-## What is kept where
+## Try it
 
-The articulation is the note's **MIDI 2.0 attribute** (`note.attr = { type,
-data }`), a code of the MIDI 2.0 Note-On Orchestral Articulation Profile
-(M2-123): `11.0` staccato, `11.A` pizzicato, `13.2` a whole-step trill. It
-is MIDI: it is copied, moved, undone and saved with the note, and plays
-with this extension unloaded. A part moved to another instrument keeps its
-meaning, and an instrument that lacks the very articulation plays the
-nearest the profile names (another variation, then the same family, then
-sustain).
+1. Type `:ext.load articulations`. Open a clip of a violin track in the
+   piano roll.
+2. Type `:art.map examples/violin-section`. The keyswitch rows on the
+   keyboard edge now have names, and a band `art` is above the ruler.
+3. Type `:%art sus`. Each note shows the tag `sus`.
+4. Put the cursor on a note, and press `\a`. A numbered list of
+   articulations opens. When the highlight stays on one, you hear the note
+   with it.
+5. Select "Staccato" and press Enter. The note shows `stc`. Press `K`. paw
+   tells you that the note is sent as `ks=D1`.
 
-What the codes are called on one instrument, and how that instrument is
-told, is a **map**: one `.art.toml` file per instrument. Binding a map to a
-track keeps the binding in the track (`track.meta.articulations`) and hands
-the core its **downgrade map** (`track.attr_map`), which sends each note's
-keyswitch, controller or program before it to an instrument that does not
-take the attribute. The core never reads the TOML.
+## How to
 
-(Until the core keeps `note.attr` and `track.attr_map` itself, the
-extension keeps the attribute in `note.meta.art` and the downgrade map
-with the binding, read and written the same way.)
+### How to give notes an articulation
 
-## A map
+- For the note under the cursor, press `\a` and choose.
+- For a selection, select the notes in visual mode, then press `\a`.
+- For a range, type `:'<,'>art stc`, `:5,8art pizz` or `:%art sus`.
+- To give new notes an articulation, press `\a` in insert mode, or type
+  `:art.pen name`.
+
+### How to make a map for a library
+
+1. Put the cursor on the track of the instrument.
+2. Type `:art.generate` with the path of an `.sfz`, a `.dspreset`, a
+   `.dslibrary` or a folder of samples. With no path, paw asks a device that
+   describes its instrument, for example the sampler.
+3. paw writes the map to `~/.local/share/paw/articulations/generated/` and
+   binds it to the track.
+4. To change names or controllers, edit the `.art.toml` file. paw reads it
+   again.
+
+### How to use Reaticulate banks
+
+- To import, type `:art.import file.reabank`. Each bank becomes a map in
+  `~/.config/paw/articulations/reaticulate`.
+- To export the map of the track, type `:art.export reabank [file]`.
+
+### How to make notes sound on the beat
+
+1. Bind the map of the instrument to the track.
+2. Type `:art.measure`. paw renders one note of each articulation and shows
+   the delays that it finds.
+3. Type `:art.measure!`. paw writes the delays into the map and sends them
+   to the track.
+
+### How to draw dynamics on several controllers at once
+
+1. Add a `[linked]` entry to the map (generated maps have one).
+2. Press `\c` in the piano roll, or type `:art.lane dynamics`. The linked
+   controllers open as one curve.
+
+### How to find problems
+
+Type `:art.check`. The problems of the notes go to the quickfix list.
+
+## Reference
+
+### Where the data is
+
+- The articulation is the **MIDI 2.0 attribute** of the note (`note.attr =
+  { type, data }`). It is a code of the MIDI 2.0 Note-On Orchestral
+  Articulation Profile (M2-123): `11.0` staccato, `11.A` pizzicato, `13.2`
+  a whole-step trill. See [Project objects in
+  Lua](../../docs/reference/lua-objects.md#note-attributes-noteattr).
+- A **map** gives the names of the codes on one instrument, and how to
+  send them to it. There is one `.art.toml` file for each instrument.
+- When you bind a map to a track, the track keeps the binding
+  (`track.meta.articulations`). The extension gives the core the
+  **downgrade map** of the track (`track.attr_map`). It sends the
+  keyswitch, controller or program of each note before the note, to an
+  instrument that does not take the attribute.
+- The core never reads the TOML.
+- The extension also reads an attribute in `note.meta.art`, where older
+  versions kept it.
+
+### A map
 
 ```toml
 # Violin section of VSCO 2 CE, played by a keyswitched SFZ.
@@ -57,155 +113,191 @@ harmonics  = { m2 = "14.0", out = "ks=A1 cc1=96", tag = "hrm", name = "Harmonics
 con-sord   = { m2 = "mute=straight", out = "cc20=127", off = "cc20=0", text = "con sord." }
 ```
 
-The whole example is in this extension's folder, at
-`articulations/examples/violin-section.art.toml` (from the top of paw's
-source: `extensions/articulations/articulations/examples/violin-section.art.toml`);
+The full example is in the folder of this extension, at
+`articulations/examples/violin-section.art.toml` (from the top of the
+source of paw:
+`extensions/articulations/articulations/examples/violin-section.art.toml`).
 `:art.map examples/violin-section` binds it.
-One inline table, one line, per articulation, in the order the popover
-numbers them. `out` is a line of events: `ks=D1` a keyswitch note
-(`ks=D1:127` with a velocity), `hold=D1` held while the articulation lasts,
-`cc32=40`, `pc=12` (`pc=12/258` with a bank), `ch=2` the note on another
-channel, `bend=0.5`, `attr` the attribute alone. `class` is a colour:
-Reaticulate's classes (`long`, `short`, `legato`, `fx`, `textured`, each
-`-light` or `-dark`) or `#rrggbb`. `mark` (`staccato`, `staccatissimo`,
-`accent`, `tenuto`, `marcato`) and `text` (`pizz.`) are what the score shows.
-Keys are named as paw names them: middle C is C4, 60.
 
-Maps are looked for, the first of an id winning, in
-`~/.config/paw/articulations/**`, beside a library (`Violins.art.toml` next
-to `Violins.sfz`), in `articulations/` inside any loaded extension, and in
-`~/.local/share/paw/articulations/generated/`. A map's id is its path there
-without `.art.toml` (`examples/violin-section`); `:art.map` takes an id, the
-end of one, a name or a file.
+Each articulation is one inline table on one line, in the order that the
+popover numbers them.
 
-## Delays
+| Field | Value |
+| --- | --- |
+| `m2` | the code of M2-123 |
+| `out` | a line of events: `ks=D1` a keyswitch note (`ks=D1:127` with a velocity), `hold=D1` held while the articulation continues, `cc32=40`, `pc=12` (`pc=12/258` with a bank), `ch=2` the note on another channel, `bend=0.5`, `attr` the attribute alone |
+| `tag` | the short name on the notes |
+| `name` | the name in lists |
+| `class` | a color: the classes of Reaticulate (`long`, `short`, `legato`, `fx`, `textured`, each `-light` or `-dark`) or `#rrggbb` |
+| `mark` | what the score shows: `staccato`, `staccatissimo`, `accent`, `tenuto`, `marcato` |
+| `text` | the text in the score: `pizz.` |
+| `range` | the range of this articulation |
+| `delay` | how much earlier its notes play: `"-80ms"` |
 
-Many libraries start an articulation's sound late (the attack of a legato
-sample, a bow's start). `delay = "-80ms"` on an articulation, or on the
-whole instrument at the top of its map, moves those notes that much
-earlier when they play, so that they sit on the grid: it goes into the
-track's downgrade map (`attr_map.arts[code].delay`, and `attr_map.delay`
-for the instrument), which the kernel applies. `K` on a note says its
-delay.
+Key names are as paw names them: middle C is C4, 60.
 
-`:art.measure` finds them: it renders one note of each articulation
-offline through the track's own instrument (after what tells it the
-articulation: keyswitch, controllers, program, and the attribute), finds
-where each sound starts, and shows the delays it would write.
-`:art.measure!` writes them into the instrument's map (each articulation's
-line, comments kept) and sends them to the track (one undo step). The
-onset is the first 1 ms block whose peak reaches 20 dB under the loudest
-block of the note's first two seconds.
+paw looks for maps in these places. The first map with an id wins.
 
-## Linked controllers
+1. `~/.config/paw/articulations/**`
+2. beside a library (`Violins.art.toml` next to `Violins.sfz`)
+3. `articulations/` in any loaded extension
+4. `~/.local/share/paw/articulations/generated/`
 
-An instrument often plays one gesture from several controllers (dynamics
-on CC1 and CC11, a vibrato on CC21 and CC1). The map links them:
+The id of a map is its path there without `.art.toml`
+(`examples/violin-section`). `:art.map` takes an id, the end of an id, a
+name or a file.
+
+### Delays
+
+Many libraries start the sound of an articulation late (the attack of a
+legato sample, the start of a bow). `delay = "-80ms"` on an articulation,
+or on the full instrument at the top of its map, plays those notes that
+much earlier. So they sound on the grid.
+
+- The delay goes into the downgrade map of the track
+  (`attr_map.arts[code].delay`, and `attr_map.delay` for the instrument).
+  The kernel applies it.
+- `K` on a note tells its delay.
+- `:art.measure` renders one note of each articulation offline through the
+  instrument of the track, after the keyswitch, controllers, program and
+  attribute. It finds where each sound starts, and shows the delays.
+- `:art.measure!` writes them into the map of the instrument (on the line
+  of each articulation, with comments kept) and sends them to the track, as
+  one undo step.
+- The start of the sound is the first 1 ms block whose peak is within
+  20 dB of the loudest block. paw looks at the first two seconds of the
+  note.
+
+### Linked controllers
+
+An instrument often plays one gesture from several controllers: dynamics
+on CC1 and CC11, a vibrato on CC21 and CC1. The map links them:
 
 ```toml
 [linked]
 dynamics = { cc = [1, 11], curve = ["linear", "0:0.4 1:1"], default = 0.7, name = "Dynamics" }
 ```
 
-`\c` in the piano roll (or `:art.lane dynamics`) opens them as **one**
-curve in the curve view, drawn and edited with its keys and the mouse,
-in the terminal and the window; each point writes every controller of the
-link through its own curve (`linear`, `exp`, `log`, `s`, or points
-`"x:y x:y"`), in one edit. With no moves the lane stands at the
-instrument's `default`, and a drawing that starts after the clip's start
-begins at it. The controllers are ordinary moves of the clip: any
-instrument plays them.
+- `\c` in the piano roll (or `:art.lane dynamics`) opens them as **one**
+  curve in the curve view. Its keys and the pointer edit it, in the
+  terminal and in the graphical window.
+- Each point writes every controller of the link through its own curve
+  (`linear`, `exp`, `log`, `s`, or points `"x:y x:y"`), in one edit.
+- With no moves, the lane is at the `default` of the instrument. A drawing
+  that starts after the start of the clip starts at that value.
+- The controllers are ordinary moves of the clip. Any instrument plays
+  them.
 
-## In the piano roll
+### In the piano roll
 
-With a map bound, the roll sets itself up: rows outside the range are dark
-and those outside the comfortable range dimmer; the keyswitch rows are
-named by their articulations on the keyboard edge; each note with an
-articulation takes its colour and its tag (`stc`) in place of its pitch; a
-band above the ruler, `art`, shows the articulation of the clip's top line in
-time, with the pen at its right; `K` on a note says "Pizzicato (11.A), sent
-as ks=E1", or which articulation the profile's fallback plays.
+With a map bound:
 
-| Keys | What |
+- Rows outside the range are dark. Rows outside the comfortable range are
+  dimmer.
+- The keyboard edge names the keyswitch rows by their articulations.
+- Each note with an articulation has its color, and its tag (`stc`) in
+  place of its pitch.
+- A band above the ruler, `art`, shows the articulation of the top line of
+  the clip in time, with the pen at its right.
+- `K` on a note tells "Pizzicato (11.A), sent as ks=E1", or which
+  articulation the fallback of the profile plays.
+
+| Keys | Effect |
 | --- | --- |
-| `\a` | the articulation of the note under the cursor, or of the selection (visual mode): a list, numbered, each heard on those notes as the highlight rests on it; Enter writes it as `:art <name>`, Esc leaves no trace |
+| `\a` | the articulation of the note under the cursor, or of the selection (visual mode): a numbered list. You hear each on those notes when the highlight stays on it. Enter writes it as `:art <name>`. Esc leaves no change |
 | `\A` | a modifier of the map (`con sord.`) over the note or the selection: its controllers at the start, `off` at the end |
-| `\a` in insert mode | the pen: the articulation notes are entered with from now on |
+| `\a` in insert mode | the pen: the articulation of the notes that you enter after this |
 | `ia` `aa` | the run of notes with the articulation under the cursor (`aa` with the gap after it): `dia`, `yaa`, `v` `ia` |
-| `\c` | the instrument's linked controllers (dynamics) as one curve |
+| `\c` | the linked controllers of the instrument (dynamics), as one curve |
 
 Notes entered with the keys, in insert mode or by a click take the pen.
 
-## Commands
+### Commands
 
-| Command | What |
+| Command | Effect |
 | --- | --- |
-| `:art name` | the note under the cursor; with a range, its notes: `:'<,'>art stc`, `:5,8art pizz`, `:%art sus`, `:g/art=pz/art arco`; `none` takes it away; alone, the popover |
-| `:art.default name` | what the track's notes without one play |
-| `:art.pen name` | the articulation new notes get (`none`) |
+| `:art name` | sets the articulation of the note under the cursor. With a range, of its notes: `:'<,'>art stc`, `:5,8art pizz`, `:%art sus`, `:g/art=pz/art arco`. `none` removes it. Alone, the popover |
+| `:art.default name` | what the notes of the track with no articulation play |
+| `:art.pen name` | the articulation of new notes (`none`) |
 | `:art.mod name` | a modifier over the range or the note |
-| `:art.map [name]`, `:art.unmap`, `:art.maps` | bind a map (alone: the one whose `match` names a device of the track, else a list), take it away, list them all |
-| `:art.generate [library]` | make a map from an `.sfz`, a `.dspreset` or `.dslibrary`, a folder of samples named by articulation, or (alone) a device that describes its instrument, and bind it |
-| `:art.import file.reabank` | each bank of a Reaticulate file a map of its own, in `~/.config/paw/articulations/reaticulate` |
-| `:art.export reabank [file]` | the track's map as a Reaticulate bank |
-| `:art.new name` | a map to fill in |
-| `:art.from-keyswitches` | keyswitch notes and CC32 (UACC) moves of the clip into the articulations of the notes after them |
-| `:art.check` | the problems of the bound tracks' notes, in the quickfix list |
-| `:art.measure`, `:art.measure!` | how late each articulation sounds, measured; then written into the map |
+| `:art.map [name]`, `:art.unmap`, `:art.maps` | binds a map (alone: the map whose `match` names a device of the track, else a list), removes it, lists all maps |
+| `:art.generate [library]` | makes a map from an `.sfz`, a `.dspreset` or `.dslibrary`, a folder of samples named by articulation, or (alone) a device that describes its instrument, and binds it |
+| `:art.import file.reabank` | makes a map of each bank of a Reaticulate file, in `~/.config/paw/articulations/reaticulate` |
+| `:art.export reabank [file]` | writes the map of the track as a Reaticulate bank |
+| `:art.new name` | a map to fill |
+| `:art.from-keyswitches` | changes keyswitch notes and CC32 (UACC) moves of the clip into the articulations of the notes after them |
+| `:art.check` | the problems of the notes of bound tracks, in the quickfix list |
+| `:art.measure`, `:art.measure!` | measures how late each articulation sounds. With `!`, writes it into the map |
 | `:art.lane [name]` | a linked lane of controllers as one curve |
 
-The `art` field matches and sets a note's articulation in patterns:
+The `art` field matches and sets the articulation of a note in patterns:
 `:g/art=pz/`, `:s/art=stc/art=spc/`.
 
-## Diagnostics
+### Diagnostics
 
-A note outside the range (the map's, or its articulation's own) is a
-warning with the fix "move it an octave"; a note on a keyswitch row is a
-warning with the fix "make the keyswitches the articulation of the notes
-after them"; an articulation the map does not have plays by the profile's
-fallback, and says so, with fixes to make it that one or take it away; a
-chord of two articulations on a keyswitched instrument is a warning, since
-the last keyswitch wins.
-
-## Made from a library
-
-| Source | What is read |
+| Problem | Severity and fix |
 | --- | --- |
-| SFZ | `sw_last` (and `sw_down`, held), `sw_label`, `label_keyN`, `sw_lokey` `sw_hikey`, `sw_default`, the keys of each switch's regions; through `#define` and `#include` |
-| Decent Sampler | `<midi><note>` whose bindings enable groups: the key, and the names of the groups it enables; the groups' samples' keys |
-| A folder | its folders that hold samples are articulations, the notes in the files' names their ranges (VSCO 2 CE's layout); played by the attribute alone |
-| A sampler device | what `device_call(id, "describe")` answers: its articulations, keyswitches and range |
-| Reaticulate | every bank of a `.reabank`: names, colours, icons, program numbers, `chase`, outputs (`cc`, `note`, `note-hold`, `program`, `pitch`, channels) |
+| a note outside the range (of the map, or of its articulation) | warning. Fix: move it an octave |
+| a note on a keyswitch row | warning. Fix: make the keyswitches the articulation of the notes after them |
+| an articulation that the map does not have | it plays by the fallback of the profile, and says so. Fixes: make it that articulation, or remove it |
+| a chord of two articulations on a keyswitched instrument | warning, because the last keyswitch wins |
 
-Names get their codes from the words libraries use, icons first (`trill
-m2` and `trill M2` differ only by case): of the 1426 articulations of
-Reaticulate's 218 factory banks, 1283 get one (90 %), 120 of them from the
-icon alone. What is left is mostly what the profile makes a controller
-(`sul pont`, `con sord`) or a library's own word; it gets a code of the
-library's own (classification 1A and up), and two articulations of one code
-get two variations of it, so that every articulation can be chosen.
+### Maps from a library
 
-What the library does not say comes from the profile: each coded
-articulation gets the profile's tag (`stc`, `pz`, the tags `:g/art=pz/`
-finds), a class for its colour, and the score's mark (`staccato`) or text
-(`pizz.`, `trem.`, `harm.`) where there is one. Every generated map links
-dynamics on CC1 and CC11 (`[linked]`), so `\c` works on it at once; edit
-the file when the library listens to other controllers.
+| Source | What paw reads |
+| --- | --- |
+| SFZ | `sw_last` (and `sw_down`, held), `sw_label`, `label_keyN`, `sw_lokey` `sw_hikey`, `sw_default`, the keys of the regions of each switch. Through `#define` and `#include` |
+| Decent Sampler | `<midi><note>` whose bindings enable groups: the key, and the names of the groups that it enables. The keys of the samples of the groups |
+| A folder | its folders with samples are articulations. The notes in the names of the files are their ranges (the layout of VSCO 2 CE). The attribute alone plays them |
+| A sampler device | the answer of `device_call(id, "describe")`: its articulations, keyswitches and range |
+| Reaticulate | every bank of a `.reabank`: names, colors, icons, program numbers, `chase`, outputs (`cc`, `note`, `note-hold`, `program`, `pitch`, channels) |
 
-## With notation
+- Names get their codes from the words that libraries use, icons first
+  (`trill m2` and `trill M2` differ only by case).
+- Of the 1426 articulations of the 218 factory banks of Reaticulate, 1283
+  get a code (90 %), 120 of them from the icon alone.
+- Most of the rest are what the profile makes a controller (`sul pont`,
+  `con sord`), or a word of one library. These get a code of the library
+  (classification 1A and up). Two articulations with one code get two
+  variations of it. So you can choose each articulation.
+- What the library does not say comes from the profile. Each coded
+  articulation gets the tag of the profile (`stc`, `pz`, the tags that
+  `:g/art=pz/` finds) and a class for its color. Where the profile has one,
+  it also gets the mark (`staccato`) or text (`pizz.`, `trem.`, `harm.`) of
+  the score.
+- Each generated map links dynamics on CC1 and CC11 (`[linked]`). So `\c`
+  works on it at once. Edit the file when the library uses other
+  controllers.
 
-When the notation extension is loaded too, a note's articulation shows in
-the score as its `mark` (a staccato dot), and a run of notes starts with
-its `text` (`pizz.`), with `ord.` where the default comes back. Writing a
-mark in the score (`g'` a staccato) or a technique (`\p pizz.`, `arco`)
-sets the attribute of the notes when the track's map has an articulation
-with that mark or text; `paw.opt.art_from_notation = false` stops it.
+### With notation
 
-## Not done
+When the notation extension is loaded too:
 
-The window shows the tags and colours on the notes and the shaded and named
-rows (as marks of the roll's layer), but not the band, the keyboard labels
-or a menu of its own; the keyswitch rows are labelled and shaded, not
-folded away; the score draws an articulation's mark in the same ink as a
-written one; a modifier writes its MIDI 1.0 controllers, not the profile's
-registered controllers.
+- The articulation of a note shows in the score as its `mark` (a staccato
+  dot).
+- A run of notes starts with its `text` (`pizz.`), with `ord.` where the
+  default returns.
+- A mark in the score (`g'` a staccato) or a technique (`\p pizz.`, `arco`)
+  sets the attribute of the notes. This occurs when the map of the track
+  has an articulation with that mark or text. `paw.opt.art_from_notation = false`
+  stops this.
+
+### Limits
+
+- The graphical window shows the tags and colors on the notes, and the
+  shaded and named rows (as marks of the layer of the roll). It does not
+  show the band, the labels of the keyboard, or a menu of its own.
+- The keyswitch rows have labels and shades, but they do not fold.
+- The score draws the mark of an articulation in the same ink as a written
+  mark.
+- A modifier writes its MIDI 1.0 controllers, not the registered
+  controllers of the profile.
+
+## About
+
+The articulation is MIDI, not data of the extension. So it is copied,
+moved, undone and saved with the note, and it plays when the extension is
+not loaded. A part moved to another instrument keeps its meaning. An
+instrument that does not have that exact articulation plays the nearest
+one that the profile names: another variation, then the same family, then
+sustain.

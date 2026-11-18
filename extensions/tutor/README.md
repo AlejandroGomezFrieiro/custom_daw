@@ -1,16 +1,14 @@
 # tutor
 
-A course for first-time users, inside paw, in the way `vimtutor` teaches
-Vim: seventeen lessons of about ten minutes, each in a practice project of its
-own. A panel along the bottom says what to do next in a sentence or two with
-the exact keys, notices when it is done, says so, and goes on. Every lesson
-ends with something you made or changed and can hear.
+A course for new users, inside paw, as `vimtutor` teaches Vim: seventeen
+lessons of about ten minutes, each in a practice project of its own. A
+panel at the bottom tells you what to do next in a sentence or two, with
+the exact keys. It sees when the step is done, tells you, and continues.
+Each lesson ends with something that you made or changed and can hear.
 
-The same lessons, as text for reading away from the program, are in
-[docs/tutorials/course](../../docs/tutorials/course/README.md), with a page of keys to keep beside
-the keyboard, [keys.md](../../docs/reference/keys.md).
-
-## Start it
+The same lessons are text in [the
+course](../../docs/tutorials/course/README.md), with a page of keys to keep
+beside the keyboard, [keys.md](../../docs/reference/keys.md).
 
 ```lua
 paw.ext.load("/path/to/paw/extensions/tutor")   -- in ~/.config/paw/init.lua
@@ -18,90 +16,104 @@ paw.ext.load("/path/to/paw/extensions/tutor")   -- in ~/.config/paw/init.lua
 
 ![:tutor! opening lesson 1 in a practice project: the introduction, then the panel along the bottom saying which key to press and noticing each step done](images/tui-tutor.gif)
 
-or link the directory into `~/.config/paw/extensions`. Then, in paw:
+## Try it
 
-| | |
+1. Type `:ext.load tutor`, then `:tutor`. A page about lesson 1 opens.
+2. Press any key. The page closes, and the panel at the bottom tells you
+   the first step.
+3. Do the step. The panel tells you that it is done, and shows the next
+   step.
+4. Press `,hh`. The panel shows a hint for the step.
+5. Press `,hq`. The tutor closes, and your project opens again.
+
+## How to
+
+### How to continue the course
+
+Type `:tutor`. The course continues where you stopped.
+
+### How to choose a lesson
+
+- Type `:tutor 5` or `:tutor visual`. A lesson that you started continues
+  where you were.
+- To see all lessons and your progress, press `,hl`.
+
+### How to start a lesson when your project has changes
+
+- Save the project with `:w`, then type `:tutor 3`.
+- Or type `:tutor! 3`.
+
+**WARNING:** `:tutor!` discards the changes of your project that are not
+saved.
+
+### How to add a lesson
+
+1. Write the lesson as a Lua table (see [Lessons](#lessons)).
+2. Call `require("tutor").register(lesson)`. To put it after another
+   lesson, call `register(lesson, { after = "visual" })`.
+3. Run the suite. `tests.lua` plays every registered lesson.
+4. If the lesson is in this extension, write the course again from the top
+   of the repository:
+
+   ```sh
+   paw --clean --no-plugins -l extensions/tutor/make-docs.lua
+   ```
+
+   The tests fail while the files and the lessons are different.
+
+## Reference
+
+### Commands
+
+| Command | Effect |
 | --- | --- |
-| `:tutor` | the course, where you left off (lesson 1 the first time) |
-| `:tutor 5`, `:tutor visual` | a lesson by number or name; one you were in carries on where you were |
-| `:tutor list`, `:tutor.list`, `,hl` | the lessons and how far you got, to choose one |
+| `:tutor` | the course, where you stopped (lesson 1 the first time) |
+| `:tutor 5`, `:tutor visual` | a lesson by number or name. A lesson that you started continues where you were |
+| `:tutor list`, `:tutor.list`, `,hl` | the lessons and your progress, to choose one |
 | `,hh` (`:tutor hint`, `:tutor.hint`) | a hint for the step |
-| `,hn` (`:tutor next`, `:tutor.next`) | skip the step; at the end of a lesson, go on to the next one |
-| `,hr` (`:tutor restart`, `:tutor.restart`) | start the lesson again from a fresh practice project |
-| `,hq` (`:tutor quit`, `:tutor.quit`) | leave the tutor and reopen your own project |
-| `:tutor reset` | forget all progress |
-| `:tutor.try sections` | load one of the bundled extensions for this session (lesson 16) |
+| `,hn` (`:tutor next`, `:tutor.next`) | skips the step. At the end of a lesson, goes to the next lesson |
+| `,hr` (`:tutor restart`, `:tutor.restart`) | starts the lesson again from a new practice project |
+| `,hq` (`:tutor quit`, `:tutor.quit`) | closes the tutor and opens your own project again |
+| `:tutor reset` | forgets all progress |
+| `:tutor.try sections` | loads one of the bundled extensions for this session (lesson 16) |
 
-A lesson begins with a page about it: what it is about, the idea behind its
-keys, and what differs for someone who knows Vim. Any key closes it.
+A lesson starts with a page about it: its subject, the idea of its keys,
+and what is different for a user of Vim. Any key closes the page.
 
-### What happens to the project you have open
+### Your project during a lesson
 
-A lesson opens its own practice project, so the project you were working on
-is closed while you practise, and reopened, as it was on disk, by `,hq`.
+- A lesson opens its own practice project. So your project closes while
+  you practice. `,hq` opens it again, as it is on the disk.
+- If your project has changes that are not saved, the lesson does not
+  start. The tutor tells you. Save first (`:w`), or start with `:tutor! 3`.
+- An untitled empty project is replaced.
+- The tutor never writes to your project. When you leave, it restores your
+  options that lessons change: `grid`, `note_grid`, `octave`, `velocity`,
+  `ripple`, `clip_length`.
+- If you open another project during a lesson (`:e`), the tutor waits.
+  `:tutor` returns to the lesson.
 
-- If it has changes that are not saved, the lesson does not start: the tutor
-  says so, and you save first (`:w`) or start with `:tutor! 3` to throw the
-  changes away.
-- An untitled project with nothing in it is simply replaced.
-- Nothing is ever written to your project. Your options that lessons change
-  (`grid`, `note_grid`, `octave`, `velocity`, `ripple`, `clip_length`) are put
-  back when you leave.
-- If you open another project during a lesson (`:e`), the tutor waits, and
-  `:tutor` goes back to the lesson.
+### Files
 
-### Where your progress is kept
+The tutor keeps your progress in its own directory:
+`$XDG_STATE_HOME/paw/tutor` (`~/.local/state/paw/tutor`), or the directory
+of the option `tutor_dir`.
 
-In the tutor's own directory: `$XDG_STATE_HOME/paw/tutor`
-(`~/.local/state/paw/tutor`), or wherever the option `tutor_dir` says.
-`progress.lua` holds the lesson and step you are on and the steps you have
-done; `practice/<lesson>.json` are the practice projects (and `practice/media`
-their recordings). Quitting paw in a lesson (`:q`, `ZZ`, `ZQ`) saves the
-practice project and your place; `:tutor` next time carries on from there.
+| File | Contents |
+| --- | --- |
+| `progress.lua` | the lesson and the step where you are, and the steps that you did |
+| `practice/<lesson>.json` | the practice projects |
+| `practice/media` | their recordings |
+
+When you quit paw in a lesson (`:q`, `ZZ`, `ZQ`), the tutor saves the
+practice project and your place. `:tutor` continues from there next time.
 `:reload` keeps the tutor where it was.
 
-## The lessons
+### Lessons
 
-| | Lesson | |
-| --- | --- | --- |
-| 1 | First steps | the screen, playing, `?`, `:`, quitting |
-| 2 | Moving around | motions and counts; why keys mean other things in other modes and views |
-| 3 | Tracks, clips and notes | `o`, `grn`, `a`, `i`, `&`, `x`, `u` |
-| 4 | The piano roll | moving by pitch, changing a note, insert mode, chords |
-| 5 | The grammar | operator + motion or text object, counts, `dd`, `.`, on clips |
-| 6 | The grammar on notes | the same in the piano roll, and `/` |
-| 7 | Visual mode | `v`, `V`, `gv`, a count in visual mode |
-| 8 | Registers and macros | `p` with counts, `"a`, `:registers`, `2u`, `qq` `@q` `@@` |
-| 9 | Devices | the device panel, parameters, adding and bypassing, plugin windows |
-| 10 | Mixing | the mixer, pan, solo, mute, a bus, a send, automation |
-| 11 | Loops and marks | `gL`, `gl`, `gm`, `/`, `ma` `'a` `''` |
-| 12 | Recording | `I`, `r`, `R`: an audio take and a MIDI take |
-| 13 | Saving and rendering | `[+]`, `:w`, `:render`, `:messages` |
-| 14 | Finding things | key hints, `:commands`, Tab, `,,` and the `,f` pickers, `K` |
-| 15 | Making it your own | an option, a mapping and a command with `:lua`; `init.lua` |
-| 16 | The extensions | one thing in each of pattern, musicops, sections, undotree, mixdiag, rpp, utau |
-
-The order is the order a person needs things in. You can play and quit before
-anything else (1), then get about (2), then make something to hear (3, 4).
-The grammar (5 to 8) comes as soon as there is something to edit, because
-everything after it is easier with it: first on clips, where it is easiest to
-see, then on notes, then selecting first, then where deleted and yanked
-things go. The studio (9 to 13) follows in the order a song is made: sounds,
-balance, loops to work on a part, recording, and a file at the end. The last
-three are for going on alone: how to find any key, how to change paw, and
-what the extensions add.
-
-Every lesson teaches the idea behind a family of keys rather than a list (the
-`?` page and the pickers are there for lists), and every lesson's opening page
-says where the keys differ from Vim, so a Vim user can move fast and someone
-who has never used Vim still has the whole explanation.
-
-## Writing lessons
-
-A lesson is a Lua table; `require("tutor").register(lesson)` adds it at the
-end, `register(lesson, { after = "visual" })` after another. The built-in
-ones are in `lua/tutor/lessons/`, listed in order in `lua/tutor/lessons/init.lua`.
-An extension can add lessons about itself the same way.
+[The course](../../docs/tutorials/course/README.md) lists the lessons. The
+built-in lessons are in `lua/tutor/lessons/`, in order in
+`lua/tutor/lessons/init.lua`. An extension can add lessons about itself.
 
 ```lua
 require("tutor").register({
@@ -110,7 +122,7 @@ require("tutor").register({
   intro = [[What the lesson is about, shown when it starts.]],
   idea = [[The idea behind the keys.]],    -- optional
   vim = [[Where this differs from Vim.]],  -- optional
-  setup = function(look)                   -- builds the practice project, with the public API
+  setup = function(look)                   -- makes the practice project, with the public API
     local t = paw.add_track({ name = "Drums" })
     t:add_device("drums")
   end,
@@ -121,7 +133,7 @@ require("tutor").register({
       keys = { "o" },                     -- exactly what the learner types, for the tests
       start = function(ctx, look) ctx.tracks = #paw.tracks() end,      -- optional
       check = function(ctx, look) return #paw.tracks() == ctx.tracks + 1 end,
-      done = "A new track.",              -- said once it is done
+      done = "A new track.",              -- said when it is done
       hint = "`o` is a small o.",         -- optional, for `,hh`
     },
   },
@@ -129,132 +141,160 @@ require("tutor").register({
 })
 ```
 
-**Checks.** `check(ctx, look)` is called after every event and a few times a
-second; it returns true once the step is done. `ctx` is the step's own table:
-`start` fills it, and the tutor records in it what happened since the step
-began, which `look` reads:
+**Checks.** The tutor calls `check(ctx, look)` after every event and a few
+times a second. It returns true when the step is done. `ctx` is the table
+of the step: `start` fills it, and the tutor records in it what occurred
+after the step started. `look` reads it:
 
-| `look.` | |
+| `look.` | Returns |
 | --- | --- |
-| `ran(ctx, "undo")` | the command ran (aliases count as their command: `:w` is `write`) |
-| `saw(ctx, "transport.play")` | the event happened |
-| `said(ctx, "text")` | a message containing the text was shown |
-| `played(ctx)` | the transport played and has stopped |
-| `became(ctx, "name", condition)` | the condition, once it has been false: for an end state that may already hold |
-| `names(track)`, `layout(track)`, `clips(track)`, `clip(track, name)`, `melody(clip)` | what a track or clip holds, as text |
+| `ran(ctx, "undo")` | true when the command ran. Aliases count as their command: `:w` is `write` |
+| `saw(ctx, "transport.play")` | true when the event occurred |
+| `said(ctx, "text")` | true when a message with the text showed |
+| `played(ctx)` | true when the transport played and stopped |
+| `became(ctx, "name", condition)` | true when the condition is true after it was false: for an end state that can already be true |
+| `names(track)`, `layout(track)`, `clips(track)`, `clip(track, name)`, `melody(clip)` | what a track or a clip holds, as text |
 | `cursor_track()`, `focused()`, `mode()`, `float()`, `visible(view)`, `roll()`, `device(track, kind)`, `param(device, key)`, `register(name)` | where the learner is |
-| `notes("C4:0:1 E4:1:1")`, `drums(rows, bars)`, `beat`, `pulse(pitch, beats)`, `chord(pitches, beats)` | for `setup` |
+| `notes("C4:0:1 E4:1:1")`, `drums(rows, bars)`, `beat`, `pulse(pitch, beats)`, `chord(pitches, beats)` | helpers for `setup` |
 
-A check must not be true before the step is done, also when the step before
-was skipped: use `ran`, `became` or a value saved in `start` rather than an
-end state the project may already be in.
+A check must not be true before the step is done, also when the learner
+skipped the step before. Use `ran`, `became` or a value saved in `start`,
+not an end state that the project can already have.
 
-**Keys.** `keys` lists what is typed, in Vim's notation; each string must also
-appear in backticks in `say` (or `hint`), which the tests check, so the text
-and the test cannot drift apart. Other items: `{ wait = 300 }` (milliseconds,
-for listening), `{ sim = function(lesson) end, instead = { "keys" } }` for what
-a person does away from the computer keyboard (a test tone on the input, MIDI
-notes, quitting), and `{ sim = "quit", instead = { ":q", "<CR>" } }`.
+**Keys.** `keys` lists what the learner types, in the notation of Vim.
+Each string must also be in backticks in `say` (or `hint`). The tests check
+this, so the text and the test stay the same. Other items:
 
-**Steps the tutor cannot see** have `unchecked = "why"` in place of `check`;
-the panel tells the learner to press `,hn` when done. `on_quit = true` makes a
-step done by quitting paw. `test = { before = fn, after = fn }` on a lesson
-prepares the test run (an audio engine with a test input) and tidies up after
-it (files written beside the program).
+| Item | Effect |
+| --- | --- |
+| `{ wait = 300 }` | waits, in milliseconds, for listening |
+| `{ sim = function(lesson) end, instead = { "keys" } }` | what a person does away from the computer keyboard: a test tone on the input, MIDI notes, a quit |
+| `{ sim = "quit", instead = { ":q", "<CR>" } }` | quits |
 
-**Tests.** `tests.lua` plays every registered lesson from start to finish by
-typing each step's keys one at a time, as the kernel receives them, and checks
-that the panel shows the step on screen, that the step is not noticed before
-its keys are typed nor before the last of them, that it is noticed after, that
-skipping any step does not pass the next one, and the hints, restarting,
-leaving, coming back after a restart of the program, unsaved projects, and the
-lesson list. A new lesson is tested by adding it; nothing else to write.
+**Other fields.**
 
-**The text.** After changing a lesson, run
+- `unchecked = "why"` in place of `check`: a step that the tutor cannot
+  see. The panel tells the learner to press `,hn` when done.
+- `on_quit = true`: the step is complete when you quit paw.
+- `test = { before = fn, after = fn }` on a lesson: prepares the test run
+  (an audio engine with a test input) and removes what it made (files
+  written beside the program).
 
-```sh
-paw --clean --no-plugins -l extensions/tutor/make-docs.lua
-```
+**Tests.** `tests.lua` plays every registered lesson from start to end. It
+types the keys of each step one at a time, as the kernel gets them. It
+checks:
 
-from the top of the repository to write `docs/tutorials/course/`; the tests fail while
-the files and the lessons disagree. `docs/reference/keys.md` is written by hand,
-and the tests check that every key in its first column is a key paw has.
+- that the panel shows the step on the screen
+- that the tutor does not see the step before its keys, or before the last
+  of them, and that it sees it after
+- that a skipped step does not complete the next step
+- the hints, a restart, a quit, the return after a restart of the program,
+  unsaved projects, and the list of lessons
 
-## Steps the tests cannot perform
+A new lesson is tested when you add it. You write nothing more.
 
-The tests type every step's keys. Where a person does something else, the
-tests stand in for it, and two steps are not checked at all:
+**The text.** `make-docs.lua` writes `docs/tutorials/course/` from the
+lessons. `docs/reference/keys.md` is written by hand. The tests check that
+each key in its first column is a key of paw.
+
+### Steps that the tests cannot do
+
+The tests type the keys of every step. Where a person does something else,
+the tests act in place of the person. Two steps are not checked:
 
 | Lesson, step | What the learner does | What the tests do |
 | --- | --- | --- |
-| 1, 8 | `:q` quits paw | announce `:q` (`command.pre`) without quitting; the tutor saves the place on that |
-| 12, 1 to 3 | records from a microphone | the silent engine's test tone is the input |
+| 1, 8 | `:q` quits paw | send `:q` (`command.pre`) without a quit. The tutor saves the place on that event |
+| 12, 1 to 3 | records from a microphone | the test tone of the silent engine is the input |
 | 12, 5 | plays a MIDI keyboard | `paw.midi.note_on` and `note_off`, as if from a port |
-| 9, 9 | adds a plugin and opens its window | **unchecked**: which plugins exist differs between computers, and a window needs a desktop |
-| 15, 4 | copies lines into `~/.config/paw/init.lua` and `:reload`s | **unchecked**: the tutor neither reads nor writes your configuration |
+| 9, 9 | adds a plugin and opens its window | **unchecked**: the plugins are different on each computer, and a window needs a desktop |
+| 15, 4 | copies lines into `~/.config/paw/init.lua` and types `:reload` | **unchecked**: the tutor does not read or write your configuration |
 
-Listening steps are checked by the transport having played and stopped; what
-was heard is not. Lesson 16's mixdiag step checks that measuring started, not
-its result. Lesson 9 teaches plugin windows through what paw reports for a
-built-in device (that it has no window).
+- The tests check a step where you listen by the transport: it played and
+  stopped. They do not check what you heard.
+- The mixdiag step of lesson 16 checks that a measurement started, not its
+  result.
+- Lesson 9 teaches plugin windows through what paw reports for a built-in
+  device (it has no window).
 
-## What the extension interface could not do
+### What the course does not teach
 
-- **A key hook.** There is no event for "a key was handled", and closing a
-  floating window (`paw.ui.close`) or the key hints appearing make no event, so
+- the graphical frontend (`paw-gui`) and the pointer
+- the control socket (`paw ctl`) and the MCP server
+- extensions beyond a mapping and a command (operators, text objects and
+  views of your own), and the Lua API beyond `:lua` lines
+- plugin parameters through automation (`:lane.add ... device=`), and pan
+  automation
+- the edits of audio clips (fades, crossfades, `:clip.import`)
+- `:engine`, sample rates and latency, `:midi.select`
+- `<C-v>` blocks in the piano roll, `o` in visual mode, `ac` `it` `ie`, `=`,
+  `S` `J` on clips, `<A-j>` `<A-k>`, zoom and scroll (in the text of the
+  lessons and in keys.md, but not practiced)
+- ripple edits, and tempo and time signature beyond `:tempo`
+- controller edits, autosave, stems and other export options, and more
+  options of recording
+
+### Limits of the extension interface
+
+- **No event after a key.** No event tells that a key was handled. When a
+  float closes (`paw.ui.close`) or the key hints show, there is no event. So
   the tutor also looks on a 200 ms timer. Timers do not run in `paw -l`
-  scripts, so the tests call `tutor.poll()` after each key in the timer's
-  place. Wanted: an event `key.done` emitted by `paw._kernel.key` after each
-  key, with the key and the mode, and `ui.float_closed`.
-- **A state directory.** `paw.api.env()` gives `config_dir` only; the tutor
-  works out `$XDG_STATE_HOME/paw` itself. Wanted: `env().state_dir` (and
-  `data_dir`, where recordings go), so that extensions and the runtime agree,
-  and tests can move it with one variable.
-- **Writing a copy of the project.** `paw.project.save(path)` makes `path` the
-  project's file (Vim's `:saveas`). The tutor can only save the practice
-  project in place, so a step's state is kept only when the practice project
-  is saved (on leaving, quitting, or `:w`); after a crash the lesson resumes
-  at the step the file was last saved at. Wanted: `paw.project.write_copy(path)`
-  or `save(path, { copy = true })`.
-- **Resetting a view's remembered state** has no call: the tutor sets
+  scripts, so the tests call `tutor.poll()` after each key. Wanted: an
+  event `key.done` that `paw._kernel.key` sends after each key, with the
+  key and the mode, and `ui.float_closed`.
+- **The state directory.** The tutor finds `$XDG_STATE_HOME/paw` itself.
+  `paw.api.env().state_dir` now gives it, but the tutor does not use it
+  yet.
+- **No copy of the project.** `paw.project.save(path)` makes `path` the file
+  of the project (as `:saveas` of Vim). The tutor can only save the
+  practice project in place. So it keeps the state of a step only when it
+  saves the practice project (when you leave, quit, or type `:w`). After a
+  crash, the lesson continues at the step of the last save. Wanted:
+  `paw.project.write_copy(path)` or `save(path, { copy = true })`.
+- **No reset of the remembered state of a view.** The tutor sets
   `paw.ui.views.devices.row = 1` and `paw.ui.views.pianoroll:set_step(nil)`
   directly at the start of a lesson.
 
-## What the course does not cover
+### Problems found while the lessons were written
 
-The graphical frontend (`paw-gui`) and the mouse; the control socket
-(`paw ctl`) and the MCP server; writing extensions beyond a mapping and a
-command (operators, text objects and views of your own are in the main
-README); the Lua API beyond `:lua` one-liners; plugin parameters through
-automation (`:lane.add ... device=`) and pan automation; audio clip editing
-(fades, crossfades, `:clip.import`); `:engine`, sample rates and latency;
-`:midi.select`; `<C-v>` blocks in the piano roll, `o` in visual mode, `ac`
-`it` `ie`, `=`, `S` `J` on clips, `<A-j>` `<A-k>`, zooming and scrolling (in
-the lessons' text and keys.md, not practised); ripple editing; tempo and time
-signature beyond `:tempo`. Features being changed elsewhere and not in this
-tree (controller editing, autosave, stems and other export options, more
-recording options) are not taught.
+paw keeps them as they are, and the lessons teach them as they are. Each
+row gives the lesson and a change that would help a new user.
 
-## Rough edges met while writing the lessons
-
-Left as they are in paw and taught as they are; each with the lesson
-where it came up and what would make it easier for a newcomer.
-
-| Lesson | What happens | What would help |
+| Lesson | What occurs | What would help |
 | --- | --- | --- |
-| 12 | After `<Space>` stops a take, record mode stays on (`rec` lit): the next `R` switches recording *off* instead of recording, and the next `<Space>` records again. The lesson has to teach `R` then `<Space>`. | Stopping the transport ends record mode, or `R` always starts a take when stopped. |
-| 10 | Sends have no key and no command: the lesson types `:lua paw.track("Lead"):send(paw.track("Echo"), -6)`. | `:track.send Echo -6` and a key in the mixer. |
-| 9 | The device panel keeps its row when the track changes, so `,d` can open on a row of another device's list. | Start at the top for a new track. |
-| 3, 10 | Prompts come filled in (`grn` with the old name, `A` with the current value), and typing appends: the lesson must teach `<C-u>` first. | The first key typed replaces the filled-in text, as the vocal editor's lyric prompt does. |
-| 4 | The note length set with a digit in insert mode lasts for the rest of the session, across clips, and is also the length `<CR>` gives a new note in normal mode; nothing shows it outside insert mode. | Reset it when insert mode ends, or show it in the piano roll's title row always. |
-| 3 | A clip made with `i` is named `midi`. | No name, or the track's name. |
-| 3, 4 | `a` adds a device in the arrange view but appends notes in the piano roll; a Vim user expects "append" in both. | Say so in `?`, or move "add device" to another key. |
-| 5, 7 | Muting has four spellings with two meanings: `M` the track, `~` the clip, `gc` clips and `gcc` the track, and `~` on a `V` selection mutes the tracks but on a `v` selection the clips. | One rule: `gc` for clips, `M` for tracks, everywhere. |
-| 6 | `dw` from inside a gap deletes nothing (a note belongs to where it starts), so `.` after moving into a gap silently does nothing. | A message when an operator's region holds nothing. |
-| 2 | `<S-CR>` (play from the cursor) is indistinguishable from Enter in many terminals and in tmux. | A second key, such as `g<Space>`. |
-| 13 | `:w name.json` is Vim's `:saveas` (the project moves to the new file); a Vim user expects a copy. There is no way to write a copy. | `:saveas` for moving, `:w name` for a copy, as in Vim. |
-| 13 | `:render name.wav` writes relative to the folder paw was started from, `~` is not expanded, and the message gives only the name. | Expand `~`, and say the full path. |
-| 14 | Key hints group `grn` and `grc` as `r +2 more` under `g`, hiding the rename keys. | List the group's keys when there are few. |
-| — | `command.pre` and `command.post` carry the alias typed (`q`, `w`), not the command (`quit`, `write`); an extension listening for `quit` misses `:q`. | Add the command's own name to the event. |
-| — | In a script, `paw.project.save` while an undo step is open counts edits made later in that step as saved (`modified` is false after adding a track). | Close the open step before saving. |
-| — | `extensions/sections/tests.lua` sets `paw.pick = nil` and does not put it back, so every test after it runs without pickers. | Restore it, as the mixdiag and undotree tests do. |
+| 12 | After `<Space>` stops a take, record mode stays on (`rec` lit). The next `R` stops record mode, and the next `<Space>` records again. The lesson must teach `R` then `<Space>` | Stop record mode when the transport stops, or make `R` always start a take when stopped |
+| 9 | The device panel keeps its row when the track changes. So `,d` can open on a row of the list of another device | Start at the top for a new track |
+| 3, 10 | Prompts have text in them (`grn` with the old name, `A` with the current value), and new text goes at the end. The lesson must teach `<C-u>` first | The first key replaces the text, as in the lyric prompt of the vocal editor |
+| 4 | The note length set with a digit in insert mode stays for the session, across clips. It is also the length that `<CR>` gives a new note in normal mode. Nothing shows it outside insert mode | Reset it when insert mode ends, or always show it in the title row of the piano roll |
+| 3 | A clip made with `i` has the name `midi` | No name, or the name of the track |
+| 3, 4 | `a` adds a device in the arrange view, but appends notes in the piano roll. A user of Vim expects "append" in both | Say so in `?`, or move "add device" to another key |
+| 5, 7 | Mute has four keys with two meanings: `M` the track, `~` the clip, `gc` clips and `gcc` the track. `~` on a `V` selection mutes the tracks, but on a `v` selection the clips | One rule: `gc` for clips, `M` for tracks, everywhere |
+| 6 | `dw` from a gap deletes nothing (a note belongs to its start). So `.` after a move into a gap does nothing, with no message | A message when the region of an operator is empty |
+| 2 | Many terminals and tmux cannot tell `<S-CR>` (play from the cursor) from Enter | A second key, such as `g<Space>` |
+| 13 | `:w name.json` is the `:saveas` of Vim: the project moves to the new file. A user of Vim expects a copy. No command writes a copy | `:w name` for a copy, as in Vim |
+| 13 | `:render name.wav` writes relative to the folder where paw started. It does not expand `~`, and the message gives only the name | Expand `~`, and give the full path |
+| 14 | Key hints group `grn` and `grc` as `r +2 more` under `g`, and hide the rename keys | List the keys of the group when there are few |
+| — | `command.pre` and `command.post` carry the alias typed (`q`, `w`), not the command (`quit`, `write`). An extension that listens for `quit` does not see `:q` | Add the name of the command to the event |
+| — | In a script, `paw.project.save` while an undo step is open counts later edits of that step as saved (`modified` is false after a track is added) | Close the open step before the save |
+
+## About
+
+The order of the lessons is the order in which a person needs things.
+First you can play and quit (1), then move (2), then make something to
+hear (3, 4).
+
+The grammar (5 to 8) comes when there is something to edit, because all
+that follows is easier with it. It comes first on clips, where it is
+easiest to see. Then it comes on notes, then with the selection first. Then
+the lessons show where deleted and yanked things go.
+
+The studio (9 to 13) obeys the order in which a song is made. First come
+sounds and balance, then loops to work on a part, then recording, and a
+file at the end. The
+next three lessons are for work alone: how to find any key, how to change
+paw, and what the extensions add. Lesson 17 edits by line, as Ex does.
+
+Each lesson teaches the idea of a family of keys, not a list. The `?` page
+and the pickers give the lists. The first page of each lesson tells where
+the keys are different from Vim. So a user of Vim can go fast, and a person
+who never used Vim still gets the full explanation.
