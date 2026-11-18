@@ -18,6 +18,9 @@ each extension (`:help notation`).
 - [How to write a language server](how-to/write-a-language-server.md)
 - [How to write a snippet](how-to/write-a-snippet.md)
 - [How to write a completion source](how-to/write-a-completion-source.md)
+- [How to write a device in Lua](how-to/write-a-device-in-lua.md)
+- [How to fix a plugin editor that does not work](how-to/fix-a-plugin-editor.md)
+- [How to open a project without its plugins](how-to/open-a-project-without-its-plugins.md)
 
 ## Reference
 
@@ -27,7 +30,9 @@ each extension (`:help notation`).
 - [Configuration](configuration.md): `init.lua`, options, colors, the status line
 - [Input and recordings](recording.md): inputs, input monitors, takes
 - [Edit, mix and render](mixing.md): routes, automation, tempo, stretched clips, markers, MIDI controllers, export
-- [Plugins and built-in devices](devices.md): plugins, the sandbox, built-in devices, devices in Lua
+- [Devices](reference/devices.md): the built-in devices, wet/dry and output gain, presets
+- [Plugins](reference/plugins.md): formats, scan, editors, processes, status, offline devices
+- [Lua devices](reference/lua-devices.md): the fields of a device in Lua, the block, MIDI, helpers, reload
 - [The session view](reference/session-view.md): slots, scenes, launch rules, keys and commands
 - [MIDI controllers](reference/learn.md): bind knobs, faders and pads to controls
 - [Harmony](reference/harmony.md): the chords and keys that paw reads, providers, theory functions, voicings, ranges
@@ -47,3 +52,4 @@ each extension (`:help notation`).
 - [About the session view](explanation/about-the-session-view.md): why the engine times a launch, and why a render needs a capture
 - [About language servers](explanation/about-language-servers.md): the four layers, addresses with ids, subjects, LSP
 - [About the harmony reading](explanation/about-the-harmony-reading.md): how paw finds chords and keys, and why providers can replace it
+- [About the plugin sandbox](explanation/about-the-plugin-sandbox.md): one process for each plugin, and what it costs

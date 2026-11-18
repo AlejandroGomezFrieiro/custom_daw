@@ -114,7 +114,7 @@ vocal editor and lyric sheet.
 
 Devices written in Lua go in `~/.config/paw/devices/`, one `.lua` file each,
 and are loaded again whenever they are saved: see
-[Writing a device in Lua](devices.md#writing-a-device-in-lua).
+[Lua devices](reference/lua-devices.md).
 
 ## The status line
 

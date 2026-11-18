@@ -89,8 +89,8 @@ paw.option.define("euclid_density", 0.5, { min = 0, max = 1 })  -- typed, bounde
 ```
 
 Check exact signatures in docs/scripting.md / `:help` before using one; the
-lines above are a map, not the contract. For devices see docs/devices.md
-"Writing a device in Lua" (`dsp.device{…}`; `dev.call` receives
+lines above are a map, not the contract. For devices see
+docs/reference/lua-devices.md (`dsp.device{…}`; `dev.call` receives
 `paw.api.device_call`; large data via `dsp.map`). For an extension that ships
 an engine or a plugin, follow `extensions/utau` and `extensions/sampler`
 (`nix/default.nix`, `paw.plugins.add_dir`, `paw.withExtensions`).

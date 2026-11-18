@@ -661,7 +661,7 @@ leaves it the time to), `proc_kill(id)`; `sock_listen(path)`, `sock_connect(path
 closed), `sock_write(id, bytes)`, `sock_close(id)`. A device that takes data
 from scripts answers `paw.api.device_call(device, method, bytes)`; a device
 written in Lua answers with its `dev.call` (see
-[Writing a device in Lua](devices.md#writing-a-device-in-lua)).
+[Lua devices](reference/lua-devices.md)).
 `paw.api.device_post(kind, topic, bytes)` gives data to every device of a
 kind at once: those there now, and every one made later, an offline
 render's own among them, before its first block. `paw.track_kinds`

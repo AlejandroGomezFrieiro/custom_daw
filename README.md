@@ -12,7 +12,7 @@ Make paw fit your music, not the other way around. A small Rust kernel plays
 the sound, keeps the project and hosts plugins; everything you touch, every
 view, command and key, is Lua that your own configuration can change. Extend
 it with [your `init.lua`](docs/configuration.md), [extensions](#extensions),
-[devices written in Lua](docs/devices.md#writing-a-device-in-lua) and
+[devices written in Lua](docs/reference/lua-devices.md) and
 [kinds of track](docs/extensions.md#everything-an-extension-can-own), and
 package them for Nix or share them as a git repository.
 

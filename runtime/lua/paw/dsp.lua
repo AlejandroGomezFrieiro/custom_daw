@@ -1,7 +1,7 @@
 -- `require("paw.dsp")`: what a device written in Lua is made with. A device
 -- is a file that returns `dsp.device { ... }`: its name, its parameters, and
--- a `process` function given each block of sound. See "Writing a device in
--- Lua" in docs/devices.md.
+-- a `process` function given each block of sound. See
+-- docs/reference/lua-devices.md.
 --
 --   local dsp = require("paw.dsp")
 --   local dev = dsp.device {
