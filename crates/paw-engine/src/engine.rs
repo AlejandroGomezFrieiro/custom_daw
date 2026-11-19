@@ -529,6 +529,10 @@ pub enum Msg {
         track: Slot,
         automation: Box<Automation>,
     },
+    /// The devices already hold the states their state lanes give at the
+    /// play position (a render gave them before it started): the next
+    /// `Play` does not give them again.
+    StatesHeld,
     /// Follow a new tempo map from the next block on.
     SetTempoMap(Box<TempoMap>),
     /// Change the first tempo of the map, keeping its other points.
@@ -1060,6 +1064,8 @@ pub struct Engine {
     restate: bool,
     /// Some track has a state lane: blocks end on its points.
     has_states: bool,
+    /// The devices hold their lanes' states already (see [`Msg::StatesHeld`]).
+    states_held: bool,
     seeks: u32,
     click: Click,
     /// The current block of input, one buffer per channel.
@@ -1271,6 +1277,7 @@ impl Engine {
             reapply: false,
             restate: false,
             has_states: false,
+            states_held: false,
             seeks: 0,
             click: Click::default(),
             inputs: (0..MAX_INPUTS).map(|_| vec![0.0; MAX_BLOCK]).collect(),
@@ -1556,11 +1563,29 @@ impl Engine {
                 self.click_accent = accent;
                 self.click_output = output;
             }
+            Msg::StatesHeld => {
+                let beat = self.position;
+                for t in self.tracks.iter_mut() {
+                    if let Some(t) = t.get_mut().as_deref_mut() {
+                        for lane in t.automation.states.iter_mut() {
+                            let at = automation::state_at(&lane.points, beat + 1e-9);
+                            // A program change goes with the events of a
+                            // block: that one is given when the song plays.
+                            let program = at
+                                .and_then(|i| lane.changes.get(i as usize))
+                                .is_some_and(|c| c.program.is_some());
+                            lane.last = if program { None } else { at };
+                            lane.sent_early = None;
+                        }
+                    }
+                }
+                self.states_held = true;
+            }
             Msg::Play => {
                 self.playing = true;
                 self.chase = true;
                 self.reapply = true;
-                self.restate = true;
+                self.restate = !std::mem::take(&mut self.states_held);
                 self.count = None;
             }
             Msg::CountIn {

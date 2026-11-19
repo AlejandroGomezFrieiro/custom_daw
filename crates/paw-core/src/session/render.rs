@@ -456,6 +456,7 @@ impl Session {
         let mut live = LiveDevices::new();
         let latency;
         let mapper_states;
+        let mapper_devices;
         {
             // Nothing else is driving this engine, so make room by pumping it.
             let mut send = |msg| {
@@ -489,6 +490,7 @@ impl Session {
             );
             latency = mapper.latency as usize;
             mapper_states = mapper.state_main.clone();
+            mapper_devices = mapper.devices.clone();
         }
         // A state lane's saved states: the one in force at the start is
         // given now, the others where the render stops for them.
@@ -503,20 +505,36 @@ impl Session {
                 if (x - x.round()).abs() < 1e-6 { x.round() as u64 } else { x.ceil() as u64 }
             })
         };
-        for (device, state) in &first {
-            if let Some(device) = live.get_mut(device)
-                && let Err(err) = statelanes::give(device, state)
-            {
-                self.warnings
-                    .push(format!("state `{}` of a lane: {err:#}", state.name));
+        // Each state lane's state at the start is given now, whole, so
+        // that the plugin holds it from the first frame.
+        let starting = statelanes::states_at(project, opts.start);
+        for (id, state) in &starting {
+            let Some(device) = live.get_mut(id) else { continue };
+            match statelanes::give_all(device, state) {
+                Ok(params) => {
+                    if let Some(&slot) = mapper_devices.get(id) {
+                        for (param, value) in params {
+                            handle.send_while(Msg::SetParam { device: slot, param, value }, &mut engine);
+                        }
+                    }
+                }
+                Err(err) => self
+                    .warnings
+                    .push(format!("state `{}` of a lane: {err:#}", state.name)),
             }
         }
+        drop(first);
         settle_plugins(&mut engine, &live);
         // A plugin that loads in the background (a model) is given time
         // to be ready before the first frame.
         let settle = Duration::from_secs_f64(opts.settle.clamp(0.0, 600.0));
-        Settle::start(settle).wait(&mut live, None);
+        if starting.is_empty() {
+            Settle::start(settle).wait(&mut live, None);
+        } else {
+            Settle::new(settle).wait(&mut live, None);
+        }
         handle.send_while(Msg::Seek(opts.start), &mut engine);
+        handle.send_while(Msg::StatesHeld, &mut engine);
         handle.send_while(Msg::Play, &mut engine);
         // The handle stays with the engine: dropping it would leave the
         // engine's side of the channel without its other end.

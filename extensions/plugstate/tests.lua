@@ -429,3 +429,215 @@ test("plugstate: Soundshed Guitar presets of a pack, scenes and block models", f
   end
 end)
 
+
+-- --- state lanes ---------------------------------------------------------------
+-- A model, a preset or a snapshot on the device's state lane changes at its
+-- point as the song plays and in a render. Each test measures where the
+-- change lands in the rendered file.
+
+--- The left channel of a render at 16 bits, as numbers.
+local function left(info)
+  local data = T.read_file(info.path)
+  local at = data:find("data", 1, true) + 8
+  local out = {}
+  for i = at, #data - 1, 4 do
+    local lo, hi = data:byte(i, i + 1)
+    local v = lo + hi * 256
+    out[#out + 1] = v >= 32768 and v - 65536 or v
+  end
+  return out
+end
+
+--- The first frame (from 0) where two renders differ by more than `by`
+--- steps of 16 bits, or nil.
+local function first_difference(a, b, by)
+  for i = 1, math.min(#a, #b) do
+    if math.abs(a[i] - b[i]) > (by or 0) then return i - 1 end
+  end
+end
+
+local function rms(list, from, to)
+  local sum, n = 0, 0
+  for i = from + 1, math.min(to, #list) do sum, n = sum + list[i] ^ 2, n + 1 end
+  return math.sqrt(sum / math.max(n, 1)) / 32768
+end
+
+local function frames_per_beat(info) return info.sample_rate * 60 / paw.tempo.at(0) end
+
+local function render16() return T.render({ tail = 0, bits = 16 }) end
+
+test("plugstate: a state lane switches the NAM model on the frame of a bar, in every render", function()
+  local kind = kind_of("lv2", "^Neural Amp Modeler$")
+  local models = os.getenv("PAW_TEST_NAM_MODELS")
+  if not kind or not models then return "skipped: Neural Amp Modeler and its models not found" end
+  load()
+  local one, two = models .. "/BossLSTM-1x16.nam", models .. "/BossWN-feather.nam"
+  fresh()
+  local amp = long_guitar():add_device(kind)
+  paw.flush()
+  eq(plugstate.set(amp.id, nil, one), true, "the first model")
+  local first = render16()
+  eq(plugstate.set(amp.id, nil, two), true, "the second model")
+  local second = render16()
+  local a, b = left(first), left(second)
+
+  -- The first model from the start, the second from the second bar.
+  local lane = plugstate.lane_point(amp.id, 0, plugstate.lane_state(amp.id, nil, one))
+  plugstate.lane_point(amp.id, 4, plugstate.lane_state(amp.id, nil, two))
+  eq(#lane:states(), 2, "two states on the lane")
+  eq(lane:states()[1].call.method, "property.set", "a model is a property set, which lands on its frame")
+  local info = render16()
+  local mixed = left(info)
+  local at = math.floor(4 * frames_per_beat(info) + 0.5)
+  local changed = first_difference(mixed, a, 1)
+  eq(changed, at, "the sound changes on the first frame of the bar")
+  eq(first_difference(left(render16()), mixed), nil, "a second render is the same, sample for sample")
+  -- The new model plays from there: as the second render, once the
+  -- network has heard as much of the note.
+  local late = at + math.floor(info.sample_rate / 2)
+  T.near(rms(mixed, late, late + 4800), rms(b, late, late + 4800), 0.002, "the second model after the bar")
+end)
+
+test("plugstate: a state lane gives sfizz another instrument through its saved state, on its frame", function()
+  local kind = kind_of("vst3", "^sfizz$")
+  if not kind then return "skipped: sfizz not found" end
+  load()
+  fresh()
+  local track = paw.add_track({ name = "sfizz" })
+  -- An instrument lets go of its notes when it takes a new state: a note
+  -- starts a little after the point.
+  track:add_clip({ start = 0, length = 4, notes = { { pitch = "A3", start = 0, length = 2 }, { pitch = "A3", start = 2.25, length = 1.75 } } })
+  local sfizz = track:add_device(kind)
+  paw.flush()
+  local low, high = T.scratch .. "/low.sfz", T.scratch .. "/high.sfz"
+  T.write_file(low, "<region> sample=*sine\n")
+  T.write_file(high, "<region> sample=*sine transpose=12\n")
+  local lane = plugstate.lane_point(sfizz.id, 0, plugstate.lane_state(sfizz.id, nil, low))
+  plugstate.lane_point(sfizz.id, 2, plugstate.lane_state(sfizz.id, nil, high))
+  eq(lane:states()[2].state ~= nil, true, "the instrument is in a saved state, which the main thread loads")
+  local info = render16()
+  local seconds = 2 * 60 / paw.tempo.at(0)
+  T.near(T.frequency(info, 0.2, seconds - 0.05), 220, 5, "the first instrument up to the point")
+  T.near(T.frequency(info, seconds * 1.15, 2 * seconds - 0.05), 440, 10, "the second from it")
+  eq(first_difference(left(render16()), left(info)), nil, "a second render is the same")
+end)
+
+--- A state lane on an amp that changes only through its saved state:
+--- `a` from the start and `b` from beat 8 of a held note of 16 beats.
+--- Returns the renders of a and b alone, of the lane twice, and the frame
+--- of the point.
+local function amp_lane(kind, slot, a, b, prepare)
+  fresh()
+  local track = T.tone("guitar", 16, "A2")
+  paw.cursor.set_track(track.id)
+  local amp = track:add_device(kind)
+  paw.flush()
+  if prepare then prepare(amp) end
+  eq(plugstate.set(amp.id, slot, a), true, "the first preset")
+  local only_a = left(render16())
+  eq(plugstate.set(amp.id, slot, b), true, "the second preset")
+  local only_b = left(render16())
+  local sa, why = plugstate.lane_state(amp.id, slot, a)
+  eq(sa ~= nil, true, "a state of the first: " .. tostring(why))
+  plugstate.lane_point(amp.id, 0, sa)
+  plugstate.lane_point(amp.id, 8, (plugstate.lane_state(amp.id, slot, b)))
+  local info = render16()
+  local lane = left(info)
+  local again = left(render16())
+  return only_a, only_b, lane, again, math.floor(8 * frames_per_beat(info) + 0.5), info
+end
+
+test("plugstate: a state lane switches TONE3000's preset through its state, at the point, in every render", function()
+  local pkg, why = package("PAW_TEST_TONE3000")
+  if not pkg then return why end
+  local kind = kind_of("clap", "^TONE3000$")
+  if not kind then return "skipped: TONE3000 not found" end
+  load()
+  local factory = pkg .. "/share/tone3000/factory-presets"
+  local a, b, lane, again, at, info = amp_lane(kind, nil, factory .. "/Ampeg Bass Drive.t3kpreset",
+    factory .. "/Bogner Fullstack.t3kpreset")
+  local changed = first_difference(lane, a, 2)
+  print(string.format("      TONE3000: the sound changes at frame %s, the point is at %d", tostring(changed), at))
+  eq(changed ~= nil and changed >= at and changed < at + 512, true,
+    "the sound changes within a block of the point: " .. tostring(changed) .. " for " .. at)
+  eq(first_difference(again, lane, 2), nil, "a second render is the same")
+  local late = at + info.sample_rate
+  T.near(rms(lane, late, late + 9600), rms(b, late, late + 9600), 0.003, "the second preset after the point")
+  T.near(rms(lane, 9600, at - 9600), rms(a, 9600, at - 9600), 0.003, "the first before it, from the start")
+end)
+
+test("plugstate: a state lane switches Soundshed Guitar's scene through its state, at the point, in every render", function()
+  local pkg, why = package("PAW_TEST_SOUNDSHED")
+  if not pkg then return why end
+  local kind = kind_of("vst3", "^Soundshed Guitar$")
+  if not kind then return "skipped: Soundshed Guitar not found" end
+  load()
+  local a, b, lane, again, at, info = amp_lane(kind, "scene", "Rhythm", "Solo", function(amp)
+    local found = plugstate.search(plugstate.slot(amp.id), "black album")
+    eq(#found, 1, "the preset of the pack")
+    eq(plugstate.set(amp.id, "preset", found[1].path), true, "a preset with scenes")
+  end)
+  -- Two instances of Soundshed do not give the same samples, but each
+  -- render of the lane does: where the change lands is where the level
+  -- leaves the first scene's, in windows of 128 frames.
+  local changed
+  for w = 9600, #lane - 128, 128 do
+    local x, y = rms(lane, w, w + 128), rms(a, w, w + 128)
+    if math.abs(x - y) > 0.3 * y then changed = w break end
+  end
+  print(string.format("      Soundshed: the level changes in the window from frame %s, the point is at %d", tostring(changed), at))
+  -- The plugin moves to a new scene over a few milliseconds of its own.
+  eq(changed ~= nil and changed >= at - 128 and changed < at + 2048, true,
+    "the sound changes at the point: " .. tostring(changed) .. " for " .. at)
+  eq(first_difference(again, lane, 2), nil, "a second render is the same")
+  local late = at + info.sample_rate
+  T.near(rms(lane, late, late + 9600), rms(b, late, late + 9600), 0.003, "the second scene after the point")
+end)
+
+--- Play from the start and wait until the playhead is past `beat` and
+--- `done()` holds (four seconds at most); say whether it did.
+local function plays_past(beat, done)
+  api.transport_seek(0)
+  api.transport_play()
+  T.after(function() api.transport_stop() end)
+  local deadline = api.now() + 4000
+  while api.now() < deadline do
+    api.wait(20)
+    if api.transport_get().position > beat and done() then
+      api.transport_stop()
+      return true
+    end
+  end
+  api.transport_stop()
+  return false
+end
+
+test("plugstate: as the song plays, a state lane switches the NAM model and TONE3000's preset at their points", function()
+  local kind = kind_of("lv2", "^Neural Amp Modeler$")
+  local models = os.getenv("PAW_TEST_NAM_MODELS")
+  if not kind or not models then return "skipped: Neural Amp Modeler and its models not found" end
+  load()
+  local one, two = models .. "/BossLSTM-1x16.nam", models .. "/BossWN-feather.nam"
+  fresh()
+  local amp = long_guitar():add_device(kind)
+  paw.flush()
+  plugstate.lane_point(amp.id, 0, plugstate.lane_state(amp.id, nil, one))
+  plugstate.lane_point(amp.id, 1, plugstate.lane_state(amp.id, nil, two))
+  eq(plays_past(1, function() return plugstate.slot(amp.id).value == two end), true,
+    "NAM holds the second model once the playhead is past its point")
+  eq(plays_past(0, function() return plugstate.slot(amp.id).value == one end), true,
+    "and the first again when the song plays from the start")
+
+  local pkg = package("PAW_TEST_TONE3000")
+  local t3k = pkg and kind_of("clap", "^TONE3000$")
+  if not t3k then return end
+  local factory = pkg .. "/share/tone3000/factory-presets"
+  local a, b = factory .. "/Ampeg Bass Drive.t3kpreset", factory .. "/Bogner Fullstack.t3kpreset"
+  fresh()
+  local tone = long_guitar():add_device(t3k)
+  paw.flush()
+  plugstate.lane_point(tone.id, 0, (plugstate.lane_state(tone.id, nil, a)))
+  plugstate.lane_point(tone.id, 1, (plugstate.lane_state(tone.id, nil, b)))
+  eq(plays_past(1, function() return plugstate.slot(tone.id).value == b end), true,
+    "TONE3000 holds the second preset once the playhead is past its point")
+end)

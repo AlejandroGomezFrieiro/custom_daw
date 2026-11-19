@@ -87,6 +87,50 @@ pub(crate) fn driven(project: &Project) -> Vec<Id> {
         .collect()
 }
 
+/// The state each active state lane of a project gives at `beat`, with its
+/// device.
+pub(crate) fn states_at(project: &Project, beat: f64) -> Vec<(Id, Arc<LaneState>)> {
+    let mut out = Vec::new();
+    for track in project.all_tracks() {
+        if track.automation == AutoMode::Off {
+            continue;
+        }
+        for lane in track.lanes.iter().filter(|l| is_active(l)) {
+            if let Target::State { device } = lane.target
+                && let Some(state) = index_at(lane, beat).and_then(|i| lane.states.get(i))
+            {
+                out.push((device, state.clone()));
+            }
+        }
+    }
+    out
+}
+
+/// Give a device the whole of a state from the main thread, before a
+/// render starts: its saved state, its request, and the parameters to set
+/// (returned, to send to the render's engine).
+pub(crate) fn give_all(live: &mut LiveDevice, state: &LaneState) -> Result<Vec<(u32, f32)>> {
+    if let Some(controller) = live.controller.as_mut() {
+        if let Some(text) = &state.state {
+            let bytes = BASE64.decode(text).context("a lane's state is base64")?;
+            controller.load_state(&bytes)?;
+        }
+        if let Some(call) = &state.call {
+            controller.call(&call.method, call.data.as_bytes())?;
+        }
+    }
+    let mut params = Vec::new();
+    for (key, value) in &state.params {
+        if let Some(index) = live.params.iter().position(|p| &p.key == key) {
+            params.push((index as u32, *value as f32));
+            if let Some(controller) = live.controller.as_mut() {
+                controller.set_value(index, *value);
+            }
+        }
+    }
+    Ok(params)
+}
+
 /// Give a device the main-thread part of a state: its saved state, and a
 /// request that could not be prepared for the audio thread. Returns the
 /// parameters to set again after a saved state, which sets them all.
