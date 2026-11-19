@@ -1,8 +1,8 @@
 -- Plugins offline: opening a project without them, setting one device
 -- offline, and remembering the plugins that could not be loaded.
 --
---   paw.open("song.json", { plugins_offline = true })   -- every plugin offline
---   :edit song.json offline                             -- the same
+--   paw.open("song", { plugins_offline = true })   -- every plugin offline
+--   :edit song offline                                  -- the same
 --   :plugins.online                                     -- bring them all up
 --   :device.offline                                     -- the selected device, on or off
 --   device:set_offline(true)

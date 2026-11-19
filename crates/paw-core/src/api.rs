@@ -22,7 +22,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::grid::{self, Caps, Color, Grid, Highlight, Highlights, Rect, Style};
 use crate::io::Io;
-use crate::model::{Control, Id, Note, NoteAttr};
+use crate::model::{ClipContent, Control, Id, Note, NoteAttr};
 use crate::session::notes::{NoteChange, NoteRange, NotesEdit};
 use crate::session::{RenderOpts, Session};
 use crate::watchdog::{self, Watchdog};
@@ -701,6 +701,30 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn clip_collect(_, sh, () => ()) {
             Ok(sh.session.borrow_mut().clip_collect())
         }
+        // Make every track read from a folder outside the project, and every
+        // chain of devices read from a file outside it, the project's own.
+        // Returns how many tracks and how many chains.
+        fn track_collect(_, sh, () => ()) {
+            Ok(sh.session.borrow_mut().track_collect())
+        }
+        // Add the track of a track folder outside the project (a folder with
+        // a `track.json`) at `index` (from 1; the end when nil). The project
+        // refers to the folder until the track's first edit. Returns its id.
+        fn track_import_folder(_, sh, (folder, index) => (String, Option<usize>)) {
+            sh.session.borrow_mut().track_import_folder(Path::new(&folder), index).lua()
+        }
+        // Give a track the devices of a chain file (a `devices.json`). With
+        // `refer`, the track refers to the file until the chain's first edit.
+        // Returns how many devices.
+        fn track_chain_file(_, sh, (track, file, refer) => (Id, String, Option<bool>)) {
+            sh.session.borrow_mut().track_chain_file(track, Path::new(&file), refer.unwrap_or(true)).lua()
+        }
+        // Write a track's devices as a chain file: `file` (a `devices.json`)
+        // and the `.state` files of the plugins beside it. Returns the files.
+        fn chain_write(lua, sh, (track, file) => (Id, String)) {
+            let written = sh.session.borrow_mut().chain_write(track, Path::new(&file)).lua()?;
+            to_lua(lua, &written)
+        }
         // The files of the open project that changed outside paw and are not
         // acted on yet: paths in its folder, or full paths outside it.
         fn project_changed_files(lua, sh, () => ()) {
@@ -922,6 +946,29 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // Audio clip operations that leave the source file alone (session/clipops.rs).
         fn clip_reverse(lua, sh, id => Id) {
             to_lua(lua, &sh.session.borrow_mut().clip_reverse(id).lua()?)
+        }
+        // Add an edit to an audio clip's edit list (`edits.rs`): `{ kind =
+        // "gain", from, to, db }` or `{ kind = "pencil", at, channel, values }`,
+        // in seconds from where the clip starts in its sound. Returns how many
+        // edits it has.
+        fn clip_edit_add(lua, sh, (id, edit) => (Id, LuaValue)) {
+            let edit: crate::edits::AudioEdit = from_lua(lua, edit)?;
+            sh.session.borrow_mut().clip_edit_add(id, edit).lua()
+        }
+        // Take away an audio clip's edit list. Returns how many edits it had.
+        fn clip_edits_clear(_, sh, id => Id) {
+            sh.session.borrow_mut().clip_edits_clear(id).lua()
+        }
+        // An audio clip's edit list, as `clip_edit_add` takes its edits (with
+        // times in seconds of its sound).
+        fn clip_edits(lua, sh, id => Id) {
+            let session = sh.session.borrow();
+            let clip = session.project.clip(id).ok_or_else(|| mlua::Error::runtime(format!("no clip {id}")))?;
+            let edits = match &clip.content {
+                ClipContent::Audio { edits, .. } => edits.clone(),
+                _ => Vec::new(),
+            };
+            to_lua(lua, &edits)
         }
         fn clip_normalize(_, sh, (id, level) => (Id, Option<f64>)) {
             sh.session.borrow_mut().clip_normalize(id, level.unwrap_or(0.0)).lua()

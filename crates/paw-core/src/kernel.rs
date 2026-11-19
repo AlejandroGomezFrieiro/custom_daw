@@ -56,6 +56,9 @@ pub enum InputEvent {
     /// A cell has another size in pixels (the terminal's font changed).
     CellSize(u16, u16),
     Paste(String),
+    /// The terminal or the window got the focus of the desktop (true) or
+    /// lost it (false): mode 1004, or the window's focus event.
+    Focus(bool),
 }
 
 pub enum KernelMsg {
@@ -250,6 +253,7 @@ impl Kernel {
                 }
                 Ok(())
             }
+            InputEvent::Focus(on) => self.call::<()>("focus", on),
         };
         if let Err(err) = result {
             self.report("input", err);

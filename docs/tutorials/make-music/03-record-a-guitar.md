@@ -92,7 +92,7 @@ Here, we keep bar 1 of the second take and bar 2 of the first take.
 3. Press `r` to disarm the track, and `<A-i>` to stop the monitor.
 4. Press `gs` and `<Space>`, and `<Space>` to stop.
    - The guitar riff plays with the song and fades out at the end of bar 2.
-5. Type `:w with-guitar.json` and press Enter.
+5. Type `:w with-guitar` and press Enter.
 
 ## What we made
 

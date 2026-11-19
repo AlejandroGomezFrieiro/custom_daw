@@ -696,7 +696,7 @@ On X11, you can drag files from a file manager into the window:
 | --- | --- |
 | A sound file | A new track for each file, with the clip at the edit cursor. |
 | A MIDI file | Its tracks, as `:import` puts them. |
-| A project (`.json`) | Opens it, after the question about changes that are not saved. |
+| A project (a project folder, its `project.toml`, or a `.json` file) | Opens it, after the question about changes that are not saved. |
 | Other files | The status line tells that it did not take them. |
 
 The window does not know the position of the pointer at a drop, because

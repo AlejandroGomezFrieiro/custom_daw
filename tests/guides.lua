@@ -116,10 +116,10 @@ test("make music 1: the first song has drums, bass and keys in a loop of four ba
   step("gs")
   eq(listen() > 0.01, true, "the song plays")
 
-  local file = T.scratch .. "/first-song.json"
+  local file = T.scratch .. "/first-song"
   step(":w " .. file .. "<CR>")
-  eq(file_size(file) > 0, true, "the project is saved")
-  eq(paw.project.path, file, "paw works in the saved file")
+  eq(file_size(file .. "/project.toml") > 0, true, "the project is saved")
+  eq(paw.project.path, file .. "/project.toml", "paw works in the saved folder")
 end)
 
 test("make music 2: a lead played on a MIDI keyboard is recorded over the loop and quantized", function()
@@ -177,8 +177,8 @@ test("make music 2: a lead played on a MIDI keyboard is recorded over the loop a
   eq(lead.armed, false, "the lead is not armed")
   step("gs")
   eq(listen() > 0.01, true, "the song plays with the lead")
-  step(":w " .. T.scratch .. "/with-lead.json<CR>")
-  eq(file_size(T.scratch .. "/with-lead.json") > 0, true, "the song is saved")
+  step(":w " .. T.scratch .. "/with-lead<CR>")
+  eq(file_size(T.scratch .. "/with-lead/project.toml") > 0, true, "the song is saved")
 end)
 
 test("make music 3: a guitar through an amp chain is recorded in two takes and comped, with a fade", function()
@@ -239,8 +239,8 @@ test("make music 3: a guitar through an amp chain is recorded in two takes and c
   eq(guitar.armed or guitar.monitor, false, "the guitar is no longer armed or monitored")
   step("gs")
   eq(listen() > 0.01, true, "the song plays with the guitar")
-  step(":w " .. T.scratch .. "/with-guitar.json<CR>")
-  eq(file_size(T.scratch .. "/with-guitar.json") > 0, true, "the song is saved")
+  step(":w " .. T.scratch .. "/with-guitar<CR>")
+  eq(file_size(T.scratch .. "/with-guitar/project.toml") > 0, true, "the song is saved")
 end)
 
 test("make music 4: the song is arranged into verse and chorus, with markers, a new tempo and a jump", function()
@@ -277,8 +277,8 @@ test("make music 4: the song is arranged into verse and chorus, with markers, a 
   step("gp")
   eq(paw.transport.position, 32, "the playhead is at the cursor")
   eq(listen() > 0.01, true, "the song plays from the second verse")
-  step(":w " .. T.scratch .. "/arranged.json<CR>")
-  eq(file_size(T.scratch .. "/arranged.json") > 0, true, "the song is saved")
+  step(":w " .. T.scratch .. "/arranged<CR>")
+  eq(file_size(T.scratch .. "/arranged/project.toml") > 0, true, "the song is saved")
 end)
 
 test("make music 5: the song is mixed, rendered to WAV and MP3, and the file plays", function()
@@ -326,9 +326,10 @@ test("make music 5: the song is mixed, rendered to WAV and MP3, and the file pla
 
   local folder = T.scratch .. "/my-songs"
   os.execute("mkdir -p '" .. folder .. "'")
-  step(":w " .. folder .. "/my-song.json<CR>")
-  step(":render " .. folder .. "/my-song.wav<CR>")
-  eq(wait_for_file(folder .. "/my-song.wav"), true, "the WAV file is rendered")
+  step(":w " .. folder .. "/my-song<CR>")
+  -- A name alone goes into the folder of the song.
+  step(":render my-song.wav<CR>")
+  eq(wait_for_file(folder .. "/my-song/my-song.wav"), true, "the WAV file is rendered in the folder of the song")
   local said, until_said = nil, api.now() + 10000
   while not said and api.now() < until_said do
     for _, m in ipairs(paw.ui.messages) do
@@ -340,17 +341,17 @@ test("make music 5: the song is mixed, rendered to WAV and MP3, and the file pla
   if paw.health and paw.health.executable and not paw.health.executable("ffmpeg") then
     print("      (no ffmpeg: the MP3 step is not checked)")
   else
-    step(":render " .. folder .. "/my-song.mp3<CR>")
-    eq(wait_for_file(folder .. "/my-song.mp3"), true, "the MP3 file is rendered")
+    step(":render my-song.mp3<CR>")
+    eq(wait_for_file(folder .. "/my-song/my-song.mp3"), true, "the MP3 file is rendered")
   end
 
-  step(":e " .. folder .. "<CR>", "/my-song.wav<CR>", "gh")
+  step(":e .<CR>", "/my-song.wav<CR>", "gh")
   local state, deadline = paw.audition.state(), api.now() + 5000
   while state and state.state == "loading" and api.now() < deadline do
     paw.wait(20)
     state = paw.audition.state()
   end
-  eq(state and state.file, folder .. "/my-song.wav", "gh plays the rendered file")
+  eq(state and state.file, folder .. "/my-song/my-song.wav", "gh plays the rendered file")
   eq(state.state, "playing", "and it plays")
   step("gh")
   eq((paw.audition.state() or {}).state ~= "playing", true, "gh again stops it")

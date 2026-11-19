@@ -101,6 +101,10 @@ end
 --- safety copy of it, newest first: { file, path, kind, time }.
 function M.alternatives(path)
   local out = {}
+  -- A project folder is known by its project.toml, by its full path.
+  if paw.project.is_folder(path) or (paw.files and paw.files.is_dir(path)) then
+    path = paw.files.path((tostring(path):gsub("/+$", ""):gsub("/project%.toml$", ""))) .. "/project.toml"
+  end
   for _, entry in ipairs(api.read_dir(M.dir)) do
     local file = M.dir .. "/" .. entry.name
     local handle = not entry.is_dir and entry.name:match("%.json$") and io.open(file)
@@ -129,7 +133,7 @@ function M.offer(path, err)
   if #alternatives == 0 then return 0 end
   M.offered = { path = path, error = err, list = alternatives }
   -- What can be done first: the reason is long, and a narrow line cuts it.
-  paw.notify(string.format("%s will not open; `:recover` opens %s instead (%s)", path:match("[^/]+$") or path,
+  paw.notify(string.format("%s will not open; `:recover` opens %s instead (%s)", (path:gsub("/+$", ""):gsub("/project%.toml$", ""):match("[^/]+$")) or path,
     #alternatives == 1 and ("its " .. alternatives[1].kind) or "its backup or safety copy", err), "error")
   return #alternatives
 end

@@ -622,11 +622,13 @@ function M.save_as(after)
     directory = true,
     on_choose = function(dir)
       local p = api.project_get()
-      local name = p.path and p.path:match("([^/]+)$") or ((p.name ~= "" and p.name or "song") .. ".json")
-      paw.ui.input({ prompt = "File name: ", text = name }, function(typed)
+      -- A project is a folder: its name is the folder's.
+      local name = p.path and (p.path:gsub("/project%.toml$", ""):gsub("%.json$", ""):match("([^/]+)$"))
+        or (p.name ~= "" and p.name or "song")
+      paw.ui.input({ prompt = "Folder name: ", text = name }, function(typed)
         if typed == "" then return end
-        if not typed:match("%.[%w]+$") then typed = typed .. ".json" end
-        paw.notify("saved " .. paw.project.save(dir .. "/" .. typed))
+        local saved, note = paw.project.write(dir .. "/" .. typed)
+        paw.notify(note and (note .. ": " .. saved) or ("saved " .. saved))
         if after then after() end
       end)
     end,
@@ -1715,6 +1717,12 @@ end
 
 --- Type keys as if at the keyboard: what a menu entry for an operator does
 --- to a selection.
+--- The window got the focus of the desktop (true), or lost it.
+function A.focus(on)
+  paw.ui.has_focus = on
+  paw.emit("ui.focus", { focused = on })
+end
+
 function A.keys(keys)
   -- Keys typed in the main window are not for a view in a window of its
   -- own, which sends its own (`paw.canvas.key`): they go to the window
@@ -1762,7 +1770,7 @@ function A.leave(how, what)
   end
   if how ~= "save" then return go() end
   if api.project_get("path") then
-    paw.project.save()
+    paw.project.write()
     return go()
   end
   M.save_as(go)
@@ -1774,8 +1782,8 @@ end
 function A.chosen(kind, path)
   remember_dir(path)
   if kind == "saveas" then
-    if not path:match("%.[%w]+$") then path = path .. ".json" end
-    paw.notify("saved " .. paw.project.save(path))
+    local saved, note = paw.project.write(path)
+    paw.notify(note and (note .. ": " .. saved) or ("saved " .. saved))
   else
     paw.commands.run("import", { path })
   end
@@ -1798,7 +1806,7 @@ function A.drop(paths, row, beat)
       sounds[#sounds + 1] = path
     elseif paw.midifile.is_midi_file(path) then
       midis[#midis + 1] = path
-    elseif path:lower():match("%.json$") then
+    elseif path:lower():match("%.json$") or paw.project.is_folder(path) then
       out.open = out.open or path
     else
       out.refused = out.refused + 1

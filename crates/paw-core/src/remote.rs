@@ -250,7 +250,8 @@ impl Frontend for RemoteFrontend {
 /// `{"key": "a"}`, `{"paste": "text"}`, `{"resize": [w, h]}`, or
 /// `{"mouse": {"kind": "down", "button": "left", "x": 3, "y": 4, "mods": "C"}}`
 /// (with `"px"` and `"py"`, where the pointer is in pixels, when the
-/// terminal reports that), or `{"cell": [w, h]}`, a cell's new size in pixels.
+/// terminal reports that), `{"cell": [w, h]}`, a cell's new size in pixels,
+/// or `{"focus": true}`, the terminal got the focus (false: lost it).
 pub fn input_of(value: &Value) -> Option<InputEvent> {
     if let Some(key) = value["key"].as_str() {
         return Some(InputEvent::Key(key.to_string()));
@@ -264,6 +265,9 @@ pub fn input_of(value: &Value) -> Option<InputEvent> {
             width.clamp(1, 1000) as u16,
             height.clamp(1, 1000) as u16,
         ));
+    }
+    if let Some(on) = value["focus"].as_bool() {
+        return Some(InputEvent::Focus(on));
     }
     if let (Some(width), Some(height)) = (value["cell"][0].as_u64(), value["cell"][1].as_u64()) {
         return Some(InputEvent::CellSize(width.min(1000) as u16, height.min(1000) as u16));
@@ -287,6 +291,7 @@ pub fn input_json(event: &InputEvent) -> Value {
         InputEvent::Paste(text) => json!({ "paste": text }),
         InputEvent::Resize(width, height) => json!({ "resize": [width, height] }),
         InputEvent::CellSize(width, height) => json!({ "cell": [width, height] }),
+        InputEvent::Focus(on) => json!({ "focus": on }),
         InputEvent::Mouse {
             kind,
             button,
@@ -436,6 +441,7 @@ mod tests {
                 pixel: Some((75, 190)),
             },
             InputEvent::CellSize(10, 21),
+            InputEvent::Focus(true),
         ] {
             let back = input_of(&input_json(&event)).unwrap();
             assert_eq!(format!("{back:?}"), format!("{event:?}"));

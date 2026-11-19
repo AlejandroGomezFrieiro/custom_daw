@@ -338,6 +338,12 @@ function K.mouse(event)
   paw.limit.guard("the mouse", paw.ui.mouse, event)
 end
 
+--- The terminal or the window got the focus of the desktop, or lost it.
+function K.focus(on)
+  paw.ui.has_focus = on
+  paw.emit("ui.focus", { focused = on })
+end
+
 function K.resize(width, height)
   paw.emit("ui.resized", { width = width, height = height })
 end

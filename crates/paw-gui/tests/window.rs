@@ -1194,24 +1194,24 @@ fn closing_with_a_project_file_saves_it() {
         let mut dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("window/closing-saves-files");
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
-        dir.push("song.json");
+        dir.push("song");
         dir
     };
     let mut w = scene!("closing-saves", &saved_song(&file));
     w.ctl("paw.add_track({ name = 'Added after saving' })");
     w.expect("the added track unsaved", "paw.api.project_get().modified");
-    let saved = fs::read_to_string(&file).unwrap();
+    let saved = fs::read_to_string(file.join("project.toml")).unwrap();
     assert!(
-        !saved.contains("Added after saving"),
-        "the file already holds the change"
+        !saved.contains("Added-after-saving"),
+        "the folder already holds the change"
     );
 
     w.close_window();
     w.click_last_text("Save");
     w.wait_gone("after Save");
-    let saved = fs::read_to_string(&file).unwrap();
+    let saved = fs::read_to_string(file.join("project.toml")).unwrap();
     assert!(
-        saved.contains("Added after saving"),
+        saved.contains("Added-after-saving"),
         "Save did not write the change into {}",
         file.display()
     );

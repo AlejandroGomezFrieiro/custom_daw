@@ -110,11 +110,12 @@ same.
 
 ## Save the song
 
-1. Type `:w first-song.json` and press Enter.
+1. Type `:w first-song` and press Enter.
+   - paw makes the folder `first-song` and saves the song in it.
    - paw says `saved first-song`, and the status line shows the name of
      the project.
 
-To open the song again later, type `paw first-song.json` in the folder.
+To open the song again later, type `paw first-song` in the same folder.
 The finished song of this lesson is also in the practice project
 `examples/tutorials/make-music/1-first-song.lua`. To open it, type
 `:example make-music/1-first-song`.

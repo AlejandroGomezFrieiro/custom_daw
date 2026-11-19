@@ -8,6 +8,18 @@ local tmp = os.getenv("TMPDIR") or "/tmp"
 local scratch = tmp .. "/paw-test-" .. os.time() .. "-" .. math.floor(api.now() * 1000)
 os.execute("mkdir -p '" .. scratch .. "'")
 
+-- Every file of the checkout outside `target/` and `.git`: at the end,
+-- one that is new is a file a test left behind (a clip file named by a
+-- clip's id was once written into the current directory).
+local function checkout_files()
+  local out, pipe = {}, io.popen("find . -path ./target -prune -o -path ./.git -prune -o -type f -print 2>/dev/null")
+  if not pipe then return nil end
+  for line in pipe:lines() do out[line] = true end
+  pipe:close()
+  return out
+end
+local files_before = checkout_files()
+
 local tests, failed = {}, 0
 local function test(name, fn) tests[#tests + 1] = { name = name, fn = fn } end
 -- Tests that run after all the others: those that load every extension.
@@ -1459,7 +1471,7 @@ test("the built-in commands do what their descriptions say", function()
   eq(paw.opt.zoom, 4, "zoom")
   paw.opt.grid, paw.opt.zoom = 1, 2
 
-  local song = scratch .. "/commands.json"
+  local song = scratch .. "/commands"
   run("write " .. song)
   run("new")
   eq(#paw.tracks(), 0, "new")
@@ -2877,5 +2889,18 @@ for _, t in ipairs(tests) do
   end
 end
 os.execute("rm -rf '" .. scratch .. "'")
+local left = {}
+for path in pairs(files_before and checkout_files() or {}) do
+  -- Code and pages that a person writes while the suite runs are not left
+  -- behind by a test.
+  if not files_before[path] and not path:match("%.rs$") and not path:match("%.lua$") and not path:match("%.md$") then
+    left[#left + 1] = path
+  end
+end
+table.sort(left)
+if #left > 0 then
+  failed = failed + 1
+  print("FAIL  the tests leave no new files in the checkout\n      left: " .. table.concat(left, ", "))
+end
 print(failed == 0 and "\nall passed" or ("\n" .. failed .. " failed"))
 api.quit(failed == 0 and 0 or 1)

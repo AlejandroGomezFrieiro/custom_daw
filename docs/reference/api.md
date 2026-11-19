@@ -38,12 +38,14 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.import_audio(path, opts)`: Bring a sound file into the project: on a new track named after the file (or on `opts.track`), at the cursor (or `opts.start`). Returns the clip.
 - `paw.inspect(value, indent, seen)`: Render any value as readable Lua-like text.
 - `paw.is_audio_file(path)`: True if a path names a sound file, from its file ending.
+- `paw.is_chain_file(path)`: True if a path names a chain file of devices: a `devices.json`.
 - `paw.lane(id)`: The automation lane of an id, as a `paw.Lane`.
 - `paw.notify(text, level)`: Show a message. `level` is "info" (default), "warn" or "error".
 - `paw.off(id)`: Stop a listener: `id` is the value that `paw.on` or `paw.once` returned.
 - `paw.on(pattern, fn, opts)`: Listen for an event. Returns a handle for `paw.off`.
 - `paw.once(pattern, fn)`: Listen for an event once: the handler is removed after its first call.
 - `paw.open(path, opts)`: Open what a path names: a sound file as a new track, anything else as a project, with plugins offline as `opts` says (see `paw.loading.open`).
+- `paw.open_chain(path)`: Open a chain file (a `devices.json`) alone, as a new project with no file: one track with its devices, and the device panel on it. `:w` writes the chain back to its file. Returns the track.
 - `paw.redo`: the same as `paw.api.redo`.
 - `paw.render(path, opts)`: Render the project to a file, and render stems. See `paw/render.lua` for the options. `paw.render_status()` and `paw.render_cancel()` control a render that runs in the background. `paw.render_ranges` contains the named ranges that a render can use.
 - `paw.render_cancel()`: Stop the render that runs in the background.
@@ -614,7 +616,8 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 ## Module paw.external
 
-- `paw.external.act()`: Act on the changes as the option says: called at the next key after them.
+- `paw.external.act()`: Act on the changes as the option says: called when paw gets the focus, or at the next key after them.
+- `paw.external.asking()`: Whether paw asks now what to do with the changes.
 - `paw.external.keep()`: Keep paw's version of the project.
 - `paw.external.reload()`: Read the changed files again, as one undo step.
 
@@ -629,7 +632,12 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.files.path(name)`: The full path of a name that the user typed: `~` is the home folder, and a relative name is in `paw.files.here()`.
 
   ```lua
-  paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" beside song.json
+  paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" in the folder of the project
+  ```
+- `paw.files.project_path(name)`: The full path of a project's name that the user typed, as `:w` takes it: as `path`, but a relative name goes beside a project folder, not into it.
+
+  ```lua
+  paw.files.project_path("take2")  -- "/home/me/songs/take2" beside songs/song
   ```
 - `paw.files.sound_info(path, stat)`: What a sound file's header says: `{ rate, channels, seconds }`, or nil for a file that is not one that can be read.
 - `paw.files.watch()`: Start to watch the cursor, when a files buffer exists.
@@ -1214,14 +1222,18 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 ## Module paw.media
 
+- `paw.media.clear_edits(clip)`: Take away an audio clip's edit list. Returns how many edits it had.
 - `paw.media.collect()`: Copy every file from outside the project's folder into `media` beside it and point the clips at the copies. One undo step. Returns `{ copied, missing, dir }`.
+- `paw.media.edits(clip)`: An audio clip's edit list: `{ { kind, ... } }`.
+- `paw.media.gain_part(clip, from, to, db)`: A gain of `db` on a part of an audio clip, from `from` to `to` seconds of what it plays, in its edit list. Returns how many edits it has.
 - `paw.media.glue(clips)`: Join audio clips of one track into one clip that plays a new file. With a list, join the given clips. With one clip, join it and each audio clip that touches or overlaps it. Returns { id, file, glued }.
 - `paw.media.list()`: Every file the project plays: `{ path, missing, inside }`.
 - `paw.media.missing()`: Files the project's clips play that are not there, once each.
 - `paw.media.normalize(clip, level)`: Bring the loudest sample an audio clip plays to `level` dB (0) by its gain. Returns the new gain.
+- `paw.media.pencil(clip, at, values, channel)`: Samples drawn over an audio clip's (a pencil fix), from `at` seconds of what it plays, in one channel (0 or 1) or both, in its edit list. Returns how many edits it has.
 - `paw.media.relink(from, to)`: Make the clips that play `from` play the file `to`, and find the other files that paw cannot find in the folder of `to`. One undo step. Returns `{ clips, found, missing }`.
 - `paw.media.relink_pick()`: Select a file for a file that paw cannot find, or a directory where paw finds all of them.
-- `paw.media.reverse(clip)`: Play an audio clip backwards, from a new reversed copy of its part of the file.
+- `paw.media.reverse(clip)`: Play an audio clip backwards: a `reverse` in its edit list, which leaves its file as it is (a second reverse takes it away). Returns `{ edits }`.
 - `paw.media.search(dir)`: Find in a directory tree each file that paw cannot find. One undo step. Returns `{ found, missing }`.
 
 ## Module paw.midifile
@@ -1954,6 +1966,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.audio_watch(opts)`: With `{ auto = false }`, paw does not open again a device that returns by itself. `period` is the interval between checks, in milliseconds.
 - `paw.api.automation_hold(track, target, device, param, on)`: A control is held (a fader under the pointer) or let go: in touch mode it writes automation for as long as it is held. The control is named as a lane's target is.
 - `paw.api.canvas_export(path, format, pages, scale)`: Write drawings (the operations of `paw.canvas.paint`) to a file: `format` "pdf" (one page for each drawing), "svg" or "png" (the first). Each page is `{ ops, width, height }` in pixels. `scale` is the points for one pixel in a PDF (0.75: 96 pixels to the inch).
+- `paw.api.chain_write(track, file)`: Write a track's devices as a chain file: `file` (a `devices.json`) and the `.state` files of the plugins beside it. Returns the files.
 - `paw.api.checkpoint_delete(file)`
 - `paw.api.checkpoint_dir()`
 - `paw.api.checkpoint_list()`
@@ -1963,6 +1976,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.clip_add_notes(id, notes)`
 - `paw.api.clip_collect()`: Make every clip that refers to a MIDI clip file outside the project the project's own. Returns how many.
 - `paw.api.clip_controls(id)`: Controller, pitch wheel and pressure moves of a MIDI clip: { start, type = "cc" | "bend" | "pressure", number, value }.
+- `paw.api.clip_edit_add(id, edit)`: Add an edit to an audio clip's edit list (`edits.rs`): `{ kind = "gain", from, to, db }` or `{ kind = "pencil", at, channel, values }`, in seconds from where the clip starts in its sound. Returns how many edits it has.
+- `paw.api.clip_edits(id)`: An audio clip's edit list, as `clip_edit_add` takes its edits (with times in seconds of its sound).
+- `paw.api.clip_edits_clear(id)`: Take away an audio clip's edit list. Returns how many edits it had.
 - `paw.api.clip_get(id)`
 - `paw.api.clip_glue(ids)`
 - `paw.api.clip_list(track)`: --- clips ---
@@ -2172,7 +2188,10 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.timer_stop(id)`
 - `paw.api.track_add(opts)`
 - `paw.api.track_attr_delay(id, attr)`: The milliseconds that the attribute map of the track moves a note with `attr` (below 0: earlier). 0 when the track has no attribute map.
+- `paw.api.track_chain_file(track, file, refer)`: Give a track the devices of a chain file (a `devices.json`). With `refer`, the track refers to the file until the chain's first edit. Returns how many devices.
+- `paw.api.track_collect()`: Make every track read from a folder outside the project, and every chain of devices read from a file outside it, the project's own. Returns how many tracks and how many chains.
 - `paw.api.track_get(id, key)`: A track as a table. With `key`, only that entry of the table: this is quicker, because the table lists each clip of the track.
+- `paw.api.track_import_folder(folder, index)`: Add the track of a track folder outside the project (a folder with a `track.json`) at `index` (from 1; the end when nil). The project refers to the folder until the track's first edit. Returns its id.
 - `paw.api.track_list()`: --- tracks ---
 - `paw.api.track_meter(id)`
 - `paw.api.track_move(id, index)`

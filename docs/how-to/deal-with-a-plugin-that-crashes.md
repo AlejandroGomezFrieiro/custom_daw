@@ -25,7 +25,7 @@ it shows as stopped. Do the same steps.
 ## A project does not open because of a plugin
 
 1. Open the project with its plugins offline:
-   `:edit /home/ana/songs/demo/demo.json offline`.
+   `:edit /home/ana/songs/demo offline`.
 2. Set the plugins online one at a time: press `o` on each plugin in the
    device panel. When paw crashes or a plugin stops, you know which
    plugin it is.
