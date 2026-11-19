@@ -76,6 +76,7 @@ clip. `:set undo_steps=200` removes the oldest steps at once.
 | `paw.opt.midi_follows_selection` | `true` | The selected track plays the MIDI keyboard when no track is armed. `false`: only armed and monitored tracks play it. |
 | `paw.opt.midi_record` | `"new"` | A MIDI take over a clip: `"new"` makes a clip of its own, `"merge"` joins its notes into the clip under it (overdub). |
 | `paw.opt.threads` | `0` | The threads that process tracks. `0` gives one for each core. |
+| `paw.opt.device_sleep` | `true` | A device at rest sleeps through silence: a reverb after its tail, a synth with no note that sounds. This saves processor time. The sound is the same with `false`. |
 | `paw.opt.audio_reconnect` | `true` | paw opens an audio device again when it returns. |
 | `paw.opt.scope_rest` | `"play"` | What the other tracks do in a narrowed tab: `"play"`, `"mute"` or `"frozen"`. |
 | `paw.opt.launch_rows` | `8` | The minimum number of rows in the session view. |

@@ -53,6 +53,79 @@ real-time priority on this machine (the workers match it, so they do not
 either); the path where a real-time callback's workers become real-time is
 covered by a test, not by a real device.
 
+## 2026-11-19: devices that sleep, and threads only when needed
+
+These are three changes to the engine. I measured them on the same machine,
+with load from other jobs (load average 6 to 50). The raw numbers are in
+`results/sleep-2026-11-19.jsonl`. The run before the changes, on the same
+day, is `remeasure-2026-11-19.jsonl` (not in the repository).
+
+- **Devices at rest sleep.** The engine does not run a device when its
+  input is silent and its tail is below -120 dB (see
+  `docs/reference/engine.md`, "Devices at rest"). A render is the same to
+  the bit with sleep on and off. Unit tests for each effect, an engine test
+  with long silences and `fuzz.lua` examine this.
+- **The pool.** Live, the engine uses the worker threads only when one
+  thread needs a quarter of the time of a block. Between blocks, the
+  worker threads sleep. A render shares a group of tracks when the group
+  has 60 µs of work.
+- **The reverb and the LFOs.** The reverb calculates its drift each 32
+  frames. Before, it calculated one sine for each line and each sample. The
+  LFOs use a sine series.
+
+The older benchmark did not measure the cost while stopped. This table
+shows `paw --headless` with the demo song (`examples/demo-song.lua`),
+`--audio null`, on 8 cores. Each value is the percent of one core, from 5
+interleaved rounds of 10 s.
+
+| Demo song | Before: median (range) | After: median (range) |
+| --- | ---: | ---: |
+| Stopped | 5.7 (4.9 to 6.0) | 1.1 (0.9 to 1.6) |
+| Playing | 6.1 (5.8 to 6.3) | 3.4 (3.1 to 6.5) ¹ |
+
+After a merge with main at e0ae197, which has the memory changes of the
+same day, the same measurement against that build gave these values:
+stopped 4.6 (3.8 to 5.2) before and 1.0 (0.8 to 1.9) after; playing 5.5
+(5.2 to 6.3) before and 3.3 (2.6 to 3.6) after.
+
+¹ The 6.5 % run was at load 50. There, the measured work was more than a
+quarter of the block, and the worker threads helped (2.3 % of the 6.5 %).
+
+These counters do not change with the load. In 10 s while stopped, devices
+ran 70 blocks and slept through 5553 blocks. In 10 s while playing, devices
+ran 4736 blocks and slept through 892 blocks. The engine shared no group of
+tracks between threads. Before the change, the 3 worker threads used 1.5 to
+2.6 % of a core while stopped and while playing. Most of that time they
+waited in a loop between blocks.
+
+For one instance (`devices.lua`, 16 audio tracks, one thread, one run), the
+reverb went from 1.12 to 0.61 % of a core. The other effects did not change
+more than the noise.
+
+Renders on 12 threads, median of 3, in ms for 32 s of audio:
+
+| Render | Before | After |
+| --- | ---: | ---: |
+| 1 audio track, delay, automation | 88 | 48 |
+| 1 synth track | 124 | 99 |
+| 10 synth tracks, delay, automation | 191 | 150 |
+| 100 audio tracks | 504 | 297 |
+| 100 synth tracks, delay, automation | 1340 | 1056 |
+| 500 audio tracks, delay, automation | 3503 | 2760 |
+| 500 synth tracks, delay, automation | 7006 | 5273 |
+
+Before, the renders of one track were slower on 12 threads than in the
+older results (57 ms and 87 ms). A profile showed no work on the worker
+threads, so the pool was not the cause. Now they are as fast as before or
+faster. The renders of 1 and 10 audio tracks without effects did not change
+more than the noise. They went from 40 ms to 43 ms, and from 96 ms to 113 ms.
+
+Live, with the null backend, the p99 time of a block changed as follows.
+For 500 audio tracks at 256 frames, it went from 1.72 ms to 1.02 ms. For 100
+synth tracks at 128 frames, it went from 0.43 ms to 0.26 ms. For 10 synth
+tracks at 128 frames, it went from 0.18 ms to 0.26 ms, with a budget of
+2.67 ms. These tracks now play on one thread. This uses less processor
+time, but each block takes longer.
 ## 2026-11-19: edits, memory and startup again
 
 A new run of the matrix (`results/remeasure-2026-11-19.jsonl`, not in the

@@ -932,6 +932,9 @@ impl DeviceFactory for Vst3Factory {
                 bail!("the plugin failed to activate");
             }
             shared.processor.setProcessing(1);
+            // Frames the plugin rings for after its input stops: 0 for
+            // none, all ones for for ever.
+            let tail = shared.processor.getTailSamples();
 
             let shared = Arc::new(shared);
             let (edits, edited) = rtrb::RingBuffer::new(512);
@@ -970,6 +973,9 @@ impl DeviceFactory for Vst3Factory {
                 held: HeldNotes::new(),
                 sample_rate: sample_rate as f64,
                 samples: 0,
+                tail,
+                quiet: 0,
+                resting: false,
             };
             Ok(Instance {
                 device: Box::new(device),
@@ -1017,14 +1023,34 @@ struct Vst3Device {
     held: HeldNotes,
     sample_rate: f64,
     samples: i64,
+    /// How long the plugin rings after its input stops, in frames, as it
+    /// said when it was made; `u32::MAX` for for ever.
+    tail: u32,
+    /// Frames the input has ended with silent and without events.
+    quiet: u64,
+    /// Its tail has gone by and its output was silent (see
+    /// [`Device::resting`]).
+    resting: bool,
 }
 
 // The buffers hold raw pointers into vectors the device owns.
 unsafe impl Send for Vst3Device {}
 
 impl Device for Vst3Device {
+    /// Once its tail has gone by in silence and its output was silent,
+    /// unless a parameter has moved since.
+    fn resting(&self) -> bool {
+        self.resting && self.pending.is_empty() && self.edited.is_empty()
+    }
+
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io) {
         let n = io.left.len();
+        self.resting = false;
+        if paw_engine::device::quiet(io) {
+            self.quiet = self.quiet.saturating_add(n as u64);
+        } else {
+            self.quiet = 0;
+        }
         if let Some(bus) = self.inputs.channels.first_mut() {
             match bus.as_mut_slice() {
                 [] => {}
@@ -1205,6 +1231,9 @@ impl Device for Vst3Device {
                 return;
             }
         }
+        self.resting = self.tail != u32::MAX
+            && self.quiet >= self.tail as u64
+            && self.outputs.channels.iter().flatten().all(|c| paw_engine::device::silent(&c[..n]));
 
         let add = self.inputs.buses.is_empty();
         if let Some(bus) = self.outputs.channels.first() {

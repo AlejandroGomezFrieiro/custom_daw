@@ -23,6 +23,7 @@ local defaults = {
   autosave = require("paw.api").env().clean and 0 or 60,
   reopen_last = false,     -- start with the project that was open last, when none is named
   threads = 0,            -- threads to process tracks on; 0 for one per core
+  device_sleep = true,     -- devices at rest sleep through silence; the sound is the same
   octave = 4,              -- where note entry in insert mode starts: `a` is C of this octave
   grid = 1,                -- arrange cursor step and snap, in beats
   zoom = 2,                -- arrange columns per beat

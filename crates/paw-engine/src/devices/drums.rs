@@ -360,7 +360,15 @@ impl Drums {
 }
 
 impl Device for Drums {
+    /// No drum rings: a block with no events adds nothing.
+    fn resting(&self) -> bool {
+        self.hits.iter().all(|h| !h.active)
+    }
+
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut Io) {
+        if io.events.is_empty() && self.resting() {
+            return;
+        }
         let n = io.left.len();
         let mut pos = 0;
         for ev in io.events.as_slice() {

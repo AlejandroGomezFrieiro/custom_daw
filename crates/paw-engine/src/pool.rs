@@ -8,6 +8,11 @@
 //! allocates or locks: work is claimed with one compare-and-swap, and a
 //! sleeping worker is woken by unparking it.
 //!
+//! A worker with nothing to do looks for more for a moment while a block is
+//! under way, for the next group of tracks, and sleeps as soon as the caller
+//! says the block is done ([`Pool::idle`]), so that the workers cost nothing
+//! between blocks.
+//!
 //! Workers treat denormals as zero, as every thread that drives an engine
 //! does, so that a track sounds the same whichever thread runs it. When the
 //! caller runs with real-time priority (an audio callback), the workers take
@@ -43,6 +48,8 @@ struct Inner {
     /// a worker only after it has claimed one of this job's items.
     job: UnsafeCell<Job>,
     stop: AtomicBool,
+    /// A block is under way: more work may come at once.
+    busy: AtomicBool,
     /// The caller's scheduling policy and priority, for the workers to match:
     /// -1 until known.
     policy: AtomicI32,
@@ -117,6 +124,7 @@ impl Pool {
                 call: |_, _| {},
             }),
             stop: AtomicBool::new(false),
+            busy: AtomicBool::new(false),
             policy: AtomicI32::new(-1),
             priority: AtomicI32::new(0),
             refused: AtomicU32::new(0),
@@ -165,6 +173,7 @@ impl Pool {
             (0..count).for_each(f);
             return;
         }
+        self.inner.busy.store(true, Ordering::Relaxed);
         unsafe fn call<F: Fn(usize)>(data: *const (), index: usize) {
             unsafe { (*(data as *const F))(index) }
         }
@@ -218,6 +227,14 @@ impl Pool {
     }
 }
 
+impl Pool {
+    /// Say that no more work comes until the next block: the workers go to
+    /// sleep at once instead of looking for more.
+    pub fn idle(&self) {
+        self.inner.busy.store(false, Ordering::Relaxed);
+    }
+}
+
 impl Drop for Pool {
     fn drop(&mut self) {
         self.inner.stop.store(true, Ordering::Release);
@@ -246,10 +263,11 @@ fn worker(inner: &Inner) {
         if inner.has_work() {
             inner.work();
             spins = 0;
-        } else if spins < IDLE_SPINS {
+        } else if spins < IDLE_SPINS && inner.busy.load(Ordering::Relaxed) {
             spins += 1;
             std::hint::spin_loop();
         } else {
+            spins = 0;
             // Unparking leaves a token behind, so work announced between the
             // look above and here is not slept through.
             std::thread::park();

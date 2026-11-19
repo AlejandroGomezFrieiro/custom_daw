@@ -22,7 +22,9 @@ use clap_sys::ext::note_ports::{
 use clap_sys::factory::plugin_factory::{CLAP_PLUGIN_FACTORY_ID, clap_plugin_factory};
 use clap_sys::host::clap_host;
 use clap_sys::plugin::{clap_plugin, clap_plugin_descriptor};
-use clap_sys::process::{CLAP_PROCESS_CONTINUE, clap_process, clap_process_status};
+use clap_sys::process::{
+    CLAP_PROCESS_CONTINUE, CLAP_PROCESS_SLEEP, clap_process, clap_process_status,
+};
 use clap_sys::version::CLAP_VERSION;
 
 /// The two words of the last MIDI 2.0 note-on, and how many came.
@@ -115,6 +117,10 @@ unsafe extern "C" fn process(_: *const clap_plugin, p: *const clap_process) -> c
                     std::slice::from_raw_parts_mut(*out.data32.add(ch), p.frames_count as usize);
                 buf.fill(level);
             }
+        }
+        // With no note sounding it has nothing to do until the next.
+        if attr == 0 {
+            return CLAP_PROCESS_SLEEP;
         }
     }
     CLAP_PROCESS_CONTINUE

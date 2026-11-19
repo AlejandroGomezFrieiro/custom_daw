@@ -7836,6 +7836,13 @@ function paw.api.engine_reset_stats() end
 ---@param opts any
 function paw.api.engine_restart(opts) end
 
+--- With true, devices at rest sleep through silence: a reverb after
+--- its tail, a synth with no note that sounds. The sound is the same
+--- with false. `engine_get().device_sleeps` counts the blocks that
+--- devices slept through.
+---@param sleep boolean
+function paw.api.engine_set_sleep(sleep) end
+
 --- The number of threads that process tracks, with the audio thread. 0
 --- lets paw select the number. `engine_get().threads` gives the number in use.
 ---@param threads integer

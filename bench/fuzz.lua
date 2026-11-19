@@ -6,8 +6,8 @@
 --   * undo then redo returns to the same project
 --   * save then load returns to the same project, and saving again gives the
 --     same file
---   * rendering the same project twice gives the same bytes, and renders
---     never contain NaN or infinity
+--   * rendering the same project twice gives the same bytes, with devices
+--     at rest asleep and without; and renders never contain NaN or infinity
 --   * every id a view lists can be looked up
 --
 --   XDG_DATA_HOME=<scratch> paw --clean --no-plugins -l bench/fuzz.lua <seed> <steps> [verbose]
@@ -364,8 +364,11 @@ local function check_render(step)
     fail(step, "render", tostring(info))
   end
   if info.nonfinite > 0 or info.peak ~= info.peak then fail(step, "render", "the render holds NaN or infinity") end
+  -- The second time with every device run on every block: sleeping
+  -- through silence changes nothing.
+  opts.sleep = false
   api.render(b, opts)
-  if read(a) ~= read(b) then fail(step, "render", "two renders of the same project differ") end
+  if read(a) ~= read(b) then fail(step, "render", "two renders of the same project differ, one with devices asleep") end
   stats.checks.render = stats.checks.render + 1
 end
 

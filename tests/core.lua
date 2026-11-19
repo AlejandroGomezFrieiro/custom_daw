@@ -787,11 +787,46 @@ test("tracks are processed on several threads, and sound the same", function()
   paw.opt.threads = 1
   paw.wait(200)
   eq(api.engine_get().threads, 1, "the number changes while the song plays")
+  eq(type(api.engine_get().shared_groups), "number", "the engine counts the groups it shared out")
   paw.transport.stop()
   paw.opt.threads = before
   paw.wait(100)
   eq(api.engine_get().threads >= 1, true, "and goes back")
   T.fails(function() api.engine_set_threads(1000) end, "too many", "an absurd number")
+end)
+
+test("devices at rest sleep through silence, and sound the same", function()
+  fresh()
+  -- Two bars of notes, eight of nothing, two bars again: the reverb's and
+  -- the delay's tails die away in between.
+  local t = paw.add_track({ name = "keys" })
+  t:add_device("synth", { release = 0.1 })
+  t:add_device("delay", { time = 250, mix = 0.4, feedback = 0.4 })
+  t:add_device("reverb", { decay = 1, mix = 50 })
+  for _, at in ipairs({ 0, 40 }) do
+    local notes = {}
+    for step = 0, 15 do notes[#notes + 1] = { pitch = 48 + step % 12, start = step * 0.5, length = 0.4 } end
+    t:add_clip({ start = at, length = 8, notes = notes })
+  end
+  paw.flush()
+  local awake = render({ tail = 1, sleep = false })
+  eq(awake.peak > 0.05, true, "something sounds")
+  eq(awake.device_sleeps, 0, "with sleep off, no device sleeps")
+  local asleep = render({ tail = 1, sleep = true })
+  eq(asleep.device_sleeps > asleep.device_runs / 2, true, "through the silence the devices sleep")
+  eq(T.read_file(asleep.path) == T.read_file(awake.path), true, "and the file is the same, byte for byte")
+
+  -- The live engine follows the option.
+  eq(api.engine_get().device_sleep, true, "devices sleep unless told not to")
+  paw.opt.device_sleep = false
+  paw.wait(100)
+  eq(api.engine_get().device_sleep, false, "the option turns it off")
+  local before = api.engine_get().device_sleeps
+  paw.wait(200)
+  eq(api.engine_get().device_sleeps, before, "and nothing sleeps then")
+  paw.opt.device_sleep = true
+  paw.wait(200)
+  eq(api.engine_get().device_sleeps > before, true, "stopped and silent, the devices sleep again")
 end)
 
 -- Choosing devices and inputs ---------------------------------------------------

@@ -422,9 +422,15 @@ test("a plugin an extension ships is found once its directory is added, plays at
   local clip = t:add_clip({ start = 0, length = 4, notes = {
     { pitch = "C4", start = 0, length = 1, attr = PIZZ }, { pitch = "D1", start = 2, length = 1 },
   } })
-  local l, r = channel_peaks(render({ tail = 0, bits = 16, ["end"] = 2 }), 0.1, 0.4)
+  local info = render({ tail = 0, bits = 16, ["end"] = 2 })
+  local l, r = channel_peaks(info, 0.1, 0.4)
   near(l, 0x11 / 256, 2e-3, "the plugin took the note as MIDI 2.0, with its type")
   near(r, 0xA / 16, 2e-3, "and its data")
+  -- With no note sounding the plugin says it sleeps, and is left to.
+  eq(info.device_sleeps > 0, true, "the plugin slept once its note ended")
+  local awake = render({ tail = 0, bits = 16, ["end"] = 2, sleep = false })
+  eq(awake.device_sleeps, 0, "with sleep off it runs throughout")
+  eq(T.read_file(awake.path) == T.read_file(info.path), true, "and sounds the same")
   eq(paw.plugins.key_names(t.id)[24], "Sustain", "the names it gives its keys")
   -- The piano roll writes them on its keys, and K says what is under the cursor.
   paw.ui.views.pianoroll:edit(clip)

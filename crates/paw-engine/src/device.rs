@@ -84,6 +84,47 @@ pub trait Device: Send {
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io);
     /// `index` is the position of the parameter in the device's parameter list.
     fn set_param(&mut self, index: u32, value: f32);
+    /// Whether the device is at rest: given a block of silence (side-chain
+    /// included) and no events, it would put out silence. The host may then
+    /// leave it asleep, without calling `process`, until a block that is not
+    /// silent or has events. Asked on the audio thread after each block and
+    /// after parameter changes.
+    ///
+    /// A device that says so must also stay as it is through such a block
+    /// when it is called (a built-in device returns at once), so that its
+    /// sound is the very same whether the host calls it or not. A device
+    /// that cannot tell (most plugins) says false, and is never put to sleep.
+    fn resting(&self) -> bool {
+        false
+    }
+}
+
+/// Whether a buffer holds only silence (zeros, either sign).
+#[inline]
+pub fn silent(samples: &[f32]) -> bool {
+    // Or-ing the bits without the sign, eight lanes at a time, vectorises;
+    // an early exit would not.
+    let mut acc = [0u32; 8];
+    let mut chunks = samples.chunks_exact(8);
+    for chunk in &mut chunks {
+        for i in 0..8 {
+            acc[i] |= chunk[i].to_bits() & 0x7fff_ffff;
+        }
+    }
+    let mut any = acc.iter().fold(0, |a, b| a | b);
+    for x in chunks.remainder() {
+        any |= x.to_bits() & 0x7fff_ffff;
+    }
+    any == 0
+}
+
+/// Whether a block of a device's input is silence: both channels, the
+/// side-chain if it has one, and no events.
+pub fn quiet(io: &Io) -> bool {
+    io.events.is_empty()
+        && silent(io.left)
+        && silent(io.right)
+        && io.sidechain.is_none_or(|[l, r]| silent(l) && silent(r))
 }
 
 /// The main-thread side of a device that has one, such as a hosted plugin:
