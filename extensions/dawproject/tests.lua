@@ -418,9 +418,12 @@ test("dawproject: plugins go out and come back with their settings", function()
   local want = api.device_get(v.id).params.sidechain_reactivity
   local path = T.scratch .. "/fx.dawproject"
   local result = d.export(path)
-  eq(has_item(result.report, "VST3 plugins written without their class id (paw does not know it; a DAW finds them by name)",
-    "FX: Gate Mono"), true, "the VST3 class id is listed")
+  eq(has_item(result.report, "VST3 plugins written without their class id (not installed here; a DAW finds them by name)",
+    "FX: Gate Mono"), false, "the VST3 class id is known")
   local files = d.zip.read(T.read_file(path))
+  local cid = api.device_get(v.id).plugin.id
+  eq(files["project.xml"]:find('<Vst3Plugin id="[^"]*" name="Gate Mono" deviceID="' .. cid .. '"') ~= nil, true,
+    "written as deviceID")
   eq(files["plugins/001.clap-preset"] ~= nil, true, "the CLAP state")
   eq(files["plugins/002.vstpreset"]:sub(1, 4), "VST3", "the VST3 state as a .vstpreset")
   d.import(path)
@@ -482,3 +485,44 @@ test("dawproject: the README names every command of the extension", function()
   end
   eq(source:find("paw.keymap.set", 1, true), nil, "no keys of its own, as the README says")
 end)
+
+test("dawproject: a plugin's id of a parameter is written signed, as DAWs write it", function()
+  load()
+  local own = require("dawproject.export").own_param_id
+  eq(own({ id = "12" }), 12, "a small id as it is")
+  eq(own({ id = "2683833795" }), -1611133501, "one of 2^31 and above below 0")
+  eq(own({ id = "wet" }), nil, "the host's own parameters have none")
+end)
+
+for _, format in ipairs({ "clap", "vst3" }) do
+  test("dawproject: " .. format .. " plugin lanes and ids go out with the plugin's own ids, and come back", function()
+    local d = load()
+    local kind
+    for _, t in ipairs(api.device_types()) do
+      if not kind and t.format == format and t.name == "Limiter Stereo" then kind = t.kind end
+    end
+    if not kind then return "skipped: test plugins not found" end
+    T.fresh()
+    local track = paw.add_track({ name = "Lim" })
+    track:add_clip({ start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 4 } } })
+    local fx = track:add_device(kind)
+    local gain = api.device_param(fx.id, "input_gain")
+    api.lane_add(track.id, { target = "param", device = fx.id, param = "input_gain", points = { { 0, gain.min }, { 4, gain.max } } })
+    local dir = scratch_dir()
+    d.export(dir .. "/ids.dawproject")
+    local xml = d.zip.read(T.read_file(dir .. "/ids.dawproject"))["project.xml"]
+    local n = tonumber(gain.id)
+    local signed = string.format("%d", n >= 2 ^ 31 and n - 2 ^ 32 or n)
+    eq(xml:find('name="Input gain" parameterID="' .. signed .. '"', 1, true) ~= nil, true, "the plugin's own id of the parameter")
+    local plugin = fx:get().plugin
+    eq(xml:find('deviceID="' .. plugin.id .. '"', 1, true) ~= nil, true, "and of the plugin: " .. plugin.id)
+    T.write_file(dir .. "/project.xml", xml)
+    local ok, why = validate(dir .. "/project.xml", "Project.xsd")
+    if ok ~= nil then eq(ok, true, "project.xml is valid: " .. tostring(why)) end
+    T.fresh()
+    d.import(dir .. "/ids.dawproject", { media_dir = dir .. "/back" })
+    local lanes = api.lane_list(paw.tracks()[1].id)
+    eq(#lanes, 1, "the lane comes back")
+    eq(lanes[1].param, "input_gain", "on the same parameter")
+  end)
+end

@@ -872,6 +872,7 @@ mod tests {
             sidechain: None,
             sidechain_pre: false,
             outputs: Default::default(),
+            param_ids: Default::default(),
         }));
         let note = |start: f64, pitch: u8| Note {
             start,

@@ -37,6 +37,7 @@ pub fn register(registry: &mut Registry) {
             format: "builtin".into(),
             vendor: String::new(),
             params: drums::params(),
+            ..Default::default()
         },
         make: |sr| Box::new(drums::Drums::new(sr)),
         latency: 0.0,
@@ -50,6 +51,7 @@ pub fn register(registry: &mut Registry) {
             format: "builtin".into(),
             vendor: String::new(),
             params: sampler::params(),
+            ..Default::default()
         },
     }));
     add(
@@ -165,6 +167,7 @@ fn effect(
             format: "builtin".into(),
             vendor: String::new(),
             params,
+            ..Default::default()
         },
         make,
     }));
@@ -198,6 +201,7 @@ fn add_late(
         format: "builtin".into(),
         vendor: String::new(),
         params,
+        ..Default::default()
     };
     registry.register(Rc::new(FnFactory {
         info,

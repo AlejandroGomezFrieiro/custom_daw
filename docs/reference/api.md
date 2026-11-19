@@ -1997,11 +1997,14 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.device_load(id, load)`: Load a preset into a device, as one undo step: `{ name =, state =, params =, factory = }`.
 - `paw.api.device_move(id, track, index)`
 - `paw.api.device_note_names(id)`: What a plugin calls its keys, `{ [pitch] = name }` (CLAP `note-name`).
+- `paw.api.device_param(id, name)`: One parameter of a device, named by its key, the device's own id for it or its name: its entry of `param_info`, with `value` (now) and `text` (that value as the device writes it).
+- `paw.api.device_param_parse(id, name, text)`: The value that a text stands for, for a parameter, as the device reads it. An error when the device cannot read the text.
+- `paw.api.device_param_text(id, name, value)`: A value of a parameter as text, as the device writes it ("440 Hz"). Without a value, the value now.
 - `paw.api.device_post(kind, topic, data)`: Data for all devices of a kind, now and in the future (also the devices of a render). nil removes the topic. Returns `{ { device, error } }` for the devices that refused it.
 - `paw.api.device_remove(id)`
 - `paw.api.device_restart(id)`: Start again a device that stopped (a plugin that crashed).
 - `paw.api.device_set(id, key, value)`
-- `paw.api.device_set_param(id, name, value)`
+- `paw.api.device_set_param(id, name, value)`: Set a parameter of a device, named by its key, the device's own id for it or its name. The value is a number, or text as the device reads it ("440 Hz", "Saw").
 - `paw.api.device_state(id)`: The state of a plugin. Give it as `state` when you add a copy of the device.
 - `paw.api.device_types()`: --- devices ---
 - `paw.api.engine_audible(tracks)`: Only these tracks heard for now, as a solo would, or all with nil.

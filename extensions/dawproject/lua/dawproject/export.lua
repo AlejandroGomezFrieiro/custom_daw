@@ -63,8 +63,20 @@ local function bool(name, ctx, value, label)
   return node(name, "id", ctx.id(), "name", label, "value", value)
 end
 
---- The device of a plugin or of paw, with its parameters (each by its
---- place among the device's, from 0) and its state as a file.
+--- A plugin's own id of a parameter as DAWproject's `parameterID`, a
+--- signed 32-bit number: CLAP and VST3 ids are unsigned, so those of
+--- 2^31 and above are written below 0 (as Bitwig Studio does).
+local function own_param_id(p)
+  local n = tonumber(p.id)
+  if not n or n ~= math.floor(n) or n < 0 or n >= 2 ^ 32 then return nil end
+  return n >= 2 ^ 31 and n - 2 ^ 32 or n
+end
+M.own_param_id = own_param_id
+
+--- The device of a plugin or of paw, with its parameters and its state as
+--- a file. A plugin's parameter is written with the plugin's own id for
+--- it; a parameter of paw (or of an LV2 plugin, whose ids are names) with
+--- its place among the device's, from 0.
 local function device(dev_id, ctx, label)
   local d = api.device_get(dev_id)
   local info = ctx.types[d.kind] or {}
@@ -78,12 +90,13 @@ local function device(dev_id, ctx, label)
   elseif format == "vst3" then
     e = node("Vst3Plugin", "id", ctx.id(), "name", name, "deviceName", name, "deviceRole", role, "deviceVendor", vendor,
       "loaded", true)
-    local cid = d.meta and d.meta.dawproject and d.meta.dawproject.class
+    local cid = d.plugin and d.plugin.id ~= "" and d.plugin.id
+      or d.meta and d.meta.dawproject and d.meta.dawproject.class
     if cid then
       e.attr.deviceID = cid
       table.insert(e.order, 3, "deviceID")
     else
-      ctx.report:add("VST3 plugins written without their class id (paw does not know it; a DAW finds them by name)",
+      ctx.report:add("VST3 plugins written without their class id (not installed here; a DAW finds them by name)",
         label .. ": " .. name)
     end
   elseif format == "lv2" then
@@ -97,8 +110,11 @@ local function device(dev_id, ctx, label)
   end
   local params = add(e, node("Parameters"))
   ctx.params[dev_id] = {}
+  local plugin = format == "clap" or format == "vst3"
   for i, p in ipairs(d.param_info or {}) do
-    local pe = add(params, node("RealParameter", "id", ctx.id(), "name", p.name, "parameterID", i - 1, "unit", "linear",
+    -- The host's own parameters of a plugin (wet, output) have no id of the plugin's.
+    local pid = plugin and own_param_id(p) or (not plugin and i - 1) or nil
+    local pe = add(params, node("RealParameter", "id", ctx.id(), "name", p.name, "parameterID", pid, "unit", "linear",
       "min", p.min, "max", p.max, "value", (d.params or {})[p.key] or p.default))
     ctx.params[dev_id][p.key] = { id = pe.attr.id, min = p.min, max = p.max }
   end
