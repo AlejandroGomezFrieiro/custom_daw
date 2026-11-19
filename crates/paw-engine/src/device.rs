@@ -97,6 +97,14 @@ pub trait Device: Send {
     fn resting(&self) -> bool {
         false
     }
+    /// Take a message its controller prepared ([`Controller::prepare`]),
+    /// to act on at `frame` of the next block it processes. Called on the
+    /// audio thread: the device copies the bytes, and must not allocate.
+    /// False when it cannot take it (it has no use for messages, or no
+    /// room).
+    fn message(&mut self, _frame: u32, _data: &[u8]) -> bool {
+        false
+    }
 }
 
 /// Whether a buffer holds only silence (zeros, either sign).
@@ -207,6 +215,22 @@ pub trait Controller {
     /// answer is bytes too, so it can cross `paw.api` as plain strings.
     fn call(&mut self, method: &str, _data: &[u8]) -> Result<Vec<u8>> {
         anyhow::bail!("this device has no method `{method}`")
+    }
+    /// The same request as [`call`](Self::call), made into a message for
+    /// the device's audio side ([`Device::message`]), so that it can act
+    /// on an exact frame of the song: an LV2 property set with a
+    /// `patch:Set`. None when the request can only be made on the main
+    /// thread, as a call. Nothing changes in the device until the message
+    /// is handed to it.
+    fn prepare(&mut self, _method: &str, _data: &[u8]) -> Result<Option<Vec<u8>>> {
+        Ok(None)
+    }
+    /// The processor time the device's own process has used, for a device
+    /// that runs in one (a plugin in its helper): a render waits after a
+    /// new state until this stops growing, which is when a plugin that
+    /// loads in the background has finished. None in this process.
+    fn busy_time(&mut self) -> Option<std::time::Duration> {
+        None
     }
     /// What it takes and gives besides its main stereo pair, as this
     /// instance has it.

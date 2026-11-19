@@ -28,9 +28,10 @@ use serde_json::{Value, json};
 
 use super::encode::{self, Lossy, Quality};
 use super::tags::{self, Cover, Tags};
+use super::statelanes::{self, Settle, Stop};
 use super::{Dither, RenderOpts, Session, block_json, check_sample_rate, settle_plugins};
 use crate::measure::analysis::Analyzer;
-use crate::model::{MASTER_ID, Project};
+use crate::model::{Id, MASTER_ID, Project};
 use crate::sync::{LiveDevices, Mapper, SyncCtx, sync};
 
 /// Seconds a render goes on after its end at most: ten minutes is more
@@ -207,6 +208,15 @@ pub struct Job {
     live: Option<LiveDevices>,
     /// The fraction last reported in a `render.progress` event, and when.
     reported: (f64, Instant),
+    /// Where the render stops for a state lane's state that the main
+    /// thread gives (see `statelanes.rs`): the render's thread asks by the
+    /// stop's number, and is answered once the plugin is ready.
+    stops: Vec<Stop>,
+    asks: std::sync::mpsc::Receiver<usize>,
+    answers: std::sync::mpsc::Sender<()>,
+    /// The stop being given, while the plugin gets ready.
+    settling: Option<(Id, Settle)>,
+    settle: Duration,
 }
 
 /// What a render's thread needs besides its engine.
@@ -232,6 +242,13 @@ struct Plan {
     /// the lossy formats by ffmpeg.
     tags: Tags,
     cover: Option<Cover>,
+    /// The engine's frames (from the start, before the latency is played
+    /// away) where the render stops for the main thread to give a state;
+    /// the main thread is asked by a stop's number, and answers when the
+    /// plugin is ready.
+    stops: Vec<u64>,
+    ask: std::sync::mpsc::Sender<usize>,
+    answered: std::sync::mpsc::Receiver<()>,
 }
 
 struct Encode {
@@ -258,6 +275,12 @@ impl Session {
     /// Wait for the running render to end, and give what it gives.
     pub(super) fn render_wait(&mut self) -> Result<Value> {
         let mut job = self.render_job.take().context("the render did not start")?;
+        // The render's thread may stop on a state lane's point and wait
+        // for the main thread, which is here.
+        while !job.thread.as_ref().is_none_or(|t| t.is_finished()) {
+            serve_stops(&mut job);
+            std::thread::sleep(Duration::from_millis(2));
+        }
         let result = job
             .thread
             .take()
@@ -432,6 +455,8 @@ impl Session {
         // The render gets its own instances of every device, plugins included.
         let mut live = LiveDevices::new();
         let latency;
+        let mapper_states;
+        let mapper_devices;
         {
             // Nothing else is driving this engine, so make room by pumping it.
             let mut send = |msg| {
@@ -464,14 +489,73 @@ impl Session {
                 &mut Vec::new(),
             );
             latency = mapper.latency as usize;
+            mapper_states = mapper.state_main.clone();
+            mapper_devices = mapper.devices.clone();
         }
+        // A state lane's saved states: the one in force at the start is
+        // given now, the others where the render stops for them.
+        let (first, stops) = {
+            let mut mapper = Mapper::new();
+            mapper.state_main = mapper_states;
+            let map = project.tempo_map().clone();
+            let t0 = map.seconds(opts.start);
+            let sr = sample_rate as f64;
+            statelanes::render_stops(project, &mapper, opts.start, |beat| {
+                let x = (map.seconds(beat) - t0) * sr;
+                if (x - x.round()).abs() < 1e-6 { x.round() as u64 } else { x.ceil() as u64 }
+            })
+        };
+        // Each state lane's state at the start is given now, whole, so
+        // that the plugin holds it from the first frame.
+        let starting = statelanes::states_at(project, opts.start);
+        for (id, state) in &starting {
+            let Some(device) = live.get_mut(id) else { continue };
+            match statelanes::give_all(device, state) {
+                Ok(params) => {
+                    if let Some(&slot) = mapper_devices.get(id) {
+                        for (param, value) in params {
+                            handle.send_while(Msg::SetParam { device: slot, param, value }, &mut engine);
+                        }
+                    }
+                }
+                Err(err) => self
+                    .warnings
+                    .push(format!("state `{}` of a lane: {err:#}", state.name)),
+            }
+        }
+        drop(first);
         settle_plugins(&mut engine, &live);
+        // A plugin that loads in the background (a model) is given time
+        // to be ready before the first frame.
+        let settle = Duration::from_secs_f64(opts.settle.clamp(0.0, 600.0));
+        if starting.is_empty() {
+            Settle::start(settle).wait(&mut live, None);
+        } else {
+            Settle::new(settle).wait(&mut live, None);
+        }
+        // A plugin that has loaded a model can fade over to it as it plays
+        // (TONE3000 takes about a third of a second): half a second of
+        // silence, with the song stopped, lets it finish before the first
+        // frame, so that each render starts the same.
+        if live.values().any(|d| d.controller.is_some()) {
+            let mut scratch = vec![0.0f32; 2 * paw_engine::MAX_BLOCK];
+            let (left, right) = scratch.split_at_mut(paw_engine::MAX_BLOCK);
+            for _ in 0..(sample_rate as usize / 2).div_ceil(paw_engine::MAX_BLOCK) {
+                engine.process(left, right);
+            }
+        }
         handle.send_while(Msg::Seek(opts.start), &mut engine);
+        handle.send_while(Msg::StatesHeld, &mut engine);
         handle.send_while(Msg::Play, &mut engine);
         // The handle stays with the engine: dropping it would leave the
         // engine's side of the channel without its other end.
         let progress = Arc::new(Progress::default());
+        let (ask, asks) = std::sync::mpsc::channel();
+        let (answers, answered) = std::sync::mpsc::channel();
         let plan = Plan {
+            stops: stops.iter().map(|s| s.frame).collect(),
+            ask,
+            answered,
             format,
             path: path.to_path_buf(),
             sample_rate,
@@ -507,6 +591,11 @@ impl Session {
             thread: Some(thread),
             live: Some(live),
             reported: (0.0, now),
+            stops,
+            asks,
+            answers,
+            settling: None,
+            settle,
         });
         Ok(())
     }
@@ -549,6 +638,7 @@ impl Session {
         let Some(job) = &mut self.render_job else {
             return;
         };
+        serve_stops(job);
         let finished = job.thread.as_ref().is_none_or(|t| t.is_finished());
         if !finished {
             let fraction = job.progress.get();
@@ -577,6 +667,33 @@ impl Session {
             ),
         };
         self.events.push((event.0.into(), event.1));
+    }
+}
+
+/// Give the states the render's thread stopped for, and answer it once the
+/// plugin is ready. Never waits.
+fn serve_stops(job: &mut Job) {
+    let Some(live) = job.live.as_mut() else {
+        return;
+    };
+    if job.settling.is_none()
+        && let Ok(at) = job.asks.try_recv()
+    {
+        if let Some(stop) = job.stops.get(at)
+            && let Some(device) = live.get_mut(&stop.device)
+        {
+            // A state that cannot be given is left out; the render goes on.
+            let _ = statelanes::give(device, &stop.state);
+            job.settling = Some((stop.device, Settle::new(job.settle)));
+        } else {
+            let _ = job.answers.send(());
+        }
+    }
+    if let Some((device, settle)) = &mut job.settling
+        && settle.ready(live, Some(&[*device]))
+    {
+        job.settling = None;
+        let _ = job.answers.send(());
     }
 }
 
@@ -708,11 +825,24 @@ fn play(
     // As on the audio thread: decaying tails must not slow the render down.
     let denormals = backend::NoDenormals::new();
     let mut skip = plan.latency;
+    // Frames the engine has played, and the next stop for a state.
+    let mut played = 0u64;
+    let mut stop = 0;
     while done < frames {
         if plan.progress.cancelled() {
             bail!("the render was cancelled");
         }
-        let n = (frames - done + skip).min(left.len());
+        while plan.stops.get(stop).is_some_and(|&at| at <= played) {
+            if plan.stops[stop] == played && played > 0 {
+                wait_for_state(plan, stop)?;
+            }
+            stop += 1;
+        }
+        let mut n = (frames - done + skip).min(left.len());
+        if let Some(&at) = plan.stops.get(stop) {
+            n = n.min((at - played) as usize);
+        }
+        played += n as u64;
         let block = Instant::now();
         engine.process(&mut left[..n], &mut right[..n]);
         processing += block.elapsed();
@@ -749,6 +879,25 @@ fn play(
         device_blocks: engine.shared().device_blocks(),
         loudness: analyzer.and_then(|a| a.finish().integrated),
     })
+}
+
+/// Ask the main thread to give the state of stop `at`, and wait until the
+/// plugin is ready.
+fn wait_for_state(plan: &Plan, at: usize) -> Result<()> {
+    if plan.ask.send(at).is_err() {
+        return Ok(());
+    }
+    loop {
+        match plan.answered.recv_timeout(Duration::from_millis(50)) {
+            Ok(()) => return Ok(()),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                if plan.progress.cancelled() {
+                    bail!("the render was cancelled");
+                }
+            }
+        }
+    }
 }
 
 fn write(engine: Engine, plan: &Plan, part: &Path, raw: &Path) -> Result<Value> {

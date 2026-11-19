@@ -90,7 +90,7 @@ fn project(entries: impl FnOnce(Vec<SchedEntry>) -> Vec<SchedEntry>) -> (Engine,
             &mut engine,
             Msg::SetAutomation {
                 track: slot,
-                automation: Box::new(Automation { lanes }),
+                automation: Box::new(Automation { lanes, ..Default::default() }),
             },
         );
         let mut entry = SchedEntry::new(slot, if bus { MASTER } else { buses[i % 4] });

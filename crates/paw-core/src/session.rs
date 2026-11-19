@@ -22,7 +22,7 @@ use serde_json::{Map, Value, json};
 
 use crate::history::{self, History};
 use crate::model::{
-    Clip, ClipContent, Control, DeviceInst, Id, Lane, MASTER_ID, MidiInput, Note, NoteAttr, Notes, Project, Segment,
+    Clip, ClipContent, Control, DeviceInst, Id, Lane, LaneState, MASTER_ID, MidiInput, Note, NoteAttr, Notes, Project, Segment,
     Send, Shape, StretchMode, Target, Timebase, Track, WarpMarker, parse_input,
 };
 use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
@@ -38,6 +38,7 @@ mod loading;
 pub mod media;
 mod midi_out;
 mod monitor;
+mod statelanes;
 mod stretching;
 pub use loading::OpenOpts;
 pub mod notes;
@@ -297,13 +298,15 @@ pub struct ClipOpts {
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct LaneOpts {
-    /// `volume`, `pan` or `param`.
+    /// `volume`, `pan`, `param` or `state`.
     pub target: String,
     /// For `param`: the device, on the same track, and its parameter by key or name.
     pub device: Option<Id>,
     pub param: Option<String>,
     pub enabled: Option<bool>,
     pub points: Vec<(f64, f64)>,
+    /// For `state`: the states the lane gives its device.
+    pub states: Vec<LaneState>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -349,6 +352,10 @@ pub struct RenderOpts {
     /// What the file is tagged with, over the project's own
     /// (`project.meta.tags`): see [`tags::Tags`].
     pub tags: tags::Tags,
+    /// The most seconds a render waits for plugins to be ready: at its
+    /// start, and after a state lane gives one a saved state. It waits
+    /// until a plugin's process has used no processor time for a moment.
+    pub settle: f64,
 }
 
 impl Default for RenderOpts {
@@ -372,6 +379,7 @@ impl Default for RenderOpts {
             bitrate: None,
             ffmpeg: None,
             tags: tags::Tags::default(),
+            settle: 5.0,
         }
     }
 }
@@ -465,6 +473,9 @@ pub struct Session {
     test_ports: Vec<String>,
     /// The render running on a thread of its own: session/render.rs.
     render_job: Option<render::Job>,
+    /// The state each state lane last gave its device from the main
+    /// thread: see `session/statelanes.rs`.
+    state_given: statelanes::Given,
     /// Plugins being made apart from the main loop: see `session/loading.rs`.
     loads: loading::Loads,
     /// How the next project opened is to be opened (plugins offline).
@@ -601,6 +612,7 @@ impl Session {
             device_file: None,
             test_ports: Vec::new(),
             render_job: None,
+            state_given: Default::default(),
             loads: Default::default(),
             open_opts: Default::default(),
             watch: Default::default(),
@@ -1980,10 +1992,12 @@ impl Session {
     pub fn capture_states(&mut self) {
         self.flush();
         let mut captured = Vec::new();
+        let driven = statelanes::driven(&self.project);
         for (id, live) in &mut self.live {
             // A device that stopped working has no state to give: the
             // project keeps the one it had, and its stop was told already.
-            if live.stopped.is_some() {
+            // One a state lane drives holds the lane's state, not its own.
+            if live.stopped.is_some() || driven.contains(id) {
                 continue;
             }
             let Some(controller) = live.controller.as_mut() else {
@@ -2172,6 +2186,7 @@ impl Session {
             self.stop();
         }
         self.render_poll();
+        self.play_states();
         self.poll_preview();
         self.poll_loads();
         self.poll_stretches();
@@ -2852,8 +2867,9 @@ impl Session {
 
     // --- automation --------------------------------------------------------
 
-    /// The lowest and highest value a target takes.
-    fn target_range(&self, target: &Target) -> (f64, f64) {
+    /// The lowest and highest value a target takes: for a state lane with
+    /// `states` states, the first and the last.
+    fn target_range(&self, target: &Target, states: usize) -> (f64, f64) {
         match target {
             Target::Volume => (-120.0, 24.0),
             Target::Pan => (-1.0, 1.0),
@@ -2862,19 +2878,31 @@ impl Session {
                 .get(device)
                 .and_then(|l| l.params.iter().find(|p| &p.key == param))
                 .map_or((f64::MIN, f64::MAX), |p| (p.min as f64, p.max as f64)),
+            Target::State { .. } => (0.0, states.saturating_sub(1) as f64),
         }
     }
 
     /// Points made valid for a target: finite, at beat 0 or later, within the
-    /// target's range, and sorted by beat (points sharing a beat keep their order).
-    fn clean_points(&self, target: &Target, points: Vec<(f64, f64)>) -> Result<Vec<(f64, f64)>> {
-        let (min, max) = self.target_range(target);
+    /// target's range, and sorted by beat (points sharing a beat keep their
+    /// order). A state lane's points name a state of its `states` by number.
+    fn clean_points(
+        &self,
+        target: &Target,
+        states: usize,
+        points: Vec<(f64, f64)>,
+    ) -> Result<Vec<(f64, f64)>> {
+        let (min, max) = self.target_range(target, states);
+        let whole = matches!(target, Target::State { .. });
+        if whole && states == 0 && !points.is_empty() {
+            bail!("the state lane has no states yet: add one first");
+        }
         let mut points = points
             .into_iter()
             .map(|(beat, value)| {
                 if !beat.is_finite() || !value.is_finite() {
                     bail!("automation points need a finite beat and value");
                 }
+                let value = if whole { value.round() } else { value };
                 Ok((beat.max(0.0), value.clamp(min, max)))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -2891,7 +2919,7 @@ impl Session {
     }
 
     fn lane_json(&self, l: &Lane, track: Id) -> Value {
-        let (min, max) = self.target_range(&l.target);
+        let (min, max) = self.target_range(&l.target, l.states.len());
         let mut v = json!({
             "id": l.id, "track": track, "enabled": l.enabled, "point_count": l.points.len(),
             "min": min, "max": max,
@@ -2903,6 +2931,11 @@ impl Session {
                 v["target"] = json!("param");
                 v["device"] = json!(device);
                 v["param"] = json!(param);
+            }
+            Target::State { device } => {
+                v["target"] = json!("state");
+                v["device"] = json!(device);
+                v["states"] = json!(l.states.iter().map(|s| s.name.as_str()).collect::<Vec<_>>());
             }
         }
         v
@@ -2940,8 +2973,23 @@ impl Session {
                     param: self.param_info(device, name)?.key,
                 }
             }
-            other => bail!("cannot automate `{other}`: use volume, pan or param"),
+            "state" => {
+                let device = opts.device.context("state lanes need a `device`")?;
+                if self.project.find_device(device).map(|(t, _)| t) != Some(track) {
+                    bail!("device {device} is not on track {track}");
+                }
+                Target::State { device }
+            }
+            other => bail!("cannot automate `{other}`: use volume, pan, param or state"),
         };
+        let states = opts
+            .states
+            .into_iter()
+            .map(|s| self.check_lane_state(s).map(Arc::new))
+            .collect::<Result<Vec<_>>>()?;
+        if !states.is_empty() && !matches!(target, Target::State { .. }) {
+            bail!("only a state lane has `states`");
+        }
         if self
             .project
             .track(track)
@@ -2970,7 +3018,7 @@ impl Session {
                 Ok(())
             })?;
         }
-        let points = self.clean_points(&target, opts.points)?;
+        let points = self.clean_points(&target, states.len(), opts.points)?;
         let id = self.new_id();
         self.edit(|p| {
             p.track_mut(track).unwrap().lanes.push(Arc::new(Lane {
@@ -2979,6 +3027,7 @@ impl Session {
                 enabled: opts.enabled.unwrap_or(true),
                 points,
                 shapes: Vec::new(),
+                states,
             }));
             Ok(id)
         })
@@ -3021,12 +3070,13 @@ impl Session {
             .lane(id)
             .with_context(|| format!("no lane {id}"))?
             .clone();
-        let mut points = self.clean_points(&lane.target, new)?;
+        let states = lane.states.len();
+        let mut points = self.clean_points(&lane.target, states, new)?;
         if add {
             let mut all = lane.points.clone();
             all.retain(|p| !points.iter().any(|n| n.0 == p.0));
             all.append(&mut points);
-            points = self.clean_points(&lane.target, all)?;
+            points = self.clean_points(&lane.target, states, all)?;
         }
         self.edit(|p| {
             let lane = p.lane_mut(id).unwrap();
@@ -3075,6 +3125,97 @@ impl Session {
     pub fn lane_value_at(&self, id: Id, beat: f64) -> Result<Option<f64>> {
         let lane = self.project.lane(id).with_context(|| format!("no lane {id}"))?;
         Ok(paw_engine::automation::value_at(&lane.played(), beat))
+    }
+
+    /// A state for a state lane, checked: a name, a state that is base64,
+    /// a program within MIDI's range.
+    fn check_lane_state(&self, mut state: LaneState) -> Result<LaneState> {
+        state.name = state.name.trim().to_string();
+        if state.name.is_empty() {
+            bail!("a lane's state needs a `name`");
+        }
+        if let Some(text) = &state.state {
+            BASE64
+                .decode(text)
+                .context("a lane's `state` is the plugin's state in base64")?;
+        }
+        if state.program.is_some_and(|p| p > 127) {
+            bail!("a program is from 0 to 127");
+        }
+        if state.bank.is_some_and(|b| b > 16383) {
+            bail!("a bank is from 0 to 16383");
+        }
+        if state.bank.is_some() && state.program.is_none() {
+            bail!("a bank goes with a `program`");
+        }
+        if let Some(call) = &state.call
+            && call.method.is_empty()
+        {
+            bail!("a lane state's `call` needs a `method`");
+        }
+        if state.state.is_none()
+            && state.call.is_none()
+            && state.params.is_empty()
+            && state.program.is_none()
+        {
+            bail!("a lane's state needs a `state`, `call`, `params` or `program`");
+        }
+        Ok(state)
+    }
+
+    /// The states of a state lane, whole.
+    pub fn lane_states(&self, id: Id) -> Result<Vec<Arc<LaneState>>> {
+        let lane = self.project.lane(id).with_context(|| format!("no lane {id}"))?;
+        if !matches!(lane.target, Target::State { .. }) {
+            bail!("lane {id} is not a state lane");
+        }
+        Ok(lane.states.clone())
+    }
+
+    /// Replace the states of a state lane, as one edit. A point that names
+    /// a state no longer there names the last; with no states, the points go.
+    pub fn lane_set_states(&mut self, id: Id, states: Vec<LaneState>) -> Result<()> {
+        self.lane_states(id)?;
+        let states = states
+            .into_iter()
+            .map(|s| self.check_lane_state(s).map(Arc::new))
+            .collect::<Result<Vec<_>>>()?;
+        let mut names = std::collections::HashSet::new();
+        if let Some(twice) = states.iter().find(|s| !names.insert(s.name.as_str())) {
+            bail!("two states are named `{}`", twice.name);
+        }
+        let lane = self.project.lane(id).unwrap().clone();
+        let points = if states.is_empty() {
+            Vec::new()
+        } else {
+            self.clean_points(&lane.target, states.len(), lane.points.clone())?
+        };
+        self.edit(|p| {
+            let lane = p.lane_mut(id).unwrap();
+            lane.states = states;
+            lane.points = points;
+            Ok(())
+        })
+    }
+
+    /// Add a state to a state lane, or replace the one of the same name,
+    /// as one edit. Returns its index, from 0.
+    pub fn lane_add_state(&mut self, id: Id, state: LaneState) -> Result<usize> {
+        let mut states: Vec<LaneState> =
+            self.lane_states(id)?.iter().map(|s| (**s).clone()).collect();
+        let state = self.check_lane_state(state)?;
+        let index = match states.iter().position(|s| s.name == state.name) {
+            Some(i) => {
+                states[i] = state;
+                i
+            }
+            None => {
+                states.push(state);
+                states.len() - 1
+            }
+        };
+        self.lane_set_states(id, states)?;
+        Ok(index)
     }
 
     // --- transport ---------------------------------------------------------

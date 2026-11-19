@@ -12,7 +12,7 @@ use paw_engine::record::{AudioCapture, Take, TakeShared};
 use paw_engine::{
     Attr, AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Ctl, Delay, Engine,
     EngineHandle, EventKind, KeyRt, MASTER, MAX_BLOCK, Msg, NO_SLOT, NoteCtl, OutRt, Pool,
-    Registry, SchedEntry, Schedule, SendRt, Slot, Switch, TrackRt,
+    Registry, SchedEntry, Schedule, SendRt, Slot, StateChange, StateLane, Switch, TrackRt,
 };
 
 struct Guard;
@@ -188,6 +188,26 @@ fn kit_device(track: usize) -> Slot {
     (track * KINDS.len() + 1) as Slot
 }
 
+/// A lane of states on a device: parameters, a program change and a
+/// message, at points that blocks end on, inside the loop and across it.
+fn state_lane(device: Slot) -> StateLane {
+    let changes = vec![
+        StateChange {
+            params: vec![(5, 300.0), (6, 0.4)].into(),
+            program: Some((7, Some(2))),
+            message: Some(vec![1, 2, 3, 4].into()),
+        },
+        StateChange {
+            params: vec![(5, 2000.0)].into(),
+            program: None,
+            message: Some(vec![5; 64].into()),
+        },
+        StateChange::default(),
+    ];
+    let points: Vec<(f64, u32)> = (0..48).map(|i| (i as f64 * 0.37, (i % 3) as u32)).collect();
+    StateLane::new(device, points, changes)
+}
+
 fn schedule(tracks: &[Slot]) -> Box<Schedule> {
     let mut entries: Vec<SchedEntry> = tracks
         .iter()
@@ -311,7 +331,10 @@ fn the_audio_thread_never_allocates() {
             &mut handle,
             Msg::SetAutomation {
                 track: slot,
-                automation: Box::new(Automation { lanes }),
+                automation: Box::new(Automation {
+                    lanes,
+                    states: vec![state_lane((i * kinds.len()) as Slot)],
+                }),
             },
         );
         send(

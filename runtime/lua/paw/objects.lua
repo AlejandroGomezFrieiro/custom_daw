@@ -379,6 +379,34 @@ function Device:automate(param)
     or wrap(Lane, api.lane_add(api.device_get(self.id).track, { target = "param", device = self.id, param = param }))
 end
 
+--- The device's state lane, if it has one.
+function Device:state_lane()
+  local d = api.device_get(self.id)
+  for _, lane in ipairs(api.lane_list(d.track)) do
+    if lane.target == "state" and lane.device == self.id then return wrap(Lane, lane.id) end
+  end
+end
+
+--- The device's state lane, made if there is none yet: a lane whose points
+--- each give the device one of the lane's states, from that point on.
+---   local lane = amp:automate_state()
+---   lane:set_state(16, lane:add_state(amp:capture("crunch")))
+function Device:automate_state()
+  return self:state_lane()
+    or wrap(Lane, api.lane_add(api.device_get(self.id).track, { target = "state", device = self.id }))
+end
+
+--- The device's whole state now, as a state lane takes it: `{ name, state,
+--- params }`. The plugin's saved state, and the parameters set in the project.
+function Device:capture(name)
+  local d = api.device_get(self.id)
+  local params = {}
+  for key, value in pairs(d.params or {}) do params[key] = value end
+  local state = api.device_state(self.id)
+  if not state and next(params) == nil then error("the device keeps no state: give the lane `params` or a `program`", 2) end
+  return { name = name or (d.meta or {}).preset or d.name, state = state, params = params }
+end
+
 --- The value of a parameter at a beat while the song plays. This is the
 --- value of the lane when the lane is on. If not, it is the value of the device.
 function Device:value_at(param, beat)
@@ -523,8 +551,9 @@ function Clip:duplicate(opts)
 end
 
 -- Automation lanes -------------------------------------------------------------
--- Fields: `target` ("volume", "pan" or "param"), `device` and `param` for a
--- parameter, `enabled`, `point_count`, `min` and `max`, `track`.
+-- Fields: `target` ("volume", "pan", "param" or "state"), `device` and
+-- `param` for a parameter, `device` and `states` (their names) for a state
+-- lane, `enabled`, `point_count`, `min` and `max`, `track`.
 
 class(Lane, "Lane", api.lane_get, api.lane_set)
 
@@ -557,6 +586,36 @@ function Lane:clear() api.lane_set_points(self.id, {}) end
 
 --- The value at a beat, when the lane is on and when it is off. Nil without points.
 function Lane:value_at(beat) return api.lane_value_at(self.id, beat) end
+
+--- The states of a state lane: `{ name, state, params, call, program, bank }` each.
+function Lane:states() return api.lane_states(self.id) end
+
+--- Add a state to a state lane, or replace the one of its name. Returns
+--- its index, from 0: the value of a point that gives it.
+function Lane:add_state(state) return api.lane_add_state(self.id, state) end
+
+--- The index of a state of a state lane, by its name or its index. Nil
+--- when the lane has no such state.
+function Lane:state_index(which)
+  local states = api.lane_states(self.id)
+  if type(which) == "number" then return states[which + 1] and which or nil end
+  for i, s in ipairs(states) do
+    if s.name == which then return i - 1 end
+  end
+  local lower = tostring(which):lower()
+  for i, s in ipairs(states) do
+    if s.name:lower():find(lower, 1, true) then return i - 1 end
+  end
+end
+
+--- Give the device a state of a state lane from `beat` on: a point that
+--- names the state by its name or its index.
+---   lane:set_state(16, "crunch")
+function Lane:set_state(beat, which)
+  local index = self:state_index(which)
+  if not index then error("the lane has no state `" .. tostring(which) .. "`", 2) end
+  api.lane_add_point(self.id, beat, index)
+end
 
 -- Module ---------------------------------------------------------------------
 
