@@ -440,9 +440,11 @@ paw.on("project.loaded", function() M.renders = {} end)
 -- become one `address.changed { uris, revision }` for the edit, after the
 -- kernel's own `changed`, so that whoever watches addresses never diffs
 -- snapshots.
-local pending, scheduled = {}, false
+local pending, scheduled = {}, nil
 local function tell()
-  scheduled = false
+  -- Told now (at the kernel's `changed`): the timer is not needed any more.
+  if scheduled then paw.cancel(scheduled) end
+  scheduled = nil
   if not next(pending) then return end
   local uris = {}
   for uri in pairs(pending) do uris[#uris + 1] = uri end
@@ -452,10 +454,7 @@ local function tell()
 end
 local function changed(uris)
   for _, uri in ipairs(uris) do pending[uri] = true end
-  if not scheduled then
-    scheduled = true
-    paw.defer(tell, 0)
-  end
+  if not scheduled then scheduled = paw.defer(tell, 0) end
 end
 paw.on("track.*", function(e) if e.id then changed({ M.track(e.id) }) end end)
 paw.on("clip.*", function(e) if e.id then changed({ M.clip(e.id) }) end end)

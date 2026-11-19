@@ -445,8 +445,9 @@ impl Kernel {
     }
 
     fn fire_timers(&mut self) {
-        for func in api::due_timers(&self.shared) {
-            if let Err(err) = self.call::<()>("timer", func) {
+        for key in api::due_timers(&self.shared) {
+            let func = self.lua.registry_value::<mlua::Function>(&key);
+            if let Err(err) = func.and_then(|func| self.call::<()>("timer", func)) {
                 self.report("timer", err);
             }
         }

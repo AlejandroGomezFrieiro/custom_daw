@@ -41,7 +41,10 @@ pub struct Timer {
     pub id: u64,
     pub due: Instant,
     pub repeat: Option<Duration>,
-    pub func: Function,
+    /// In the registry, not held as a `Function`: each Lua value that Rust
+    /// holds takes a slot of a stack that has room for about 8000, and a
+    /// script that never lets the timers fire can start more than that.
+    pub func: Rc<mlua::RegistryKey>,
 }
 
 /// Everything the kernel and the Lua API functions both reach into.
@@ -577,7 +580,7 @@ fn xdg_dir(variable: &str, fallback: &str) -> String {
 
 /// The functions of the timers that are due, with one-shot timers removed
 /// and repeating ones moved on.
-pub fn due_timers(shared: &Shared) -> Vec<Function> {
+pub fn due_timers(shared: &Shared) -> Vec<Rc<mlua::RegistryKey>> {
     let now = Instant::now();
     let mut timers = shared.timers.borrow_mut();
     let mut due = Vec::new();
@@ -1503,7 +1506,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         }
 
         // --- timers ---
-        fn timer_start(_, sh, (ms, repeat, func) => (f64, bool, Function)) {
+        fn timer_start(lua, sh, (ms, repeat, func) => (f64, bool, Function)) {
+            let func = Rc::new(lua.create_registry_value(func)?);
             let id = sh.next_timer.get() + 1;
             sh.next_timer.set(id);
             let period = Duration::from_secs_f64(ms.max(0.0) / 1000.0);
@@ -1540,7 +1544,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             let mut idled = Instant::now() - Duration::from_secs(1);
             loop {
                 for func in due_timers(&sh) {
-                    timer.call::<()>(func)?;
+                    timer.call::<()>(lua.registry_value::<Function>(&func)?)?;
                 }
                 // Plugins are looked after as they are while the program runs.
                 if idled.elapsed() >= Duration::from_millis(15) {

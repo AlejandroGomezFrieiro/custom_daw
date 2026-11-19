@@ -408,6 +408,34 @@ test("scripts can wait while timers fire", function()
   paw.cancel(every)
 end)
 
+test("a script can start more timers than Lua has stack slots, and the API still answers", function()
+  fresh()
+  -- Each timer used to hold its function in a slot of a stack with room
+  -- for about 8000: past that, every call that made a list failed.
+  local handles = {}
+  for i = 1, 9000 do handles[i] = paw.defer(function() end, 60000) end
+  local t = paw.add_track({ name = "T" })
+  for i = 1, 3 do t:add_clip({ start = i * 4, length = 4 }) end
+  paw.flush()
+  eq(#api.clip_list(t.id), 3, "a list is made")
+  for _, h in ipairs(handles) do paw.cancel(h) end
+end)
+
+test("edits in a script that never waits leave no timers behind", function()
+  fresh()
+  local t = paw.add_track({ name = "T" })
+  paw.flush()
+  api.undo_checkpoint()
+  local function count() local n = 0 for _ in pairs(paw.timers) do n = n + 1 end return n end
+  local before = count()
+  for i = 1, 50 do
+    t:add_clip({ start = i * 4, length = 4 })
+    paw.flush()
+    api.undo_checkpoint()
+  end
+  eq(count() - before <= 1, true, "timers left by 50 edits: " .. (count() - before))
+end)
+
 test("an LV2 plugin that follows the song's tempo is told it", function()
   local kind
   for _, info in ipairs(paw.device_types()) do
