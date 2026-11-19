@@ -5,7 +5,8 @@
 --
 -- The token goes from the shell of the process to curl on its standard
 -- input (`-H @-`): it is not on a command line, in a log, in the project or
--- in a file of paw. The process looks for it in this order, and says which
+-- in a file of paw (only the sign-in keeps its own tokens, in the keyring or
+-- in a file of mode 600: tone3000_auth.lua). The process looks for it in this order, and says which
 -- one it used:
 --
 --   1. the environment variable TONE3000_TOKEN;
@@ -13,13 +14,17 @@
 --      its owner may read it: mode 600 or 400);
 --   3. the keyring, through `secret-tool lookup application paw service
 --      tone3000`, when secret-tool is there;
---   4. only when `paw.opt.plugstate_tone3000_plugin_session` is on: the
+--   4. the sign-in of `:plugstate.tone3000_login` (tone3000_auth.lua), which
+--      paw renews when it expires;
+--   5. only when `paw.opt.plugstate_tone3000_plugin_session` is on: the
 --      session of the TONE3000 plugin (the `t3k_tokens` value of
 --      `~/.config/TONE3000/ui-preferences.settings`, as the plugin's
 --      source keeps it), while it has not expired.
 --
 -- Without a token, a request goes without one. The API answers 401 when it
--- needs one, and paw says so.
+-- needs one, and paw says so. The requests of the sign-in itself (a POST
+-- with a form) send no token: their form goes to curl on its standard
+-- input too, as it holds a refresh token or a device code.
 local api = paw.api
 
 local M = {}
@@ -33,6 +38,9 @@ M.secret_tool = "secret-tool"
 M.unix_socket = nil
 --- More environment for the processes (tests).
 M.env = nil
+--- The sign-in (tone3000_auth.lua sets it): `token(cb)` calls back with the
+--- access token of the sign-in, or nil; `renew(cb)` renews it after a 401.
+M.auth = nil
 
 local jobs, ticker, serial = {}, nil, 0
 
@@ -106,13 +114,18 @@ end
 
 -- The process: find the token, then call curl. Its arguments: the URL, the
 -- file for the body, the status file, the time limit, the token file, the
--- Unix socket. It writes `key=value` lines to the status file at the end.
+-- Unix socket, "post" for a form on the standard input. It writes
+-- `key=value` lines to the status file at the end.
 local SCRIPT = [=[
-url=$1 out=$2 status=$3 limit=$4 tokfile=$5 sock=$6
+url=$1 out=$2 status=$3 limit=$4 tokfile=$5 sock=$6 post=$7
 mkdir -p "$(dirname "$out")" "$(dirname "$status")" || exit 1
 tok= src=none
 say() { printf '%s\n' "$@" >> "$status.part"; }
-if [ -n "${TONE3000_TOKEN:-}" ]; then
+if [ -n "$post" ]; then
+  :
+elif [ -n "${PAW_T3K_GIVEN_TOKEN:-}" ]; then
+  tok=$PAW_T3K_GIVEN_TOKEN src=session
+elif [ -n "${TONE3000_TOKEN:-}" ]; then
   tok=$TONE3000_TOKEN src=env
 elif [ -n "$tokfile" ]; then
   if [ ! -f "$tokfile" ]; then
@@ -128,15 +141,19 @@ elif [ -n "$tokfile" ]; then
 elif [ -n "${PAW_T3K_SECRET_TOOL:-}" ] && command -v "$PAW_T3K_SECRET_TOOL" >/dev/null 2>&1 \
     && tok=$(timeout 10 "$PAW_T3K_SECRET_TOOL" lookup application paw service tone3000 2>/dev/null) && [ -n "$tok" ]; then
   src=keyring
+elif [ -n "${PAW_T3K_SESSION_TOKEN:-}" ]; then
+  tok=$PAW_T3K_SESSION_TOKEN src=session
 elif [ -n "${PAW_T3K_PLUGIN_TOKEN:-}" ]; then
   tok=$PAW_T3K_PLUGIN_TOKEN src=plugin
 fi
-unset TONE3000_TOKEN PAW_T3K_PLUGIN_TOKEN
+unset TONE3000_TOKEN PAW_T3K_PLUGIN_TOKEN PAW_T3K_SESSION_TOKEN PAW_T3K_GIVEN_TOKEN
 set -- --silent --show-error --globoff --location --max-redirs 5 --connect-timeout 10 \
   --max-time "$limit" --user-agent paw-plugstate --header 'Accept: application/json' \
   --output "$out.part" --dump-header "$out.head" --write-out '%{http_code}'
 if [ -n "$sock" ]; then set -- "$@" --unix-socket "$sock"; fi
-if [ -n "$tok" ]; then
+if [ -n "$post" ]; then
+  code=$(curl "$@" --header 'Content-Type: application/x-www-form-urlencoded' --data-binary @- -- "$url" 2> "$out.err")
+elif [ -n "$tok" ]; then
   code=$(printf 'Authorization: Bearer %s\n' "$tok" | curl "$@" --header @- -- "$url" 2> "$out.err")
 else
   code=$(curl "$@" -- "$url" 2> "$out.err")
@@ -190,8 +207,11 @@ local function why(result, what)
   said = type(said) == "string" and said or nil
   if code == 401 then
     if s.source == "none" then
-      return "not signed in: TONE3000 needs a token for this. Set TONE3000_TOKEN, a token file "
-        .. "(paw.opt.plugstate_tone3000_token_file) or a keyring entry (see :help plugstate)"
+      return "not signed in: TONE3000 needs a token for this. Sign in with :plugstate.tone3000_login, or set "
+        .. "TONE3000_TOKEN, a token file (paw.opt.plugstate_tone3000_token_file) or a keyring entry (see :help plugstate)"
+    elseif s.source == "session" then
+      return "TONE3000 does not take the token of your sign-in (it has expired or was revoked): "
+        .. "sign in again with :plugstate.tone3000_login"
     end
     return "TONE3000 does not take the token from the " .. (({ env = "variable TONE3000_TOKEN", file = "token file",
       keyring = "keyring", plugin = "plugin's session" })[s.source] or s.source) .. " (expired, or not a token): sign in again"
@@ -268,12 +288,7 @@ function M.busy()
   return n
 end
 
---- Start a request. `opts`: `kind` ("json", or "file" with `dest`), `what`
---- (for the messages). `cb(result)` gets `{ ok, http, data, path, message,
---- source }` when it ends.
-function M.request(url, opts, cb)
-  opts = opts or {}
-  local kind = opts.kind or "json"
+local function spawn(url, opts, kind, session_token, cb)
   serial = serial + 1
   local tmp = M.cache_dir() .. "/tmp"
   local stem = string.format("%s/%d-%d", tmp, math.floor(api.now()), serial)
@@ -282,17 +297,25 @@ function M.request(url, opts, cb)
   if paw.opt.plugstate_tone3000_plugin_session then
     env.PAW_T3K_PLUGIN_TOKEN = M.plugin_token() or ""
   end
+  env.PAW_T3K_SESSION_TOKEN = session_token or ""
+  env.PAW_T3K_GIVEN_TOKEN = opts.token or ""
   for k, v in pairs(M.env or {}) do env[k] = v end
   local token_file = (paw.opt.plugstate_tone3000_token_file or ""):gsub("^~", os.getenv("HOME") or "~")
   -- A download goes beside the file it becomes, so that it only has to be
   -- renamed.
   local out = kind == "file" and (opts.dest .. ".download") or (stem .. ".body")
+  local post = opts.form and "post" or ""
   local argv = { "sh", "-c", SCRIPT, "paw-tone3000", url, out, stem .. ".status", tostring(limit),
-    token_file, M.unix_socket or "" }
-  local ok, proc = pcall(api.proc_spawn, argv, { env = env })
+    token_file, M.unix_socket or "", post }
+  local ok, proc = pcall(api.proc_spawn, argv, { env = env, pipe = opts.form ~= nil })
   if not ok then
     cb({ ok = false, status = {}, message = "cannot start curl: " .. tostring(proc) })
     return
+  end
+  if opts.form then
+    -- The form (a device code, a refresh token) goes on the standard input.
+    pcall(api.proc_write, proc, M.query(opts.form))
+    pcall(api.proc_close_input, proc)
   end
   jobs[proc] = {
     proc = proc, kind = kind, out = out, status = stem .. ".status", dest = opts.dest, cb = cb,
@@ -300,6 +323,31 @@ function M.request(url, opts, cb)
   }
   if not ticker then ticker = paw.every(50, M.pump) end
   return proc
+end
+
+--- Start a request. `opts`: `kind` ("json", or "file" with `dest`), `what`
+--- (for the messages), `form` (a table: a POST of it as a form, with no
+--- token), `token` (this token and no other). `cb(result)` gets `{ ok,
+--- http, data, path, message, source }` when it ends. When the token of
+--- the sign-in gets a 401, paw renews it and asks once more.
+function M.request(url, opts, cb)
+  opts = opts or {}
+  local kind = opts.kind or "json"
+  if opts.form or opts.token or not M.auth then return spawn(url, opts, kind, nil, cb) end
+  M.auth.token(function(session_token)
+    spawn(url, opts, kind, session_token, function(result)
+      if result.http == 401 and result.source == "session" and not opts.again then
+        return M.auth.renew(function(fresh)
+          if not fresh then return cb(result) end
+          local again = {}
+          for k, v in pairs(opts) do again[k] = v end
+          again.again = true
+          M.request(url, again, cb)
+        end)
+      end
+      cb(result)
+    end)
+  end)
 end
 
 --- Stop every request without calling back (when the extension goes).

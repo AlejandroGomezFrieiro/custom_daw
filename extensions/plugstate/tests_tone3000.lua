@@ -4,9 +4,9 @@
 --
 -- No test goes to the network: a mock of the API answers on a Unix socket
 -- (curl's --unix-socket), with the shapes of TONE3000's API reference
--- (https://www.tone3000.com/api: PaginatedResponse, Tone, Model). The one
--- live check runs only when the person who runs the suite sets
--- TONE3000_TOKEN_FILE; it makes one read-only search.
+-- (https://www.tone3000.com/api: PaginatedResponse, Tone, Model). The live
+-- tests are in tests_tone3000_live.lua; they compare TONE3000's answers with
+-- this mock.
 local T = ...
 local test, eq, fresh = T.test, T.eq, T.fresh
 local api = paw.api
@@ -62,10 +62,11 @@ local function unquery(q)
   return out
 end
 
-local REASON = { [200] = "OK", [401] = "Unauthorized", [403] = "Forbidden", [404] = "Not Found", [429] = "Too Many Requests" }
+local REASON = { [200] = "OK", [400] = "Bad Request", [401] = "Unauthorized", [403] = "Forbidden", [404] = "Not Found", [429] = "Too Many Requests" }
 
 --- A mock of the endpoints that paw uses, on a Unix socket. `m.requests`
---- has each request: `{ path, query, auth }`. `m.reply(req)` may answer
+--- has each request: `{ method, path, query, auth, args, form }` (`form`:
+--- the fields of a POST). `m.reply(req)` may answer
 --- in place of the routes: `{ status, body, headers }`, or false for no
 --- answer at all.
 local function mock()
@@ -124,11 +125,15 @@ local function mock()
       local c = m.conns[i]
       local chunk = api.sock_read(c.id)
       if chunk then c.data = c.data .. chunk end
-      if not c.answered and c.data:find("\r\n\r\n", 1, true) then
-        local target = c.data:match("^GET (%S+)")
+      local head_end = c.data:find("\r\n\r\n", 1, true)
+      local length = head_end and tonumber(c.data:sub(1, head_end):lower():match("\r\ncontent%-length:%s*(%d+)")) or 0
+      if not c.answered and head_end and #c.data >= head_end + 3 + length then
+        local method, target = c.data:match("^(%u+) (%S+)")
         local path, query = target:match("^([^?]*)%??(.*)$")
         local auth = c.data:match("\r\n[Aa]uthorization: Bearer ([^\r\n]+)")
-        local req = { path = path, query = query, auth = auth, args = unquery(query) }
+        local body = c.data:sub(head_end + 4, head_end + 3 + length)
+        local req = { method = method, path = path, query = query, auth = auth, args = unquery(query),
+          form = method == "POST" and unquery(body) or nil }
         m.requests[#m.requests + 1] = req
         local r = route(req)
         c.answered = true
@@ -182,6 +187,8 @@ local function setup(m)
     settings = client.plugin_settings, timeout = client.TIMEOUT.json,
     api = paw.opt.plugstate_tone3000_api, file = paw.opt.plugstate_tone3000_token_file,
     session = paw.opt.plugstate_tone3000_plugin_session,
+    client_id = paw.opt.plugstate_tone3000_client_id, session_file = paw.opt.plugstate_tone3000_session_file,
+    store = paw.opt.plugstate_tone3000_store,
   }
   local cache = T.scratch .. "/t3k-cache-" .. math.floor(api.now())
   client.unix_socket = m and m.path
@@ -192,7 +199,16 @@ local function setup(m)
   paw.opt.plugstate_tone3000_api = "http://t3k.test/api/v1"
   paw.opt.plugstate_tone3000_token_file = ""
   paw.opt.plugstate_tone3000_plugin_session = false
+  -- The sign-in: none, in a file of the test's own, never the keyring.
+  paw.opt.plugstate_tone3000_client_id = ""
+  paw.opt.plugstate_tone3000_session_file = cache .. "-session.json"
+  paw.opt.plugstate_tone3000_store = "file"
+  client.auth.reset()
   T.after(function()
+    client.auth.reset()
+    paw.opt.plugstate_tone3000_client_id = was.client_id
+    paw.opt.plugstate_tone3000_session_file = was.session_file
+    paw.opt.plugstate_tone3000_store = was.store
     client.cancel_all()
     if m then m.close() end
     client.unix_socket, client.env, client.secret_tool, client.cache_dir = was.socket, was.env, was.tool, was.cache
@@ -272,6 +288,14 @@ local function select_line(text)
   end
   error("no line with " .. text .. " in " .. table.concat(p.matches, " | "), 2)
 end
+
+-- The mock and the helpers, for the tests of the sign-in and the live tests
+-- (tests_tone3000_auth.lua, tests_tone3000_live.lua).
+T.t3k = {
+  load = load, mock = mock, setup = setup, wait = wait, idle = idle, last_message = last_message,
+  tone = tone, model = model, fill = fill, fake_device = fake_device, picker = picker,
+  client = function() return client end, search = function() return search end,
+}
 
 -- --- tests ---------------------------------------------------------------------------
 
@@ -552,20 +576,4 @@ test("plugstate: a model from TONE3000's library goes into a block of the TONE30
   paw.ui.focus("devices")
   keys("u")
   eq(((api.device_get(amp.id).meta or {}).plugstate or {}).tone3000, nil, "u takes it back")
-end)
-
-test("plugstate: a live search of TONE3000 (only with TONE3000_TOKEN_FILE)", function()
-  local file = os.getenv("TONE3000_TOKEN_FILE")
-  if not file or file == "" then return "skipped: TONE3000_TOKEN_FILE names no token file" end
-  load()
-  setup(nil)
-  client.unix_socket = nil
-  paw.opt.plugstate_tone3000_api = ""
-  paw.opt.plugstate_tone3000_token_file = file
-  local got
-  client.search({ query = "plexi", page = 1, page_size = 5 }, function(r) got = r end)
-  wait(nil, function() return got ~= nil end, "TONE3000 answers")
-  eq(got.ok, true, "the search works: " .. tostring(got.message))
-  eq(type(got.data.data), "table", "a page of tones")
-  eq(got.source, "file", "with the token of the file")
 end)

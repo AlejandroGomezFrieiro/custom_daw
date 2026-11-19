@@ -671,3 +671,5 @@ end)
 
 -- The search of TONE3000's library, against a mock of its API.
 assert(loadfile("extensions/plugstate/tests_tone3000.lua"))(T)
+assert(loadfile("extensions/plugstate/tests_tone3000_auth.lua"))(T)
+assert(loadfile("extensions/plugstate/tests_tone3000_live.lua"))(T)
