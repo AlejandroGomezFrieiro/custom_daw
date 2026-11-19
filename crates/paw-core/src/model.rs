@@ -503,6 +503,14 @@ pub struct Clip {
     pub loop_start: f64,
     #[serde(default)]
     pub meta: Map<String, Value>,
+    /// The MIDI clip file outside the project's folder that the notes are
+    /// read from: the project refers to it and keeps no copy. The first
+    /// edit of the notes makes them the project's own (`origin`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<PathBuf>,
+    /// The file outside the project that the notes were copied from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<PathBuf>,
 }
 
 /// What an audio clip keeps when the tempo changes. Either way it keeps its

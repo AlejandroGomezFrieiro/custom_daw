@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Written by hand in the shape that Bitwig Studio 5 writes (see the
+     example in the DAWproject README), with more of the format in it. -->
+<Project version="1.0">
+  <Application name="Bitwig Studio" version="5.0"/>
+  <Transport>
+    <Tempo max="666.000000" min="20.000000" unit="bpm" value="120.000000" id="id0" name="Tempo"/>
+    <TimeSignature denominator="4" numerator="4" id="id1"/>
+  </Transport>
+  <Structure>
+    <Track contentType="tracks" loaded="true" id="id40" name="Group" color="#334455">
+      <Channel audioChannels="2" destination="id15" role="submix" solo="false" id="id41">
+        <Mute value="false" id="id42" name="Mute"/>
+        <Pan max="1.000000" min="0.000000" unit="normalized" value="0.500000" id="id43" name="Pan"/>
+        <Volume max="2.000000" min="0.000000" unit="linear" value="0.500000" id="id44" name="Volume"/>
+      </Channel>
+      <Track contentType="notes" loaded="true" id="id2" name="Bass" color="#a2eabf">
+        <Channel audioChannels="2" destination="id41" role="regular" solo="true" id="id3">
+          <Devices>
+            <ClapPlugin deviceID="com.nowhere.synth" deviceName="Nowhere Synth" deviceRole="instrument" loaded="true" id="id7" name="Nowhere Synth">
+              <Parameters>
+                <RealParameter parameterID="12" name="Filter Cutoff" unit="normalized" min="0" max="1" value="0.5" id="id50"/>
+              </Parameters>
+              <Enabled value="true" id="id8" name="On/Off"/>
+              <State path="plugins/d19b1f6e.clap-preset"/>
+            </ClapPlugin>
+          </Devices>
+          <Mute value="false" id="id6" name="Mute"/>
+          <Pan max="1.000000" min="0.000000" unit="normalized" value="0.250000" id="id5" name="Pan"/>
+          <Sends>
+            <Send destination="id60" type="pre" id="id61">
+              <Volume max="2.000000" min="0.000000" unit="linear" value="0.250000" id="id62" name="Send"/>
+            </Send>
+          </Sends>
+          <Volume max="2.000000" min="0.000000" unit="linear" value="0.659140" id="id4" name="Volume"/>
+        </Channel>
+      </Track>
+    </Track>
+    <Track contentType="audio" loaded="true" id="id9" name="Drumloop" color="#b53bba">
+      <Channel audioChannels="2" destination="id15" role="regular" solo="false" id="id10">
+        <Devices>
+          <Vst3Plugin deviceID="ABCDEF0123456789ABCDEF0123456789" deviceName="Nowhere Verb" deviceRole="audioFX" deviceVendor="Nobody" loaded="true" id="id70" name="Nowhere Verb">
+            <Parameters/>
+            <Enabled value="false" id="id71" name="On/Off"/>
+            <State path="plugins/nowhere.vstpreset"/>
+          </Vst3Plugin>
+        </Devices>
+        <Mute value="true" id="id13" name="Mute"/>
+        <Pan max="1.000000" min="0.000000" unit="normalized" value="0.500000" id="id12" name="Pan"/>
+        <Volume max="2.000000" min="0.000000" unit="linear" value="0.177125" id="id11" name="Volume"/>
+      </Channel>
+    </Track>
+    <Track contentType="audio" loaded="true" id="id63" name="Reverb">
+      <Channel audioChannels="2" destination="id15" role="effect" solo="false" id="id60">
+        <Mute value="false" id="id64" name="Mute"/>
+        <Pan max="1.000000" min="0.000000" unit="normalized" value="0.500000" id="id65" name="Pan"/>
+        <Volume max="2.000000" min="0.000000" unit="linear" value="1.000000" id="id66" name="Volume"/>
+      </Channel>
+    </Track>
+    <Track contentType="audio notes" loaded="true" id="id14" name="Master">
+      <Channel audioChannels="2" role="master" solo="false" id="id15">
+        <Mute value="false" id="id18" name="Mute"/>
+        <Pan max="1.000000" min="0.000000" unit="normalized" value="0.500000" id="id17" name="Pan"/>
+        <Volume max="2.000000" min="0.000000" unit="linear" value="0.500000" id="id16" name="Volume"/>
+      </Channel>
+    </Track>
+  </Structure>
+  <Arrangement id="id19">
+    <Lanes timeUnit="beats" id="id20">
+      <Lanes track="id2" id="id21">
+        <Clips id="id22">
+          <Clip time="0.0" duration="8.0" playStart="0.0" name="Bassline">
+            <Lanes id="id80">
+              <Notes id="id23">
+                <Note time="0.000000" duration="0.250000" channel="0" key="65" vel="0.787402" rel="0.787402"/>
+                <Note time="1.000000" duration="0.500000" channel="1" key="53" vel="1.0" rel="0.5"/>
+              </Notes>
+              <Points id="id81" unit="normalized">
+                <Target expression="channelController" channel="0" controller="74"/>
+                <RealPoint time="0.0" value="0.25" interpolation="linear"/>
+                <RealPoint time="2.0" value="1.0" interpolation="linear"/>
+              </Points>
+              <Points id="id82" unit="normalized">
+                <Target expression="pitchBend" channel="0"/>
+                <RealPoint time="3.0" value="0.75"/>
+              </Points>
+            </Lanes>
+          </Clip>
+          <Clip time="8.0" duration="8.0" playStart="0.0" loopStart="0.0" loopEnd="2.0" enable="false" name="Loop">
+            <Notes id="id24">
+              <Note time="0.000000" duration="0.500000" channel="0" key="41" vel="0.5" rel="0.5"/>
+            </Notes>
+          </Clip>
+        </Clips>
+        <Points id="id83" unit="linear">
+          <Target parameter="id4"/>
+          <RealPoint time="0.0" value="1.0" interpolation="linear"/>
+          <RealPoint time="4.0" value="0.5"/>
+          <RealPoint time="6.0" value="0.25"/>
+        </Points>
+      </Lanes>
+      <Lanes track="id9" id="id25">
+        <Clips id="id26">
+          <Clip time="4.0" duration="4.0" playStart="0.0" loopStart="0.0" loopEnd="4.0" fadeTimeUnit="beats" fadeInTime="0.5" fadeOutTime="0.25" name="Drumfunk">
+            <Clips id="id27">
+              <Clip time="0.0" duration="4.0" contentTimeUnit="beats" playStart="0.0" fadeTimeUnit="beats" fadeInTime="0.0" fadeOutTime="0.0">
+                <Warps contentTimeUnit="seconds" timeUnit="beats" id="id28">
+                  <Audio algorithm="stretch" channels="1" duration="1.0" sampleRate="22050" id="id29">
+                    <File path="audio/loop.wav"/>
+                  </Audio>
+                  <Warp time="0.0" contentTime="0.0"/>
+                  <Warp time="4.0" contentTime="1.0"/>
+                </Warps>
+              </Clip>
+            </Clips>
+          </Clip>
+          <Clip time="12.0" duration="2.0" contentTimeUnit="seconds" playStart="0.25" name="Plain">
+            <Audio channels="1" duration="1.0" sampleRate="22050" id="id30">
+              <File path="audio/loop.wav"/>
+            </Audio>
+          </Clip>
+        </Clips>
+      </Lanes>
+      <Lanes track="id14" id="id31">
+        <Clips id="id32"/>
+        <Points id="id84" unit="normalized">
+          <Target parameter="id17"/>
+          <RealPoint time="0.0" value="0.0" interpolation="hold"/>
+          <RealPoint time="8.0" value="1.0"/>
+        </Points>
+      </Lanes>
+    </Lanes>
+    <Markers id="id90">
+      <Marker time="0.0" name="Intro" color="#ff0000"/>
+      <Marker time="8.0" name="Drop"/>
+    </Markers>
+    <TempoAutomation id="id91" unit="bpm">
+      <Target parameter="id0"/>
+      <RealPoint time="0.0" value="120.0" interpolation="hold"/>
+      <RealPoint time="16.0" value="90.0" interpolation="hold"/>
+    </TempoAutomation>
+    <TimeSignatureAutomation id="id92">
+      <Target parameter="id1"/>
+      <TimeSignaturePoint time="0.0" numerator="4" denominator="4"/>
+      <TimeSignaturePoint time="16.0" numerator="3" denominator="4"/>
+    </TimeSignatureAutomation>
+  </Arrangement>
+  <Scenes/>
+</Project>

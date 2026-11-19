@@ -91,35 +91,59 @@ local ENVELOPES = {
   VOLENV2 = "volume", PANENV2 = "pan", MASTERVOLENV2 = "volume", MASTERPANENV2 = "pan",
 }
 
-local function lane_points(env, target, ctx, label)
-  -- Volume points are amplitudes in the file. VOLTYPE 1 ("fader scaling")
-  -- changes only how REAPER draws them and what its API calls take: a point
-  -- inserted through the API as ScaleToEnvelopeMode(1, 0.3) is saved as 0.3.
-  local points, shapes = {}, 0
-  local list = env:all("PT")
-  for i, pt in ipairs(list) do
+--- REAPER's point shapes as paw's: 0 linear, 1 square (paw's "hold"),
+--- 2 slow start and end (paw's "smooth"). Fast start, fast end and Bezier
+--- have no match: they become straight lines or smooth, and are counted.
+local SHAPES = { [0] = "linear", [1] = "hold", [2] = "smooth", [5] = "smooth" }
+M.SHAPES = SHAPES
+
+--- The points of an envelope block, as { beat, value } with `convert`
+--- turning a value of the file into paw's, and the shape of each stretch
+--- by its point's place.
+local function lane_points(env, convert, ctx, label)
+  local points, shapes, odd = {}, {}, 0
+  for _, pt in ipairs(env:all("PT")) do
     local t, v, shape = pt:argn(1) or 0, pt:argn(2) or 0, pt:argn(3) or 0
-    local value
-    if target == "volume" then
-      value = db(v)
-    else
-      -- REAPER's pan envelopes run from +1 (left) to -1 (right).
-      value = math.max(-1, math.min(1, -v))
-    end
-    local beat = ctx.beat(t)
-    points[#points + 1] = { beat, value }
-    local next_pt = list[i + 1]
-    if shape == 1 and next_pt then
-      -- Square: hold until the next point, then step.
-      points[#points + 1] = { ctx.beat(next_pt:argn(1) or t), value }
-    elseif shape ~= 0 and shape ~= 1 then
-      shapes = shapes + 1
-    end
+    points[#points + 1] = { ctx.beat(t), convert(v) }
+    local as = SHAPES[shape]
+    if not as or shape == 5 then odd = odd + 1 end
+    if as and as ~= "linear" then shapes[#points] = as end
   end
-  if shapes > 0 then
-    ctx.report:count("Envelope curve shapes (made straight lines)", label, shapes)
+  if odd > 0 then
+    ctx.report:count("Envelope curve shapes (fast start, fast end and Bezier made straight or smooth)", label, odd)
   end
-  return points
+  return points, shapes
+end
+
+--- Add a lane with its points and their shapes. Returns its id, or nil.
+local function add_lane(track, opts, shapes, ctx, label)
+  local ok, id = pcall(api.lane_add, track, opts)
+  if not ok then
+    ctx.report:add("Envelopes", label .. ": " .. tostring(id))
+    return nil
+  end
+  if next(shapes) then
+    local stored, list = api.lane_points(id), {}
+    for i, shape in pairs(shapes) do
+      if stored[i] and i < #stored then list[#list + 1] = { beat = stored[i][1], shape = shape, tension = 0 } end
+    end
+    if #list > 0 then api.lane_set_shapes(id, list) end
+  end
+  return id
+end
+
+-- Volume points are amplitudes in the file. VOLTYPE 1 ("fader scaling")
+-- changes only how REAPER draws them and what its API calls take: a point
+-- inserted through the API as ScaleToEnvelopeMode(1, 0.3) is saved as 0.3.
+-- REAPER's pan envelopes run from +1 (left) to -1 (right).
+local CONVERT = {
+  volume = db,
+  pan = function(v) return math.max(-1, math.min(1, -v)) end,
+}
+
+local function enabled_of(env)
+  local active = env:child("ACT")
+  return not active or active:argn(1) ~= 0
 end
 
 local function import_envelopes(block, track, ctx, label)
@@ -128,12 +152,8 @@ local function import_envelopes(block, track, ctx, label)
     local target = ENVELOPES[name]
     local has_points = env:child("PT") ~= nil
     if target and has_points then
-      local active = env:child("ACT")
-      local enabled = not active or active:argn(1) ~= 0
-      local ok, err = pcall(api.lane_add, track, {
-        target = target, enabled = enabled, points = lane_points(env, target, ctx, label .. " " .. target),
-      })
-      if not ok then ctx.report:add("Envelopes", label .. ": " .. target .. ": " .. tostring(err)) end
+      local points, shapes = lane_points(env, CONVERT[target], ctx, label .. " " .. target)
+      add_lane(track, { target = target, enabled = enabled_of(env), points = points }, shapes, ctx, label .. ": " .. target)
     elseif has_points and name:match("ENV") and name ~= "TEMPOENVEX" then
       ctx.report:add("Envelopes other than track volume and pan", label .. ": " .. name)
     end
@@ -169,40 +189,59 @@ local function midi_source(source, ctx, label)
   if src.ignore_tempo and src.ignore_tempo > 0 then scale = scale * ctx.tempo / src.ignore_tempo end
   for what, n in pairs(src.other) do ctx.report:count("MIDI other than notes", label .. ": " .. what, n) end
   if src.muted > 0 then ctx.report:count("Muted MIDI notes (left out)", label, src.muted) end
-  local notes = {}
+  local notes, controls, channels = {}, {}, 0
   for i, n in ipairs(src.notes) do
     notes[i] = { start = n.tick * scale, length = n.length * scale, pitch = n.pitch, velocity = n.velocity, channel = n.channel }
   end
-  return notes, src.length * scale
+  for i, c in ipairs(src.controls or {}) do
+    if c.channel ~= 0 then channels = channels + 1 end
+    controls[i] = { start = c.tick * scale, type = c.type, number = c.number, value = c.value, key = c.key, program = c.program, bank = c.bank }
+  end
+  if channels > 0 then ctx.report:count("MIDI controllers on channels other than 1 (played on channel 1)", label, channels) end
+  return notes, src.length * scale, controls
 end
 
---- Notes of a source as a clip of `len` beats that starts `offset` beats
---- into it, looping the source when `loop` (as a looped item does).
-local function clip_notes(notes, source_len, offset, len, loop)
-  local out = {}
-  local first, last = 0, 0
-  if loop and source_len > 0 then
-    first = math.floor(offset / source_len)
-    last = math.ceil((offset + len) / source_len)
+--- Notes and controller moves of a source as a clip of `len` beats that
+--- starts `offset` beats into it. A looped item becomes a looped clip:
+--- the source is its repeated stretch, which begins `offset` beats before
+--- the clip's start.
+local function clip_notes(notes, controls, source_len, offset, len, loop)
+  local out, moves = {}, {}
+  local function note(n, start, stop)
+    out[#out + 1] = {
+      pitch = n.pitch, start = start, length = stop - start, velocity = math.max(1, math.min(127, n.velocity)),
+      meta = n.channel and n.channel ~= 0 and { channel = n.channel + 1 } or nil,
+    }
   end
-  for k = first, last do
+  local function move(c, at)
+    moves[#moves + 1] = { start = at, type = c.type, number = c.number, value = c.value, key = c.key, program = c.program, bank = c.bank }
+  end
+  if loop then
+    offset = offset % source_len
     for _, n in ipairs(notes) do
-      local s = n.start + k * source_len - offset
-      local e = s + n.length
-      if e > 0 and s < len - 1e-9 then
-        -- A note running over the item's start plays from it.
-        local start = math.max(0, s)
-        local stop = math.min(len, e)
-        if stop - start > 1e-9 then
-          out[#out + 1] = {
-            pitch = n.pitch, start = start, length = stop - start, velocity = math.max(1, math.min(127, n.velocity)),
-            meta = n.channel and n.channel ~= 0 and { channel = n.channel + 1 } or nil,
-          }
-        end
+      if n.start < source_len - 1e-9 then
+        note(n, n.start - offset, n.start - offset + math.min(n.length, source_len - n.start))
       end
     end
+    for _, c in ipairs(controls) do
+      if c.start < source_len - 1e-9 then move(c, c.start - offset) end
+    end
+    return out, moves, { loop = true, loop_length = source_len, loop_start = -offset }
   end
-  return out
+  for _, n in ipairs(notes) do
+    local s = n.start - offset
+    local e = s + n.length
+    if e > 0 and s < len - 1e-9 then
+      -- A note running over the item's start plays from it.
+      local start, stop = math.max(0, s), math.min(len, e)
+      if stop - start > 1e-9 then note(n, start, stop) end
+    end
+  end
+  for _, c in ipairs(controls) do
+    local at = c.start - offset
+    if at >= -1e-9 and at < len - 1e-9 then move(c, math.max(0, at)) end
+  end
+  return out, moves, {}
 end
 
 local function import_item(item, track, track_name, ctx)
@@ -213,10 +252,15 @@ local function import_item(item, track, track_name, ctx)
   local pos, len = item:getn("POSITION") or 0, item:getn("LENGTH") or 0
   local loop = item:getn("LOOP") == 1
   local muted = (item:getn("MUTE") or 0) ~= 0
-  local fadein, fadeout = item:child("FADEIN"), item:child("FADEOUT")
-  if (fadein and (fadein:argn(2) or 0) > 0) or (fadeout and (fadeout:argn(2) or 0) > 0) then
-    ctx.report:count("Fades (ignored)", track_name)
+  -- A fade's length is its second number, or its third when REAPER made
+  -- it as a crossfade; its shape is the first.
+  local function fade(line)
+    if not line then return 0 end
+    local len = (line:argn(3) or 0) > 0 and line:argn(3) or (line:argn(2) or 0)
+    if len > 0 and (line:argn(1) or 1) ~= 1 then ctx.report:count("Fade shapes (paw fades on a quarter sine)", track_name) end
+    return len
   end
+  local fade_in, fade_out = fade(item:child("FADEIN")), fade(item:child("FADEOUT"))
   local volpan = item:child("VOLPAN")
   local item_vol = volpan and volpan:argn(3) or 1
   local take_vol, take_pan
@@ -228,12 +272,14 @@ local function import_item(item, track, track_name, ctx)
   end
   if take_vol < 0 then ctx.report:add("Polarity (take phase invert)", label) end
   if math.abs(take_pan) > 1e-9 then ctx.report:add("Take pan", label) end
+  -- PLAYRATE rate, keep pitch, semitones: an audio clip plays its file
+  -- 1/rate times as long, at the same pitch or (rate not keeping pitch)
+  -- 12 log2(rate) semitones higher, plus the pitch shift.
   local rate_line = take_get(take, "PLAYRATE")
   local rate = rate_line and rate_line:argn(1) or 1
-  if math.abs(rate - 1) > 1e-9 then
-    ctx.report:add("Play rate (ignored: played at 1x)", string.format("%s: rate %g", label, rate))
-  end
-  if rate_line and math.abs(rate_line:argn(3) or 0) > 1e-9 then ctx.report:add("Take pitch shift", label) end
+  if rate <= 0 then rate = 1 end
+  local semitones = rate_line and rate_line:argn(3) or 0
+  if rate_line and rate_line:argn(2) == 0 then semitones = semitones + 12 * math.log(rate) / math.log(2) end
   local chanmode = take_get(take, "CHANMODE")
   if chanmode and (chanmode:argn(1) or 0) ~= 0 then ctx.report:add("Take channel mode", label) end
   for _, c in ipairs(item.children) do
@@ -255,9 +301,12 @@ local function import_item(item, track, track_name, ctx)
     return
   end
   local kind = source.tokens[2]
-  -- A section of a source: an offset into it (and maybe reversed).
+  -- A section of a source: an offset into it (and maybe reversed), and
+  -- for a looped item the stretch that repeats.
+  local section
   if kind == "SECTION" then
-    soffs = soffs + (source:getn("STARTPOS") or 0)
+    section = { start = source:getn("STARTPOS") or 0, length = source:getn("LENGTH") }
+    soffs = soffs + section.start
     if (source:getn("MODE") or 0) ~= 0 then ctx.report:add("Reversed or looped sections (played forward)", label) end
     source = source:blocks("SOURCE")[1]
     kind = source and source.tokens[2]
@@ -270,12 +319,20 @@ local function import_item(item, track, track_name, ctx)
   local len_b = ctx.beat(pos + len) - start_b
   if len_b <= 0 then return end
   if kind == "MIDI" then
-    local notes, source_len = midi_source(source, ctx, label)
+    local notes, source_len, controls = midi_source(source, ctx, label)
     if not notes then return end
     if math.abs(db(item_vol * math.abs(take_vol))) > 0.01 then ctx.report:add("Item volume on MIDI items", label) end
+    if math.abs(rate - 1) > 1e-9 then
+      ctx.report:add("Play rate of MIDI items (played at 1x)", string.format("%s: rate %g", label, rate))
+    end
+    if math.abs(semitones) > 1e-9 then ctx.report:add("Pitch shift of MIDI items", label) end
+    if fade_in > 0 or fade_out > 0 then ctx.report:count("Fades on MIDI items", track_name) end
     local offset = soffs * api.tempo_at(start_b) / 60
-    local list = clip_notes(notes, source_len, offset, len_b, loop and source_len > 0)
-    local ok, id = pcall(api.clip_add, track, { name = name, start = start_b, length = len_b, notes = list })
+    local list, moves, looping = clip_notes(notes, controls, source_len, offset, len_b, loop and source_len > 0)
+    local ok, id = pcall(api.clip_add, track, {
+      name = name, start = start_b, length = len_b, notes = list, controls = moves,
+      ["loop"] = looping.loop, loop_length = looping.loop_length, loop_start = looping.loop_start,
+    })
     if not ok then return ctx.report:add("Items that could not be added", label .. ": " .. tostring(id)) end
     if muted then api.clip_set(id, "muted", true) end
     ctx.clips = ctx.clips + 1
@@ -299,22 +356,49 @@ local function import_item(item, track, track_name, ctx)
     return
   end
   local gain = db(item_vol * math.abs(take_vol))
-  local ok, id = pcall(api.clip_add, track, { name = name, start = start_b, file = path, offset = soffs, gain = gain })
+  local function beats_from(at, seconds) return ctx.beat(api.tempo_seconds(at) + seconds) - at end
+  local opts = {
+    name = name, start = start_b, file = path, offset = soffs, gain = gain,
+    stretch = math.abs(rate - 1) > 1e-9 and 1 / rate or nil, pitch = semitones,
+  }
+  local ok, id = pcall(api.clip_add, track, opts)
   if not ok then return ctx.report:add("Unreadable media", label .. ": " .. tostring(id):gsub("\n.*", "")) end
   ctx.clips = ctx.clips + 1
   local natural = api.clip_get(id).length
   local ids = { id }
-  if len_b <= natural + 1e-9 or not loop then
+  -- A looped item plays the source (or its section) again from its start.
+  local repeat_seconds = section and section.length
+    or (api.tempo_seconds(start_b + natural) - api.tempo_seconds(start_b) + soffs)
+  if loop and math.abs(rate - 1) <= 1e-9 and repeat_seconds > 1e-6 and (len_b > natural + 1e-9 or section) then
+    -- A looped clip: the repeated stretch begins where the source (or the
+    -- section) does, which is the take's offset into it before the clip.
+    local base = section and section.start or 0
+    local into = (soffs - base) % repeat_seconds
+    api.clip_remove(id)
+    opts.length, opts["loop"] = len_b, true
+    opts.loop_length = beats_from(start_b, repeat_seconds)
+    opts.loop_start = -beats_from(start_b, into)
+    opts.offset = base + into
+    id = api.clip_add(track, opts)
+    ids = { id }
+  elseif len_b <= natural + 1e-9 or not loop then
     api.clip_set(id, "length", len_b)
   else
-    -- A looped item plays the source again from its start: one clip per pass.
-    local whole = natural + soffs * api.tempo_at(start_b) / 60
+    -- Looped at another rate: one clip per pass.
+    local whole = natural + soffs / rate * api.tempo_at(start_b) / 60
     local at, stop = start_b + natural, start_b + len_b
     while at < stop - 1e-9 and whole > 1e-9 do
-      local piece = api.clip_add(track, { name = name, start = at, file = path, offset = 0, gain = gain, length = math.min(whole, stop - at) })
+      local piece = api.clip_add(track, { name = name, start = at, file = path, offset = 0, gain = gain,
+        stretch = opts.stretch, pitch = semitones, length = math.min(whole, stop - at) })
       ids[#ids + 1] = piece
       at = at + whole
     end
+  end
+  if fade_in > 0 then api.clip_set(ids[1], "fade_in", math.min(beats_from(start_b, fade_in), len_b)) end
+  if fade_out > 0 then
+    local last = api.clip_get(ids[#ids])
+    local stop = last.start + last.length
+    api.clip_set(ids[#ids], "fade_out", math.min(stop - ctx.beat(api.tempo_seconds(stop) - fade_out), last.length))
   end
   if muted then
     for _, c in ipairs(ids) do api.clip_set(c, "muted", true) end
@@ -323,9 +407,35 @@ end
 
 -- Tracks ---------------------------------------------------------------------------
 
+--- A plugin parameter envelope (`<PARMENV index[:name] min max default`,
+--- after the plugin it belongs to) as a lane of the device. REAPER counts
+--- the parameters of a plugin from 0 in the plugin's own order, which is
+--- the order paw lists them in; the values go from min to max, which
+--- become the range of the parameter in paw.
+local function import_param_env(env, device, track, track_name, ctx)
+  local where = track_name .. ": " .. tostring(env.tokens[2])
+  local index = tonumber(tostring(env.tokens[2]):match("^(%d+)"))
+  local params = device and api.device_get(device).param_info or {}
+  local info = index and params[index + 1]
+  if not info then
+    ctx.report:add("Plugin parameter automation", where .. (device and " (no such parameter here)" or " (its plugin did not come across)"))
+    return
+  end
+  local lo, hi = tonumber(env.tokens[3]) or 0, tonumber(env.tokens[4]) or 1
+  if hi <= lo then lo, hi = 0, 1 end
+  local function convert(v)
+    local f = math.max(0, math.min(1, (v - lo) / (hi - lo)))
+    return info.min + f * (info.max - info.min)
+  end
+  local points, shapes = lane_points(env, convert, ctx, where)
+  add_lane(track, { target = "param", device = device, param = info.key, enabled = enabled_of(env), points = points },
+    shapes, ctx, where)
+end
+
 local function import_chain(chain, track, track_name, ctx, chain_bypassed)
   local bypass, offline = false, false
   local position, placeholders = 0, {}
+  local last -- the device of the plugin before, for its envelopes
   for _, c in ipairs(chain.children) do
     local name = c.tokens[1]
     if name == "BYPASS" and not c.children then
@@ -341,6 +451,7 @@ local function import_chain(chain, track, track_name, ctx, chain_bypassed)
         id, why = fx.import(c, track, bypass or chain_bypassed, notes)
       end
       local where = string.format("%s: %s", track_name, d.display)
+      last = id
       if id then
         ctx.devices = ctx.devices + 1
         for _, note in ipairs(notes) do ctx.report:add("Plugin settings", where .. ": " .. note) end
@@ -352,7 +463,7 @@ local function import_chain(chain, track, track_name, ctx, chain_bypassed)
         }
       end
     elseif c.children and name == "PARMENV" and c:child("PT") then
-      ctx.report:add("Plugin parameter automation", track_name .. ": " .. tostring(c.tokens[2]))
+      import_param_env(c, last, track, track_name, ctx)
     end
   end
   return placeholders
@@ -401,29 +512,40 @@ local function tempo_map(project, ctx)
   return { tempos = tempos, signatures = sigs }
 end
 
+--- REAPER's colour of a track, marker or region (a native colour, which
+--- on Linux is red + green * 256 + blue * 65536, with 0x1000000 set when
+--- the colour is in use) as #rrggbb, or nil.
+function M.colour(native)
+  native = tonumber(native) or 0
+  if native < 0x1000000 then return nil end
+  native = native % 0x1000000
+  return string.format("#%02x%02x%02x", native % 256, math.floor(native / 256) % 256, math.floor(native / 65536))
+end
+
+--- Markers and regions as paw keeps them (`paw.markers`): { id, beat,
+--- name, color, length (a region) }, in beats.
 local function import_markers(project, ctx)
-  local markers, regions, open = {}, {}, {}
+  local list, open = {}, {}
   for _, line in ipairs(project:all("MARKER")) do
     local id, t, name, flags = line:argn(1), line:argn(2) or 0, line:arg(3) or "", line:argn(4) or 0
-    local color = line:argn(5) or 0
     local beat = ctx.beat(t)
     if flags % 2 == 1 then
       local r = open[id]
       if r then
-        r.length = beat - r.start
-        r.seconds_end = t
+        r.length = math.max(0, beat - r.beat)
         open[id] = nil
       else
-        r = { id = id, name = name, start = beat, seconds = t, color = color ~= 0 and color or nil }
+        r = { name = name, beat = beat, color = M.colour(line:argn(5)), length = 0 }
         open[id] = r
-        regions[#regions + 1] = r
+        list[#list + 1] = r
       end
     else
-      markers[#markers + 1] = { id = id, name = name, beat = beat, seconds = t, color = color ~= 0 and color or nil }
+      list[#list + 1] = { name = name, beat = beat, color = M.colour(line:argn(5)) }
     end
   end
-  for _, r in pairs(open) do r.length = 0 end
-  return markers, regions
+  table.sort(list, function(a, b) return a.beat < b.beat end)
+  for i, m in ipairs(list) do m.id = i end
+  return list
 end
 
 --- Import a parsed project. `opts.path` is where it was read from (media
@@ -466,13 +588,19 @@ function M.doc(doc, opts)
     api.transport_set("loop_enabled", project:getn("LOOP") == 1 and a ~= nil and b ~= nil and b > a)
   end
 
-  -- Markers and regions, for other extensions: project.meta.markers / .regions.
-  local markers, regions = import_markers(project, ctx)
-  if #markers > 0 or #regions > 0 then
+  -- Markers and regions, as paw.markers keeps them; merged after those
+  -- of the project.
+  local markers = import_markers(project, ctx)
+  if #markers > 0 then
     local meta = api.project_get().meta or {}
-    meta.markers = #markers > 0 and markers or nil
-    meta.regions = #regions > 0 and regions or nil
-    meta.rpp = { file = path, markers_in = "beats by the tempo map; `seconds` as in the file" }
+    local list = type(meta.markers) == "table" and meta.markers or {}
+    local top = 0
+    for _, m in ipairs(list) do top = math.max(top, tonumber(m.id) or 0) end
+    for i, m in ipairs(markers) do
+      m.id = top + i
+      list[#list + 1] = m
+    end
+    meta.markers = list
     api.project_set("meta", meta)
   end
 
@@ -504,6 +632,8 @@ function M.doc(doc, opts)
       pan = math.max(-1, math.min(1, vp and vp:argn(2) or 0)),
     })
     if t.name == "" then t.name = api.track_get(t.id, "name") end
+    local colour = M.colour(block:getn("PEAKCOL"))
+    if colour then api.track_set(t.id, "color", colour) end
     tracks[#tracks + 1] = t
     local isbus = block:child("ISBUS")
     local depth = isbus and isbus:argn(2) or 0
@@ -557,8 +687,10 @@ function M.doc(doc, opts)
           ctx.report:add("MIDI-only sends", what)
         else
           sends[src.id] = sends[src.id] or {}
-          table.insert(sends[src.id], { target = t.id, level = db(vol) })
-          if mode ~= 0 then ctx.report:add("Pre-fader and pre-FX sends (made post-fader)", what) end
+          -- Modes: 0 after the fader, 3 before the fader (after the
+          -- plugins), 1 before the plugins.
+          table.insert(sends[src.id], { target = t.id, level = db(vol), pre = mode ~= 0 or nil })
+          if mode == 1 then ctx.report:add("Pre-FX sends (made pre-fader, after the plugins)", what) end
           if math.abs(pan) > 1e-9 then ctx.report:add("Send pan", what) end
           if (aux:argn(8) or 0) > 0 or (aux:argn(9) or 0) > 0 then
             ctx.report:add("Send channel mapping (sent as channels 1/2)", what)

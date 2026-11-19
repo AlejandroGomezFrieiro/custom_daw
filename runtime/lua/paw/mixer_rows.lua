@@ -348,7 +348,7 @@ mmap("<CR>", function()
       end
     end)
   end
-  paw.track(id)[row.field] = not api.track_get(id)[row.field]
+  paw.track(id)[row.field] = not api.track_get(id, row.field)
 end, "Type the row's value, switch it, or show the insert's window")
 
 --- The curve of the row under the cursor, for `gC` and `:curve.open`.

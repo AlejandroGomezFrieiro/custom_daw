@@ -2012,7 +2012,7 @@ end
 
 function A.set_pan(track, pan) api.track_set(track, "pan", paw.util.clamp(pan, -1, 1)) end
 
-function A.toggle(track, flag) api.track_set(track, flag, not api.track_get(track)[flag]) end
+function A.toggle(track, flag) api.track_set(track, flag, not api.track_get(track, flag)) end
 
 local function nth(list, group, index)
   local n = 0

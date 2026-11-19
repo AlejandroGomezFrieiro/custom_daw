@@ -612,6 +612,12 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
   While a track contains one of its devices, paw does not unload it (as Neovim does not delete a buffer with changes). With `opts.force`, it unloads, and the devices stay and play until you remove them. paw cannot find them when you open the project again without the extension. Returns true (with `opts.force`, the devices that stay on tracks, in words), or nil and the reason.
 
+## Module paw.external
+
+- `paw.external.act()`: Act on the changes as the option says: called at the next key after them.
+- `paw.external.keep()`: Keep paw's version of the project.
+- `paw.external.reload()`: Read the changed files again, as one undo step.
+
 ## Module paw.files
 
 - `paw.files.buffer_name(dir, tree)`: The name of the buffer that lists a folder, as a tree or not.
@@ -896,6 +902,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.keymap.mark(name)`: Set mark `name` (a letter) at the cursor of the focused view.
 - `paw.keymap.marks(view)`: The marks of a view: name -> position.
 - `paw.keymap.normal(keys)`: Type keys from inside a mapping, as `:normal` does. The keys run as a part of the current command, not as a separate command.
+- `paw.keymap.on_next_key(fn)`: Run `fn` once, before the next key is handled: for what waits until the person is back at the keyboard (a file changed outside paw).
 - `paw.keymap.operator(lhs, fn, opts)`: Define an operator: `fn(region, ctx)` acts on a region of the focused view. A region has `r0`, `r1` (rows, inclusive), `c0`, `c1` (beats, the end not included) and `kind`: "char" for a stretch of time, "line" for whole rows, "block" for a rectangle.
 
   ```lua
@@ -1222,8 +1229,12 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.midifile.encode(file)`: The bytes of a Standard MIDI File from the shape that `parse` returns (`format` 0 or 1, `ppq`, `tracks`, and `tempos`, `signatures` and `markers`, which go in the first track). Ticks can be fractions. paw rounds them.
 - `paw.midifile.export(path, opts)`: Write a format 1 MIDI file with the tempo map, time signatures and markers. It contains the whole project, `opts.tracks` (tracks or ids), or only `opts.clips` (ids). Returns the number of notes written.
 - `paw.midifile.import(path, opts)`: Import a MIDI file into the project. Its parts go on new tracks below the track of the cursor, at the cursor (or `opts.start`). With `opts.track`, all of it goes as one clip on that track. The tempo map does not change, unless `opts.tempo`. Then the tempo map of the file applies from its start. paw adds the markers of the file. Returns { tracks, clips, notes, skipped }.
+- `paw.midifile.import_clip(path, track, start)`: Bring a MIDI 2.0 clip file in as a clip that refers to it, on a track at a beat. The first edit makes it the project's own. Returns the clip.
+- `paw.midifile.is_clip_file(path)`: True if a path names a MIDI 2.0 clip file (`.midi2`), from its ending.
 - `paw.midifile.is_midi_file(path)`: True if a path names a MIDI file, from its file ending.
+- `paw.midifile.lost_text()`: What the last export could not keep, as one line, or nil: MIDI 1.0 has 960 ticks to a beat here, values of 7 bits (14 for the pitch bend), and no controllers of one note but its pressure.
 - `paw.midifile.open(path)`: Open a MIDI file as a new project with no file (see the top of this file). Returns { tracks, notes, skipped }. If paw cannot read the file, it raises an error, and the open project does not change.
+- `paw.midifile.open_clip(path)`: Open a MIDI 2.0 clip file alone, as a new project with no file: one track that plays it on the default instrument, the clip, and the piano roll on it. `:w` writes the clip back to its file. Returns the clip.
 - `paw.midifile.parse(data)`: Read the bytes of a Standard MIDI File. Returns, in ticks (`ppq` for each beat) from the start:
 
   ```lua
@@ -1241,6 +1252,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.midifile.parts(file, merge)`: The data for one track: { name, channel, drums, notes, controls }, in ticks. paw splits the one track of a format 0 file by channel. Each other track with notes is one part. With `merge`, all is one part.
 - `paw.midifile.read(path)`: Read a MIDI file from disk: as `parse`, or nil and a reason.
 - `paw.midifile.skipped_text(file)`: What was left out of a file, as one line, or nil.
+- `paw.midifile.write_clip()`: Write the clip open alone back to its file. Returns its path.
 
 ## Module paw.mixer_rows
 
@@ -1949,6 +1961,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.checkpoint_write(name, id)`
 - `paw.api.clip_add(track, opts)`
 - `paw.api.clip_add_notes(id, notes)`
+- `paw.api.clip_collect()`: Make every clip that refers to a MIDI clip file outside the project the project's own. Returns how many.
 - `paw.api.clip_controls(id)`: Controller, pitch wheel and pressure moves of a MIDI clip: { start, type = "cc" | "bend" | "pressure", number, value }.
 - `paw.api.clip_get(id)`
 - `paw.api.clip_glue(ids)`
@@ -2047,6 +2060,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.media_relink(from, to)`
 - `paw.api.media_search(dir)`
 - `paw.api.media_store(megabytes, keep)`: Long files are played from the disk: past how many megabytes of decoded sound (0: never), and how many gigabytes of it are kept between runs. With no arguments, what is set: megabytes, directory.
+- `paw.api.midi2_read(path)`: A MIDI 2.0 clip file (`.midi2`): `{ notes, controls, length, skipped }`, with times in beats; `skipped` says what the file held that a clip has no place for.
+- `paw.api.midi2_text(path)`: A MIDI 2.0 clip file as text, one note or controller move to a line, as `paw clip cat` prints it.
+- `paw.api.midi2_write(path, clip)`: Write notes and controller moves (`{ notes, controls, length }`) as a MIDI 2.0 clip file, all or nothing.
 - `paw.api.midi_close_output(name)`
 - `paw.api.midi_close_port(name)`
 - `paw.api.midi_inject(event)`: With `port`, as if from the port of that name.
@@ -2077,12 +2093,18 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.proc_stop(id)`: Ask it to finish and let it: `proc_status` says when it has.
 - `paw.api.proc_write(id, data)`
 - `paw.api.project_backup(path, note)`: Write the project as it is now to a different file. The path of the project and its modified flag do not change. The file keeps `note` under `recovery`.
+- `paw.api.project_changed_files()`: The files of the open project that changed outside paw and are not acted on yet: paths in its folder, or full paths outside it.
 - `paw.api.project_file_text(value)`
+- `paw.api.project_files()`: The files of a project kept in a folder, with what each holds and whether it differs from the disk (see `:ls`).
 - `paw.api.project_get(key)`: --- project --- The project as a table. With `key`, only that entry of the table: this is quicker (`edits`, which goes up with each change, is asked for on each key and each edit).
+- `paw.api.project_keep_changes()`: Keep the project as paw has it: forget the changes made outside.
 - `paw.api.project_load(path, opts)`: `opts.plugins_offline` opens it with all plugins offline. `opts.offline` is a list of devices (by id) to open offline.
+- `paw.api.project_mark_saved()`: Count the project as it is now as saved, for a script that wrote what it holds somewhere itself (a clip opened alone, written back to its file).
 - `paw.api.project_new()`
 - `paw.api.project_recover(path, opts)`: Open a file written by `project_backup` as the project it was a copy of: under that project's own file name, and as changed. `opts`: `as_path` opens it under that file name instead (for a `.bak`, which has no note), and what `project_load` takes.
+- `paw.api.project_reload()`: Read a project kept in a folder again, as one undo step.
 - `paw.api.project_save(path)`
+- `paw.api.project_save_files(paths)`: Save only these files of a project kept in a folder, by their path in it. Returns the paths written.
 - `paw.api.project_screen()`: The tabs and windows that the project file keeps, as plain data, or nil. They are not part of the song: setting them is not an edit, and the next save writes them.
 - `paw.api.project_screen_set(value)`
 - `paw.api.project_set(key, value)`

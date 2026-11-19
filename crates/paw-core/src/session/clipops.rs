@@ -235,6 +235,8 @@ impl Session {
             fade_in: 0.0,
             fade_out: 0.0,
             meta: first_clip.meta.clone(),
+            source: None,
+            origin: None,
         });
         let id = glued.id;
         self.edit(|p| {

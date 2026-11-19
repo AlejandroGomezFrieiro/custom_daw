@@ -62,6 +62,7 @@ impl Zeroed {
         Self { ptr: std::ptr::NonNull::new(ptr.cast()).expect("mapped"), len }
     }
 
+    #[cfg(test)]
     fn as_ref(&self) -> &[f32] {
         // SAFETY: `len` samples, mapped while `self` lives.
         unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }

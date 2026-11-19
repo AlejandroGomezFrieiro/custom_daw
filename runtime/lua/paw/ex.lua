@@ -1125,7 +1125,7 @@ end
 local function set_tracks(ctx, name, field, read)
   local ids = tracks_in(ctx, name)
   for _, id in ipairs(ids) do
-    local value = read(api.track_get(id)[field])
+    local value = read(api.track_get(id, field))
     api.track_set(id, field, value)
   end
   return ids
@@ -1156,7 +1156,7 @@ local function mute_or_solo(ctx, field, on)
     end
     return changed
   end
-  local function track_flag(id) return api.track_get(id)[field] end
+  local function track_flag(id) return api.track_get(id, field) end
   local function set_track(id, to) api.track_set(id, field, to) end
   -- A stretch of time mutes the clips in it.
   if r.items or r.from then

@@ -706,6 +706,16 @@ rawset(M.project, "unsaved", function()
   return p.modified or (p.path == nil and #api.track_list() > 0)
 end)
 
+--- Whether `path` is a project kept as a folder: a folder with a
+--- `project.toml`, or that file.
+rawset(M.project, "is_folder", function(path)
+  path = tostring(path):gsub("/+$", "")
+  if path:match("project%.toml$") then return true end
+  local f = io.open(path .. "/project.toml", "rb")
+  if f then f:close() end
+  return f ~= nil
+end)
+
 --- Whether the project may be replaced: says why not, naming `what` (the
 --- command, whose `!` form goes on anyway), when there is unsaved work.
 --- `force` is for a choice made later from a list, which asked before.

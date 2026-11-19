@@ -1,8 +1,11 @@
-# How to open a REAPER project, and save one for REAPER
+# How to move a song between paw and REAPER
 
-This guide shows you how to move a project between REAPER and paw. The
-`rpp` extension reads and writes REAPER projects (`.rpp` files). For each
-command, see the [rpp README](../../extensions/rpp/README.md).
+This guide shows you how to move a song between REAPER and paw, in both
+directions. The `rpp` extension reads and writes REAPER projects (`.rpp`
+files). For each command, and for a list of what comes across, see the
+[rpp README](../../extensions/rpp/README.md). For Bitwig Studio, Studio One
+and Cubase, see
+[How to move a song between paw and other DAWs](move-a-song-to-another-daw.md).
 
 ## Load the extension
 
@@ -29,7 +32,15 @@ To add the tracks of a REAPER project to the open project, type
 1. Type `:w song.rpp`. paw writes the project as a REAPER project.
 2. A page lists what paw could not write, for example the built-in
    devices of paw. Press `q` to close it.
-3. Open `song.rpp` in REAPER.
+3. Open `song.rpp` in REAPER. The tracks, folders, colors, clips, notes,
+   controllers, automation and markers are there.
 
 `:w song.rpp` does not change the project file of paw. The project stays
 `song.json`.
+
+## Work in both programs
+
+You can move the same song from paw to REAPER and back many times. Each
+time, paw reads what REAPER saved. Plugins that paw cannot use stay in the
+song as placeholders. When you save for REAPER again, they return to their
+places with their settings.
