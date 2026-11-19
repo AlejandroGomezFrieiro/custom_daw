@@ -325,12 +325,22 @@ impl Notes {
     /// About how many bytes these notes hold that `before` does not share
     /// with them: the runs that are not also `before`'s, and the list of runs.
     pub fn weight_over(&self, before: Option<&Notes>) -> usize {
-        let shared: HashSet<*const Vec<Note>> = before
-            .map(|b| b.runs.iter().map(Arc::as_ptr).collect())
-            .unwrap_or_default();
+        // The runs at both ends that are the very same are found in step;
+        // only those between are looked for among the runs of `before`.
+        let old: &[Run] = before.map_or(&[], |b| &b.runs);
+        let head = old.iter().zip(&self.runs).take_while(|(a, b)| Arc::ptr_eq(a, b)).count();
+        let room = old.len().min(self.runs.len()) - head;
+        let tail = old
+            .iter()
+            .rev()
+            .zip(self.runs.iter().rev())
+            .take(room)
+            .take_while(|(a, b)| Arc::ptr_eq(a, b))
+            .count();
+        let shared: HashSet<*const Vec<Note>> =
+            old[head..old.len() - tail].iter().map(Arc::as_ptr).collect();
         let list = self.runs.capacity() * size_of::<Run>() + self.ends.capacity() * size_of::<usize>();
-        list + self
-            .runs
+        list + self.runs[head..self.runs.len() - tail]
             .iter()
             .filter(|r| !shared.contains(&Arc::as_ptr(r)))
             .map(|r| {

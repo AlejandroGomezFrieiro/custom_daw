@@ -599,7 +599,8 @@ mod tests {
             Arc::new(clip(1, "/songs/a/media/x.wav")),
             Arc::new(clip(2, "/elsewhere/y.wav")),
             Arc::new(clip(3, "/songs/a/../a/z.wav")),
-        ];
+        ]
+        .into();
         let out = for_file(&p, Path::new("/songs/a/song.json"));
         let got: Vec<PathBuf> = out
             .master

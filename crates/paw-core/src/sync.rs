@@ -610,12 +610,7 @@ pub fn sync(
 
         let same_clips = !retimed_notes
             && prev.is_some_and(|p| {
-            p.attr_map == track.attr_map
-                && p.clips.len() == track.clips.len()
-                && p.clips
-                    .iter()
-                    .zip(&track.clips)
-                    .all(|(a, b)| Arc::ptr_eq(a, b))
+            p.attr_map == track.attr_map && p.clips.same(&track.clips)
         });
         if !same_clips {
             clips_changed = true;
@@ -709,7 +704,13 @@ pub fn sync(
             "clip",
             (&old_tracks, &new_tracks),
             &touched,
-            |t| &t.clips,
+            |was, t| match was {
+                Some(w) => {
+                    let (old, new) = t.clips.changed(&w.clips);
+                    (w.clips.range(old).collect(), t.clips.range(new).collect())
+                }
+                None => (Vec::new(), t.clips.iter().collect()),
+            },
             |c| c.id,
             &mut emit,
         );
@@ -719,7 +720,7 @@ pub fn sync(
             "lane",
             (&old_tracks, &new_tracks),
             &touched,
-            |t| &t.lanes,
+            |was, t| (was.map_or(Vec::new(), |w| w.lanes.iter().collect()), t.lanes.iter().collect()),
             |l| l.id,
             &mut emit,
         );
@@ -1560,13 +1561,17 @@ type CompiledClip = (Arc<Clip>, Arc<[MidiEv]>);
 
 type TrackIndex<'a> = HashMap<Id, &'a Arc<Track>>;
 
+/// Where two states of a track's list of clips or lanes may differ: the
+/// items of the state before and of the state after in that stretch.
+type Span<'a, T> = (Vec<&'a Arc<T>>, Vec<&'a Arc<T>>);
+
 /// Report the clips or lanes (`kind`) that the touched tracks gained, lost or
 /// changed, as `<kind>.added`, `<kind>.removed` and `<kind>.changed`.
 fn item_events<T>(
     kind: &str,
     (old, new): (&TrackIndex, &TrackIndex),
     touched: &dyn Fn(Id) -> bool,
-    items: fn(&Track) -> &Vec<Arc<T>>,
+    span: for<'a> fn(Option<&'a Track>, &'a Track) -> Span<'a, T>,
     id_of: fn(&T) -> Id,
     emit: &mut dyn FnMut(&str, Value),
 ) {
@@ -1581,14 +1586,14 @@ fn item_events<T>(
     let mut added: Vec<(Id, Id)> = Vec::new();
     let mut removed: Vec<(Id, Id)> = Vec::new();
     for (t, was) in &changed {
-        let before: &[Arc<T>] = was.map_or(&[], |w| &items(w)[..]);
-        let mut by_id = crate::model::ByKey::new(before, |x: &Arc<T>| id_of(x));
+        let (before, after) = span(was.map(|w| &***w), t);
+        let mut by_id = crate::model::ByKey::new(&before[..], |x: &&Arc<T>| id_of(x));
         let mut matched = vec![false; before.len()];
-        for item in items(t) {
+        for item in after {
             match by_id.position(id_of(item)) {
                 Some(k) => {
                     matched[k] = true;
-                    if !Arc::ptr_eq(&before[k], item) {
+                    if !Arc::ptr_eq(before[k], item) {
                         emit(
                             &format!("{kind}.changed"),
                             json!({ "id": id_of(item), "track": t.id }),
@@ -1604,7 +1609,7 @@ fn item_events<T>(
     }
     // Tracks that are gone take their items with them.
     for (id, t) in old.iter().filter(|(id, _)| !new.contains_key(id)) {
-        removed.extend(items(t).iter().map(|item| (id_of(item), *id)));
+        removed.extend(span(None, t).1.into_iter().map(|item| (id_of(item), *id)));
     }
     let mut removed: HashMap<Id, Id> = removed.into_iter().collect();
     for (id, track) in added {
