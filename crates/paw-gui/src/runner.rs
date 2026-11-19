@@ -249,6 +249,7 @@ struct Stats {
     passes: u64,
     shown: u64,
     drawn_px: u64,
+    rects: u64,
     changed_px: u64,
     uploads: u64,
     ages: [u64; 4],
@@ -264,12 +265,13 @@ impl Stats {
         let shown = self.shown.max(1) as f64;
         let all = (screen[0] as f64 * screen[1] as f64).max(1.0);
         eprintln!(
-            "paw-gui: stats: {} passes, {} frames shown in {seconds:.1} s ({:.1}/s), {:.0} pixels drawn a frame ({:.1}% of the window), {:.0} changed, {} uploads, buffer ages 0/1/2/3+: {:?}",
+            "paw-gui: stats: {} passes, {} frames shown in {seconds:.1} s ({:.1}/s), {:.0} pixels drawn a frame ({:.1}% of the window) in {:.1} rectangles, {:.0} changed, {} uploads, buffer ages 0/1/2/3+: {:?}",
             self.passes,
             self.shown,
             self.shown as f64 / seconds,
             self.drawn_px as f64 / shown,
             self.drawn_px as f64 / shown / all * 100.0,
+            self.rects as f64 / shown,
             self.changed_px as f64 / shown,
             self.uploads,
             self.ages,
@@ -528,7 +530,10 @@ impl Runner {
         let rects = self.damage.to_draw(age);
         let changed = self.damage.changed();
         let raw = gl.painter.gl().clone();
-        for (i, rect) in rects.iter().enumerate() {
+        // The rectangles do not overlap: each is cleared, and each gets the
+        // shapes that reach into it, cut to it; all are drawn at once.
+        let mut primitives = Vec::new();
+        for rect in &rects {
             unsafe {
                 raw.enable(glow::SCISSOR_TEST);
                 raw.scissor(rect[0], screen[1] as i32 - rect[3], rect[2] - rect[0], rect[3] - rect[1]);
@@ -537,18 +542,16 @@ impl Runner {
                 raw.clear(glow::COLOR_BUFFER_BIT);
             }
             let cut = egui::Rect::from_min_max(egui::pos2(rect[0] as f32, rect[1] as f32) / ppp, egui::pos2(rect[2] as f32, rect[3] as f32) / ppp);
-            let mut primitives = self.ctx.tessellate(self.damage.shapes_in(*rect), ppp);
-            primitives.retain_mut(|p| {
+            let mut some = self.ctx.tessellate(self.damage.shapes_in(*rect), ppp);
+            some.retain_mut(|p| {
                 p.clip_rect = p.clip_rect.intersect(cut);
                 p.clip_rect.is_positive()
             });
-            if i == 0 {
-                gl.painter.paint_and_update_textures(screen, ppp, &primitives, delta);
-            } else {
-                gl.painter.paint_primitives(screen, ppp, &primitives);
-            }
+            primitives.append(&mut some);
             self.stats.drawn_px += ((rect[2] - rect[0]) * (rect[3] - rect[1])) as u64;
+            self.stats.rects += 1;
         }
+        gl.painter.paint_and_update_textures(screen, ppp, &primitives, delta);
         self.stats.changed_px += changed.iter().map(|r| ((r[2] - r[0]) * (r[3] - r[1])) as u64).sum::<u64>();
         // Shown: only what changed, where the platform lets it say so.
         window.pre_present_notify();

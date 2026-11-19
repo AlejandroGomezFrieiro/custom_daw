@@ -45,6 +45,8 @@ pub struct Damage {
     shapes: Vec<ClippedShape>,
     bounds: Vec<Px>,
     bins: Vec<Vec<u32>>,
+    /// The lists of the frame before, kept for their room.
+    spare: Vec<Vec<u32>>,
     /// The squares that changed in this frame.
     fresh: Vec<bool>,
     /// The squares changed in each frame shown, the newest last.
@@ -66,7 +68,9 @@ impl Damage {
             self.history.clear();
         }
         let squares = (self.cols * self.rows).max(0) as usize;
-        let mut bins: Vec<Vec<u32>> = vec![Vec::new(); squares];
+        let mut bins = std::mem::take(&mut self.spare);
+        bins.resize_with(squares, Vec::new);
+        bins.iter_mut().for_each(Vec::clear);
         let mut bounds = Vec::with_capacity(shapes.len());
         for (i, shape) in shapes.iter().enumerate() {
             let px = self.pixels(shape);
@@ -96,7 +100,7 @@ impl Damage {
         }
         self.shapes = shapes;
         self.bounds = bounds;
-        self.bins = bins;
+        self.spare = std::mem::replace(&mut self.bins, bins);
         self.fresh = fresh;
         self.fresh.iter().any(|f| *f)
     }
@@ -216,6 +220,11 @@ impl Damage {
                 }
             }
             let (_, i, j) = best;
+            let other = done.swap_remove(j);
+            done[i] = join(done[i], other);
+        }
+        // No two overlap: each is cleared, then all drawn at once.
+        while let Some((i, j)) = (0..done.len()).flat_map(|i| (i + 1..done.len()).map(move |j| (i, j))).find(|&(i, j)| meets(done[i], done[j])) {
             let other = done.swap_remove(j);
             done[i] = join(done[i], other);
         }
@@ -373,6 +382,9 @@ mod tests {
         d.frame(meters(120.0), 1.0, screen, &none, false);
         let rects = d.changed();
         assert!(rects.len() <= MOST_RECTS, "{} rectangles", rects.len());
+        for (i, a) in rects.iter().enumerate() {
+            assert!(rects[i + 1..].iter().all(|b| !meets(*a, *b)), "no two overlap: {rects:?}");
+        }
         let area: i64 = rects.iter().map(|r| (r[2] - r[0]) as i64 * (r[3] - r[1]) as i64).sum();
         assert!(area < 1600 * 960 / 4, "far less than the screen: {area} pixels");
         // Each meter is in one of them.
