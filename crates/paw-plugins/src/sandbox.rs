@@ -403,6 +403,10 @@ struct Link {
     late: AtomicU32,
     /// Blocks it did answer.
     answered: AtomicU32,
+    /// The plugin was given a state or a call: it is run in the next block
+    /// even when it said it was at rest, as some plugins take a state on
+    /// only in their next block.
+    wake: AtomicBool,
 }
 
 /// The device the engine runs: it hands each block to the helper.
@@ -441,12 +445,13 @@ impl Device for RemoteDevice {
     /// As the plugin said after its last block, unless a parameter has
     /// moved since.
     fn resting(&self) -> bool {
-        self.resting && self.moves.is_empty()
+        self.resting && self.moves.is_empty() && !self.link.wake.load(Ordering::Relaxed)
     }
 
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io) {
         self.resting = false;
         let link = &*self.link;
+        link.wake.store(false, Ordering::Relaxed);
         let shm = &link.shm;
         let header = shm.header();
         // A helper that has said why it stopped is ending, or has ended.
@@ -658,6 +663,10 @@ struct RemoteController {
     /// while some came late.
     answered_seen: u32,
     stalled_since: Option<Instant>,
+    /// The plugin was given a state or a call when it had answered this
+    /// many blocks: its values are read again once it has answered
+    /// another, as some plugins take a state on only in their next block.
+    reread: Option<u32>,
 }
 
 impl RemoteController {
@@ -805,6 +814,8 @@ impl Controller for RemoteController {
 
     fn load_state(&mut self, state: &[u8]) -> Result<()> {
         self.ask(LOAD_STATE, state, STATE_LIMIT)?;
+        self.link.wake.store(true, Ordering::Relaxed);
+        self.reread = Some(self.link.answered.load(Ordering::Relaxed));
         self.refresh_values();
         Ok(())
     }
@@ -837,6 +848,19 @@ impl Controller for RemoteController {
             tail = tail.wrapping_add(1);
         }
         header.change_tail.store(tail, Ordering::Release);
+        // The values of a state the plugin has taken on since.
+        if let Some(at) = self.reread
+            && self.link.answered.load(Ordering::Relaxed) != at
+        {
+            self.reread = None;
+            let before = self.values.clone();
+            self.refresh_values();
+            for (index, (old, new)) in before.iter().zip(&self.values).enumerate() {
+                if old != new {
+                    self.pending.push((index, *new));
+                }
+            }
+        }
     }
 
     fn take_changes(&mut self) -> Vec<(usize, f64)> {
@@ -914,6 +938,8 @@ impl Controller for RemoteController {
         payload.push(0);
         payload.extend_from_slice(data);
         let answer = self.ask(CALL, &payload, STATE_LIMIT)?;
+        self.link.wake.store(true, Ordering::Relaxed);
+        self.reread = Some(self.link.answered.load(Ordering::Relaxed));
         // A preset sets the plugin's parameters anew.
         if method == "preset.load" {
             self.refresh_values();
@@ -1117,6 +1143,7 @@ impl RemoteFactory {
             dead: AtomicBool::new(false),
             late: AtomicU32::new(0),
             answered: AtomicU32::new(0),
+            wake: AtomicBool::new(false),
         });
         let controller = RemoteController {
             name: self.info.name.clone(),
@@ -1133,6 +1160,7 @@ impl RemoteFactory {
             late_seen: 0,
             answered_seen: 0,
             stalled_since: None,
+            reread: None,
         };
         Ok((controller, ours))
     }

@@ -4,9 +4,14 @@
 //! keeps the last note-on it was given for the test to read
 //! (`stub_clap_last`), and while a note sounds puts out the note-on's
 //! attribute: its type / 256 on the left, its subclass / 16 on the right.
+//! Its state is one number, which it takes on in its next block, as some
+//! plugins do (Surge XT): `stub_clap_state` reads the number it plays with.
 
 use std::ffi::{CStr, c_char, c_void};
 use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
+
+use clap_sys::ext::state::{CLAP_EXT_STATE, clap_plugin_state};
+use clap_sys::stream::{clap_istream, clap_ostream};
 
 use clap_sys::entry::clap_plugin_entry;
 use clap_sys::events::{CLAP_EVENT_MIDI2, clap_event_header, clap_event_midi2};
@@ -32,6 +37,33 @@ static LAST: [AtomicU32; 2] = [AtomicU32::new(0), AtomicU32::new(0)];
 static COUNT: AtomicU32 = AtomicU32::new(0);
 /// The attribute of the note sounding (type above data), 0 for none.
 static SOUNDING: AtomicU32 = AtomicU32::new(0);
+/// The state it plays with, and one loaded that waits for the next block.
+static STATE: AtomicU32 = AtomicU32::new(0);
+static LOADED: AtomicU32 = AtomicU32::new(u32::MAX);
+
+/// For tests: the state the plugin plays with.
+#[unsafe(no_mangle)]
+pub extern "C" fn stub_clap_state() -> u32 {
+    STATE.load(Relaxed)
+}
+
+unsafe extern "C" fn state_save(_: *const clap_plugin, stream: *const clap_ostream) -> bool {
+    let bytes = STATE.load(Relaxed).to_le_bytes();
+    unsafe { (*stream).write.unwrap()(stream, bytes.as_ptr().cast(), 4) == 4 }
+}
+unsafe extern "C" fn state_load(_: *const clap_plugin, stream: *const clap_istream) -> bool {
+    let mut bytes = [0u8; 4];
+    if unsafe { (*stream).read.unwrap()(stream, bytes.as_mut_ptr().cast(), 4) } != 4 {
+        return false;
+    }
+    // Taken on in the next block, on the audio thread.
+    LOADED.store(u32::from_le_bytes(bytes), Relaxed);
+    true
+}
+static STATE_EXT: clap_plugin_state = clap_plugin_state {
+    save: Some(state_save),
+    load: Some(state_load),
+};
 
 /// For tests: the words of the last note-on into `out`; how many came.
 ///
@@ -82,6 +114,10 @@ unsafe extern "C" fn start(_: *const clap_plugin) -> bool {
 unsafe extern "C" fn process(_: *const clap_plugin, p: *const clap_process) -> clap_process_status {
     unsafe {
         let p = &*p;
+        let loaded = LOADED.swap(u32::MAX, Relaxed);
+        if loaded != u32::MAX {
+            STATE.store(loaded, Relaxed);
+        }
         let events = &*p.in_events;
         let n = events.size.unwrap()(p.in_events);
         for i in 0..n {
@@ -212,6 +248,8 @@ unsafe extern "C" fn get_extension(_: *const clap_plugin, id: *const c_char) -> 
         &NOTE_PORTS as *const _ as *const c_void
     } else if id == CLAP_EXT_NOTE_NAME {
         &NOTE_NAMES as *const _ as *const c_void
+    } else if id == CLAP_EXT_STATE {
+        &STATE_EXT as *const _ as *const c_void
     } else {
         std::ptr::null()
     }
