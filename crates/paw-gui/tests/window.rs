@@ -1129,6 +1129,8 @@ fn a_window_drawn_again_where_it_changed_looks_as_one_drawn_whole() {
         ("arrange", String::new()),
         ("mixer", "paw.commands.exec('view.toggle mixer')".to_string()),
         ("roll", format!("paw.commands.exec('view.toggle mixer') return paw.frontend.act.open_clip({keys})")),
+        // A view painted as pictures, its playhead drawn anew each tick.
+        ("notation", "paw.ext.load('extensions/notation') paw.commands.exec('notation')".to_string()),
         ("zoomed", "paw.ui.focus('arrange') paw.commands.exec('zoom by=1.4142')".to_string()),
     ];
     for (what, setup) in views {

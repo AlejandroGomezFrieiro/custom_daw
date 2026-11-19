@@ -180,7 +180,26 @@ fn blocks(c: char) -> Option<(Vec<[f32; 4]>, f32)> {
 impl Shown {
     /// Take in a patch, and what it changes of the cells and the pictures.
     fn take(&mut self, patch: &Patch, blobs: &HashMap<String, Value>) {
+        // A patch that only draws pictures anew where they were (a canvas
+        // view's playhead, as the song plays) leaves the cells and the
+        // roles as they are.
+        let pictures_only = !patch.full
+            && patch.size.is_none()
+            && patch.root.is_none()
+            && patch.drop.is_empty()
+            && patch.colors.is_none()
+            && patch.cursor.is_none()
+            && !patch.set.is_empty()
+            && patch.set.iter().all(|new| {
+                matches!(new.kind, Kind::Picture(_))
+                    && self.scene.nodes.get(&new.key).is_some_and(|old| matches!(old.kind, Kind::Picture(_)) && old.rect == new.rect && old.clip == new.clip && old.kids == new.kids)
+            });
         self.scene.apply(patch);
+        if pictures_only {
+            self.take_pictures(blobs);
+            self.still = None;
+            return;
+        }
         self.over = self.scene.over_roles(&|role| roles::KNOWN.contains(&role));
         // What is drawn over a role is painted over it; in the cells under
         // the roles it would be painted twice.
@@ -192,6 +211,24 @@ impl Shown {
             }
         }
         self.rows = under.to_cells().runs(fg, bg);
+        self.take_pictures(blobs);
+        let mut placed = Vec::new();
+        self.scene.placed(&mut |node, rect, cut| {
+            if let Kind::Role { role, .. } = &node.kind
+                && roles::KNOWN.contains(&role.as_str())
+            {
+                placed.push((node.clone(), rect, cut));
+            }
+        });
+        self.roles = placed;
+        self.shapes = None;
+        self.over_shapes = None;
+        self.still = None;
+    }
+
+    /// The scene's pictures, each keeping its image while its drawing is
+    /// the same.
+    fn take_pictures(&mut self, blobs: &HashMap<String, Value>) {
         let mut before: HashMap<String, Picture> = self.pictures.drain(..).map(|p| (p.key.clone(), p)).collect();
         let mut pictures = Vec::new();
         self.scene.walk(&mut |node| {
@@ -206,18 +243,6 @@ impl Shown {
             pictures.push(Picture { key: node.key.clone(), rect: node.rect, clip: node.clip, under: picture.under, px: picture.px, ops, image });
         });
         self.pictures = pictures;
-        let mut placed = Vec::new();
-        self.scene.placed(&mut |node, rect, cut| {
-            if let Kind::Role { role, .. } = &node.kind
-                && roles::KNOWN.contains(&role.as_str())
-            {
-                placed.push((node.clone(), rect, cut));
-            }
-        });
-        self.roles = placed;
-        self.shapes = None;
-        self.over_shapes = None;
-        self.still = None;
     }
 
     /// The shapes of the runs and fills a view drew over the roles painted
@@ -616,6 +641,26 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_patch_that_only_draws_a_picture_anew_keeps_the_cells_laid_out() {
+        let picture = |ops: Value| Node::new("p", Kind::Picture(paw_scene::Picture { ops: Some(ops), blob: None, px: [40.0, 20.0], under: false }), [0.0, 0.0, 4.0, 2.0]);
+        let run = |text: &str| Node::new("r", Kind::Run { text: text.into() }, [0.0, 1.0, 4.0, 1.0]);
+        let mut shown = Shown::default();
+        let blobs = HashMap::new();
+        let full = Patch { win: "1".into(), rev: 1, full: true, size: Some([10.0, 2.0]), root: Some(vec!["r".into(), "p".into()]), set: vec![run("abc"), picture(json!([1]))], ..Patch::default() };
+        shown.take(&full, &blobs);
+        assert_eq!(shown.rows.len(), 2);
+        // As drawn once: the shapes of the cells kept.
+        shown.shapes = Some((Vec::new(), Vec::new(), [0.0; 5]));
+        let playhead = Patch { win: "1".into(), rev: 2, set: vec![picture(json!([2]))], ..Patch::default() };
+        shown.take(&playhead, &blobs);
+        assert!(shown.shapes.is_some(), "the cells are not laid out again");
+        assert_eq!(shown.pictures[0].ops, json!([2]), "the picture is new");
+        let text = Patch { win: "1".into(), rev: 3, set: vec![run("abd")], ..Patch::default() };
+        shown.take(&text, &blobs);
+        assert!(shown.shapes.is_none(), "a run changed: the cells are laid out again");
+    }
 
     #[test]
     fn eighth_blocks_fill_from_the_bottom_and_quadrants_are_their_corners() {
