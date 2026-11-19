@@ -139,6 +139,30 @@ test("plugstate: an iPlug2 state gives its parameters by name, with the host's l
   eq(c:write(), plain, "written back the same")
 end)
 
+test("plugstate: a Dplug state gives its normalized parameters by name, and its own data", function()
+  local fw = load()
+  local b = bytes_of()
+  local ffi = require("ffi")
+  local f = ffi.new("float[1]")
+  local function float(v) f[0] = v return ffi.string(f, 4) end
+  -- preset.d `writeStateChunk`: magic, versions 1.0, plugin version, preset 2, 2 floats, its data.
+  local chunk = "\11\32\186\146" .. b.le32(1) .. b.le32(0) .. b.le32(65536) .. b.le32(2) .. b.le32(2)
+    .. float(0.25) .. float(1) .. b.le32(3) .. "abc"
+  local state = b.encode64(chunk)
+  local info = { { id = "0", key = "drive" }, { id = "1", key = "mix" } }
+  local doc = fw.open(state, "clap", { param_info = info })
+  eq(doc.framework, "dplug", "the magic of Dplug")
+  eq(doc:param("drive"), 0.25, "a parameter by its name")
+  eq(doc:get("/Dplug/State@data").binary, "abc", "the plugin's own data")
+  eq(doc:write(), state, "written back the same")
+  doc:set_param("mix", 0.5)
+  doc:set("/Dplug@preset", 0)
+  local again = fw.open(doc:write(), "clap", { param_info = info })
+  eq(again:param("mix"), 0.5, "the parameter is written")
+  eq(again:get("/Dplug@preset"), 0, "and the current preset")
+  eq(again:get("/Dplug/State@data").binary, "abc", "the data stays")
+end)
+
 test("plugstate: JSON states (nih-plug, Vital) change in place", function()
   local fw = load()
   local b = bytes_of()

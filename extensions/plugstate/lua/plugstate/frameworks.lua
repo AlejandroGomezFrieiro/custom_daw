@@ -552,6 +552,64 @@ M.reader({
   end,
 })
 
+-- --- Dplug ------------------------------------------------------------------------------
+-- dplug/client/preset.d, `writeStateChunk`: the magic 0x0B20BA92 (big
+-- endian), the major and minor versions of the format, the plugin's
+-- version, the current preset, the count of parameters, each parameter
+-- normalized as a float; from major version 1, the size of the plugin's
+-- own data (`saveState`) and the data. The names come from the host's
+-- list of parameters, in their order.
+
+M.reader({
+  name = "dplug", title = "Dplug",
+  detect = function(data) return data:sub(1, 4) == "\11\32\186\146" and #data >= 24 end,
+  open = function(data, _, ctx)
+    local list = counted(ctx.param_info)
+    local root = juce.tree("Dplug")
+    local params, state = juce.tree("Parameters"), juce.tree("State")
+    root.children = { params, state }
+    local major = i32(data, 5)
+    remember(root, "major", major, "int", data:sub(5, 8))
+    remember(root, "minor", i32(data, 9), "int", data:sub(9, 12))
+    remember(root, "version", i32(data, 13), "int", data:sub(13, 16))
+    remember(root, "preset", i32(data, 17), "int", data:sub(17, 20))
+    local n = i32(data, 21)
+    if not n or n < 0 or 24 + 4 * n > #data then error("Dplug: the count of parameters does not fit", 0) end
+    local names = {}
+    for j = 1, n do
+      local name = list[j] and safe(list[j].key or list[j].name) or ("p" .. (j - 1))
+      names[j] = name
+      local at = 25 + 4 * (j - 1)
+      remember(params, name, f32(data, at), nil, data:sub(at, at + 3))
+    end
+    local at = 25 + 4 * n
+    local extra = ""
+    if major and major >= 1 and at + 3 <= #data then
+      local size = i32(data, at) or 0
+      remember(state, "data", { binary = data:sub(at + 4, at + 3 + size) }, nil, data:sub(at + 4, at + 3 + size))
+      extra = data:sub(at + 4 + size)
+    else
+      extra = data:sub(at)
+    end
+    local function close(r)
+      -- The header stays; the current preset can change.
+      local out = { data:sub(1, 16) .. text_of(r, "preset", function(v) return pack_i32(tonumber(v) or 0) end) .. data:sub(21, 24) }
+      local ps, st = juce.child(r, "Parameters"), juce.child(r, "State")
+      for _, name in ipairs(names) do
+        out[#out + 1] = text_of(ps, name, function(v) return pack_f32(tonumber(v) or 0) end)
+      end
+      local own = st and juce.get(st, "data")
+      if own ~= nil then
+        local b = type(own) == "table" and own.binary or tostring(own)
+        out[#out + 1] = pack_i32(#b) .. b
+      end
+      out[#out + 1] = extra
+      return table.concat(out)
+    end
+    return { root = root, close = close, params = "/Dplug/Parameters" }
+  end,
+})
+
 -- --- JSON --------------------------------------------------------------------------------
 -- An object is a node, its numbers, strings and booleans are properties,
 -- its objects and arrays are children (an array's items are `item` nodes).
@@ -950,7 +1008,7 @@ M.reader({
 -- The order in which the readers are asked: the formats with a magic of
 -- their own first, then JUCE (which also reads plain XML), then text, then
 -- the bytes.
-local ORDER = { dpf = 1, lsp = 2, iplug2 = 3, juce = 4, json = 5, lv2 = 6, binary = 7 }
+local ORDER = { dpf = 1, lsp = 2, dplug = 3, iplug2 = 4, juce = 5, json = 6, lv2 = 7, binary = 8 }
 table.sort(M.readers, function(a, b) return ORDER[a.name] < ORDER[b.name] end)
 
 -- --- hints from the plugin's binary ------------------------------------------------------

@@ -47,6 +47,18 @@ jucestate.plugin({
   },
 })
 
+-- DecentSampler: `copyXmlToBinary` of a `DecentSampler` element. Its
+-- attributes name the sample library that it plays. No slots: a library
+-- needs its files, so the names are for `:plugstate.path` and the tree.
+jucestate.plugin({
+  name = "decent-sampler", title = "DecentSampler",
+  ids = { vst3 = "DecentSampler" }, root = "DecentSampler",
+  paths = {
+    preset_name = "/DecentSampler@_presetName", sample_path = "/DecentSampler@_samplePath",
+    library_url = "/DecentSampler@_libraryUrl", tuning = "/DecentSampler@_tuningA69Frequency",
+  },
+})
+
 -- --- the adapter of described plugins ---------------------------------------------------
 
 local function doc_of(id, d)
