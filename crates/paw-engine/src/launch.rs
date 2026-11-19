@@ -12,7 +12,7 @@
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering::Relaxed};
 
-use crate::clip::ClipSet;
+use crate::clip::{ClipSet, Stamp};
 use crate::device::ProcessCtx;
 use crate::engine::{Slot, mix_audio_constant};
 use crate::event::{Attr, Event, EventBuf};
@@ -360,19 +360,42 @@ pub(crate) fn chase(events: &mut EventBuf, clips: &ClipSet, before: f64) {
     let mut held = [(0f32, 0u8, Attr::NONE); 128];
     let mut controllers = [f64::NAN; 130];
     let mut program = None;
-    for ev in clips.midi.iter().take_while(|ev| ev.beat < before) {
-        match ev.kind {
-            EventKind::NoteOn { key, vel, ch, attr } => held[(key & 127) as usize] = (vel, ch, attr),
-            EventKind::NoteOff { key, .. } => held[(key & 127) as usize].0 = 0.0,
-            EventKind::Control { ctl, value, .. } => {
-                if let Some(index) = crate::engine::ctl_index(ctl) {
-                    controllers[index] = value;
-                }
+    // The last event for each, in the order the track plays them: the
+    // parts of its clips are each in order, but not with each other.
+    let mut held_at = [Stamp::FIRST; 128];
+    let mut controllers_at = [Stamp::FIRST; 130];
+    let mut program_at = Stamp::FIRST;
+    clips.each_before(before, |ev, at| match ev.kind {
+        EventKind::NoteOn { key, vel, ch, attr } => {
+            let k = (key & 127) as usize;
+            if at.after(&held_at[k]) {
+                held_at[k] = at;
+                held[k] = (vel, ch, attr);
             }
-            EventKind::Program { .. } => program = Some(ev.kind),
-            EventKind::NoteControl { .. } | EventKind::AllNotesOff => {}
         }
-    }
+        EventKind::NoteOff { key, .. } => {
+            let k = (key & 127) as usize;
+            if at.after(&held_at[k]) {
+                held_at[k] = at;
+                held[k].0 = 0.0;
+            }
+        }
+        EventKind::Control { ctl, value, .. } => {
+            if let Some(index) = crate::engine::ctl_index(ctl)
+                && at.after(&controllers_at[index])
+            {
+                controllers_at[index] = at;
+                controllers[index] = value;
+            }
+        }
+        EventKind::Program { .. } => {
+            if at.after(&program_at) {
+                program_at = at;
+                program = Some(ev.kind);
+            }
+        }
+        EventKind::NoteControl { .. } | EventKind::AllNotesOff => {}
+    });
     for &kind in clips.switch_before(before) {
         match kind {
             // A keyswitch held down is started again with the held notes.

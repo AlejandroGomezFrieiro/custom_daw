@@ -854,15 +854,35 @@ impl Session {
     }
 
     fn own_edited_clips(&mut self) {
-        let before: HashMap<Id, &Arc<Clip>> = self
-            .checkpoint
-            .all_tracks()
-            .flat_map(|t| t.clips.iter().chain(&t.cues))
-            .filter(|c| c.source.is_some())
-            .map(|c| (c.id, c))
-            .collect();
+        // Only the clips of the tracks the step changed, and of those only
+        // the stretch it changed, can have been edited.
+        let (old, new) = (&self.checkpoint, &self.project);
+        let mut after = crate::model::ById::new(&new.tracks, |t: &Arc<Track>| t.id);
+        let mut before: HashMap<Id, &Arc<Clip>> = HashMap::new();
+        let mut changed: Vec<(&Arc<Track>, Option<&Arc<Track>>)> = Vec::new();
+        for track in old.all_tracks() {
+            let now = if track.id == MASTER_ID { Some(&new.master) } else { after.find(track.id) };
+            if now.is_some_and(|n| Arc::ptr_eq(n, track)) {
+                continue;
+            }
+            let span = match now {
+                Some(now) => now.clips.changed(&track.clips).0,
+                None => 0..track.clips.len(),
+            };
+            let clips = track.clips.range(span).chain(&track.cues);
+            before.extend(clips.filter(|c| c.source.is_some()).map(|c| (c.id, c)));
+            if let Some(now) = now {
+                changed.push((now, Some(track)));
+            }
+        }
         if before.is_empty() {
             return;
+        }
+        let mut was = crate::model::ById::new(&old.tracks, |t: &Arc<Track>| t.id);
+        for track in &new.tracks {
+            if was.find(track.id).is_none() {
+                changed.push((track, None));
+            }
         }
         let same = |a: &Clip, b: &Clip| match (&a.content, &b.content) {
             (
@@ -875,8 +895,12 @@ impl Session {
             _ => true,
         };
         let mut owned = Vec::new();
-        for track in self.project.all_tracks() {
-            for clip in track.clips.iter().chain(&track.cues) {
+        for (track, was) in changed {
+            let span = match was {
+                Some(was) => track.clips.changed(&was.clips).1,
+                None => 0..track.clips.len(),
+            };
+            for clip in track.clips.range(span).chain(&track.cues) {
                 if let Some(old) = before.get(&clip.id)
                     && clip.source.is_some()
                     && clip.source == old.source
@@ -2592,6 +2616,8 @@ impl Session {
                 t.cues.push(clip);
             } else {
                 t.clips.push(clip);
+                let at = t.clips.len() - 1;
+                p.found_clip(id, track, at);
             }
             Ok(id)
         })
@@ -2675,7 +2701,16 @@ impl Session {
     }
 
     pub fn clip_set(&mut self, id: Id, key: &str, value: Value) -> Result<()> {
-        if holds(&self.clip_view(id), key, &value) {
+        let plain = matches!(key, "start" | "length" | "name" | "muted");
+        let held = match self.project.find_clip(id) {
+            Some((track, index)) if plain => {
+                let c = &self.project.track(track).unwrap().clips[index];
+                let view = json!({ "start": c.start, "length": c.length, "name": c.name, "muted": c.muted });
+                holds(&Ok(view), key, &value)
+            }
+            _ => holds(&self.clip_view(id), key, &value),
+        };
+        if held {
             return Ok(());
         }
         // Another file for an audio clip (another take) has to be one that
@@ -2712,7 +2747,10 @@ impl Session {
                     bail!("no track {to}");
                 }
                 let clip = p.track_mut(from).unwrap().clips.remove(index);
-                p.track_mut(to).unwrap().clips.push(clip);
+                let clips = &mut p.track_mut(to).unwrap().clips;
+                clips.push(clip);
+                let at = clips.len() - 1;
+                p.found_clip(id, to, at);
                 return Ok(());
             }
             let c = p.clip_mut(id).with_context(|| format!("no clip {id}"))?;

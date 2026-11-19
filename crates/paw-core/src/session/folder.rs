@@ -205,9 +205,9 @@ impl Writer<'_> {
         let mut taken = BTreeSet::new();
         let mut entry = track.clone();
         entry.devices = Vec::new();
-        entry.clips = Vec::new();
+        entry.clips = Default::default();
         entry.lanes = Vec::new();
-        entry.cues = Vec::new();
+        entry.cues = Default::default();
         let mut value = serde_json::to_value(&entry)?;
         let mut clips = Vec::new();
         for clip in &track.clips {
