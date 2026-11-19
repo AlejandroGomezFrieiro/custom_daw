@@ -73,10 +73,21 @@ local function shapes_of(lane, ctx, label)
   return out
 end
 
+--- How REAPER names a parameter of a CLAP or VST3 plugin after its place:
+--- the plugin's own id for it, as a signed 32-bit number. Nil for others.
+local function reaper_ident(info, format)
+  local n = (format == "clap" or format == "vst3") and tonumber(info.id)
+  if not n or n ~= math.floor(n) or n < 0 or n >= 2 ^ 32 then return nil end
+  return string.format("%d", n >= 2 ^ 31 and n - 2 ^ 32 or n)
+end
+
 --- A plugin parameter's lane as `<PARMENV`: the parameter by its place
---- among the plugin's (from 0), the values as a share of its range.
-local function param_envelope(lane, index, info, ctx, label)
-  local env = fmt.block("PARMENV", index - 1, 0, 1, 0)
+--- among the plugin's (from 0) and, as REAPER writes it, the plugin's own
+--- id for it after a colon (`5:-1611133501`), the values as a share of
+--- its range.
+local function param_envelope(lane, index, info, format, ctx, label)
+  local ident = reaper_ident(info, format)
+  local env = fmt.block("PARMENV", ident and (index - 1) .. ":" .. ident or index - 1, 0, 1, 0)
   env:add(fmt.line("EGUID", ctx.guid()))
   env:add(fmt.line("ACT", lane.enabled and 1 or 0, -1))
   env:add(fmt.line("VIS", 1, 1, 1))
@@ -130,11 +141,12 @@ local function fx_chain(name, track, t, ctx, label)
   local function param_lanes(device, written)
     for _, lane in ipairs(lanes_of[device] or {}) do
       local index, info
-      for i, p in ipairs(api.device_get(device).param_info or {}) do
+      local d = api.device_get(device)
+      for i, p in ipairs(d.param_info or {}) do
         if p.key == lane.param then index, info = i, p end
       end
       if written and index then
-        chain:add(param_envelope(lane, index, info, ctx, label .. ": " .. lane.param))
+        chain:add(param_envelope(lane, index, info, d.format, ctx, label .. ": " .. lane.param))
       else
         ctx.report:add("Plugin parameter automation", label .. ": " .. tostring(lane.param)
           .. (written and "" or " (its device is not written)"))

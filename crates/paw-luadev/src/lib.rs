@@ -354,6 +354,7 @@ fn info(path: &Path, script: &Script, desc: &Descriptor) -> DeviceInfo {
         format: "lua".into(),
         vendor: desc.vendor.clone().unwrap_or_default(),
         params: desc.params.iter().map(device::Param::info).collect(),
+        ..Default::default()
     }
 }
 

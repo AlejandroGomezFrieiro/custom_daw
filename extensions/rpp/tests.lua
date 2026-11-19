@@ -430,6 +430,44 @@ test("rpp: an envelope's points become an automation lane", function()
   eq(pts[3][2], -120, "silence is the bottom of the range")
 end)
 
+test("rpp: a parameter envelope finds its parameter by the plugin's own id", function()
+  load()
+  local param_of = require("rpp.import").param_of
+  local params = { { key = "a", id = "10" }, { key = "b", id = "2683833795" }, { key = "c", id = "c" } }
+  eq(param_of("1", params).key, "b", "by place, from 0")
+  eq(param_of("0:-1611133501", params).key, "b", "REAPER's signed id wins over the place")
+  eq(param_of("1:10", params).key, "a", "an id that is not where it was is still found")
+  eq(param_of("2:c", params).key, "c", "a name after the colon that matches")
+  eq(param_of("2:wet", params), nil, "REAPER's own parameter is none of the plugin's")
+  eq(param_of("7", params), nil, "a place past the end")
+end)
+
+test("rpp: plugin parameter lanes go to REAPER with the plugin's own ids, and come back", function()
+  local r = load()
+  local kind
+  for _, t in ipairs(api.device_types()) do
+    if not kind and t.format == "clap" and t.name == "Limiter Stereo" then kind = t.kind end
+  end
+  if not kind then return "skipped: test plugins not found" end
+  T.fresh()
+  local track = paw.add_track({ name = "Lim" })
+  track:add_clip({ start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 4 } } })
+  local fx = track:add_device(kind)
+  local gain = api.device_param(fx.id, "input_gain")
+  api.lane_add(track.id, { target = "param", device = fx.id, param = "input_gain", points = { { 0, gain.min }, { 4, gain.max } } })
+  r.export(T.scratch .. "/ids.rpp")
+  local n = tonumber(gain.id)
+  local ident = string.format("%d", n >= 2 ^ 31 and n - 2 ^ 32 or n)
+  local text = T.read_file(T.scratch .. "/ids.rpp")
+  eq(text:find("<PARMENV " .. (gain.index - 1) .. ":" .. ident .. " ", 1, true) ~= nil, true,
+    "the place and the signed id, as REAPER writes them")
+  T.fresh()
+  r.import(T.scratch .. "/ids.rpp")
+  local lanes = api.lane_list(paw.track("Lim").id)
+  eq(#lanes, 1, "the lane comes back")
+  eq(lanes[1].param, "input_gain", "on the same parameter")
+end)
+
 -- Commands --------------------------------------------------------------------------
 
 test("rpp: commands, and edit and write on .rpp files", function()

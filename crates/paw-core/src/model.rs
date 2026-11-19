@@ -438,6 +438,12 @@ pub struct DeviceInst {
     /// its second) and track. Pairs not named here are not heard.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub outputs: BTreeMap<u32, Id>,
+    /// The device's own id (`ParamInfo::id`) of each parameter key that the
+    /// project uses, where the two differ: a new version of a plugin that
+    /// puts its parameters in another order or names them otherwise still
+    /// gets its values and lanes. Written when the project is saved.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub param_ids: BTreeMap<String, String>,
 }
 
 fn is_zero_u32(value: &u32) -> bool {

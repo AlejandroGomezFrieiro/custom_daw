@@ -150,6 +150,18 @@ pub trait Controller {
     }
     /// Called regularly, for whatever the device needs done on the main thread.
     fn idle(&mut self) {}
+    /// A value of a parameter as the device itself writes it ("440 Hz",
+    /// "Saw"), by position in [`params`](Self::params). None when the
+    /// device has no text of its own for it.
+    fn value_text(&mut self, _index: usize, _value: f64) -> Option<String> {
+        None
+    }
+    /// The value that a text stands for, as the device itself reads it:
+    /// the reverse of [`value_text`](Self::value_text). None when the
+    /// device cannot read it.
+    fn text_value(&mut self, _index: usize, _text: &str) -> Option<f64> {
+        None
+    }
     /// Parameters the device changed by itself since the last call, as
     /// (position in [`params`](Self::params), new value): what a user did in
     /// the device's own editor, or a preset it loaded.
@@ -218,18 +230,45 @@ impl Instance {
     }
 }
 
-#[derive(Clone, Debug)]
+/// One parameter of a device, described the same way for every kind of
+/// device: built-in, CLAP, VST3, LV2 or a Lua device.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ParamInfo {
     /// The identifier used in projects and scripts. Unique within a device.
     pub key: String,
+    /// The device's own id for the parameter, which stays the same in a new
+    /// version of the device even when the parameters are put in another
+    /// order or renamed: a CLAP parameter id or a VST3 `ParamID` (in
+    /// decimal), an LV2 port symbol. Empty for a device whose parameters
+    /// have no id other than their key (see [`stable_id`](Self::stable_id)).
+    pub id: String,
     /// The name to show.
     pub name: String,
+    /// The group the parameter is in, levels joined by `/` ("Osc 1/Pitch"),
+    /// where the device says; else empty.
+    pub group: String,
     pub min: f32,
     pub max: f32,
     pub default: f32,
     pub unit: String,
     /// Names for integer steps, for parameters that choose between options.
     pub choices: Vec<String>,
+    /// For a parameter that takes only some values: how many equal steps
+    /// there are from `min` to `max` (one less than the values it takes).
+    /// 0 for a continuous parameter.
+    pub steps: u32,
+    /// The parameter is a switch: off at `min`, on at `max`.
+    pub boolean: bool,
+    /// Each step is a named option, as `choices` names them or else as
+    /// the device writes them (see [`Controller::value_text`]).
+    pub enumeration: bool,
+    /// The host may automate it (most parameters).
+    pub automatable: bool,
+    /// The device shows it, but does not take values for it.
+    pub read_only: bool,
+    /// The format lets it take a different value for each note (CLAP's
+    /// per-note automation or modulation).
+    pub per_note: bool,
 }
 
 impl ParamInfo {
@@ -241,7 +280,8 @@ impl ParamInfo {
             max,
             default,
             unit: unit.into(),
-            choices: Vec::new(),
+            automatable: true,
+            ..Self::default()
         }
     }
 
@@ -249,9 +289,152 @@ impl ParamInfo {
         Self {
             max: (choices.len() - 1) as f32,
             choices: choices.iter().map(|s| s.to_string()).collect(),
+            steps: (choices.len() - 1) as u32,
+            enumeration: true,
             ..Self::new(name, 0.0, 0.0, default as f32, "")
         }
     }
+
+    /// The device's own id for the parameter: [`id`](Self::id), or the key
+    /// for a device that gives none.
+    pub fn stable_id(&self) -> &str {
+        if self.id.is_empty() {
+            &self.key
+        } else {
+            &self.id
+        }
+    }
+
+    /// What kind of value it takes: `boolean`, `enum` (named steps),
+    /// `stepped` (whole steps) or `continuous`.
+    pub fn kind(&self) -> &'static str {
+        if self.boolean {
+            "boolean"
+        } else if self.enumeration || !self.choices.is_empty() {
+            "enum"
+        } else if self.steps > 0 {
+            "stepped"
+        } else {
+            "continuous"
+        }
+    }
+
+    /// The number of the step nearest to `value`, for a parameter that
+    /// takes steps (one with choices takes one step for each).
+    pub fn step_of(&self, value: f64) -> Option<usize> {
+        let steps = match self.steps {
+            0 => self.choices.len().checked_sub(1).filter(|&n| n > 0)? as u32,
+            n => n,
+        };
+        let span = self.max as f64 - self.min as f64;
+        if span <= 0.0 {
+            return Some(0);
+        }
+        let at = ((value - self.min as f64) / span * steps as f64).round();
+        Some(at.clamp(0.0, steps as f64) as usize)
+    }
+
+    /// The value of step `step` (see [`step_of`](Self::step_of)).
+    fn step_value(&self, step: usize) -> f64 {
+        let steps = match self.steps {
+            0 => self.choices.len().saturating_sub(1).max(1) as u32,
+            n => n,
+        };
+        self.min as f64 + (self.max as f64 - self.min as f64) * step as f64 / steps as f64
+    }
+
+    /// A value as text, where the device has no text of its own for it: the
+    /// name of a step, `on` or `off`, or the number in its unit, written as
+    /// paw writes it everywhere (`2.5 kHz`, `-18.0 dB`, `120 ms`; the same
+    /// rules as `paw.params.format`).
+    pub fn format(&self, value: f64) -> String {
+        if self.boolean && self.choices.is_empty() {
+            let on = value > (self.min as f64 + self.max as f64) / 2.0;
+            return if on { "on" } else { "off" }.into();
+        }
+        if let Some(choice) = self
+            .step_of(value)
+            .and_then(|at| self.choices.get(at))
+        {
+            return choice.clone();
+        }
+        let v = value;
+        match self.unit.as_str() {
+            "dB" => format!("{v:.1} dB"),
+            "Hz" if v >= 1000.0 => format!("{} kHz", trim(v / 1000.0, if v >= 10000.0 { 1 } else { 2 })),
+            "Hz" => format!("{} Hz", trim(v, if v < 100.0 { 1 } else { 0 })),
+            "ms" if v >= 1000.0 => format!("{} s", trim(v / 1000.0, 2)),
+            "ms" => format!("{} ms", trim(v, if v < 10.0 { 2 } else if v < 100.0 { 1 } else { 0 })),
+            "s" if v < 1.0 => {
+                let digits = if v < 0.01 { 2 } else if v < 0.1 { 1 } else { 0 };
+                format!("{} ms", trim(v * 1000.0, digits))
+            }
+            "s" => format!("{} s", trim(v, if v < 10.0 { 2 } else { 1 })),
+            ":1" if v >= self.max as f64 && self.max >= 50.0 => "∞:1".into(),
+            ":1" => format!("{}:1", trim(v, if v < 10.0 { 1 } else { 0 })),
+            "%" => format!("{} %", trim(v, 0)),
+            "Q" => trim(v, if v < 10.0 { 2 } else { 1 }),
+            "st" => format!("{} st", trim(v, 2)),
+            "ct" => format!("{} ct", trim(v, 0)),
+            unit => {
+                let range = self.max as f64 - self.min as f64;
+                let digits = if range >= 100.0 {
+                    0
+                } else if range >= 10.0 {
+                    1
+                } else if range > 2.0 {
+                    2
+                } else {
+                    3
+                };
+                let number = format!("{v:.digits$}");
+                if unit.is_empty() { number } else { format!("{number} {unit}") }
+            }
+        }
+    }
+
+    /// The value text stands for, where the device has no reading of its
+    /// own: the name of a step, `on` or `off`, or a number, with the
+    /// parameter's unit or a larger or smaller one after it ("2.5 kHz" for
+    /// a parameter in Hz). None when the text is none of these.
+    pub fn parse(&self, text: &str) -> Option<f64> {
+        let text = text.trim();
+        if let Some(at) = self.choices.iter().position(|c| c.eq_ignore_ascii_case(text)) {
+            return Some(self.step_value(at));
+        }
+        if self.boolean {
+            match text.to_ascii_lowercase().as_str() {
+                "on" | "true" | "yes" => return Some(self.max as f64),
+                "off" | "false" | "no" => return Some(self.min as f64),
+                _ => {}
+            }
+        }
+        let end = text
+            .char_indices()
+            .find(|&(i, c)| {
+                let sign = i == 0 && (c == '-' || c == '+');
+                !(c.is_ascii_digit() || c == '.' || sign || c == 'e' || c == 'E')
+            })
+            .map_or(text.len(), |(i, _)| i);
+        let value: f64 = text[..end].parse().ok()?;
+        // A unit of another size than the parameter's: "2.5 kHz", "1.2 s".
+        let scale = match (text[end..].trim(), self.unit.as_str()) {
+            ("kHz" | "khz", "Hz") | ("s", "ms") => 1000.0,
+            ("Hz" | "hz", "kHz") | ("ms", "s") => 0.001,
+            _ => 1.0,
+        };
+        let value = value * scale;
+        value.is_finite().then_some(value)
+    }
+}
+
+/// A number with at most `digits` decimals and no zeros at the end.
+fn trim(value: f64, digits: usize) -> String {
+    let mut text = format!("{value:.digits$}");
+    if digits > 0 {
+        text = text.trim_end_matches('0').trim_end_matches('.').to_string();
+    }
+    if text == "-0" { "0".into() } else { text }
 }
 
 /// Turn display names into keys: lower case, words joined by `_`, and a
@@ -294,6 +477,12 @@ pub struct DeviceInfo {
     /// `builtin`, `clap`, `lv2` or `vst3`.
     pub format: String,
     pub vendor: String,
+    /// The plugin's own id, as its format names it: a CLAP plugin id, a
+    /// VST3 class id (the 16 bytes as 32 hex digits), an LV2 URI. Empty for
+    /// a device that is not a plugin.
+    pub id: String,
+    /// The version the plugin gives, where it gives one.
+    pub version: String,
     /// Empty for devices whose parameters are only known per instance.
     pub params: Vec<ParamInfo>,
 }
@@ -506,5 +695,62 @@ impl Registry {
         self.posts
             .get(self.resolve(kind))
             .map_or(&[], Vec::as_slice)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_parameter_says_what_kind_of_value_it_takes() {
+        let gain = ParamInfo::new("Gain", -24.0, 24.0, 0.0, "dB");
+        assert_eq!(gain.kind(), "continuous");
+        assert_eq!(gain.stable_id(), "Gain", "a built-in parameter's id is its key");
+        assert!(gain.automatable);
+        let wave = ParamInfo::choice("Wave", &["Sine", "Saw", "Square"], 1);
+        assert_eq!((wave.kind(), wave.steps), ("enum", 2));
+        let switch = ParamInfo {
+            boolean: true,
+            steps: 1,
+            ..ParamInfo::new("On", 0.0, 1.0, 0.0, "")
+        };
+        assert_eq!(switch.kind(), "boolean");
+        let voices = ParamInfo {
+            steps: 15,
+            ..ParamInfo::new("Voices", 1.0, 16.0, 8.0, "")
+        };
+        assert_eq!(voices.kind(), "stepped");
+    }
+
+    #[test]
+    fn values_read_as_text_and_back() {
+        let freq = ParamInfo::new("Freq", 20.0, 20000.0, 1000.0, "Hz");
+        assert_eq!(freq.format(2500.0), "2.5 kHz");
+        assert_eq!(freq.format(80.0), "80 Hz");
+        assert_eq!(freq.parse("2.5 kHz"), Some(2500.0));
+        let gain = ParamInfo::new("Gain", -24.0, 24.0, 0.0, "dB");
+        assert_eq!(gain.format(-18.0), "-18.0 dB");
+        assert_eq!(gain.parse("-6 dB"), Some(-6.0));
+        assert_eq!(gain.parse("loud"), None);
+        let wave = ParamInfo::choice("Wave", &["Sine", "Saw", "Square"], 1);
+        assert_eq!(wave.format(2.0), "Square");
+        assert_eq!(wave.parse("saw"), Some(1.0));
+        // Steps of a range that is not one apart, as a VST3 list is (0 to 1).
+        let list = ParamInfo {
+            choices: vec!["A".into(), "B".into(), "C".into()],
+            steps: 2,
+            enumeration: true,
+            ..ParamInfo::new("List", 0.0, 1.0, 0.0, "")
+        };
+        assert_eq!(list.format(0.5), "B");
+        assert_eq!(list.parse("C"), Some(1.0));
+        let switch = ParamInfo {
+            boolean: true,
+            steps: 1,
+            ..ParamInfo::new("On", 0.0, 1.0, 0.0, "")
+        };
+        assert_eq!(switch.format(1.0), "on");
+        assert_eq!(switch.parse("off"), Some(0.0));
     }
 }

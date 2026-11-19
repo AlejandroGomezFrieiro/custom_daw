@@ -855,7 +855,7 @@ impl super::Session {
         }
         let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
         self.capture_states();
-        let project = super::media::for_file(&self.project, &file);
+        let project = self.file_project(&file);
         let transport = serde_json::to_value(&self.transport)?;
         let layout = layout(&project, &transport, self.screen.as_ref(), &dir)?;
         Ok(Some((dir, layout)))
@@ -1000,7 +1000,7 @@ impl super::Session {
             .then(|| dir.file_name().map(|s| s.to_string_lossy().into_owned()))
             .flatten()
             .filter(|name| !name.is_empty());
-        let mut project = super::media::for_file(&self.project, &file);
+        let mut project = self.file_project(&file);
         if let Some(name) = &named {
             project.name = name.clone();
         }

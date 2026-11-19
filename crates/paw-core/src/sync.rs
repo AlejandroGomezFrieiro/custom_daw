@@ -5,7 +5,7 @@
 //! Edits, undo, loading a project and offline rendering all end up here, so
 //! none of them can leave the engine out of step with the model.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -1006,6 +1006,7 @@ fn add_device(device: &DeviceInst, map: &mut Mapper, ctx: &mut SyncCtx, send: &m
         Some(controller) => controller.params(),
         None => factory.info().params.clone(),
     };
+    rekey(&mut params, &device.param_ids);
     // The host's wet/dry mix and gain come after the device's own.
     let own = params.len();
     params.extend(paw_engine::host::params());
@@ -1076,6 +1077,29 @@ fn deliver_posts(kind: &str, controller: &mut dyn paw_engine::Controller, ctx: &
     }
 }
 
+/// Give each parameter the key the project knows it by, found by the
+/// device's own id for it (`ids`, key to id): a plugin whose new version
+/// orders or names its parameters otherwise keeps the project's values and
+/// lanes. A parameter that had the key before takes the other's.
+pub fn rekey(params: &mut [ParamInfo], ids: &BTreeMap<String, String>) {
+    for (key, id) in ids {
+        let Some(at) = params.iter().position(|p| !p.id.is_empty() && &p.id == id) else {
+            continue;
+        };
+        if &params[at].key == key {
+            continue;
+        }
+        let old = std::mem::replace(&mut params[at].key, key.clone());
+        if let Some(other) = params
+            .iter()
+            .enumerate()
+            .position(|(i, p)| i != at && &p.key == key)
+        {
+            params[other].key = old;
+        }
+    }
+}
+
 /// Whether a device's parameter is one of the host's (see `paw_engine::host`):
 /// the last two, by those keys.
 pub fn is_host(params: &[ParamInfo], index: usize) -> bool {
@@ -1126,6 +1150,7 @@ pub fn install(
             .map(|f| f.info().params.clone())
             .unwrap_or_default(),
     };
+    rekey(&mut params, &device.param_ids);
     // The host's wet/dry mix and gain come after the device's own.
     let own = params.len();
     params.extend(paw_engine::host::params());
@@ -2118,4 +2143,35 @@ fn build_schedule(routing: &Routing, map: &Mapper) -> Schedule {
         .collect();
     entries.push(SchedEntry::new(MASTER, NO_SLOT));
     Schedule::new(entries, master_arrive + master_latency)
+}
+
+#[cfg(test)]
+mod rekey_tests {
+    use super::*;
+
+    fn param(key: &str, id: &str) -> ParamInfo {
+        ParamInfo {
+            id: id.into(),
+            ..ParamInfo::new(key, 0.0, 1.0, 0.0, "")
+        }
+    }
+
+    #[test]
+    fn parameters_keep_the_keys_the_project_knows_them_by() {
+        // A new version of the plugin swapped two parameters of one name:
+        // "gain" is now the one the project knew as "gain_2".
+        let mut params = vec![param("gain", "20"), param("gain_2", "10"), param("mix", "30")];
+        let ids = BTreeMap::from([("gain".to_string(), "10".to_string())]);
+        rekey(&mut params, &ids);
+        let keys: Vec<&str> = params.iter().map(|p| p.key.as_str()).collect();
+        assert_eq!(keys, ["gain_2", "gain", "mix"]);
+        // Renamed: the project's key wins, and an id it does not know changes nothing.
+        let mut params = vec![param("drive", "7")];
+        let ids = BTreeMap::from([
+            ("distortion".to_string(), "7".to_string()),
+            ("gone".to_string(), "99".to_string()),
+        ]);
+        rekey(&mut params, &ids);
+        assert_eq!(params[0].key, "distortion");
+    }
 }

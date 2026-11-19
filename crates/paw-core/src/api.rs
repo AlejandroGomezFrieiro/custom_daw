@@ -806,8 +806,42 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn device_set(lua, sh, (id, key, value) => (Id, String, LuaValue)) {
             sh.session.borrow_mut().device_set(id, &key, from_lua(lua, value)?).lua()
         }
-        fn device_set_param(_, sh, (id, name, value) => (Id, String, f64)) {
-            sh.session.borrow_mut().device_set_param(id, &name, value).lua()
+        // Set a parameter of a device, named by its key, the device's own id for
+        // it or its name. The value is a number, or text as the device reads it
+        // ("440 Hz", "Saw").
+        fn device_set_param(lua, sh, (id, name, value) => (Id, String, LuaValue)) {
+            let mut session = sh.session.borrow_mut();
+            let value = match value {
+                LuaValue::String(text) => session.param_parse(id, &name, &text.to_str()?).lua()?,
+                other => from_lua::<f64>(lua, other)?,
+            };
+            session.device_set_param(id, &name, value).lua()
+        }
+        // One parameter of a device, named by its key, the device's own id for it
+        // or its name: its entry of `param_info`, with `value` (now) and `text`
+        // (that value as the device writes it).
+        fn device_param(lua, sh, (id, name) => (Id, String)) {
+            let mut session = sh.session.borrow_mut();
+            session.flush();
+            to_lua(lua, &session.device_param(id, &name).lua()?)
+        }
+        // A value of a parameter as text, as the device writes it ("440 Hz").
+        // Without a value, the value now.
+        fn device_param_text(_, sh, (id, name, value) => (Id, String, Option<f64>)) {
+            let mut session = sh.session.borrow_mut();
+            session.flush();
+            let value = match value {
+                Some(value) => value,
+                None => session.device_param(id, &name).lua()?["value"].as_f64().unwrap_or_default(),
+            };
+            session.param_text(id, &name, value).lua()
+        }
+        // The value that a text stands for, for a parameter, as the device reads it.
+        // An error when the device cannot read the text.
+        fn device_param_parse(_, sh, (id, name, text) => (Id, String, String)) {
+            let mut session = sh.session.borrow_mut();
+            session.flush();
+            session.param_parse(id, &name, &text).lua()
         }
 
         // Load a preset into a device, as one undo step:
