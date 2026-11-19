@@ -510,7 +510,10 @@ test("a track folder from outside is imported as a track that refers to it, and 
   eq(ids_unique(), true, "with ids of its own")
   paw.cursor.set_track(lead)
   T.keys(":info<CR>")
-  eq(table.concat(api.ui_snapshot(120, 40), "\n"):find("refers to " .. lib .. "/tracks/Lead", 1, true) ~= nil, true, ":info names the folder")
+  -- A long path goes on the line under its label, as with the long
+  -- temporary folders of the suite's plugins mode.
+  local info = table.concat(api.ui_snapshot(120, 40), "\n")
+  eq(info:find("refers to", 1, true) ~= nil and info:find(lib .. "/tracks/Lead", 1, true) ~= nil, true, ":info names the folder")
   T.keys("q")
   -- The first edit.
   lead.volume = -3
