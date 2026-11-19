@@ -122,13 +122,26 @@ local function spec_of(role)
   return spec
 end
 
+--- Draw a role's cells. A mark bound to a live value on the terminal's
+--- screen is a live part of it, which paw draws again by itself as the
+--- value moves (`paw.ui.live`).
+local function cells(sub, role, spec, props)
+  if props.bind and spec.bound and paw.ui.live_drawing() then
+    return paw.ui.live(sub, function(b)
+      paw.ui.live_value(props.bind, props)
+      spec.cells(b, props, { role = role })
+    end)
+  end
+  return spec.cells(sub, props, { role = role })
+end
+
 --- `buf:mark(role, x, y, w, h, props)`: see the top of this file.
 function M.mark(buf, role, x, y, w, h, props)
   local spec = spec_of(role)
   props = props or {}
   local sub = buf:sub(x, y, w, h)
   local opened = open(buf, x, y, sub.width, sub.height, node_opts(role, spec, props))
-  local ok, err = pcall(spec.cells, sub, props, { role = role })
+  local ok, err = pcall(cells, sub, role, spec, props)
   if opened then api.scene_close() end
   if not ok then error(err, 0) end
   if props.hit then region(buf, x, y, sub.width, sub.height, props.hit) end
@@ -209,7 +222,7 @@ end
 function Plane:mark(role, x, y, w, h, props)
   local spec = spec_of(role)
   props = props or {}
-  return put(self, x, y, w, h, node_opts(role, spec, props), function(sub) spec.cells(sub, props, { role = role }) end)
+  return put(self, x, y, w, h, node_opts(role, spec, props), function(sub) cells(sub, role, spec, props) end)
 end
 
 --- `plane:hit(x, y, w, h, action)`: a hit region over a rectangle of the

@@ -59,6 +59,8 @@ impl Kernel for Client {
     }
     fn set_pace(&mut self, fps: f64) {
         self.pace.store((1e6 / fps.max(1.0)) as u64, std::sync::atomic::Ordering::Relaxed);
+        // The kernel sends what moves at the same pace, and no more often.
+        let _ = self.connection.notify("frontend.pace", json!([1000.0 / fps.max(1.0)]));
     }
 }
 

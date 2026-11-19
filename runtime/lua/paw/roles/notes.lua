@@ -65,6 +65,8 @@ role("keyboard", {
 --- With `spans` (`{ y, h, style, glyph }` each, rows of the rectangle),
 --- a terminal draws the line only there, in each one's style (`glyph`
 --- false keeps the character under it), and a window draws it whole.
+--- `spans_at(x)`, a function, gives the spans at another column `x`: a
+--- terminal moves the playhead by itself as the song plays.
 role("playhead", {
   props = { at = "beat", from = "beat at the left edge", per = "columns a beat", lo = "beat", hi = "beat", spans = "list" },
   bound = { "at" },
@@ -72,8 +74,9 @@ role("playhead", {
     local g = paw.draw.g
     local x = math.floor((p.at - p.from) * p.per + 0.5)
     if x < 0 or x >= buf.width or p.at < p.lo or p.at > p.hi then return end
-    if p.spans then
-      for _, s in ipairs(p.spans) do
+    local spans = p.spans_at and p.spans_at(x) or p.spans
+    if spans then
+      for _, s in ipairs(spans) do
         buf:fill(x, s[1], 1, s[2], s[4] ~= false and (s[4] or g.playhead) or nil, s[3])
       end
     else

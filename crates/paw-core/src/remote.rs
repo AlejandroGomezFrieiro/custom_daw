@@ -240,7 +240,7 @@ impl Frontend for RemoteFrontend {
         if !self.clients.push(self.client, "ui.grid", &payload) {
             bail!("connection {} is gone", self.client);
         }
-        self.shown = Some(grid.clone());
+        grid.copy_shown(&mut self.shown);
         self.cursor = cursor;
         Ok(())
     }

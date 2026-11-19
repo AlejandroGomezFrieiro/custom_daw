@@ -62,6 +62,14 @@ pub struct Shared {
     pub highlights: RefCell<Highlights>,
     /// The screen needs drawing again.
     pub dirty: Cell<bool>,
+    /// Only the live parts of the screen need drawing again (the playhead,
+    /// the meters, the status line): `paw.api.ui_redraw_live`.
+    pub live_dirty: Cell<bool>,
+    /// Frames drawn: whole, live parts only, and live parts that changed
+    /// nothing and were not sent (`paw.api.ui_frames`).
+    pub frames: Cell<[u64; 3]>,
+    /// The frame `ui_frame_snapshot` drew last, for tests.
+    pub snapshot: RefCell<Option<Grid>>,
     /// How many times a redraw has been asked for: a window showing one
     /// view draws it again only when this has moved.
     pub redraws: Cell<u64>,
@@ -376,6 +384,19 @@ pub fn render(lua: &Lua, shared: &Shared) -> mlua::Result<()> {
     let paw: Table = lua.globals().get("paw")?;
     let kernel: Table = paw.get("_kernel")?;
     kernel.get::<Function>("render")?.call((width, height))
+}
+
+/// Draw only the live parts of the frame drawn last again (see
+/// [`crate::grid::Live`]). False when the runtime finds that the frame needs
+/// drawing whole: something not live moves.
+pub fn render_live(lua: &Lua, shared: &Shared) -> mlua::Result<bool> {
+    let (width, height) = {
+        let grid = shared.grid.borrow();
+        (grid.width, grid.height)
+    };
+    let paw: Table = lua.globals().get("paw")?;
+    let kernel: Table = paw.get("_kernel")?;
+    kernel.get::<Function>("render_live")?.call((width, height))
 }
 
 /// One view drawn by itself, as a window shows it: its grid, where it put
@@ -1423,6 +1444,24 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             Ok(())
         }
         fn ui_redraws(_, sh, () => ()) { Ok(sh.redraws.get()) }
+        // Draw only the live parts of the screen again (the playhead, the
+        // meters, the status line), on the frame drawn last; a whole frame
+        // when one is asked for too, or the runtime says it is needed.
+        fn ui_redraw_live(_, sh, () => ()) {
+            sh.live_dirty.set(true);
+            Ok(())
+        }
+        // The frames drawn so far: `{ full, live, unchanged }`: whole frames,
+        // frames of the live parts only, and of those the ones that changed
+        // no cell, which were not sent.
+        fn ui_frames(lua, sh, () => ()) {
+            let [full, live, unchanged] = sh.frames.get();
+            let t = lua.create_table()?;
+            t.set("full", full)?;
+            t.set("live", live)?;
+            t.set("unchanged", unchanged)?;
+            Ok(t)
+        }
         fn ui_size(_, sh, () => ()) {
             let grid = sh.grid.borrow();
             Ok((grid.width, grid.height))
@@ -1485,6 +1524,29 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                 surface.ops = Arc::new(ops);
             }
             Ok(())
+        }
+        // A live part of the screen is drawn over the cells `(x, y, w, h)`,
+        // clipped to `(cx, cy, cw, ch)`: what is under them is kept, to draw
+        // it again by itself (`paw.ui.render_live`). Returns its number for
+        // `grid_live_end`, or nil when no part of it is on the screen.
+        fn grid_live_begin(_, sh, (x, y, w, h, cx, cy, cw, ch) => (f64, f64, f64, f64, f64, f64, f64, f64)) {
+            let clip = Rect { x: cell(cx), y: cell(cy), w: cell(cw), h: cell(ch) };
+            let area = Rect { x: cell(x), y: cell(y), w: cell(w), h: cell(h) };
+            Ok(sh.grid.borrow_mut().live_begin(area.intersect(&clip)).map(|i| i + 1))
+        }
+        fn grid_live_end(_, sh, index => usize) {
+            sh.grid.borrow_mut().live_end(index.wrapping_sub(1));
+            Ok(())
+        }
+        // The frame is drawn: what is over the live parts now stays over them.
+        fn grid_live_seal(_, sh, () => ()) {
+            sh.grid.borrow_mut().live_seal();
+            Ok(())
+        }
+        // Take the live parts off the frame drawn last, to draw them again.
+        // Returns how many there were.
+        fn grid_live_restore(_, sh, () => ()) {
+            Ok(sh.grid.borrow_mut().live_restore())
         }
         // A music font's SMuFL metadata (`Leland`, the default, `Bravura` or
         // `Petaluma`): `engravingDefaults`, `glyphBBoxes`, `glyphsWithAnchors`
@@ -1559,6 +1621,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             let drawn = render(lua, &sh);
             let grid = sh.grid.replace(screen);
             sh.cursor.set(cursor);
+            // The runtime's list of live parts is of this drawing now: the
+            // screen is drawn whole next.
+            sh.dirty.set(true);
             drawn?;
             let lines: Vec<String> = grid
                 .cells
@@ -1567,6 +1632,43 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                 .map(|line| line.trim_end().to_string())
                 .collect();
             Ok(lines)
+        }
+        // A frame drawn off screen as a terminal is drawn, for tests: whole,
+        // or with `live` only its live parts again on the frame this drew
+        // last (nil when the runtime says it must be drawn whole). Each
+        // row as its text and as its cells with their styles.
+        fn ui_frame_snapshot(lua, sh, (width, height, live) => (u16, u16, Option<bool>)) {
+            let mut frame = sh.snapshot.take().filter(|g| (g.width, g.height) == (width, height));
+            let live = live.unwrap_or(false);
+            if live && frame.is_none() {
+                return Ok(LuaValue::Nil);
+            }
+            let screen = sh.grid.replace(frame.take().unwrap_or_else(|| Grid::new(width, height)));
+            let (cursor, dirty) = (sh.cursor.get(), sh.dirty.get());
+            let drawn = if live {
+                render_live(lua, &sh)
+            } else {
+                sh.grid.borrow_mut().clear();
+                render(lua, &sh).map(|()| true)
+            };
+            let grid = sh.grid.replace(screen);
+            sh.cursor.set(cursor);
+            // The runtime's list of live parts is of this drawing now: the
+            // screen is drawn whole next.
+            sh.dirty.set(dirty || !live);
+            let drawn = drawn?;
+            if !drawn {
+                return Ok(LuaValue::Nil);
+            }
+            let rows = grid.cells.chunks(width.max(1) as usize);
+            let text: Vec<String> = rows.clone().map(|row| row.iter().filter(|c| c.ch != '\0').map(|c| c.ch).collect()).collect();
+            let cells: Vec<String> = rows.map(|row| row.iter().map(|c| format!("{:?}", c)).collect()).collect();
+            let out = lua.create_table()?;
+            out.set("text", text)?;
+            out.set("cells", cells)?;
+            out.set("live", grid.live.len())?;
+            sh.snapshot.replace(Some(grid));
+            Ok(LuaValue::Table(out))
         }
         fn ui_view_snapshot(lua, sh, (name, width, height) => (String, u16, u16)) {
             // One view drawn by itself at the given size, as rows of runs of
