@@ -4,7 +4,8 @@ This DAW (branch `stress` after merging `main` at 3e0867f) against Tracktion
 Engine 3.5.0 (commit c629312, JUCE 7ff644f), on the workloads both can run.
 How to run everything: [README.md](README.md). Raw numbers:
 `results/final.jsonl` (after the merge) and `results/premerge.jsonl` (the same
-matrix before it).
+matrix before it). The processor time of the whole program while it plays,
+against REAPER, Ardour and LMMS, is in [DAWS.md](DAWS.md).
 
 ## Since then: several threads, and one note at a time
 
@@ -58,7 +59,7 @@ covered by a test, not by a real device.
 These are three changes to the engine. I measured them on the same machine,
 with load from other jobs (load average 6 to 50). The raw numbers are in
 `results/sleep-2026-11-19.jsonl`. The run before the changes, on the same
-day, is `remeasure-2026-11-19.jsonl` (not in the repository).
+day, is `results/remeasure-2026-11-19.jsonl`.
 
 - **Devices at rest sleep.** The engine does not run a device when its
   input is silent and its tail is below -120 dB (see
@@ -128,8 +129,7 @@ tracks at 128 frames, it went from 0.18 ms to 0.26 ms, with a budget of
 time, but each block takes longer.
 ## 2026-11-19: edits, memory and startup again
 
-A new run of the matrix (`results/remeasure-2026-11-19.jsonl`, not in the
-repository) showed a faster engine but slower work around it. 1000 clip moves
+A new run of the matrix (`results/remeasure-2026-11-19.jsonl`) showed a faster engine but slower work around it. 1000 clip moves
 took 435 ms (before: 50 ms). 100 tracks took 86 MB (before: 37 MB). A start
 took 62 ms (before: 15 ms). And `edit.lua clips 5000` stopped with "out of
 Lua stack". The causes, and the changes:

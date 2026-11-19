@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Ardour>
+  <Config>
+    <Option name="hide-dummy-backend" value="0"/>
+    <Option name="try-autostart-engine" value="1"/>
+  </Config>
+  <Metadata/>
+  <ControlProtocols>
+    <Protocol name="Ableton Push 2" active="0"/>
+    <Protocol name="ContourDesign" active="0"/>
+    <Protocol name="Generic MIDI" active="0"/>
+    <Protocol name="MCP HTTP Server (Experimental)" active="0"/>
+    <Protocol name="Mackie" active="0"/>
+    <Protocol name="Novation Launch Control XL" active="0"/>
+    <Protocol name="Novation Launchkey 4" active="0"/>
+    <Protocol name="Novation Launchpad Mini" active="0"/>
+    <Protocol name="Novation Launchpad Pro" active="0"/>
+    <Protocol name="Novation Launchpad X" active="0"/>
+    <Protocol name="Open Sound Control (OSC)" active="0"/>
+    <Protocol name="PreSonus FaderPort" active="0"/>
+    <Protocol name="PreSonus FaderPort16" active="0"/>
+    <Protocol name="PreSonus FaderPort2" active="0"/>
+    <Protocol name="PreSonus FaderPort8" active="0"/>
+    <Protocol name="SSL 360: UF8 UF1" active="0"/>
+    <Protocol name="Softube Console1" active="0"/>
+    <Protocol name="Steinberg CC121" active="0"/>
+    <Protocol name="Tascam US-2400" active="0"/>
+    <Protocol name="WebSockets Server (Experimental)" active="0"/>
+  </ControlProtocols>
+  <TransportMasters current="MIDI Clock">
+    <TransportMaster type="JACK" removeable="0" name="JACK" sclock_synced="0" collect="1" allowed_transport_requests=""/>
+    <TransportMaster type="MTC" removeable="0" name="MTC" fr2997="0" sclock_synced="0" collect="1" allowed_transport_requests=""/>
+    <TransportMaster type="LTC" removeable="0" name="LTC" fr2997="0" sclock_synced="0" collect="1" allowed_transport_requests=""/>
+    <TransportMaster type="MIDIClock" removeable="0" name="MIDI Clock" sclock_synced="0" collect="1" allowed_transport_requests=""/>
+  </TransportMasters>
+</Ardour>
