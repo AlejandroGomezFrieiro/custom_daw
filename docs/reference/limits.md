@@ -61,9 +61,8 @@ gets the function.
   draws the peaks of a clip from the same data as before (`paw.frontend.peaks`:
   the lowest, the highest and the loudness of each point).
 - Windows, buffers and tabs:
-  - The arrange view, the piano roll, the notation view, the mixer, the device panel and the session view have a state for each window. The views of extensions that name no state for each window show in one window at a time.
+  - The arrange view, the piano roll, the notation view, the mixer, the device panel and the session view of the clip launcher have a state for each window. The views of extensions that name no state for each window show in one window at a time.
   - The edit cursor of the arrange view (the track and the time) and the selections are one for all the windows of a frontend.
-  - The graphical window draws the session view itself, so two session views there show the same scroll.
   - Floats (help, pickers, pages) are not windows of a tab yet.
   - Each view draws its own window title bar (the winbar of Neovim).
   - The project keeps a layout for each kind of seat (the graphical window, the terminal), not for each seat. Two terminals attached at the same time share one layout in the project: that of the terminal that saved it last.
@@ -111,7 +110,7 @@ gets the function.
   - A selection across mixer strips with different devices or sends chooses rows by their kind (the fader, the second send). It skips a strip that does not have that row.
   - `]` and `[` wait a moment for `]d`, `]g` and similar keys before they run. Vim does the same when a longer mapping starts with a key.
   - `paw.opt.keys = "classic"` gives the old keys. It will go after a release.
-  - In the session view, `m` is still the launch mode and `n` a new clip. They are not the mark and the next match of Vim.
+  - In the session view of the clip launcher, `m` is still the launch mode and `n` a new clip. They are not the mark and the next match of Vim.
 
 - Notation:
   - A tempo mark writes a point of the song's tempo map when it is
@@ -270,8 +269,6 @@ gets the function.
   - A view can draw over a role in cells (the cursor and selection of the
     roll, the tag of an articulation). The graphical window shows this over
     the role in cells too, not as a part of the note.
-  - The session view is still the own drawing of
-    the graphical window, fed by `frontend.watch`.
   - The graphical window does not scroll or zoom a plane itself. The wheel
     goes to the kernel, which draws the plane again.
   - paw-raster makes pictures into images when their drawing changes. They
@@ -398,8 +395,8 @@ gets the function.
   - A note that the `delay` of an articulation moves before the loop start
     is late after the loop turns. It starts with the loop, not before its
     end.
-  - In the clip of a launched slot, paw moves notes by the tempo of the
-    song at the beats of the clip.
+  - In a clip that a cue plays (a slot of the clip launcher), paw moves
+    notes by the tempo of the song at the beats of the clip.
 - MIDI 2.0 output through the sequencer is not tried: the test computer
   has no `CONFIG_SND_SEQ_UMP`, so its MIDI ports are MIDI 1.0. The tests try
   the MIDI 1.0 forms (plain, MPE and 14-bit) through the ports of paw.
@@ -472,14 +469,17 @@ gets the function.
   on Mesa's llvmpipe so far. There, playback costs more than a core.
 - In the window, kanji, hanzi and hangul where the system has no font for
   them: only kana are built in, and the rest show as boxes then.
-- Clip launch:
+- Cues and the clip launcher:
   - No follow actions (a clip that launches the next clip, or a random
     clip, after some bars).
-  - Under a tempo ramp, a clip in a slot spreads the beats of each block
-    evenly. Its notes can be about one frame from where the timeline puts
-    them.
-  - paw does not render launches directly. Capture them into the timeline
+  - Under a tempo ramp, a clip that a cue plays spreads the beats of each
+    block evenly. Its notes can be about one frame from where the timeline
+    puts them.
+  - paw does not render cues directly. Capture them into the timeline
     first.
+  - In the graphical window, a clip dragged from the timeline onto the
+    session view shows no mark of the slot that takes it until you let it
+    go.
 - The window's position on Wayland: the compositor places windows and a
   program cannot ask for a place, so only X11 keeps it.
 - The flake's `flake.lock` names the `nixpkgs` of this machine as a path in

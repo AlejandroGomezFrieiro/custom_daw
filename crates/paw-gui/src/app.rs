@@ -9,13 +9,13 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use egui::{Pos2, Rect, Ui, pos2, vec2};
+use egui::{Rect, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 use crate::client::Client;
 use crate::model::{self, Track, flag, int, rows, text};
 use crate::theme::th;
-use crate::{canvas, dialogs, keys, menu, panes, portal, scene, session};
+use crate::{canvas, dialogs, keys, menu, panes, portal, scene};
 
 /// What the window asks of a kernel: calls answered, and the state pushed.
 /// A client of a real kernel in the program; a stand-in in the tests.
@@ -104,7 +104,6 @@ pub struct State {
     pub modal: Value,
     pub project: Value,
     pub tracks: Vec<Track>,
-    pub slots: Value,
     pub kinds: Vec<String>,
     pub selected: i64,
     pub revision: i64,
@@ -153,7 +152,6 @@ pub struct View {
     pub message_time: f64,
     pub message_dismissed: f64,
     pub last_mode: String,
-    pub session: session::Session,
     pub panes: panes::Panes,
     pub canvases: canvas::Canvases,
     pub scenes: scene::Scenes,
@@ -207,7 +205,6 @@ impl View {
             message_time: 0.0,
             message_dismissed: 0.0,
             last_mode: String::new(),
-            session: session::Session::default(),
             panes: panes::Panes::default(),
             canvases: canvas::Canvases::default(),
             scenes: scene::Scenes::default(),
@@ -337,7 +334,6 @@ impl View {
             self.project(&state);
         }
         self.modal(&state["modal"]);
-        self.session.tick(&state);
         self.s.tick = state;
         self.repaint = true;
     }
@@ -346,7 +342,6 @@ impl View {
         let project = &state["project"];
         self.s.revision = int(&state["revision"]);
         self.s.tracks = model::tracks(&state["tracks"]);
-        self.s.slots = state["slots"].clone();
         if let Some(kinds) = state["kinds"].as_array() {
             self.s.kinds = kinds.iter().map(text).collect();
         }
@@ -475,16 +470,6 @@ impl View {
     fn main_area(&mut self, ui: &mut Ui, area: Rect) {
         self.pane_area(ui, area);
         let modal = self.s.modal["panes"].clone();
-        let natives = panes::natives(&modal);
-        for (view, rect) in &natives {
-            let rect = rect.translate(area.min.to_vec2());
-            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt(("pane", view.as_str())));
-            child.set_clip_rect(rect.intersect(ui.clip_rect()));
-            match view.as_str() {
-                "session" => self.draw_session(&mut child, rect),
-                _ => {}
-            }
-        }
         self.draw_kernel_panes(ui, area, &modal);
     }
 
@@ -804,13 +789,6 @@ impl View {
         } else if keep.seen != keep.done {
             self.again = Some(Duration::from_millis(250));
         }
-    }
-
-    // ------------------------------------------------------------- helpers
-
-    /// Where the pointer is, if it is over `rect`.
-    pub fn pointer_in(ui: &Ui, rect: Rect) -> Option<Pos2> {
-        ui.input(|i| i.pointer.hover_pos()).filter(|p| rect.contains(*p))
     }
 }
 

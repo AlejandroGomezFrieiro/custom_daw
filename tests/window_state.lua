@@ -169,8 +169,13 @@ test("window state: the mixer twice, each window with its own row and scroll", f
   eq(windows(), "mixer", "closing one leaves the other")
 end)
 
-test("window state: the session view twice", function()
+test("window state: the session view of an extension twice", function()
   start()
+  -- The clip launcher's view keeps a state for each window too.
+  if not paw.ext.loaded.launcher then
+    paw.ext.load("extensions/launcher")
+    T.after(function() paw.ext.unload("launcher") end)
+  end
   riff()
   sized(function()
     keys(":e session<CR>")

@@ -136,8 +136,7 @@ impl View {
         // Which views show: one segmented switch.
         let roll_open = rows(&self.s.modal["panes"]["panes"]).iter().any(|p| p["view"] == "pianoroll");
         let lanes_open = self.s.track(self.s.selected).is_some_and(|t| !t.lane_rows.is_empty());
-        let views: [(&str, icons::Icon, bool, &str); 5] = [
-            ("Session", icons::GRID_FOUR, flag(&self.s.modal["session"]), "session: clips in slots under each track, launched while the song plays"),
+        let views: [(&str, icons::Icon, bool, &str); 4] = [
             ("Mixer", icons::FADERS, flag(&self.s.modal["mixer"]), ""),
             ("Automation", icons::CHART_LINE, lanes_open, "automation: the selected track's lanes as rows under it, to draw on, or hidden"),
             ("Piano roll", icons::PIANO_KEYS, roll_open, "piano roll: opens the notes of the clip at the cursor, or closes them"),
@@ -155,7 +154,6 @@ impl View {
             }
             if response.clicked() {
                 match label {
-                    "Session" => self.command("view.toggle session"),
                     "Mixer" => self.command("view.toggle mixer"),
                     "Automation" => self.command("lane.rows"),
                     "Piano roll" => self.command(if roll_open { "view.toggle pianoroll" } else { "clip.edit" }),

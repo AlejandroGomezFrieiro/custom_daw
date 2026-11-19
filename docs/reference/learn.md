@@ -4,19 +4,19 @@
 
 A knob, a fader or a wheel of a MIDI controller can move a control. A
 control is the fader or the pan of a track, or a parameter of a device. A
-pad or a button can launch a slot or a scene of the
-[session view](session-view.md). It can also stop clips. The module is
-`paw.learn`.
+pad or a button presses a button that an extension adds. With the
+[clip launcher](../../extensions/launcher/README.md), a pad can launch a
+slot or a scene, or stop clips. The module is `paw.learn`.
 
 ## Commands
 
 | Command | Effect |
 | --- | --- |
-| `:learn` | Wait for a controller, then bind it. The target is the parameter at the cursor of the device panel, the fader at the cursor of the mixer, or the slot at the cursor of the session view. Else the target is the last control that moved. |
+| `:learn` | Wait for a controller, then bind it. The target is the parameter at the cursor of the device panel, the fader at the cursor of the mixer, or the slot at the cursor of the session view (clip launcher). Else the target is the last control that moved. |
 | `:learn volume`, `:learn pan`, `:learn cutoff` | Bind the fader, the pan, or a parameter (by key or name) of the selected track. |
-| `:learn launch` | Bind a pad that launches the slot at the cursor of the session view. |
-| `:learn scene` | Bind a pad that launches the scene of the row at the cursor of the session view. |
-| `:learn stop`, `:learn stop all` | Bind a button that stops the clip of the selected track, or every clip. |
+| `:learn launch` | Bind a pad that launches the slot at the cursor of the session view (clip launcher). |
+| `:learn scene` | Bind a pad that launches the scene of the row at the cursor of the session view (clip launcher). |
+| `:learn stop`, `:learn stop all` | Bind a button that stops the clip of the selected track, or every clip (clip launcher). |
 | `:learn.cancel` | Stop the wait for a controller. |
 | `:learn.param 12 cutoff` | Bind a parameter of a device, by the device id and the parameter key. The frontends use it in their menus. |
 | `:learn.list` | Show the bindings in a list. Select one to remove it. |
@@ -63,7 +63,10 @@ paw.learn.bind({ note = 48 }, { target = "stop" })          -- every clip
 | `paw.learn.unbind(which)` | Remove a binding, by number or by target. |
 | `paw.learn.clear()` | Remove every binding. |
 | `paw.learn.start(target)` | Wait for a controller for this target. |
+| `paw.learn.trigger(name, spec)` | Add a kind of button target: `press(binding, down)`, `name(target)`, and optionally `check`, `words`, `target_for(word, track)` and `under_cursor(view)`. |
 
 A target is a table: `track`, and `target` (`"volume"`, `"pan"`,
-`"param"`, `"launch"`, `"scene"` or `"stop"`), with `device` and `param`
-for a parameter, and `slot` (from 0) for a launch or a scene.
+`"param"`, or a button that an extension adds), with `device` and `param`
+for a parameter. A button can keep a number in `slot`: the clip launcher
+keeps the row (from 0) of a launch or a scene there. A binding to a button
+of an extension that is not loaded stays in the project and does nothing.

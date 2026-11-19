@@ -51,7 +51,7 @@ end
 
 local asking = false
 
---- Whether paw asks now what to do with the changes.
+--- True if paw asks now what to do with the changes.
 function M.asking() return asking end
 
 --- Act on the changes as the option says: called when paw gets the focus,

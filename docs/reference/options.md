@@ -79,7 +79,6 @@ clip. `:set undo_steps=200` removes the oldest steps at once.
 | `paw.opt.device_sleep` | `true` | A device at rest sleeps through silence: a reverb after its tail, a synth with no note that sounds. This saves processor time. The sound is the same with `false`. |
 | `paw.opt.audio_reconnect` | `true` | paw opens an audio device again when it returns. |
 | `paw.opt.scope_rest` | `"play"` | What the other tracks do in a narrowed tab: `"play"`, `"mute"` or `"frozen"`. |
-| `paw.opt.launch_rows` | `8` | The minimum number of rows in the session view. |
 
 ## Media and render
 

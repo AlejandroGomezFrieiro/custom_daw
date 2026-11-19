@@ -707,7 +707,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             to_lua(lua, &recovered.lua()?)
         }
         // The files of a project kept in a folder, with what each holds and
-        // whether it differs from the disk (see `:ls`).
+        // if it differs from the disk (see `:ls`).
         fn project_files(lua, sh, () => ()) {
             to_lua(lua, &sh.session.borrow_mut().project_files().lua()?)
         }
@@ -1016,23 +1016,24 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         }
         fn clip_remove(_, sh, id => Id) { sh.session.borrow_mut().clip_remove(id).lua() }
 
-        // --- clip launcher (session/launcher.rs) ---
-        // A clip goes into a slot with `clip_add(track, { slot = row, ... })`.
-        // You edit it as a usual clip. `clip_set` also accepts `row`,
-        // `quantize`, `mode` and `legato` for it.
-        fn slot_list(lua, sh, track => Id) { to_lua(lua, &sh.session.borrow().slot_list(track).lua()?) }
-        // Copy a clip into a row of a track's slots. Returns the copy's id.
-        fn clip_to_slot(_, sh, (id, track, row) => (Id, Id, u32)) {
-            sh.session.borrow_mut().clip_to_slot(id, track, row).lua()
+        // --- cues (session/cues.rs) ---
+        // A clip goes off the timeline with `clip_add(track, { cue = true, ... })`:
+        // it starts at 0, loops over its length, and plays only when cued.
+        // You edit it as a usual clip; `clip_set(id, "track", other)` moves it.
+        fn cue_list(lua, sh, track => Id) { to_lua(lua, &sh.session.borrow().cue_list(track).lua()?) }
+        // Copy a clip, with its `meta`, off the timeline of a track. Returns the copy's id.
+        fn clip_to_cues(_, sh, (id, track) => (Id, Id)) {
+            sh.session.borrow_mut().clip_to_cues(id, track).lua()
         }
-        // `{ { track =, slot = row }, { track =, stop = true },
-        // { track =, arrangement = true }, ... }`, each with `quantize` and
-        // `legato` if not the slot's: all on their boundary, timed together.
-        fn launch(lua, sh, list => LuaValue) {
-            sh.session.borrow_mut().launch(from_lua(lua, list)?).lua()
+        // `{ { track =, clip = id }, { track =, stop = true },
+        // { track =, timeline = true }, ... }`, each with `quantize` (`bar`
+        // when not given: off 1/16 1/8 1/4 beat bar 2bars 4bars), `legato`
+        // and `from`: all on their boundary, timed together by the engine.
+        fn cue(lua, sh, list => LuaValue) {
+            sh.session.borrow_mut().cue(from_lua(lua, list)?).lua()
         }
         // What each track plays and has in its queue, in the last report of the engine.
-        fn launcher(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().launcher_view()) }
+        fn cue_state(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().cue_state()) }
         fn clip_set(lua, sh, (id, key, value) => (Id, String, LuaValue)) {
             sh.session.borrow_mut().clip_set(id, &key, from_lua(lua, value)?).lua()
         }

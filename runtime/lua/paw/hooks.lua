@@ -18,7 +18,7 @@ local M = {}
 local EDITS = {}
 for _, name in ipairs({ "project.changed", "track.added", "track.changed", "track.removed", "track.moved",
   "device.added", "device.changed", "device.removed", "clip.added", "clip.changed", "clip.removed",
-  "lane.added", "lane.changed", "lane.removed", "slot.changed" }) do
+  "lane.added", "lane.changed", "lane.removed", "cue.changed" }) do
   EDITS[name] = true
 end
 

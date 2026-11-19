@@ -1,13 +1,15 @@
--- Tests of clip launching: clips in slots, launched on their boundary,
--- scenes, stopping, going back to the timeline, saving, undo, controllers,
--- the session view, and a performance captured into the timeline and
--- rendered. Loaded by tests/suite.lua with its helpers.
+-- Tests of the clip launcher extension: clips in slots, launched on their
+-- boundary, scenes, stopping, going back to the timeline, saving, undo,
+-- controllers, the session view, and a performance captured into the
+-- timeline and rendered. Loaded by tests/suite.lua with its helpers.
 local T = ...
 local test, eq, near, fails, fresh, render = T.test, T.eq, T.near, T.fails, T.fresh, T.render
 local api = paw.api
-local launcher = paw.launcher
+local launcher
 
 local function start()
+  if not paw.ext.loaded.launcher then paw.ext.load("extensions/launcher") end
+  launcher = require("launcher")
   fresh()
   api.engine_restart({ backend = "null" })
   paw.keymap.feed("<Esc><Esc>")
@@ -29,9 +31,7 @@ local function synth(name, row, pitch, bars)
   local t = paw.add_track({ name = name })
   t:add_device("synth", { attack = 0.001, release = 0.01 })
   local length = 4 * (bars or 1)
-  local id = api.clip_add(t.id, {
-    slot = row, length = length, notes = { { pitch = pitch or 57, start = 0, length = length } },
-  })
+  local id = launcher.add(t.id, row, { length = length, notes = { { pitch = pitch or 57, start = 0, length = length } } })
   return t, id
 end
 
@@ -50,35 +50,36 @@ end
 
 -- The model ------------------------------------------------------------------
 
-test("a clip in a slot is kept apart from the timeline and edited like any clip", function()
+test("launcher: a clip in a slot is a clip off the timeline, its row in its meta, edited like any clip", function()
   start()
   local t = paw.add_track({ name = "Keys" })
-  local id = api.clip_add(t.id, { slot = 2, start = 8, length = 2, notes = { { pitch = 60, start = 0, length = 1 } } })
+  local id = launcher.add(t.id, 2, { start = 8, length = 2, notes = { { pitch = 60, start = 0, length = 1 } } })
   eq(#api.clip_list(t.id), 0, "nothing on the timeline")
-  local slots = api.slot_list(t.id)
-  eq(#slots, 1, "one slot holds a clip")
-  eq(slots[1].slot, 2, "in its row")
-  eq(slots[1].start, 0, "starting at 0 whatever was asked")
-  eq(api.clip_get(id).slot, 2, "a clip's view says where it is")
+  local cues = api.cue_list(t.id)
+  eq(#cues, 1, "one clip off the timeline")
+  eq(cues[1].cue, true, "a cue clip")
+  eq(cues[1].meta.launcher.row, 2, "its row in its meta")
+  eq(cues[1].start, 0, "starting at 0 whatever was asked")
+  eq(launcher.clip(t.id, 2).id, id, "in its slot")
   paw.clip(id):set_notes({ { pitch = 64, start = 0, length = 0.5 } })
   eq(api.clip_notes(id)[1].pitch, 64, "its notes are set as any clip's")
-  api.clip_set(id, "mode", "gate")
-  api.clip_set(id, "quantize", "1/8")
-  api.clip_set(id, "legato", true)
-  local c = api.clip_get(id)
+  launcher.set(id, "mode", "gate")
+  launcher.set(id, "quantize", "1/8")
+  launcher.set(id, "legato", true)
+  local c = launcher.clip(t.id, 2)
   eq(c.mode .. " " .. c.quantize .. " " .. tostring(c.legato), "gate 1/8 true", "how it launches")
-  fails(function() api.clip_set(id, "quantize", "3 bars") end, "quantize", "an unknown quantize")
+  fails(function() launcher.set(id, "quantize", "3 bars") end, "quantize", "an unknown quantize")
   fails(function() api.clip_set(id, "start", 4) end, "starts at 0", "a slot's clip has no place in time")
-  api.clip_set(id, "row", 0)
-  eq(api.slot_list(t.id)[1].slot, 0, "moved to another row")
+  launcher.move(id, nil, 0)
+  eq(launcher.clip(t.id, 0).id, id, "moved to another row")
   local other = paw.add_track({ name = "Other" })
-  api.clip_set(id, "track", other.id)
-  eq(#api.slot_list(t.id) .. #api.slot_list(other.id), "01", "to another track, in the same row")
+  launcher.move(id, other.id, 0)
+  eq(#api.cue_list(t.id) .. #api.cue_list(other.id), "01", "to another track")
   api.clip_remove(id)
-  eq(#api.slot_list(other.id), 0, "and removed")
+  eq(#api.cue_list(other.id), 0, "and removed")
 end)
 
-test("a clip on the timeline is copied into a slot, and a track's copy keeps its slots", function()
+test("launcher: a clip on the timeline is copied into a slot, and a track's copy keeps its slots", function()
   start()
   local t = paw.add_track({ name = "Bass" })
   local clip = t:add_clip({ start = 8, length = 4, notes = { { pitch = 40, start = 1, length = 1 } } })
@@ -88,14 +89,15 @@ test("a clip on the timeline is copied into a slot, and a track's copy keeps its
   eq(#api.clip_list(t.id), 1, "the original stays")
   local snap = t:snapshot()
   local twin = paw.restore_track(snap)
-  local slots = api.slot_list(twin.id)
-  eq(#slots .. " " .. slots[1].slot .. " " .. #api.clip_list(twin.id), "1 1 1", "the copy of the track has the slot too")
+  eq(#api.cue_list(twin.id) .. " " .. #api.clip_list(twin.id), "1 1", "the copy of the track has the slot too")
+  eq(launcher.clip(twin.id, 1) ~= nil, true, "in the same row")
 end)
 
-test("slots are saved, opened and undone with the project", function()
+test("launcher: slots are saved, opened and undone with the project", function()
   start()
   local t = paw.add_track({ name = "Pad" })
-  local id = api.clip_add(t.id, { slot = 3, length = 8, mode = "toggle", notes = { { pitch = 50, start = 0, length = 2 } } })
+  local id = launcher.add(t.id, 3, { length = 8, notes = { { pitch = 50, start = 0, length = 2 } } })
+  launcher.set(id, "mode", "toggle")
   launcher.set_quantize("1/4")
   launcher.set_scene_name(3, "Drop")
   api.undo_checkpoint()
@@ -103,23 +105,23 @@ test("slots are saved, opened and undone with the project", function()
   api.project_save(path)
   paw.project.new()
   api.project_load(path)
-  local slot = api.slot_list(api.track_list()[1])[1]
+  local slot = launcher.clip(api.track_list()[1], 3)
   eq(slot.slot .. " " .. slot.length .. " " .. slot.mode, "3 8 toggle", "the slot comes back")
   eq(api.clip_notes(slot.id)[1].pitch, 50, "with its notes")
-  eq(api.project_get().launch_quantize, "1/4", "and the project's quantize")
+  eq(launcher.quantize(), "1/4", "and the project's quantize")
   eq(launcher.scene_name(3) .. " " .. launcher.scene_name(0), "Drop Scene 1", "and the scenes' names")
   eq(launcher.rows() >= 5, true, "a row more than the last that is used")
   api.clip_remove(slot.id)
   api.undo_checkpoint()
-  eq(#api.slot_list(api.track_list()[1]), 0, "emptied")
+  eq(#api.cue_list(api.track_list()[1]), 0, "emptied")
   api.undo()
-  eq(#api.slot_list(api.track_list()[1]), 1, "and back with undo")
+  eq(#api.cue_list(api.track_list()[1]), 1, "and back with undo")
   local _ = id
 end)
 
 -- Launching ------------------------------------------------------------------
 
-test("a launch lands on the next bar and the timeline falls silent meanwhile", function()
+test("launcher: a launch lands on the next bar and the timeline falls silent meanwhile", function()
   start()
   local t, id = synth("Lead", 0, 69)
   t:add_clip({ start = 0, length = 64, notes = { { pitch = 45, start = 0, length = 64 } } })
@@ -143,7 +145,7 @@ test("a launch lands on the next bar and the timeline falls silent meanwhile", f
   local _ = id
 end)
 
-test("launching while stopped starts the song and the clip at once, and stopping the song ends it", function()
+test("launcher: launching while stopped starts the song and the clip at once, and stopping the song ends it", function()
   start()
   local t = synth("Lead", 1)
   paw.transport.seek(2)
@@ -155,10 +157,10 @@ test("launching while stopped starts the song and the clip at once, and stopping
   until_(function() return launcher.playing(t.id) == "arrangement" end, 5000, "the timeline again")
 end)
 
-test("a scene launches its row together and stops tracks with nothing in it", function()
+test("launcher: a scene launches its row together and stops tracks with nothing in it", function()
   start()
   local a = synth("A", 0, 60)
-  api.clip_add(a.id, { slot = 1, length = 4, notes = { { pitch = 62, start = 0, length = 1 } } })
+  launcher.add(a.id, 1, { length = 4, notes = { { pitch = 62, start = 0, length = 1 } } })
   local b = synth("B", 0, 64)
   local c = synth("C", 1, 67)
   launcher.scene(0)
@@ -177,16 +179,16 @@ test("a scene launches its row together and stops tracks with nothing in it", fu
   paw.transport.stop()
 end)
 
-test("a toggle clip stops when pressed again and a gate clip when let go", function()
+test("launcher: a toggle clip stops when pressed again and a gate clip when let go", function()
   start()
   local t, id = synth("Lead", 0)
-  api.clip_set(id, "mode", "toggle")
-  api.clip_set(id, "quantize", "off")
+  launcher.set(id, "mode", "toggle")
+  launcher.set(id, "quantize", "off")
   launcher.press(t.id, 0)
   until_(function() return state(t.id).slot == 0 end, 5000, "the toggle to start")
   launcher.press(t.id, 0)
   until_(function() return state(t.id).stopped end, 5000, "the toggle to stop")
-  api.clip_set(id, "mode", "gate")
+  launcher.set(id, "mode", "gate")
   launcher.press(t.id, 0)
   until_(function() return state(t.id).slot == 0 end, 5000, "the gate to start")
   launcher.release(t.id, 0)
@@ -194,11 +196,11 @@ test("a toggle clip stops when pressed again and a gate clip when let go", funct
   paw.transport.stop()
 end)
 
-test("a slot's quantize wins over the project's and a launch's over both", function()
+test("launcher: a slot's quantize wins over the project's and a launch's over both", function()
   start()
   local t, id = synth("Lead", 0)
   launcher.set_quantize("4bars")
-  api.clip_set(id, "quantize", "1/16")
+  launcher.set(id, "quantize", "1/16")
   paw.transport.seek(1.1)
   paw.transport.play()
   launcher.launch(t.id, 0)
@@ -213,7 +215,7 @@ end)
 
 -- Rendering and capturing ------------------------------------------------------
 
-test("a render plays the timeline, not what is launched", function()
+test("launcher: a render plays the timeline, not what is launched", function()
   start()
   local t = synth("Lead", 0, 69)
   launcher.launch(t.id, 0)
@@ -224,7 +226,7 @@ test("a render plays the timeline, not what is launched", function()
   paw.transport.stop()
 end)
 
-test("a captured performance is written into the timeline on its boundaries and renders there", function()
+test("launcher: a captured performance is written into the timeline on its boundaries and renders there", function()
   start()
   local t = synth("Lead", 0, 69)
   local b = synth("Bass", 0, 45)
@@ -259,7 +261,7 @@ end)
 
 -- Recording into a slot --------------------------------------------------------
 
-test("recording into an empty slot keeps a bar from the boundary and plays it on in step", function()
+test("launcher: recording into an empty slot keeps a bar from the boundary and plays it on in step", function()
   start()
   api.engine_restart({ backend = "null", test_input = { frequency = 440, level = -12, channels = 2 } })
   local ok, err = xpcall(function()
@@ -289,7 +291,7 @@ end)
 
 -- Controllers ------------------------------------------------------------------
 
-test("a pad learned in the session view launches the slot under the cursor, and others the scene and stop", function()
+test("launcher: a pad learned in the session view launches the slot under the cursor, and others the scene and stop", function()
   start()
   local t = synth("Drums", 1)
   local note = function(pitch, on)
@@ -326,7 +328,7 @@ end)
 
 local function screen(w, h) return table.concat(api.ui_snapshot(w or 120, h or 36), "\n") end
 
-test("the session view shows the slots and scenes, and its keys launch and stop", function()
+test("launcher: the session view shows the slots and scenes, and its keys launch and stop", function()
   start()
   local t = synth("Lead", 0)
   launcher.set_scene_name(0, "Verse")
@@ -357,39 +359,243 @@ test("the session view shows the slots and scenes, and its keys launch and stop"
   paw.ui.hide("session")
 end)
 
-test("the window's gestures choose, open, fill, move and launch slots", function()
+
+test("launcher: the session view's pointer chooses, opens, moves and launches slots, and takes a clip dropped on it", function()
   start()
-  local A = paw.frontend.act
+  local act = require("launcher.view").act
   local t = paw.add_track({ name = "Keys" })
   local u = paw.add_track({ name = "Bass" })
   local clip = t:add_clip({ start = 4, length = 4, notes = { { pitch = 60, start = 0, length = 1 } } })
   paw.ui.show("session")
-  local id = A.open_slot(t.id, 3)
-  eq(api.clip_get(id).slot, 3, "a double click on an empty slot makes a clip there")
+  local id = act.open(t.id, 3)
+  eq(launcher.clip(t.id, 3).id, id, "a double click on an empty slot makes a clip there")
   eq(paw.ui.views.pianoroll:clip().id, id, "and opens it in the piano roll")
   paw.ui.hide("pianoroll")
-  A.clip_to_slot(clip.id, u.id, 0)
-  eq(#api.slot_list(u.id), 1, "a clip dropped from the timeline is copied in")
-  A.move_slot(id, u.id, 5, false)
+  act.move(id, u.id, 5, false)
   eq(launcher.clip(u.id, 5).id, id, "dragged to another track's slot")
-  A.move_slot(id, t.id, 1, true)
+  act.move(id, t.id, 1, true)
   eq(launcher.clip(t.id, 1) ~= nil and launcher.clip(u.id, 5) ~= nil, true, "with Ctrl, a copy")
-  A.choose_slot(u.id, 0)
-  eq(paw.launcher.row .. " " .. paw.cursor.track_id() .. " " .. paw.ui.focused, "0 " .. u.id .. " session", "a click chooses")
-  A.press_slot(u.id, 0)
-  until_(function() return state(u.id).slot == 0 end, 5000, "a press to launch")
-  local s = paw.frontend.state(-1)
-  eq(#s.slots, 3, "the window is told of the slots")
-  eq(s.project.scenes[1], "Scene 1", "and the scenes")
-  local lane
-  for i, l in ipairs(s.launch) do
-    if s.tracks[i].id == u.id then lane = l end
+  act.choose(u.id, 0)
+  eq(launcher.row .. " " .. paw.cursor.track_id() .. " " .. paw.ui.focused, "0 " .. u.id .. " session", "a click chooses")
+  -- A clip of the timeline let go over the view, as the window passes it on.
+  api.ui_snapshot(120, 36)
+  local win
+  for _, w in ipairs(require("paw.layout").windows(paw.ui.layout)) do
+    if w.view == "session" then win = w end
   end
-  eq(lane.slot, 0, "and what plays")
-  A.stop_slots(nil)
-  until_(function() return state(u.id).stopped end, 10000, "stop all")
-  A.back_to_timeline(nil)
+  local cell = paw.canvas.cell
+  paw.cursor.set_track(t.id)
+  api.ui_snapshot(120, 36)
+  -- The first column, the second row of slots: under the title and the names.
+  paw.panes.pointer(win.id, { kind = "drop", x = 6 * cell.w, y = 3 * cell.h, clip = clip.id }, { cell = cell, cols = 120, rows = 12 })
+  local dropped = launcher.clip(t.id, 1)
+  eq(dropped ~= nil and api.clip_notes(dropped.id)[1].pitch, 60, "a copy of the dropped clip is in the slot")
+  eq(#api.clip_list(t.id), 1, "and the clip stays on the timeline")
+  act.press(u.id, 0)
+  until_(function() return (launcher.state()[u.id] or {}).queued == "stop" or (launcher.state()[u.id] or {}).stopped end, 5000, "a press on an empty slot to stop")
+  launcher.stop(nil)
+  launcher.back(nil)
   until_(function() return next(launcher.state()) == nil end, 10000, "all back")
   paw.transport.stop()
+  paw.ui.hide("session")
+end)
+
+-- The extension and the core ---------------------------------------------------
+
+test("launcher: the launcher unloads and loads again, and the project keeps its slots without it", function()
+  start()
+  local t = synth("Lead", 1)
+  launcher.set_scene_name(1, "Chorus")
+  eq(paw.commands.get("launch") ~= nil, true, "its commands")
+  local ok, err = paw.ext.unload("launcher")
+  eq(ok, true, "unloaded: " .. tostring(err))
+  eq(paw.commands.get("launch"), nil, "its commands are gone")
+  eq(paw.ui.views.session, nil, "and its view")
+  eq(paw.learn.triggers.launch, nil, "and its controller buttons")
+  eq(#api.cue_list(t.id), 1, "the clip stays in the project")
+  local path = T.scratch .. "/launcher-without.paw"
+  api.project_save(path)
+  api.project_load(path)
+  eq(#api.cue_list(api.track_list()[1]), 1, "and is saved and opened without the extension")
+  paw.ext.load("extensions/launcher")
+  launcher = require("launcher")
+  eq(launcher.clip(api.track_list()[1], 1) ~= nil and launcher.scene_name(1), "Chorus", "loaded again, the slot and the scene are there")
+end)
+
+-- Moved here with the session view: the pointer in the terminal, Escape,
+-- VCAs, and the command picker in the view -------------------------------------
+
+local W, H = 140, 44
+local function shot(height) return api.ui_snapshot(W, height or H) end
+local function m(kind, x, y, button, mods)
+  paw.ui.mouse({ kind = kind, x = x, y = y, button = button or "left", mods = mods or "" })
+end
+local function click(x, y, button, mods)
+  m("down", x, y, button, mods)
+  m("up", x, y, button, mods)
+end
+local function drag(x0, y0, x1, y1, button, mods)
+  m("down", x0, y0, button, mods)
+  m("drag", x0 + (x1 > x0 and 1 or x1 < x0 and -1 or 0), y0 + (y1 > y0 and 1 or y1 < y0 and -1 or 0), button, mods)
+  m("drag", x1, y1, button, mods)
+  m("up", x1, y1, button, mods)
+end
+--- Let time pass since the last press, so that the next is not a double click.
+local function apart() paw.mouse.forget() end
+
+test("launcher: Escape in the session view cancels and stays there", function()
+  start()
+  paw.ui.show("session")
+  paw.ui.focus("session")
+  paw.keymap.feed("3d")
+  paw.keymap.feed("<Esc><Esc>")
+  eq(paw.ui.focused .. " " .. paw.keymap.pending() .. " " .. paw.keymap.mode, "session  n", "the count and operator are cancelled, the view stays")
+  paw.ui.hide("session")
+end)
+
+test("launcher: the session view: a click chooses a slot, its play mark launches it, a double click makes a clip, a drag moves one", function()
+  start()
+  local opt_mouse = paw.opt.mouse
+  paw.opt.mouse = true
+  T.after(function() paw.opt.mouse = opt_mouse end)
+  local t = paw.add_track({ name = "Keys" })
+  t:add_device("synth")
+  launcher.new_clip(t.id, 0)
+  paw.ui.show("session")
+  shot()
+  local rect
+  for _, r in ipairs(paw.ui.rects) do if r.name == "session" then rect = r end end
+  local view = paw.ui.views.session
+  local col = view.geometry.columns[1]
+  local function slot(row) return rect.x + col.x, rect.y + 1 + (row - view.top) + 1 end
+  local x, y = slot(1)
+  click(x + 4, y)
+  eq(launcher.row .. " " .. paw.ui.focused, "1 session", "a click chooses the slot")
+  apart()
+  x, y = slot(2)
+  click(x + 4, y)
+  click(x + 4, y)
+  eq(launcher.clip(t.id, 2) ~= nil, true, "a double click on an empty slot makes a clip there")
+  eq(paw.ui.focused, "pianoroll", "and opens it")
+  paw.ui.hide("pianoroll")
+  shot()
+  apart()
+  x, y = slot(0)
+  click(x, y)
+  local deadline = api.now() + 5000
+  local function launched()
+    local s = launcher.state()[t.id] or {}
+    return s.slot == 0 or s.queued == 0
+  end
+  while not launched() and api.now() < deadline do paw.wait(5) end
+  eq(launched(), true, "the play mark launches the clip")
+  launcher.stop(nil)
+  paw.transport.stop()
+  apart()
+  local _, y3 = slot(3)
+  drag(x + 4, y, x + 4, y3)
+  eq(launcher.clip(t.id, 3) ~= nil and launcher.clip(t.id, 0) == nil, true, "a drag moves the clip to another slot")
+  paw.ui.hide("session")
+end)
+
+
+test("launcher: the session view leaves VCAs out", function()
+  start()
+  local a, b = paw.add_track({ name = "Alpha" }), paw.add_track({ name = "Beta" })
+  paw.vca.make({ a }, "Faders")
+  paw.ui.show("session")
+  paw.ui.focus("session")
+  paw.cursor.set_track(b)
+  local screen = table.concat(api.ui_snapshot(120, 30), "\n")
+  paw.ui.hide("session")
+  paw.ui.focus("arrange")
+  local function count(word) return select(2, screen:gsub(word, "")) end
+  eq(count("Beta") .. " " .. count("Faders"), "2 1", "tracks are columns, besides their rows; the VCA is a row only")
+end)
+
+test("launcher: the command picker ranks by use and by the focused view, with exact and prefix matches first", function()
+  start()
+  paw.keymap.feed("<Esc><Esc>")
+  if paw.ui.float then paw.ui.close() end
+  paw.state.command_uses = nil
+  local pick = paw.pick
+  local function order(view, query)
+    paw.ui.focus(view)
+    paw.pick("commands")
+    paw.keymap.feed(query)
+    local out = {}
+    for i, line in ipairs(pick.state().matches) do out[line:match("^(%S+)")] = i end
+    paw.keymap.feed("<Esc>")
+    return out
+  end
+  local rank = order("arrange", "name")
+  eq(rank["track.rename"] < rank["scene.name"], true, "in the arrange view its own rename comes before the session's scene.name")
+  rank = order("session", "name")
+  eq(rank["scene.name"] < rank["track.rename"], true, "in the session view the scene's name does")
+  for _ = 1, 10 do paw.commands.used("track.rename") end
+  rank = order("session", "name")
+  eq(rank["track.rename"] < rank["scene.name"], true, "what is used often goes first, in any view")
+  eq(paw.commands.uses("track.rename"), 10, "the count is kept")
+  for _ = 1, 50 do paw.commands.used("scene.name") end
+  rank = order("arrange", "scene.name")
+  eq(rank["scene.name"], 1, "an exact match is first however much another is used")
+  paw.state.command_uses = nil
+  paw.ui.focus("arrange")
+end)
+
+test("launcher: the README names every command and key of the extension", function()
+  start()
+  local readme = T.read_file("extensions/launcher/README.md")
+  local commands, keys = 0, 0
+  for _, part in ipairs(paw.ext.provides("launcher")) do
+    for _, item in ipairs(part.items) do
+      if part.kind == "commands" then
+        commands = commands + 1
+        local named = readme:find("`" .. item .. "`", 1, true) or readme:find("`" .. item .. " ", 1, true)
+        eq(named ~= nil, true, "README names " .. item)
+      elseif part.kind == "keys" then
+        local lhs, scope = item:match("^(%S+) %((.*)%)$")
+        lhs = lhs:gsub("<leader>", ",")
+        if not (scope or ""):find("classic", 1, true) then
+          keys = keys + 1
+          eq(readme:find("`" .. lhs .. "`", 1, true) ~= nil, true, "README names the key " .. lhs .. " (" .. tostring(scope) .. ")")
+        end
+      end
+    end
+  end
+  eq(commands >= 17 and keys >= 30, true, "commands and keys found: " .. commands .. " " .. keys)
+end)
+
+test("launcher: an export to REAPER or DAWproject reports the clips of the slots as not written", function()
+  start()
+  local t = synth("Lead", 0)
+  launcher.add(t.id, 3, { length = 4 })
+  for _, ext in ipairs({ "rpp", "dawproject" }) do
+    if not paw.ext.loaded[ext] then paw.ext.load("extensions/" .. ext) end
+    local result = require(ext).export(T.scratch .. "/launcher-export." .. (ext == "rpp" and "rpp" or "dawproject"))
+    local found
+    for _, g in ipairs(result.report:data()) do
+      if g.name:find("clip launcher", 1, true) then found = g end
+    end
+    eq(found ~= nil and #found.items, 1, ext .. ": the track with two clips in slots is named")
+  end
+end)
+
+test("launcher: while the song plays, the session view is drawn again as a live part, the same as drawn whole", function()
+  start()
+  local t = synth("Lead", 0, 60, 2)
+  paw.ui.show("session")
+  paw.cursor.set_track(t.id)
+  launcher.launch(t.id, 0, { quantize = "off" })
+  until_(function() return (launcher.state()[t.id] or {}).slot == 0 end, 5000, "the clip to start")
+  paw.transport.stop()
+  local W, H = 120, 40
+  local first = api.ui_frame_snapshot(W, H)
+  eq(first.live > 0, true, "live parts")
+  paw.transport.position = 3
+  local moved = api.ui_frame_snapshot(W, H, true)
+  eq(moved ~= nil, true, "drawn by its live parts only, with the session view shown")
+  local whole = api.ui_frame_snapshot(W, H)
+  for row = 1, H do eq(moved.cells[row], whole.cells[row], "row " .. row .. ":\n" .. moved.text[row] .. "\n" .. whole.text[row]) end
   paw.ui.hide("session")
 end)

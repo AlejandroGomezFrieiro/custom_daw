@@ -311,7 +311,7 @@ local function press_clip(self, e, h)
   local edge = (h.part == "start" or h.part == "end") and h.part or nil
   local copy, slip = mouse.has(e, "C"), mouse.has(e, "A")
   mouse.grab(e, {
-    -- The clip moved: a window lets it go into a slot of its session view.
+    -- The clip moved: a window lets it go onto another view, which may take it (`on_drop`).
     clip = not edge and c.id or nil,
     arrange = function(v)
       local d = mouse.gesture().d

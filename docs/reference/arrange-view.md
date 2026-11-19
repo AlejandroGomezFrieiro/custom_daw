@@ -56,7 +56,7 @@ color. The track of the cursor has a brighter header and a tinted lane.
 | `K` | Describes what is under the cursor. A kind of track also says what it is. |
 | `a` | Adds a device. The list shows instruments first on a track with no instrument, else effects first. |
 | `ge` | Shows the window of the plugin. |
-| `,d` `,m` `,p` `,l` | Shows the device panel, the mixer, the piano roll, the session view. |
+| `,d` `,m` `,p` `,l` | Shows the device panel, the mixer, the piano roll, the session view (with the clip launcher extension). |
 | `A` | Adds a volume automation point at the cursor. |
 | `,at` `,ax` | Turns the lane off or on (read or bypass). Clears the lane. |
 | `,al` | Chooses what to automate (volume, pan, a device parameter), and shows its lane. |
