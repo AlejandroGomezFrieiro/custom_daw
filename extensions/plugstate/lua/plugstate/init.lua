@@ -28,13 +28,14 @@ local function dirname(path) return path:match("^(.*)/[^/]*$") end
 M.basename, M.stem = basename, stem
 
 --- Add an adapter. Adapters added later are asked first, so one for a
---- particular plugin wins over a general one.
+--- particular plugin wins over a general one. An adapter with `fallback =
+--- true` is asked after all the others.
 function M.adapter(def)
   assert(type(def.name) == "string" and def.matches and def.slots and def.load, "an adapter needs name, matches, slots and load")
   for i, a in ipairs(M.adapters) do
     if a.name == def.name then table.remove(M.adapters, i) break end
   end
-  table.insert(M.adapters, 1, def)
+  table.insert(M.adapters, def.fallback and #M.adapters + 1 or 1, def)
 end
 
 --- The adapter for a device, or nil.

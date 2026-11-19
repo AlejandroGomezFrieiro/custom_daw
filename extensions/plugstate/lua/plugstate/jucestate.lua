@@ -510,7 +510,7 @@ function M.write_preset(path, preset)
       make = e.make, remove = e.remove, param = e.param, insert = e.insert and to_json(e.insert), index = e.index }
   end
   local text = paw.json.encode({ juce_preset = 1, plugin = preset.plugin, name = preset.name, format = preset.format,
-    base = preset.base, edits = edits })
+    framework = preset.framework, base = preset.base, edits = edits })
   local f = assert(io.open(path, "wb"))
   f:write(text)
   f:close()

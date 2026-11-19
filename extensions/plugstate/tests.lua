@@ -893,3 +893,5 @@ end)
 assert(loadfile("extensions/plugstate/tests_tone3000.lua"))(T)
 assert(loadfile("extensions/plugstate/tests_tone3000_auth.lua"))(T)
 assert(loadfile("extensions/plugstate/tests_tone3000_live.lua"))(T)
+-- The framework layer: DPF, LSP, iPlug2, JSON, LV2, the bytes.
+assert(loadfile("extensions/plugstate/tests_frameworks.lua"))(T)
