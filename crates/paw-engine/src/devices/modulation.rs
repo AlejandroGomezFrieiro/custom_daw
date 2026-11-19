@@ -6,7 +6,7 @@
 //! changes). While the song plays, a synced LFO is locked to the song's
 //! position, so it lands the same way on every pass.
 
-use super::dsp::{self, DelayLine, Lfo, NOTE_BEATS, Shape, Smooth, Svf, SvfCoefs};
+use super::dsp::{self, DelayLine, Lfo, NOTE_BEATS, Rest, Shape, Smooth, Svf, SvfCoefs};
 use super::panel::{Face, Pair, choice, param};
 use crate::device::{Device, Io, ParamInfo, ProcessCtx};
 
@@ -103,6 +103,7 @@ pub struct Modulated {
     depth: Smooth,
     mix: Smooth,
     started: bool,
+    rest: Rest,
 }
 
 impl Modulated {
@@ -126,6 +127,7 @@ impl Modulated {
             depth: Smooth::new(0.0, 0.05, sr),
             mix: Smooth::new(0.0, 0.02, sr),
             started: false,
+            rest: Rest::default(),
         };
         m.apply();
         m
@@ -145,8 +147,16 @@ impl Modulated {
 }
 
 impl Device for Modulated {
+    fn resting(&self) -> bool {
+        self.rest.resting
+    }
+
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io) {
+        if self.rest.sleeps(io) {
+            return;
+        }
         self.started = true;
+        let memory = self.lines[0].capacity() as u32;
         let step = lfo_step(self.p[M_RATE], self.p[M_SYNC], ctx, self.sr);
         if let Some(phase) = locked_phase(self.p[M_SYNC], ctx) {
             self.lfo.phase = phase;
@@ -160,6 +170,8 @@ impl Device for Modulated {
             let base = self.base.step();
             let depth = self.depth.step();
             let mix = self.mix.step();
+            let (dry_l, dry_r) = (*l, *r);
+            let mut level = 0.0f32;
             for (ch, x) in [&mut *l, &mut *r].into_iter().enumerate() {
                 let mut wet = 0.0;
                 for v in 0..voices {
@@ -171,9 +183,19 @@ impl Device for Modulated {
                     wet += self.lines[ch].get_frac(delay - 1.0);
                 }
                 wet /= voices as f32;
-                self.lines[ch].push(dsp::flush(*x + wet * feedback));
+                let push = *x + wet * feedback;
+                level = level.max(push.abs()).max(wet.abs());
+                self.lines[ch].push(dsp::flush(push));
                 self.last[ch] = wet;
                 *x += (wet - *x) * mix;
+            }
+            if self.rest.frame(dry_l, dry_r, level) >= memory
+                && !self.rest.resting
+                && !(self.base.moving() || self.depth.moving() || self.mix.moving())
+            {
+                self.lines.iter_mut().for_each(DelayLine::clear);
+                self.last = [0.0; 2];
+                self.rest.resting = true;
             }
         }
     }
@@ -183,6 +205,7 @@ impl Device for Modulated {
         if index < self.p.len() && value.is_finite() {
             self.p[index] = value;
             self.apply();
+            self.rest.wake();
         }
     }
 }
@@ -227,6 +250,7 @@ pub struct Phaser {
     lfo: Lfo,
     mix: Smooth,
     started: bool,
+    rest: Rest,
 }
 
 impl Phaser {
@@ -239,12 +263,23 @@ impl Phaser {
             lfo: Lfo::default(),
             mix: Smooth::new(0.5, 0.02, sr),
             started: false,
+            rest: Rest::default(),
         }
     }
 }
 
+/// Frames a phaser's all-passes ring for at most, at the level they rest at.
+const PHASER_MEMORY: u32 = 64;
+
 impl Device for Phaser {
+    fn resting(&self) -> bool {
+        self.rest.resting
+    }
+
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io) {
+        if self.rest.sleeps(io) {
+            return;
+        }
         if !self.started {
             self.mix.snap();
         }
@@ -264,6 +299,8 @@ impl Device for Phaser {
         for (l, r) in io.left.iter_mut().zip(io.right.iter_mut()) {
             let phase = self.lfo.tick(step);
             let mix = self.mix.step();
+            let (dry_l, dry_r) = (*l, *r);
+            let mut level = 0.0f32;
             for (ch, x) in [&mut *l, &mut *r].into_iter().enumerate() {
                 let sweep = dsp::sin_cycles(phase + ch as f64 * spread);
                 let f = (center * (octaves * sweep).exp2()).clamp(10.0, nyquist);
@@ -274,11 +311,21 @@ impl Device for Phaser {
                     // First-order all-pass, transposed direct form II.
                     let out = a * y + *s;
                     *s = dsp::flush(y - a * out);
+                    level = level.max(s.abs());
                     y = out;
                 }
                 let y = dsp::flush(y);
+                level = level.max(y.abs());
                 self.last[ch] = y;
                 *x += (y - *x) * mix;
+            }
+            if self.rest.frame(dry_l, dry_r, level) >= PHASER_MEMORY
+                && !self.rest.resting
+                && !self.mix.moving()
+            {
+                self.state = [[0.0; MAX_STAGES]; 2];
+                self.last = [0.0; 2];
+                self.rest.resting = true;
             }
         }
     }
@@ -287,6 +334,7 @@ impl Device for Phaser {
         let index = index as usize;
         if index < self.p.len() && value.is_finite() {
             self.p[index] = value;
+            self.rest.wake();
             if index == P_MIX {
                 self.mix.target = (value * 0.01).clamp(0.0, 1.0);
                 if !self.started {
@@ -326,6 +374,7 @@ pub struct Tremolo {
     lfo: Lfo,
     depth: Smooth,
     started: bool,
+    rest: Rest,
 }
 
 impl Tremolo {
@@ -337,6 +386,7 @@ impl Tremolo {
             lfo: Lfo::default(),
             depth: Smooth::new(p[T_DEPTH] * 0.01, 0.02, sr),
             started: false,
+            rest: Rest::default(),
         }
     }
 }
@@ -353,7 +403,14 @@ fn wave(shape: usize, phase: f64) -> f32 {
 }
 
 impl Device for Tremolo {
+    fn resting(&self) -> bool {
+        self.rest.resting
+    }
+
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io) {
+        if self.rest.sleeps(io) {
+            return;
+        }
         if !self.started {
             self.depth.snap();
         }
@@ -368,6 +425,10 @@ impl Device for Tremolo {
         for (l, r) in io.left.iter_mut().zip(io.right.iter_mut()) {
             let w = wave(shape, self.lfo.tick(step));
             let depth = self.depth.step();
+            // It holds nothing: silence in is silence out.
+            if self.rest.frame(*l, *r, 0.0) > 0 && !self.rest.resting && !self.depth.moving() {
+                self.rest.resting = true;
+            }
             if pan {
                 // Equal power across the field, as far out as the depth.
                 let angle = (1.0 + w * depth) * std::f32::consts::FRAC_PI_4;
@@ -387,6 +448,7 @@ impl Device for Tremolo {
         let index = index as usize;
         if index < self.p.len() && value.is_finite() {
             self.p[index] = value;
+            self.rest.wake();
             if index == T_DEPTH {
                 self.depth.target = (value * 0.01).clamp(0.0, 1.0);
             }
@@ -437,6 +499,7 @@ pub struct Delay {
     high: Option<SvfCoefs>,
     filters: [[Svf; 2]; 2],
     started: bool,
+    rest: Rest,
 }
 
 impl Delay {
@@ -451,6 +514,7 @@ impl Delay {
             high: None,
             filters: Default::default(),
             started: false,
+            rest: Rest::default(),
         };
         d.apply();
         d
@@ -482,7 +546,14 @@ impl Delay {
 }
 
 impl Device for Delay {
+    fn resting(&self) -> bool {
+        self.rest.resting
+    }
+
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io) {
+        if self.rest.sleeps(io) {
+            return;
+        }
         self.time.target = self.frames(ctx);
         if !self.started {
             self.time.snap();
@@ -527,8 +598,19 @@ impl Device for Delay {
                 wet[0] = mid + (wet[0] - mid) * width;
                 wet[1] = mid + (wet[1] - mid) * width;
             }
+            let (dry_l, dry_r) = (*l, *r);
             *l += wet[0] * mix;
             *r += wet[1] * mix;
+            // Calm for as long as it reads back: every echo has died away.
+            let level = input_l.abs().max(input_r.abs());
+            if self.rest.frame(dry_l, dry_r, level) as f32 > t + 4.0
+                && !self.rest.resting
+                && !self.time.moving()
+            {
+                self.lines.iter_mut().for_each(DelayLine::clear);
+                self.filters = Default::default();
+                self.rest.resting = true;
+            }
         }
         for f in self.filters.iter_mut().flatten() {
             f.flush();
@@ -540,6 +622,7 @@ impl Device for Delay {
         if index < self.p.len() && value.is_finite() {
             self.p[index] = value;
             self.apply();
+            self.rest.wake();
         }
     }
 }

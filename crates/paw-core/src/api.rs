@@ -1167,6 +1167,14 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn engine_set_threads(_, sh, threads => usize) {
             sh.session.borrow_mut().set_threads(threads).lua()
         }
+        // Whether devices at rest sleep through silence: a reverb whose tail
+        // has died away, a synth with no note that sounds. The sound is the
+        // same either way. `engine_get().device_sleeps` counts the blocks
+        // that devices slept through.
+        fn engine_set_sleep(_, sh, sleep => bool) {
+            sh.session.borrow_mut().set_sleep(sleep);
+            Ok(())
+        }
         fn engine_restart(lua, sh, opts => LuaValue) {
             let opts: EngineOpts = options(lua, opts)?;
             let backend = BackendOptions {

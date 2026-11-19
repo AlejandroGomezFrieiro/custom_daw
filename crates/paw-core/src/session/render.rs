@@ -427,6 +427,7 @@ impl Session {
 
         let (mut engine, mut handle) = Engine::new(sample_rate as f64);
         engine.set_pool(self.pool(opts.threads));
+        engine.set_sleep(opts.sleep.unwrap_or(self.sleep()));
         // The render gets its own instances of every device, plugins included.
         let mut live = LiveDevices::new();
         let latency;
@@ -679,6 +680,8 @@ struct Pass {
     processing: f64,
     blocks: Value,
     threads: u32,
+    /// Blocks of devices run, and slept through.
+    device_blocks: (u64, u64),
     /// Integrated loudness of what was played, when it was measured.
     loudness: Option<f64>,
 }
@@ -742,6 +745,7 @@ fn play(
         processing: processing.as_secs_f64() * 1000.0,
         blocks: block_json(&engine.shared().blocks.summary(), sample_rate),
         threads: engine.shared().threads(),
+        device_blocks: engine.shared().device_blocks(),
         loudness: analyzer.and_then(|a| a.finish().integrated),
     })
 }
@@ -826,6 +830,8 @@ fn write(engine: Engine, plan: &Plan, part: &Path, raw: &Path) -> Result<Value> 
         // (without encoding and writing the file), in milliseconds.
         "elapsed": pass.elapsed, "processing": pass.processing,
         "blocks": pass.blocks, "threads": pass.threads,
+        // Blocks of devices run, and blocks that devices at rest slept through.
+        "device_runs": pass.device_blocks.0, "device_sleeps": pass.device_blocks.1,
     }))
 }
 

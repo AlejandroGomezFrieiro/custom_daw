@@ -313,6 +313,11 @@ impl Sampler {
 }
 
 impl Device for Sampler {
+    /// No pad sounds: a block with no events adds nothing.
+    fn resting(&self) -> bool {
+        self.voices.iter().all(|v| !v.active)
+    }
+
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut Io) {
         self.take_kits();
         let n = io.left.len();

@@ -194,6 +194,55 @@ impl Svf {
     }
 }
 
+/// What an effect still rings at, below which it is silence (-120 dB): it
+/// may then clear what it holds and go to sleep (see [`Rest`]).
+pub const REST_LEVEL: f32 = 1e-6;
+
+/// When an effect may go to sleep (see [`crate::Device::resting`]). It
+/// counts the frames in a row that went in silent and left what the effect
+/// holds below [`REST_LEVEL`]; once that has lasted as long as the effect
+/// remembers, the effect clears what it holds and rests. Resting, it returns
+/// at once from a silent block, so that it is the same whether the host calls
+/// it or not, until a block that is not silent or a new setting wakes it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Rest {
+    calm: u32,
+    pub resting: bool,
+}
+
+impl Rest {
+    /// Count one frame of input and the loudest of what the effect holds
+    /// after it; the frames in a row that were calm.
+    #[inline(always)]
+    pub fn frame(&mut self, l: f32, r: f32, level: f32) -> u32 {
+        let calm = l == 0.0 && r == 0.0 && level < REST_LEVEL;
+        if calm {
+            self.calm = self.calm.saturating_add(1);
+        } else {
+            // Sound later in the block that put it to rest.
+            self.calm = 0;
+            self.resting = false;
+        }
+        self.calm
+    }
+
+    /// Whether a block goes by without the effect: it rests, and the block
+    /// is silent. A block that is not wakes it.
+    #[inline]
+    pub fn sleeps(&mut self, io: &crate::device::Io) -> bool {
+        if self.resting && crate::device::quiet(io) {
+            return true;
+        }
+        self.resting = false;
+        false
+    }
+
+    /// A new setting: the effect works again until it is calm once more.
+    pub fn wake(&mut self) {
+        self.resting = false;
+    }
+}
+
 /// Zero for anything too small to hear (below -400 dB).
 #[inline]
 pub fn flush(x: f32) -> f32 {

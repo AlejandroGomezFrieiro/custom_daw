@@ -13,7 +13,7 @@
 //! across the stereo field. The wet signal is DC-blocked, widened or
 //! narrowed (mid/side) and mixed with the dry.
 
-use super::dsp::{self, DelayLine, Lfo, OnePole, Smooth};
+use super::dsp::{self, DelayLine, Lfo, OnePole, Rest, Smooth};
 use super::panel::{Face, Pair, param};
 use crate::device::{Device, Io, ParamInfo, ProcessCtx};
 
@@ -117,6 +117,7 @@ pub struct Reverb {
     early: Smooth,
     clock: u32,
     started: bool,
+    rest: Rest,
 }
 
 impl Reverb {
@@ -153,6 +154,7 @@ impl Reverb {
             early: Smooth::new(0.0, 0.02, sr),
             clock: 0,
             started: false,
+            rest: Rest::default(),
         };
         for i in 0..r.p.len() {
             r.apply(i);
@@ -204,6 +206,48 @@ impl Reverb {
         }
     }
 
+    /// Whether every setting has got where it glides to.
+    fn settled(&self) -> bool {
+        ![
+            &self.scale,
+            &self.decay,
+            &self.pre,
+            &self.mix,
+            &self.width,
+            &self.early,
+        ]
+        .iter()
+        .any(|s| s.moving())
+    }
+
+    /// Frames of silence the reverb remembers: its longest buffer.
+    fn memory(&self) -> u32 {
+        let diffusers = self.diffusers.iter().flatten();
+        diffusers
+            .map(|ap| ap.line.capacity())
+            .chain([self.predelay[0].capacity(), self.lines[0].capacity()])
+            .max()
+            .unwrap_or(0) as u32
+    }
+
+    /// Let go of a tail that has died away below hearing.
+    fn clear(&mut self) {
+        for line in self.predelay.iter_mut().chain(&mut self.lines) {
+            line.clear();
+        }
+        for ap in self.diffusers.iter_mut().flatten() {
+            ap.line.clear();
+        }
+        for f in self
+            .lows
+            .iter_mut()
+            .chain(&mut self.highs)
+            .chain(&mut self.dc)
+        {
+            f.reset();
+        }
+    }
+
     /// Each line's gain per pass, so that the tail falls 60 dB in the decay.
     fn update_gains(&mut self) {
         let frames_per_second = self.sr;
@@ -235,8 +279,16 @@ fn hadamard(x: &mut [f32; LINES]) {
 }
 
 impl Device for Reverb {
+    fn resting(&self) -> bool {
+        self.rest.resting
+    }
+
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut Io) {
+        if self.rest.sleeps(io) {
+            return;
+        }
         self.started = true;
+        let memory = self.memory();
         let ms = 0.001 * self.sr;
         let diffuse = (self.p[DIFFUSION] * 0.01).clamp(0.0, 1.0) * 0.7;
         let drift = DRIFT_MS * ms;
@@ -295,8 +347,10 @@ impl Device for Reverb {
                 }
             }
             hadamard(&mut taps);
+            let mut level = 0.0f32;
             for (i, line) in self.lines.iter_mut().enumerate() {
                 let x = taps[i] + input[i % 2] * 0.5;
+                level = level.max(x.abs());
                 line.push(dsp::flush(x));
             }
             let (wl, wr) = (wl * 0.35, wr * 0.35);
@@ -312,6 +366,15 @@ impl Device for Reverb {
             let (dry, wet) = ((2.0 * (1.0 - mix)).min(1.0), (2.0 * mix).min(1.0));
             *l = dry_l * dry + (mid + side) * wet;
             *r = dry_r * dry + (mid - side) * wet;
+            // Silent for as long as it remembers, and every setting where
+            // it glides to: the tail has died away.
+            if self.rest.frame(dry_l, dry_r, level) >= memory
+                && !self.rest.resting
+                && self.settled()
+            {
+                self.clear();
+                self.rest.resting = true;
+            }
         }
         for f in self
             .lows
@@ -328,6 +391,7 @@ impl Device for Reverb {
         if index < self.p.len() && value.is_finite() {
             self.p[index] = value;
             self.apply(index);
+            self.rest.wake();
             if !self.started {
                 self.update_gains();
             }

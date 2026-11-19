@@ -588,6 +588,9 @@ pub enum Msg {
     SetPreview(Option<Box<Preview>>),
     /// The level of the file being heard, as a linear gain.
     SetPreviewGain(f32),
+    /// Whether devices at rest are left asleep through silent blocks (see
+    /// [`Device::resting`]). The sound is the same either way.
+    SetSleep(bool),
 }
 
 enum Garbage {
@@ -741,9 +744,19 @@ pub struct Shared {
     /// where it has got to, in seconds of the file.
     preview_id: AtomicU32,
     preview_seconds: AtomicU64,
+    /// Blocks of devices that were run, and that slept (see
+    /// [`Device::resting`]), since the engine was made.
+    device_runs: AtomicU64,
+    device_sleeps: AtomicU64,
 }
 
 impl Shared {
+    /// Blocks of devices run, and blocks of devices left asleep, since the
+    /// engine was made: what sleeping saves, whatever else the machine does.
+    pub fn device_blocks(&self) -> (u64, u64) {
+        (self.device_runs.load(Relaxed), self.device_sleeps.load(Relaxed))
+    }
+
     /// Things the audio thread could not hand back to be freed and leaked
     /// instead, because the garbage queue was full.
     pub fn leaked(&self) -> u32 {
@@ -913,6 +926,25 @@ struct DeviceSlot {
 }
 
 impl DeviceSlot {
+    /// Whether a silent block with no events can go by without running
+    /// the device: it is at rest, and so is the host's mix around it.
+    fn rests(&self) -> bool {
+        match self.host.as_deref() {
+            Some(host) => {
+                host.settled(self.bypass)
+                    && (host.dry_only(self.bypass) || self.device.resting())
+            }
+            None => self.bypass || self.device.resting(),
+        }
+    }
+
+    /// Let a silent block go by without running the device.
+    fn skip(&mut self, n: usize) {
+        if let Some(host) = self.host.as_deref_mut() {
+            host.skip(n);
+        }
+    }
+
     /// A parameter of the device, or of the host's mix after the device's own.
     fn set_param(&mut self, index: u32, value: f32) {
         if !self
@@ -997,6 +1029,8 @@ pub struct Engine {
     /// it fades out.
     preview: Option<Box<Preview>>,
     preview_leaving: Option<Box<Preview>>,
+    /// Devices at rest sleep through silent blocks (see [`Msg::SetSleep`]).
+    sleep: bool,
 }
 
 /// A count-in: see [`Msg::CountIn`]. Frames count from when it began.
@@ -1145,6 +1179,8 @@ impl Engine {
             launch: (0..MAX_TRACKS).map(|_| LaunchState::default()).collect(),
             preview_id: AtomicU32::new(0),
             preview_seconds: AtomicU64::new(0),
+            device_runs: AtomicU64::new(0),
+            device_sleeps: AtomicU64::new(0),
         });
         let mut tracks: Vec<Guarded<Option<Box<TrackRt>>>> =
             (0..MAX_TRACKS).map(|_| Guarded::new(None)).collect();
@@ -1187,6 +1223,7 @@ impl Engine {
             launching: false,
             preview: None,
             preview_leaving: None,
+            sleep: true,
         };
         (
             engine,
@@ -1215,6 +1252,13 @@ impl Engine {
         let threads = pool.as_ref().map_or(1, |pool| pool.threads());
         self.shared.threads.store(threads as u32, Relaxed);
         std::mem::replace(&mut self.pool, pool)
+    }
+
+    /// Whether devices at rest sleep through silent blocks, for an engine
+    /// not yet handed to an audio thread; one that has been takes
+    /// [`Msg::SetSleep`].
+    pub fn set_sleep(&mut self, sleep: bool) {
+        self.sleep = sleep;
     }
 
     fn discard(&mut self, garbage: Garbage) {
@@ -1563,6 +1607,7 @@ impl Engine {
                     preview.set_gain(gain);
                 }
             }
+            Msg::SetSleep(sleep) => self.sleep = sleep,
             Msg::SetPool(pool) => {
                 if let Some(old) = self.set_pool(pool) {
                     self.discard(Garbage::Pool(old));
@@ -1993,6 +2038,7 @@ impl Engine {
             flush,
             chase: playing && std::mem::take(&mut self.chase),
             reapply: playing && std::mem::take(&mut self.reapply),
+            sleep: self.sleep,
             meter_fall: (-(n as f32) / (self.sample_rate as f32 * METER_FALL_SECONDS)).exp(),
         };
         out_l.fill(0.0);
@@ -2320,6 +2366,8 @@ struct Block<'a> {
     flush: bool,
     chase: bool,
     reapply: bool,
+    /// Devices at rest sleep through silent blocks.
+    sleep: bool,
     meter_fall: f32,
 }
 
@@ -2481,11 +2529,34 @@ impl Work<'_> {
         }
 
         let [left, right] = &mut t.buf;
+        // Whether the block is silent with no events, as far as it is known:
+        // looked at when a device at rest asks, and true still after a
+        // device that slept through it.
+        let mut quiet = None;
+        let (mut runs, mut sleeps) = (0, 0);
         for &slot in t.chain.iter() {
             if let Some(mut dev) = self.device(slot)
                 && let Some(dev) = dev.as_mut()
                 && !dev.failed
             {
+                if self.block.sleep && dev.rests() {
+                    let keyed = dev.key.as_deref().is_some_and(|[l, r]| {
+                        !crate::device::silent(&l[..n]) || !crate::device::silent(&r[..n])
+                    });
+                    let silent = !keyed
+                        && *quiet.get_or_insert_with(|| {
+                            t.events.is_empty()
+                                && crate::device::silent(&left[..n])
+                                && crate::device::silent(&right[..n])
+                        });
+                    if silent {
+                        dev.skip(n);
+                        sleeps += 1;
+                        continue;
+                    }
+                }
+                quiet = None;
+                runs += 1;
                 // Taken out of the slot while the device runs on it.
                 let key = dev.key.take();
                 let mut outs = dev.outs.take();
@@ -2521,6 +2592,12 @@ impl Work<'_> {
                     }
                 }
             }
+        }
+        if runs > 0 {
+            self.shared.device_runs.fetch_add(runs, Relaxed);
+        }
+        if sleeps > 0 {
+            self.shared.device_sleeps.fetch_add(sleeps, Relaxed);
         }
         if let Some(state) = self.shared.launch.get(entry.slot as usize) {
             t.launcher.publish(state);

@@ -201,6 +201,7 @@ pub struct Eq {
     started: bool,
     /// Step of a band's level per sample.
     fade: f32,
+    rest: dsp::Rest,
 }
 
 impl Eq {
@@ -229,6 +230,7 @@ impl Eq {
             clock: 0,
             started: false,
             fade: 1.0 / (0.01 * sr),
+            rest: dsp::Rest::default(),
         }
     }
 
@@ -246,8 +248,31 @@ impl Eq {
     }
 }
 
+/// Frames an EQ waits, calm, before it lets go of what its filters still
+/// hold and rests.
+const EQ_MEMORY: u32 = 4096;
+
+impl Eq {
+    /// Whether every band and the output are where they glide to.
+    fn settled(&self) -> bool {
+        !self.output.moving()
+            && self.bands.iter().all(|b| {
+                b.next == b.kind
+                    && b.level == b.level_target()
+                    && !(b.freq.moving() || b.gain.moving() || b.q.moving())
+            })
+    }
+}
+
 impl Device for Eq {
+    fn resting(&self) -> bool {
+        self.rest.resting
+    }
+
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut Io) {
+        if self.rest.sleeps(io) {
+            return;
+        }
         self.started = true;
         for (l, r) in io.left.iter_mut().zip(io.right.iter_mut()) {
             if self.clock.is_multiple_of(UPDATE) {
@@ -291,8 +316,15 @@ impl Device for Eq {
                 }
             }
             let g = self.output.step();
+            let calm = self.rest.frame(*l, *r, x.abs().max(y.abs()));
             *l = x * g;
             *r = y * g;
+            if calm >= EQ_MEMORY && !self.rest.resting && self.settled() {
+                for b in &mut self.bands {
+                    b.state = Default::default();
+                }
+                self.rest.resting = true;
+            }
         }
         for b in &mut self.bands {
             for stage in &mut b.state {
@@ -307,6 +339,7 @@ impl Device for Eq {
         if !value.is_finite() {
             return;
         }
+        self.rest.wake();
         if index == OUTPUT {
             self.output.target = dsp::db_to_lin(value.clamp(-24.0, 24.0));
             if !self.started {

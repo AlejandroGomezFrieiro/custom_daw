@@ -37,19 +37,24 @@ pub struct HostPath {
     wet_now: f32,
     gain_now: f32,
     latency: usize,
+    /// The input of the last frames, as long as the longest latency and a
+    /// block more, so that a whole block can go in before any is read.
     ring: [Box<[f32]>; 2],
     pos: usize,
     dry: [Box<[f32]>; 2],
     /// Set once a block has been processed: before that, a setting is taken
     /// at once rather than faded to.
     started: bool,
+    /// Frames of silence the input has ended with, counted while there is
+    /// a latency: the dry signal is silent once there are as many.
+    quiet: usize,
 }
 
 impl HostPath {
     /// Made on the main thread, for a device with `base` parameters of its
     /// own, processing blocks of at most `max_block` frames.
     pub fn new(base: u32, latency: u32, max_block: usize) -> Self {
-        let ring = || vec![0.0f32; MAX_LATENCY + 1].into_boxed_slice();
+        let ring = || vec![0.0f32; MAX_LATENCY + max_block.max(1)].into_boxed_slice();
         let dry = || vec![0.0f32; max_block].into_boxed_slice();
         Self {
             base,
@@ -62,6 +67,7 @@ impl HostPath {
             pos: 0,
             dry: [dry(), dry()],
             started: false,
+            quiet: 0,
         }
     }
 
@@ -78,6 +84,35 @@ impl HostPath {
 
     pub fn set_latency(&mut self, frames: u32) {
         self.latency = (frames as usize).min(MAX_LATENCY);
+        self.quiet = 0;
+    }
+
+    /// Whether the mix is where it is going and the held-back dry signal
+    /// is silent: with a silent input, the host then adds nothing of its
+    /// own to the device's silence (see [`Device::resting`]).
+    pub fn settled(&self, bypass: bool) -> bool {
+        let target = if bypass { 0.0 } else { self.wet };
+        let delay = if bypass { 0 } else { self.latency };
+        self.started && self.wet_now == target && self.gain_now == self.gain && self.quiet >= delay
+    }
+
+    /// Whether the device is left out altogether: bypassed, and faded out.
+    pub fn dry_only(&self, bypass: bool) -> bool {
+        bypass && self.wet_now == 0.0
+    }
+
+    /// A silent block that the device sleeps through: the dry signal moves
+    /// on as if it had been processed.
+    pub fn skip(&mut self, n: usize) {
+        let len = self.ring[0].len();
+        let n = n.min(self.dry[0].len());
+        for ring in &mut self.ring {
+            let first = (len - self.pos).min(n);
+            ring[self.pos..self.pos + first].fill(0.0);
+            ring[..n - first].fill(0.0);
+        }
+        self.pos = (self.pos + n) % len;
+        self.quiet = self.quiet.saturating_add(n);
     }
 
     /// Run the device on `io` with the mix, the gain and the bypass applied.
@@ -97,15 +132,28 @@ impl HostPath {
         // leaves it out (see the schedule).
         let delay = if bypass { 0 } else { self.latency };
         let len = self.ring[0].len();
-        for (ch, input) in [&*io.left, &*io.right].into_iter().enumerate() {
-            let (ring, dry) = (&mut self.ring[ch], &mut self.dry[ch]);
-            for i in 0..n {
-                let at = (self.pos + i) % len;
-                ring[at] = input[i];
-                dry[i] = ring[(at + len - delay) % len];
+        let at = self.pos;
+        for (ring, input) in self.ring.iter_mut().zip([&*io.left, &*io.right]) {
+            let first = (len - at).min(n);
+            ring[at..at + first].copy_from_slice(&input[..first]);
+            ring[..n - first].copy_from_slice(&input[first..n]);
+        }
+        self.pos = (at + n) % len;
+        if self.latency > 0 {
+            if crate::device::silent(&io.left[..n]) && crate::device::silent(&io.right[..n]) {
+                self.quiet = self.quiet.saturating_add(n);
+            } else {
+                self.quiet = 0;
             }
         }
-        self.pos = (self.pos + n) % len;
+        // The dry signal: the input `delay` frames ago, read once the whole
+        // block is in (the ring is longer than any delay by a block).
+        let read_dry = |ring: &[f32], dry: &mut [f32]| {
+            let from = (at + len - delay) % len;
+            let first = (len - from).min(n);
+            dry[..first].copy_from_slice(&ring[from..from + first]);
+            dry[first..n].copy_from_slice(&ring[..n - first]);
+        };
 
         let target = if bypass { 0.0 } else { self.wet };
         if !self.started {
@@ -115,15 +163,18 @@ impl HostPath {
         }
         if self.wet_now == 0.0 && target == 0.0 {
             // Off, and faded out: only the dry signal.
-            io.left[..n].copy_from_slice(&self.dry[0][..n]);
-            io.right[..n].copy_from_slice(&self.dry[1][..n]);
+            read_dry(&self.ring[0], &mut io.left[..n]);
+            read_dry(&self.ring[1], &mut io.right[..n]);
             return true;
-        }
-        if !crate::guard::process(device, ctx, io) {
-            return false;
         }
         if self.wet_now == 1.0 && target == 1.0 && self.gain_now == 1.0 && self.gain == 1.0 {
-            return true;
+            // All wet: the dry signal is not needed.
+            return crate::guard::process(device, ctx, io);
+        }
+        read_dry(&self.ring[0], &mut self.dry[0]);
+        read_dry(&self.ring[1], &mut self.dry[1]);
+        if !crate::guard::process(device, ctx, io) {
+            return false;
         }
         let step = 1.0 / (FADE * ctx.sample_rate).max(1.0);
         let gain_step = (self.gain - self.gain_now) / n.max(1) as f32;

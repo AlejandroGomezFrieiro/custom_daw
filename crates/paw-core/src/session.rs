@@ -328,6 +328,9 @@ pub struct RenderOpts {
     /// Threads to render on, when not as many as the session uses. The file
     /// is the same whatever the number.
     pub threads: Option<usize>,
+    /// Whether devices at rest sleep through silence, when not as the
+    /// session has it. The file is the same either way.
+    pub sleep: Option<bool>,
     /// For MP3, Ogg Vorbis and Opus: "low", "medium", "high" (the default)
     /// or "best"; or a bitrate in kbit/s instead. They need ffmpeg, which is
     /// `ffmpeg` when it is not on the PATH.
@@ -355,6 +358,7 @@ impl Default for RenderOpts {
             channels: 2,
             master: true,
             threads: None,
+            sleep: None,
             quality: None,
             bitrate: None,
             ffmpeg: None,
@@ -436,6 +440,8 @@ pub struct Session {
     midi_out_own: Vec<String>,
     /// Threads to process tracks on, or 0 for as many as the machine has cores.
     threads: usize,
+    /// Devices at rest sleep through silent blocks (`paw.opt.device_sleep`).
+    sleep: bool,
     /// What the engine was last started with, to start it again with a
     /// device changed.
     backend: BackendOptions,
@@ -575,6 +581,7 @@ impl Session {
             midi_out: None,
             midi_out_own: Vec::new(),
             threads: 0,
+            sleep: true,
             backend: opts.clone(),
             device_file: None,
             test_ports: Vec::new(),
@@ -3841,6 +3848,11 @@ impl Session {
             // what was asked for (0 leaves it to the machine).
             "threads": self.handle.shared.threads(),
             "threads_wanted": self.threads,
+            // Whether devices at rest sleep through silence, and the blocks
+            // of devices run and slept through since the engine started.
+            "device_sleep": self.sleep,
+            "device_runs": self.handle.shared.device_blocks().0,
+            "device_sleeps": self.handle.shared.device_blocks().1,
             // What went wrong while playing, for the status line: blocks
             // plugins did not deliver in time, MIDI events dropped, frames
             // of the take being recorded lost to a slow disk, devices that
@@ -3882,6 +3894,20 @@ impl Session {
     fn send_pool(&mut self) {
         let pool = self.pool(None);
         self.handle.send(Msg::SetPool(pool));
+        self.handle.send(Msg::SetSleep(self.sleep));
+    }
+
+    /// Whether devices at rest (a reverb whose tail has died away, a synth
+    /// with no note sounding) sleep through silent blocks, which saves the
+    /// processor their work. The sound is the same either way.
+    pub fn set_sleep(&mut self, sleep: bool) {
+        self.sleep = sleep;
+        self.handle.send(Msg::SetSleep(sleep));
+    }
+
+    /// Whether devices at rest sleep, for a render that does not say.
+    pub(crate) fn sleep(&self) -> bool {
+        self.sleep
     }
 
     /// The devices the system offers, and which are open.
