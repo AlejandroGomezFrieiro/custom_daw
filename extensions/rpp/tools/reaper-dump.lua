@@ -16,7 +16,14 @@
 --   cc track item seconds status channel data1 data2
 --   end
 local file, dump = os.getenv("RPP_FILE"), os.getenv("RPP_DUMP")
-reaper.Main_openProject("noprompt:" .. file)
+local build = os.getenv("RPP_BUILD")
+if build and build ~= "" then
+  -- Make a project with a script of REAPER's API, and save it as RPP_FILE.
+  dofile(build)
+  reaper.Main_SaveProjectEx(0, file, 0)
+else
+  reaper.Main_openProject("noprompt:" .. file)
+end
 local out = assert(io.open(dump .. ".part", "w"))
 local function w(...)
   local parts = { ... }
@@ -66,6 +73,8 @@ local function envelopes(tr, index)
     w("env", index, name, n)
     for p = 0, n - 1 do
       local _, t, v, shape = reaper.GetEnvelopePoint(env, p)
+      -- A volume envelope with fader scaling gives its values scaled: as amplitudes.
+      if reaper.GetEnvelopeScalingMode(env) == 1 then v = reaper.ScaleFromEnvelopeMode(1, v) end
       w("point", index, name, t, v, shape)
     end
   end

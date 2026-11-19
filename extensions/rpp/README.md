@@ -198,20 +198,21 @@ The tests cover:
 - plugins in all three formats
 - a render of an imported project with audio and MIDI
 - REAPER itself opens an exported project
+- REAPER itself makes and saves a project, and paw imports it
 
 The parser was checked on 24 project files saved by REAPER, up to 2.9 MB.
 It gave the same bytes, and the same tokens after it wrote every line
 again.
 
-The last test opens an exported project in REAPER. Then it compares what
-REAPER read with the project of paw. It compares the tracks, folders, colors
-and sends. It compares the items with their fades, play rates and loops. It
-also compares the notes, the controller events, the envelope shapes, the
-markers and regions. It runs when `PAW_REAPER` names the `reaper` program.
-Otherwise the suite skips it:
+The first REAPER test opens an exported project in REAPER. Then it compares
+what REAPER read with the project of paw. It compares the tracks, folders,
+colors and sends. It compares the items with their fades, play rates and
+loops. It also compares the notes, the controller events, the envelope
+shapes, the markers and regions. The REAPER tests run when `PAW_REAPER`
+names the `reaper` program. Otherwise the suite skips them:
 
 ```sh
-PAW_REAPER=/path/to/reaper nix develop -c tests/tools/suite.sh only "rpp: REAPER"
+PAW_REAPER=/path/to/reaper nix develop -c tests/tools/suite.sh only "REAPER"
 ```
 
 `tools/reaper-open.sh song.rpp dump.txt` does the same for any project.
@@ -219,6 +220,11 @@ REAPER runs in a sandbox (`bwrap`) on a private X display, with no audio
 device and its own new configuration. It does not touch the configuration
 of a REAPER that you have. The startup script `tools/reaper-dump.lua`
 writes what REAPER read, then REAPER stops.
+
+The second REAPER test gives a third argument, `tools/reaper-build.lua`.
+REAPER then runs this script in a new project, which makes a song with the
+API of REAPER. REAPER saves the song as `song.rpp`. paw imports it and
+compares it with what REAPER wrote about it.
 
 Some rules come from projects saved by REAPER 7.84, and from REAPER 7.84
 itself, not from documentation:

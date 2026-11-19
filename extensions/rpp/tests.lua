@@ -364,7 +364,7 @@ test("rpp: what is not carried over is reported, grouped", function()
   check("Muted sends (left out)", "Gtr DI -> Verb")
   local text = report:text()
   eq(text:find("Not carried over from song.rpp", 1, true) ~= nil, true, "titled")
-  eq(report:text(1):find("... and 1 more", 1, true) ~= nil, true, "long groups are shortened")
+  eq(report:text(1):find("%.%.%. and %d+ more") ~= nil, true, "long groups are shortened")
 end)
 
 test("rpp: MIDI timing follows the project tempo", function()
@@ -793,11 +793,12 @@ end)
 
 --- What REAPER read from a project (tools/reaper-dump.lua): tables of the
 --- dump's lines by kind, each line a list of its values.
-local function reaper_open(path)
+local function reaper_open(path, build)
   local reaper = os.getenv("PAW_REAPER")
   if not reaper or reaper == "" then return nil, "skipped: set PAW_REAPER to the reaper program to open the file in REAPER" end
   local dump = path .. ".dump"
-  local code = os.execute(string.format("'%s/tools/reaper-open.sh' '%s' '%s' 2>&1", HERE, path, dump))
+  local code = os.execute(string.format("'%s/tools/reaper-open.sh' '%s' '%s' %s 2>&1", HERE, path, dump,
+    build and ("'" .. build .. "'") or ""))
   if code ~= 0 and code ~= true then error("reaper-open.sh failed: " .. tostring(code)) end
   local out = {}
   for line in T.read_file(dump):gmatch("[^\n]+") do
@@ -946,4 +947,88 @@ test("rpp: the README names every command of the extension", function()
     eq(readme:find("`:" .. name .. " ", 1, true) ~= nil, true, "README names :" .. name)
   end
   eq(source:find("paw.keymap.set", 1, true), nil, "no keys of its own")
+end)
+
+test("rpp: a project that REAPER made and saved comes into paw as REAPER has it", function()
+  local r = load()
+  local dir = project_dir("song.rpp")
+  local path = dir .. "/made.rpp"
+  local got, why = reaper_open(path, HERE .. "/tools/reaper-build.lua")
+  if not got then return why end
+  local result = r.import(path)
+  local sec = paw.tempo.beats_to_seconds
+  eq(paw.project.tempo, got.tempo[1][1], "tempo")
+  eq(paw.project.sig_num .. "/" .. paw.project.sig_den, got.tempo[1][2] .. "/" .. got.tempo[1][3], "time signature")
+  local tracks = paw.tracks()
+  eq(#tracks, #got.track - 1, "tracks")
+  local parents = {}
+  for i, t in ipairs(tracks) do
+    local row = got.track[i + 1]
+    eq(t.name, row[2], "name " .. i)
+    near(t.volume, 20 * math.log10(row[3]), 1e-6, t.name .. " volume")
+    near(t.pan, row[4], 1e-6, t.name .. " pan")
+    eq(t.mute, row[5] == 1, t.name .. " mute")
+    eq(t.color or "none", row[8], t.name .. " colour")
+    parents[i] = t.output and paw.track(t.output) and paw.track(t.output).name or "-"
+  end
+  eq(table.concat(parents, ","), "-,Bus,Bus,-", "the folder holds Keys and Gtr")
+  local keys = paw.track("Keys")
+  eq(#keys.sends, 1, "the send of Keys")
+  near(keys.sends[1].level, 20 * math.log10(got.send[1][3]), 1e-6, "its level")
+  eq(keys.sends[1].pre, true, "before the fader, as REAPER's mode 3")
+  -- Items, notes and controllers at the times REAPER gives.
+  local n = 0
+  for i, t in ipairs(tracks) do
+    for k, c in ipairs(t:clips()) do
+      local it
+      for _, row in ipairs(got.item) do
+        if row[1] == i and row[2] == k then it = row end
+      end
+      local cg = c:get()
+      near(sec(cg.start), it[3], 1e-6, t.name .. " item position")
+      near(sec(cg.start + cg.length) - sec(cg.start), it[4], 1e-6, t.name .. " item length")
+      if cg.kind == "audio" then
+        near(cg.offset, it[10], 1e-6, "offset")
+        near(sec(cg.start + cg.fade_in) - sec(cg.start), it[6], 1e-6, "fade in")
+      else
+        local list = {}
+        for _, row in ipairs(got.note) do
+          if row[1] == i and row[2] == k then list[#list + 1] = row end
+        end
+        local notes = c:notes()
+        eq(#notes, #list, "notes")
+        for j, row in ipairs(list) do
+          near(sec(cg.start + notes[j].start), row[3], 1e-6, "note " .. j .. " start")
+          eq(notes[j].pitch .. " " .. notes[j].velocity, row[5] .. " " .. row[6], "note " .. j)
+          eq((notes[j].meta and notes[j].meta.channel or 1) - 1, row[7], "note " .. j .. " channel")
+        end
+        local moves = c:controls()
+        eq(#moves, #got.cc, "controller events")
+        eq(moves[1].type .. moves[1].number, "cc1", "CC 1")
+        near(moves[1].value, 64 / 127, 1e-9, "its value")
+        near(sec(cg.start + moves[2].start), got.cc[2][3], 1e-6, "the bend's time")
+        near(moves[2].value, (96 * 128 - 8192) / 8192, 1e-9, "the bend's value")
+      end
+      n = n + 1
+    end
+  end
+  eq(n, 2, "the MIDI item and the audio item")
+  -- The envelope and the markers.
+  local pts = keys:lane("volume"):points()
+  local want = {}
+  for _, p in ipairs(got.point) do
+    if p[1] == 2 and p[2] == "Volume" then want[#want + 1] = p end
+  end
+  eq(#pts, #want, "volume points")
+  for j, p in ipairs(want) do
+    near(sec(pts[j][1]), p[3], 1e-6, "point " .. j .. " time")
+    near(pts[j][2], 20 * math.log10(p[4]), 1e-6, "point " .. j .. " value")
+  end
+  eq(api.lane_shapes(keys:lane("volume").id)[1].shape, "hold", "the square point holds")
+  local marks = paw.markers.list()
+  eq(#marks, 2, "a marker and a region")
+  near(sec(marks[1].beat), got.marker[1][1], 1e-6, "marker time")
+  eq(marks[2].name, got.region[1][3], "region name")
+  near(sec(marks[2].beat + marks[2].length), got.region[1][2], 1e-6, "region end")
+  eq(result.report:empty(), true, "everything came across: " .. result.report:text())
 end)

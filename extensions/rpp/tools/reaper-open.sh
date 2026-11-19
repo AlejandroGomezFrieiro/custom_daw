@@ -1,6 +1,8 @@
 #!/bin/sh
-# reaper-open.sh <project.rpp> <dump.txt>: open a project in the real REAPER
-# and write what REAPER read from it (reaper-dump.lua says the format).
+# reaper-open.sh <project.rpp> <dump.txt> [build.lua]: open a project in the
+# real REAPER and write what REAPER read from it (reaper-dump.lua says the
+# format). With build.lua, REAPER runs that ReaScript in a new project
+# instead, saves the project as <project.rpp>, then writes what it holds.
 #
 # REAPER runs in a sandbox: bubblewrap with a fresh HOME and configuration
 # folder, no network and no access to the home folder, on a private Xvfb,
@@ -8,7 +10,7 @@
 # that the user has. The program is $PAW_REAPER (the `reaper` launcher of
 # an installed REAPER). Exit status 77 when it, Xvfb or bwrap is missing.
 set -u
-rpp=$(realpath "$1") dump=$(realpath -m "$2")
+rpp=$(realpath -m "$1") dump=$(realpath -m "$2") build=${3:+$(realpath "$3")}
 here=$(cd "$(dirname "$0")" && pwd)
 bin=${PAW_REAPER:-}
 [ -n "$bin" ] && [ -x "$bin" ] || { echo "reaper-open: set PAW_REAPER to the reaper program" >&2; exit 77; }
@@ -28,9 +30,11 @@ xs=$!
 i=0; while [ ! -e "/tmp/.X11-unix/X$n" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
 dir=$(dirname "$rpp")
 outdir=$(dirname "$dump")
+mode=--ro-bind extra=""
+if [ -n "$build" ]; then mode=--bind extra="--ro-bind $build $build --setenv RPP_BUILD $build"; fi
 setsid bwrap --ro-bind /nix /nix --ro-bind /etc /etc --ro-bind-try /bin /bin --ro-bind-try /usr /usr \
   --ro-bind-try /run/current-system /run/current-system --proc /proc --dev /dev --tmpfs /tmp --tmpfs /home \
-  --bind "$sb" "$sb" --ro-bind "$dir" "$dir" --bind "$outdir" "$outdir" \
+  --bind "$sb" "$sb" $mode "$dir" "$dir" --bind "$outdir" "$outdir" $extra \
   --ro-bind "/tmp/.X11-unix/X$n" "/tmp/.X11-unix/X$n" \
   --setenv HOME "$sb/home" --setenv XDG_CONFIG_HOME "$sb/cfg" --setenv XDG_RUNTIME_DIR "$sb/run" \
   --setenv DISPLAY ":$n" --setenv RPP_FILE "$rpp" --setenv RPP_DUMP "$dump" \
