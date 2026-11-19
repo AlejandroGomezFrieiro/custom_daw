@@ -2,7 +2,9 @@
 
 Scripts that measure this DAW, the same workloads on Tracktion Engine, and
 tools that try to break the DAW. Results and the comparison are in
-[RESULTS.md](RESULTS.md).
+[RESULTS.md](RESULTS.md). The processor time of paw while it plays,
+against REAPER, Ardour and LMMS, is in [DAWS.md](DAWS.md), with its
+harness in [daws/](daws).
 
 ## Running
 
