@@ -171,6 +171,16 @@ impl EventBuf {
         }
     }
 
+    /// Put an event first, before those already there: for one on the
+    /// block's first frame. Dropped, as `push` drops one, when full.
+    pub fn push_front(&mut self, event: Event) {
+        if self.events.len() < self.events.capacity() {
+            self.events.insert(0, event);
+        } else {
+            DROPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
     pub fn clear(&mut self) {
         self.events.clear();
     }

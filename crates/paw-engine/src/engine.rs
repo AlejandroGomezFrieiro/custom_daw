@@ -1056,6 +1056,10 @@ pub struct Engine {
     /// Automated parameters must be sent again even if their value has not
     /// moved, because something else may have set them since.
     reapply: bool,
+    /// The song starts to play: state lanes give their states again.
+    restate: bool,
+    /// Some track has a state lane: blocks end on its points.
+    has_states: bool,
     seeks: u32,
     click: Click,
     /// The current block of input, one buffer per channel.
@@ -1265,6 +1269,8 @@ impl Engine {
             flush_notes: false,
             chase: false,
             reapply: false,
+            restate: false,
+            has_states: false,
             seeks: 0,
             click: Click::default(),
             inputs: (0..MAX_INPUTS).map(|_| vec![0.0; MAX_BLOCK]).collect(),
@@ -1362,6 +1368,7 @@ impl Engine {
                 {
                     self.discard(Garbage::Track(old));
                 }
+                self.note_states();
             }
             Msg::SetSchedule(schedule) => {
                 self.shared.latency.store(schedule.latency, Relaxed);
@@ -1505,13 +1512,16 @@ impl Engine {
                 }
                 self.discard(Garbage::PartEdit(edit));
             }
-            Msg::SetAutomation { track, automation } => match self.track_mut(track) {
-                Some(t) => {
-                    let old = std::mem::replace(&mut t.automation, automation);
-                    self.discard(Garbage::Automation(old));
+            Msg::SetAutomation { track, automation } => {
+                match self.track_mut(track) {
+                    Some(t) => {
+                        let old = std::mem::replace(&mut t.automation, automation);
+                        self.discard(Garbage::Automation(old));
+                    }
+                    None => self.discard(Garbage::Automation(automation)),
                 }
-                None => self.discard(Garbage::Automation(automation)),
-            },
+                self.note_states();
+            }
             Msg::SetTempoMap(map) => {
                 if let Some(old) = self.map.replace(map) {
                     self.discard(Garbage::TempoMap(old));
@@ -1550,6 +1560,7 @@ impl Engine {
                 self.playing = true;
                 self.chase = true;
                 self.reapply = true;
+                self.restate = true;
                 self.count = None;
             }
             Msg::CountIn {
@@ -1876,6 +1887,32 @@ impl Engine {
         self.devices.get_mut(slot as usize)?.get_mut().as_mut()
     }
 
+    /// Look again whether any track has a state lane (after its
+    /// automation or the tracks changed): a message, not a block, does this.
+    fn note_states(&mut self) {
+        self.has_states = self.tracks.iter_mut().any(|t| {
+            t.get_mut()
+                .as_deref()
+                .is_some_and(|t| t.automation.states.iter().any(|s| !s.points.is_empty()))
+        });
+    }
+
+    /// The first point of a state lane after `beat`, on any track: a block
+    /// ends there, so that the state changes on the point's own frame.
+    fn next_state_point(&self, beat: f64) -> Option<f64> {
+        let mut next: Option<f64> = None;
+        for t in self.tracks.iter() {
+            let Some(claim) = t.claim() else { continue };
+            let Some(t) = claim.as_deref() else { continue };
+            for lane in &t.automation.states {
+                if let Some(at) = automation::next_point(&lane.points, beat) {
+                    next = Some(next.map_or(at, |n| n.min(at)));
+                }
+            }
+        }
+        next
+    }
+
     /// The metronome's clicks of the last call to [`process_input`], when
     /// they go to an output pair of their own: the first channel of the
     /// pair (from 0), and the left and right frames.
@@ -1932,6 +1969,7 @@ impl Engine {
                 self.playing = true;
                 self.chase = true;
                 self.reapply = true;
+                self.restate = true;
             }
             let mut n = (total - done).min(MAX_BLOCK);
             if let Some(count) = self.count.as_ref().filter(|c| !c.started) {
@@ -1992,6 +2030,15 @@ impl Engine {
                             }
                         }
                     }
+                }
+                // A state changes on its point's frame: the block ends there.
+                if self.has_states
+                    && let Some(frames) = self.next_state_point(start).map(frames_on)
+                    && frames > 0
+                    && frames < n
+                {
+                    n = frames;
+                    wrap = false;
                 }
                 end = match (wrap, bpf) {
                     (true, _) => self.loop_end,
@@ -2114,6 +2161,7 @@ impl Engine {
             flush,
             chase: playing && std::mem::take(&mut self.chase),
             reapply: playing && std::mem::take(&mut self.reapply),
+            restate: playing && std::mem::take(&mut self.restate),
             sleep: self.sleep,
             meter_fall: (-(n as f32) / (self.sample_rate as f32 * METER_FALL_SECONDS)).exp(),
         };
@@ -2491,6 +2539,9 @@ struct Block<'a> {
     flush: bool,
     chase: bool,
     reapply: bool,
+    /// The song has just started to play: every state lane's state is
+    /// given to its device again, whatever it was given before.
+    restate: bool,
     /// Devices at rest sleep through silent blocks.
     sleep: bool,
     meter_fall: f32,
@@ -2661,6 +2712,62 @@ impl Work<'_> {
                 }
             }
         }
+        // State lanes. Blocks end on their points, so a new state is given
+        // on the first frame of the block that starts at its point. A
+        // message for a point at this block's end is handed on its last
+        // frame: a plugin that finishes it after the block (an LV2 worker,
+        // at once in a render) then plays it from the point's frame.
+        let mut programs = [(NO_SLOT, 0u8, None::<u16>); 4];
+        let mut program_count = 0;
+        if playing {
+            for lane in t.automation.states.iter_mut() {
+                let Some(index) = automation::state_at(&lane.points, start + slack) else {
+                    continue;
+                };
+                if self.block.restate {
+                    lane.last = None;
+                    lane.sent_early = None;
+                }
+                if lane.last != Some(index) {
+                    let early = lane.sent_early.take() == Some(index);
+                    if let Some(change) = lane.changes.get(index as usize)
+                        && let Some(mut dev) = self.device(lane.device)
+                        && let Some(dev) = dev.as_mut()
+                    {
+                        for &(param, value) in change.params.iter() {
+                            dev.set_param(param, value);
+                        }
+                        if let Some(message) = change.message.as_deref()
+                            && !early
+                        {
+                            dev.device.message(0, message);
+                        }
+                        if let Some((program, bank)) = change.program
+                            && program_count < programs.len()
+                        {
+                            programs[program_count] = (lane.device, program, bank);
+                            program_count += 1;
+                        }
+                    }
+                    lane.last = Some(index);
+                }
+                if n > 0
+                    && let Some(next) = automation::next_point(&lane.points, start + slack)
+                    && (next - end).abs() <= slack
+                    && let Some(after) = automation::state_at(&lane.points, next + slack)
+                    && after != index
+                    && let Some(message) = lane
+                        .changes
+                        .get(after as usize)
+                        .and_then(|c| c.message.as_deref())
+                    && let Some(mut dev) = self.device(lane.device)
+                    && let Some(dev) = dev.as_mut()
+                    && dev.device.message(n as u32 - 1, message)
+                {
+                    lane.sent_early = Some(after);
+                }
+            }
+        }
 
         let [left, right] = &mut t.buf;
         // Whether the block is silent with no events, as far as it is known:
@@ -2673,6 +2780,15 @@ impl Work<'_> {
                 && let Some(dev) = dev.as_mut()
                 && !dev.failed
             {
+                // A state lane's program change, for this device only:
+                // the devices before it in the chain do not hear it.
+                for &(to, program, bank) in &programs[..program_count] {
+                    if to == slot {
+                        let kind = EventKind::Program { program, bank, ch: 0 };
+                        t.events.push_front(Event { frame: 0, kind });
+                        quiet = None;
+                    }
+                }
                 if self.block.sleep && dev.rests() {
                     let keyed = dev.key.as_deref().is_some_and(|[l, r]| {
                         !crate::device::silent(&l[..n]) || !crate::device::silent(&r[..n])

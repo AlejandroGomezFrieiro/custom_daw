@@ -27,7 +27,7 @@ pub mod tempo;
 pub mod ump;
 pub mod wav;
 
-pub use automation::{AutoLane, AutoTarget, Automation};
+pub use automation::{AutoLane, AutoTarget, Automation, StateChange, StateLane};
 pub use backend::no_denormals;
 pub use clip::{AudioData, AudioRegion, ClipSet, MidiEv, Part, PartEdit, Switch};
 pub use device::{
