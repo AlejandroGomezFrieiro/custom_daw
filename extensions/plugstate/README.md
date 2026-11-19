@@ -14,7 +14,8 @@ it.
 ```
 extensions/plugstate/
   init.lua, lua/plugstate/   the adapters, the library, snapshots, commands
-  tests.lua                  tests with real plugins (Neural Amp Modeler, LSP, sfizz)
+  tests.lua                  tests with real plugins (Neural Amp Modeler, LSP, sfizz,
+                             TONE3000, Soundshed Guitar)
 ```
 
 ## Try it
@@ -45,10 +46,20 @@ Add the folder to `paw.opt.plugstate_folders`. Separate folders with `:`.
 paw also looks in `~/.local/share/paw/models` and in the folder of the
 file that the plugin holds now.
 
+### How to change the preset of an amp plugin
+
+For TONE3000 and Soundshed Guitar, the first slot is the preset. `]m`
+and `[m` step through the presets, and `:plugstate.load bogner` finds one
+by its name. paw finds the factory presets that come with the plugin. Put
+your own presets (`.t3kpreset`, `.soundshed.presets` packs and `.json`
+presets) in a folder of `paw.opt.plugstate_folders`. For a guide, see
+[How to switch amp models and presets from paw](../../docs/how-to/switch-amp-models-and-presets.md).
+
 ### How to set a plugin that holds more than one file
 
 Give the file a name with `slot=`: `:plugstate.load slot=ifn1 hall.wav`.
-`:plugstate.info` lists the names.
+`:plugstate.info` lists the names. A slot can also hold a value, for
+example the scene of a Soundshed preset: `:plugstate.load slot=scene solo`.
 
 ### How to switch sounds while you play
 
@@ -131,6 +142,8 @@ These keys are in the device panel. They act on the device of the row.
 | `lsp-ir` | LSP Impulse Responses and LSP Impulse Reverb (LV2) | their impulse response properties (`ifn0`, `ifn1` and so on). The picker shows audio files |
 | `sfizz` | sfizz (VST3) | sfizz has no properties as a VST3 plugin. The adapter writes the SFZ file into the saved state of the plugin, and paw loads that state |
 | `lv2` | each other LV2 plugin with properties (`patch:writable`) | the property, with a message to the plugin as from its own window |
+| `tone3000` | TONE3000 (CLAP, VST3, LV2) | it writes the state of the plugin. Slots: `preset` (a `.t3kpreset` file: its chain and the values of its parameters), and `block1` to `block5`, `right1` to `right5` (the blocks of the two rows of the chain). A `.nam` or `.wav` file goes into a block with its bytes, as a file that you drop on the block in the window. The name of a model that the block holds switches to that model |
+| `soundshed` | Soundshed Guitar (VST3, LV2) | it writes the JSON state of the plugin. Slots: `preset` (a preset of a `.soundshed.presets` pack, or a `.json` preset), `scene` (the title or the number of a scene), and the blocks of the scene that take a file (`amp1`, `fx1`, `cab1` and other), set by the path of the file |
 
 ### The Lua module
 
@@ -140,13 +153,17 @@ These keys are in the device panel. They act on the device of the row.
 | --- | --- |
 | `adapter(def)` | adds an adapter. An adapter added later is asked first |
 | `adapter_of(id)` | the adapter for a device, and the device |
-| `slots(id)` | the files and values of a device: `{ key, label, what, kind, types, value }` |
+| `slots(id)` | the files and values of a device: `{ key, label, what, kind, types, value }`. A slot can also give `folders` (more folders to look in) or `list(roots)` (its own choices, as `{ path, name, folder }`) |
 | `set(id, key, value)` | sets a slot (nil for the first) as one undo step. Returns `true`, or nil and the reason |
 | `files(slot, roots)` | the files that a slot takes in the library folders: `{ path, name, folder }` |
 | `search(slot, words)` | the files whose name or folder has each word |
 | `neighbour(slot, n)` | the file `n` places after the current one in its folder |
 | `snapshot(id, name)`, `recall(id, name)`, `step(id, n)`, `forget(id, name)` | the snapshots |
 | `snapshots(id)`, `current(id)` | the snapshots of a device, and the name of the last one recalled or kept |
+| `share_dirs(sub)` | the folders `share/<sub>` of the packages in the plugin folders (`CLAP_PATH`, `VST3_PATH`, `LV2_PATH`, the Nix profiles), for factory presets |
+
+An adapter can also give `name_of(path)`: the name of a choice in the
+messages.
 
 The extension sends the events `plugstate.loaded` (`device`, `slot`,
 `value`) and `plugstate.recalled` (`device`, `name`).
@@ -174,3 +191,15 @@ The extension sends the events `plugstate.loaded` (`device`, `slot`,
   not find it.
 - The `sfizz` adapter reads the state of sfizz 1.2. Another version of
   sfizz can write its state in another way.
+- The `tone3000` adapter reads the state of TONE3000 0.0.12, and the
+  `soundshed` adapter the state of Soundshed Guitar 1.7.1.
+- A program change in a clip does not change the preset of TONE3000 or
+  Soundshed Guitar in paw. The scene parameters of Soundshed Guitar do not
+  change its scene. So an automation lane cannot switch their presets.
+- TONE3000 loads its models in the background. A rendered file starts
+  with less than a second of sound without the model.
+- Soundshed Guitar keeps the path of a file. paw copies the files of a
+  preset of a pack to `~/.local/share/paw/plugstate/<pack>`.
+- TONE3000 and Soundshed Guitar keep their own files in `~/.config`
+  (`TONE3000`, `Soundshed Guitar`), also when `XDG_CONFIG_HOME` names
+  another folder.

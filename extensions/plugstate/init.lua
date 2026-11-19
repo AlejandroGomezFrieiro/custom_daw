@@ -6,6 +6,8 @@ paw.option.define("plugstate_folders", "") -- folders of models and impulse resp
 local plugstate = require("plugstate")
 package.loaded["paw.plugstate"] = plugstate
 require("plugstate.adapters")
+require("plugstate.tone3000")
+require("plugstate.soundshed")
 require("plugstate.commands")
 
 paw.health.register("plugstate", function(h)

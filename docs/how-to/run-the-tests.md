@@ -18,6 +18,9 @@ The suite writes its full output to `target/test-scratch/suite.out`.
 - To run the suite with the test plugins, run `tests/tools/suite.sh plugins`.
   The dev shell gives the plugins (LSP Plugins and Surge XT) through
   `PAW_TEST_PLUGINS`. Outside the dev shell, the plugin tests do not run.
+- To test the plugins that are not in nixpkgs, give their package:
+  `PAW_TEST_TONE3000=<store path> PAW_TEST_SOUNDSHED=<store path> tests/tools/suite.sh plugins plugstate`.
+  In this mode, the plugins get a scratch `HOME`.
 
 ## Run the Rust tests
 

@@ -228,3 +228,4 @@ aiff
 vimper
 reavim
 ReaLeader
+Soundshed

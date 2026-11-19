@@ -115,6 +115,29 @@ function M.roots()
   return roots
 end
 
+--- The folders `share/<sub>` beside the plugin folders that paw looks in
+--- (`CLAP_PATH`, `VST3_PATH`, `LV2_PATH`, the Nix profiles), for what a
+--- plugin's package puts beside it: factory presets, models. Only those
+--- that are there.
+function M.share_dirs(sub)
+  local out, seen = {}, {}
+  local function try(lib)
+    local dir = lib:gsub("/+$", ""):gsub("/[^/]+$", "") -- lib/clap -> lib
+    dir = dir:gsub("/[^/]+$", "") .. "/share/" .. sub -- lib -> the package
+    if not seen[dir] and #api.read_dir(dir) > 0 then out[#out + 1] = dir end
+    seen[dir] = true
+  end
+  for _, var in ipairs({ "CLAP_PATH", "VST3_PATH", "LV2_PATH" }) do
+    for dir in (os.getenv(var) or ""):gmatch("[^:]+") do try(dir) end
+  end
+  local home, user = os.getenv("HOME"), os.getenv("USER")
+  local profiles = { "/run/current-system/sw/lib/clap" }
+  if home then profiles[#profiles + 1] = home .. "/.nix-profile/lib/clap" end
+  if user then profiles[#profiles + 1] = "/etc/profiles/per-user/" .. user .. "/lib/clap" end
+  for _, dir in ipairs(profiles) do try(dir) end
+  return out
+end
+
 local function takes(slot, name)
   if not slot.types or #slot.types == 0 then return true end
   local ext = name:match("%.([%w]+)$")
@@ -129,9 +152,17 @@ end
 --- folder of the slot's file now), as `{ path, name, folder }`, sorted by
 --- path. Looks six folders deep and at most at 5000 entries.
 function M.files(slot, roots)
+  -- A slot whose choices are not one file each (the presets inside a
+  -- pack) lists them itself.
+  if slot.list then
+    local found = slot.list(roots)
+    table.sort(found, function(x, y) return x.path < y.path end)
+    return found
+  end
   if not roots then
     roots = M.roots()
-    local here = type(slot.value) == "string" and slot.value ~= "" and dirname(slot.value)
+    for i, dir in ipairs(slot.folders or {}) do table.insert(roots, i, dir) end
+    local here = type(slot.value) == "string" and slot.value:find("/", 1, true) and dirname(slot.value)
     if here then table.insert(roots, 1, here) end
   end
   local found, seen, listed = {}, 0, {}
@@ -173,7 +204,7 @@ end
 --- folder (from the first file of the library when it has none). It goes
 --- round at the ends.
 function M.neighbour(slot, n)
-  local here = type(slot.value) == "string" and slot.value ~= "" and dirname(slot.value)
+  local here = type(slot.value) == "string" and slot.value:find("/", 1, true) and dirname(slot.value)
   local files = here and M.files(slot, { here }) or M.files(slot)
   if #files == 0 then return nil end
   for i, f in ipairs(files) do
