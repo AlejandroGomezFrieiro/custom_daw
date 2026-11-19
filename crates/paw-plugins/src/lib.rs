@@ -15,6 +15,7 @@
 pub mod clap;
 pub mod libs;
 pub mod lv2;
+mod lv2_patch;
 pub mod presets;
 pub mod sandbox;
 pub mod vst3;
