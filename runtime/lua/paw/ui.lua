@@ -1088,11 +1088,27 @@ function M.poke(ms)
   active_until = math.max(active_until, api.now() + (ms or 1500))
 end
 
---- Redraw at `paw.opt.fps` while the song plays or immediately after activity.
+local ticker, ticker_ms
+
+--- How many milliseconds at least go between two frames while something
+--- moves: 1000 / `paw.opt.fps`, as the option is now.
+function M.frame_ms()
+  return ticker_ms or 1000 / paw.opt.fps
+end
+
+--- Redraw at `paw.opt.fps` while the song plays or immediately after
+--- activity. A change of the option, also in the user's init.lua (which
+--- runs after this starts), takes effect at once.
 function M.start_ticker()
-  paw.every(1000 / paw.opt.fps, function()
+  if ticker then paw.cancel(ticker) end
+  ticker_ms = 1000 / paw.opt.fps
+  ticker = paw.every(ticker_ms, function()
     if api.ui_attached() and (api.transport_get().playing or api.now() < active_until) then api.ui_redraw() end
   end)
 end
+
+paw.on("option.changed", function(e)
+  if e.name == "fps" and ticker then M.start_ticker() end
+end)
 
 return M
