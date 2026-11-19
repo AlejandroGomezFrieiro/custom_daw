@@ -103,6 +103,11 @@ pub struct Reverb {
     diffusers: [[AllPass; 4]; 2],
     lines: [DelayLine; LINES],
     lfos: [Lfo; LINES],
+    /// Each line's drift, in frames, at the last update, and how far it
+    /// moves each frame until the next: the drift is worked out on a grid
+    /// of [`UPDATE`] frames and drawn straight between.
+    wobble: [f32; LINES],
+    wobble_step: [f32; LINES],
     gains: [f32; LINES],
     lows: [OnePole; LINES],
     highs: [OnePole; LINES],
@@ -142,6 +147,8 @@ impl Reverb {
             lfos: std::array::from_fn(|i| Lfo {
                 phase: i as f64 / LINES as f64,
             }),
+            wobble: [0.0; LINES],
+            wobble_step: [0.0; LINES],
             gains: [0.0; LINES],
             lows: [OnePole::default(); LINES],
             highs: [OnePole::default(); LINES],
@@ -292,10 +299,21 @@ impl Device for Reverb {
         let ms = 0.001 * self.sr;
         let diffuse = (self.p[DIFFUSION] * 0.01).clamp(0.0, 1.0) * 0.7;
         let drift = DRIFT_MS * ms;
-        let steps = DRIFT_HZ.map(|hz| hz / self.sr as f64);
+        let steps = DRIFT_HZ.map(|hz| hz / self.sr as f64 * UPDATE as f64);
         for (l, r) in io.left.iter_mut().zip(io.right.iter_mut()) {
-            if self.clock.is_multiple_of(UPDATE) && (self.scale.moving() || self.decay.moving()) {
-                self.update_gains();
+            if self.clock.is_multiple_of(UPDATE) {
+                if self.scale.moving() || self.decay.moving() {
+                    self.update_gains();
+                }
+                // The drift where it is now and where it will be at the
+                // next update: a sine a few times a second is a straight
+                // line over that much.
+                for (i, lfo) in self.lfos.iter_mut().enumerate() {
+                    let from = dsp::sin_cycles(lfo.tick(steps[i])) * drift;
+                    let to = dsp::sin_cycles(lfo.phase) * drift;
+                    self.wobble[i] = from;
+                    self.wobble_step[i] = (to - from) / UPDATE as f32;
+                }
             }
             self.clock = self.clock.wrapping_add(1);
             let scale = self.scale.step();
@@ -329,7 +347,8 @@ impl Device for Reverb {
             // The network: read, damp, mix, feed back with the input.
             let mut taps = [0.0f32; LINES];
             for (i, tap) in taps.iter_mut().enumerate() {
-                let wobble = dsp::sin_cycles(self.lfos[i].tick(steps[i])) * drift;
+                let wobble = self.wobble[i];
+                self.wobble[i] += self.wobble_step[i];
                 let len = LENGTHS_MS[i] * scale * ms + wobble;
                 let x = self.lines[i].get_frac(len);
                 let x = self.highs[i].high(self.lows[i].low(x));

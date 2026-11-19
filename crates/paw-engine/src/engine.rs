@@ -196,19 +196,29 @@ impl Delay {
         let len = self.ring[0].len();
         let step = (to - from) / n.max(1) as f32;
         for (ch, (src, dst)) in src.into_iter().zip(dst).enumerate() {
+            if len == 0 {
+                // Nothing to wait for: a plain sum, which vectorises.
+                if step == 0.0 {
+                    let gain = from + step;
+                    for (d, s) in dst[..n].iter_mut().zip(src) {
+                        *d += s * gain;
+                    }
+                } else {
+                    for (i, (d, s)) in dst[..n].iter_mut().zip(src).enumerate() {
+                        *d += s * (from + step * (i + 1) as f32);
+                    }
+                }
+                continue;
+            }
             let mut at = self.at;
             let ring = &mut self.ring[ch];
             for (i, (d, s)) in dst[..n].iter_mut().zip(src).enumerate() {
                 let gain = from + step * (i + 1) as f32;
-                if len == 0 {
-                    *d += s * gain;
-                } else {
-                    *d += ring[at] * gain;
-                    ring[at] = *s;
-                    at += 1;
-                    if at == len {
-                        at = 0;
-                    }
+                *d += ring[at] * gain;
+                ring[at] = *s;
+                at += 1;
+                if at == len {
+                    at = 0;
                 }
             }
         }
@@ -2733,18 +2743,16 @@ fn fader(t: &mut TrackRt, slot: Slot, block: &Block, shared: &Shared) {
     for (ch, buf) in [&mut left[..n], &mut right[..n]].into_iter().enumerate() {
         let from = t.applied[ch];
         let step = (target[ch] - from) / n as f32;
-        let mut peak = 0f32;
         if step.abs() < 1e-9 {
             for s in buf.iter_mut() {
                 *s *= from;
-                peak = peak.max(s.abs());
             }
         } else {
             for (i, s) in buf.iter_mut().enumerate() {
                 *s *= from + step * (i + 1) as f32;
-                peak = peak.max(s.abs());
             }
         }
+        let peak = peak_of(buf);
         t.applied[ch] = target[ch];
         // A track silenced by a solo shows nothing, as it is heard.
         let peak = if t.quiet { 0.0 } else { peak };
@@ -2754,6 +2762,27 @@ fn fader(t: &mut TrackRt, slot: Slot, block: &Block, shared: &Shared) {
         }
     }
     t.started = true;
+}
+
+/// The largest magnitude in a block, NaN left out. Eight lanes, compared
+/// rather than `f32::max`ed, so that it vectorises.
+#[inline]
+fn peak_of(buf: &[f32]) -> f32 {
+    let mut lanes = [0f32; 8];
+    let mut chunks = buf.chunks_exact(8);
+    for chunk in &mut chunks {
+        for i in 0..8 {
+            let v = chunk[i].abs();
+            if v > lanes[i] {
+                lanes[i] = v;
+            }
+        }
+    }
+    let rest = chunks.remainder().iter().map(|x| x.abs());
+    lanes
+        .into_iter()
+        .chain(rest)
+        .fold(0.0, |peak, v| if v > peak { v } else { peak })
 }
 
 /// Where a controller is kept while chasing: the 128 control changes, then
