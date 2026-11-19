@@ -86,7 +86,12 @@ local function installed(kind)
   end
 end
 
-local function find_vst3(name, vendor)
+--- The VST3 plugin installed here: by its class id (`{...}` in REAPER's
+--- line), else by name and vendor.
+local function find_vst3(name, vendor, class)
+  for _, t in ipairs(paw.api.device_types()) do
+    if t.format == "vst3" and class and t.id == class:upper() then return t end
+  end
   for _, t in ipairs(paw.api.device_types()) do
     if t.format == "vst3" and t.name == name and (not vendor or t.vendor == "" or t.vendor == vendor) then return t end
   end
@@ -109,6 +114,7 @@ function M.describe(block)
     local prefix, name, vendor = M.split_display(d.display)
     d.name, d.vendor = name, vendor
     d.format = prefix and prefix:match("^VST3") and "VST3" or "VST2"
+    d.class = tostring(block.tokens[6] or ""):match("{(%x+)}")
   elseif tag == "JS" then
     d.format, d.display = "JSFX", "JS: " .. (block.tokens[2] or "")
   else
@@ -154,7 +160,7 @@ function M.import(block, track, bypass, notes)
     api.device_set(id, "meta", { rpp = meta })
     return id
   elseif d.format == "VST3" then
-    local t = d.name and find_vst3(d.name, d.vendor)
+    local t = d.name and find_vst3(d.name, d.vendor, d.class)
     if not t then return nil, "not installed here" end
     local parts, why = M.vst_parts(block)
     local state

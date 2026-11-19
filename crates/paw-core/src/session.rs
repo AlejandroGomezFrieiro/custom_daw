@@ -1232,6 +1232,51 @@ impl Session {
         Ok(note)
     }
 
+    /// The project as a file at `path` holds it: media named as from
+    /// there, and the devices' own ids of the parameters it names.
+    fn file_project(&self, path: &Path) -> Project {
+        let mut project = media::for_file(&self.project, path);
+        let tracks = project
+            .tracks
+            .iter_mut()
+            .chain(std::iter::once(&mut project.master));
+        for track in tracks {
+            self.keep_param_ids(track);
+        }
+        project
+    }
+
+    /// Note in each device of a track that is about to be written the
+    /// device's own id of each parameter key that it or its lanes use (see
+    /// `DeviceInst::param_ids`), for every place a chain is written.
+    pub(crate) fn keep_param_ids(&self, track: &mut Arc<Track>) {
+        let mut found = Vec::new();
+        for (at, d) in track.devices.iter().enumerate() {
+            let Some(live) = self.live.get(&d.id) else { continue };
+            let lanes = track.lanes.iter().filter_map(|l| match &l.target {
+                Target::Param { device, param } if *device == d.id => Some(param),
+                _ => None,
+            });
+            let mut ids = d.param_ids.clone();
+            for key in d.params.keys().chain(lanes) {
+                let Some(p) = live.params.iter().find(|p| &p.key == key) else { continue };
+                if !p.id.is_empty() && p.id != p.key {
+                    ids.insert(key.clone(), p.id.clone());
+                }
+            }
+            if ids != d.param_ids {
+                found.push((at, ids));
+            }
+        }
+        if found.is_empty() {
+            return;
+        }
+        let track = Arc::make_mut(track);
+        for (at, ids) in found {
+            Arc::make_mut(&mut track.devices[at]).param_ids = ids;
+        }
+    }
+
     pub fn project_save(&mut self, path: Option<&Path>) -> Result<PathBuf> {
         let path = path
             .map(Path::to_path_buf)
@@ -1250,7 +1295,7 @@ impl Session {
             .then(|| path.file_stem().map(|s| s.to_string_lossy().into_owned()))
             .flatten()
             .filter(|name| !name.is_empty());
-        let mut project = media::for_file(&self.project, &path);
+        let mut project = self.file_project(&path);
         if let Some(name) = &named {
             project.name = name.clone();
         }
@@ -1573,6 +1618,7 @@ impl Session {
                 json!({
                     "kind": info.kind, "name": info.name, "category": info.category,
                     "format": info.format, "vendor": info.vendor, "params": params,
+                    "id": info.id, "version": info.version,
                 })
             })
             .collect();
@@ -1591,6 +1637,20 @@ impl Session {
         // else what the plugin reports (from its own state), else the default.
         let mut params = serde_json::Map::new();
         let mut infos = Vec::new();
+        // The parameters a lane of the track moves.
+        let automated: Vec<&str> = self
+            .project
+            .track(track)
+            .unwrap()
+            .lanes
+            .iter()
+            .filter_map(|l| match &l.target {
+                Target::Param { device, param } if *device == id && l.enabled => {
+                    Some(param.as_str())
+                }
+                _ => None,
+            })
+            .collect();
         for (i, p) in live
             .map(|l| l.params.as_slice())
             .unwrap_or(&[])
@@ -1608,7 +1668,10 @@ impl Session {
                 .or_else(reported)
                 .unwrap_or(p.default as f64);
             params.insert(p.key.clone(), json!(value));
-            infos.push(param_json(p));
+            let mut info = param_json(p);
+            info["index"] = json!(i + 1);
+            info["automated"] = json!(automated.contains(&p.key.as_str()));
+            infos.push(info);
         }
         // `running`, `loading` (being made apart: see session/loading.rs),
         // `stopped`, `offline` (set so: not made at all) or `missing` (not
@@ -1641,7 +1704,15 @@ impl Session {
             }
         }
         let name = info.map(|i| &i.name).or(d.name.as_ref()).unwrap_or(&d.kind);
+        // Who made it and which it is, as its format names it.
+        let plugin = info.filter(|i| !i.id.is_empty()).map(|i| {
+            json!({
+                "format": i.format, "id": i.id, "name": i.name, "vendor": i.vendor,
+                "version": i.version,
+            })
+        });
         Ok(json!({
+            "plugin": plugin,
             "id": d.id, "kind": d.kind, "name": name, "offline": d.offline,
             "format": info.map_or("", |i| &i.format),
             "track": track, "index": index + 1, "bypass": d.bypass, "params": params,
@@ -1691,6 +1762,7 @@ impl Session {
                 sidechain: None,
                 sidechain_pre: false,
                 outputs: BTreeMap::new(),
+                param_ids: BTreeMap::new(),
             };
             let index = opts
                 .index
@@ -1781,16 +1853,57 @@ impl Session {
         let Some(live) = self.live.get(&id) else {
             bail!("device `{kind}` is not loaded");
         };
-        live.params
-            .iter()
-            .find(|p| p.key == name)
-            .or_else(|| {
-                live.params
-                    .iter()
-                    .find(|p| p.name.eq_ignore_ascii_case(name))
-            })
-            .cloned()
+        find_param(&live.params, name)
+            .map(|at| live.params[at].clone())
             .with_context(|| format!("device `{kind}` has no parameter `{name}`"))
+    }
+
+    /// A parameter of a loaded device as [`param_json`] describes it, with
+    /// its value now and that value as the device writes it.
+    pub fn device_param(&mut self, id: Id, name: &str) -> Result<Value> {
+        let param = self.param_info(id, name)?;
+        let view = self.device_view(id)?;
+        let at = view["param_info"]
+            .as_array()
+            .and_then(|list| list.iter().position(|p| p["key"] == json!(param.key)))
+            .context("the parameter is gone")?;
+        let mut out = view["param_info"][at].clone();
+        let value = view["params"][&param.key].as_f64().unwrap_or(param.default as f64);
+        out["value"] = json!(value);
+        out["text"] = json!(self.param_text(id, &param.key, value)?);
+        Ok(out)
+    }
+
+    /// A value of a parameter as text: as the device writes it (a plugin's
+    /// own "440 Hz"), else as [`ParamInfo::format`] does.
+    pub fn param_text(&mut self, id: Id, name: &str, value: f64) -> Result<String> {
+        let value = finite("a parameter value", value)?;
+        let param = self.param_info(id, name)?;
+        let live = self.live.get_mut(&id).context("the device is not loaded")?;
+        let at = find_param(&live.params, &param.key).unwrap();
+        let own = !crate::sync::is_host(&live.params, at);
+        let text = live
+            .controller
+            .as_mut()
+            .filter(|_| own)
+            .and_then(|c| c.value_text(at, value));
+        Ok(text.unwrap_or_else(|| param.format(value)))
+    }
+
+    /// The value a text stands for, for a parameter: as the device reads
+    /// it, else as [`ParamInfo::parse`] does.
+    pub fn param_parse(&mut self, id: Id, name: &str, text: &str) -> Result<f64> {
+        let param = self.param_info(id, name)?;
+        let live = self.live.get_mut(&id).context("the device is not loaded")?;
+        let at = find_param(&live.params, &param.key).unwrap();
+        let own = !crate::sync::is_host(&live.params, at);
+        let value = live
+            .controller
+            .as_mut()
+            .filter(|_| own)
+            .and_then(|c| c.text_value(at, text))
+            .or_else(|| param.parse(text));
+        value.with_context(|| format!("`{text}` is not a value of `{}`", param.name))
     }
 
     /// Set a parameter by key, or by its display name.
@@ -1801,7 +1914,7 @@ impl Session {
         let value = (value as f32).clamp(param.min, param.max) as f64;
         self.events.push((
             "param.touched".into(),
-            json!({ "device": id, "param": key, "from": "host" }),
+            json!({ "device": id, "param": key, "id": param.stable_id(), "from": "host" }),
         ));
         if self.playing
             && let Some((track, _)) = self.project.find_device(id)
@@ -2019,7 +2132,7 @@ impl Session {
         self.poll_file_changes();
         let mut changed: Vec<(Id, Vec<String>)> = Vec::new();
         // What was moved in a plugin's own window, for writing automation.
-        let mut moved: Vec<(Id, String, f64)> = Vec::new();
+        let mut moved: Vec<(Id, String, String, f64)> = Vec::new();
         let mut latency_changed = false;
         // Plugins that have stopped working since the last look.
         let mut stopped: Vec<(Id, String)> = Vec::new();
@@ -2066,19 +2179,19 @@ impl Session {
                 .collect();
             for (index, value) in &changes {
                 if let Some(param) = live.params.get(*index) {
-                    moved.push((*id, param.key.clone(), *value));
+                    moved.push((*id, param.key.clone(), param.stable_id().to_string(), *value));
                 }
             }
             if !keys.is_empty() || was_open != controller.editor_open() {
                 changed.push((*id, keys));
             }
         }
-        for (device, param, value) in moved {
+        for (device, param, stable, value) in moved {
             // The parameter last moved in a plugin's own window, for
             // `:param.last` and for the frontends to show.
             self.events.push((
                 "param.touched".into(),
-                json!({ "device": device, "param": param, "from": "editor" }),
+                json!({ "device": device, "param": param, "id": stable, "value": value, "from": "editor" }),
             ));
             if let Some((track, _)) = self.project.find_device(device) {
                 self.touch(track, Target::Param { device, param }, value, value);
@@ -4555,9 +4668,21 @@ fn block_json(s: &paw_engine::BlockSummary, sample_rate: u32) -> Value {
 
 fn param_json(p: &ParamInfo) -> Value {
     json!({
-        "key": p.key, "name": p.name, "min": p.min, "max": p.max, "default": p.default,
-        "unit": p.unit, "choices": p.choices,
+        "key": p.key, "id": p.stable_id(), "name": p.name, "group": p.group,
+        "min": p.min, "max": p.max, "default": p.default, "unit": p.unit, "choices": p.choices,
+        "kind": p.kind(), "steps": p.steps, "automatable": p.automatable,
+        "read_only": p.read_only, "per_note": p.per_note,
     })
+}
+
+/// Where a parameter is in a device's list: by key, else by the device's
+/// own id for it, else by its shown name (any case).
+fn find_param(params: &[ParamInfo], name: &str) -> Option<usize> {
+    params
+        .iter()
+        .position(|p| p.key == name)
+        .or_else(|| params.iter().position(|p| !p.id.is_empty() && p.id == name))
+        .or_else(|| params.iter().position(|p| p.name.eq_ignore_ascii_case(name)))
 }
 
 /// Sample rates an engine or a render can run at.

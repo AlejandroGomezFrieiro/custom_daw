@@ -79,7 +79,8 @@ window. Without them, an editor is an empty black window.
 ## Parameters
 
 - paw lists the parameters of each instance, with keys made from their
-  names.
+  names, and the id that the plugin gives each parameter (see
+  [Device parameters](device-parameters.md)).
 - VST3 values are from 0 to 1. CLAP and LV2 values use the ranges of the
   plugin.
 - For a plugin with many parameters, `:param` (`f` in the device panel,

@@ -58,7 +58,10 @@ local function installed(kind)
   end
 end
 
-local function find_vst3(name, vendor)
+local function find_vst3(name, vendor, class)
+  for _, t in ipairs(api.device_types()) do
+    if t.format == "vst3" and class and t.id ~= "" and t.id == class:upper() then return t end
+  end
   for _, t in ipairs(api.device_types()) do
     if t.format == "vst3" and t.name == name and (not vendor or t.vendor == "" or t.vendor == vendor) then return t end
   end
@@ -67,15 +70,24 @@ local function find_vst3(name, vendor)
   end
 end
 
---- The paw key of a parameter element of a device: by name, by key, or by
---- its place (`parameterID`, as paw writes it).
-local function param_key(dev, pe)
+--- The paw key of a parameter element of a device: by the plugin's own id
+--- (`parameterID` of a CLAP or VST3 plugin, which a DAW writes signed), by
+--- name, by key, or by its place (`parameterID` of a device of paw).
+local function param_key(dev, pe, plugin)
   local infos = api.device_get(dev).param_info or {}
   local name = (pe.attr.name or ""):lower()
+  local own = plugin and tonumber(pe.attr.parameterID)
+  if own then
+    if own < 0 then own = own + 2 ^ 32 end
+    local id = string.format("%d", own)
+    for _, p in ipairs(infos) do
+      if p.id == id then return p end
+    end
+  end
   for _, p in ipairs(infos) do
     if p.name:lower() == name or p.key:lower() == name then return p end
   end
-  local index = tonumber(pe.attr.parameterID)
+  local index = not plugin and tonumber(pe.attr.parameterID)
   if index and name == "" then return infos[index + 1] end
 end
 
@@ -104,7 +116,7 @@ local function import_device(e, track, ctx, label, position)
       why = "not installed here"
     end
   elseif tag == "Vst3Plugin" then
-    local t = find_vst3(name, e.attr.deviceVendor)
+    local t = find_vst3(name, e.attr.deviceVendor, device_id ~= "" and device_id or nil)
     if t then
       local s, class = nil, nil
       if state then s, class = vst3.state(state) end
@@ -145,7 +157,7 @@ local function import_device(e, track, ctx, label, position)
   local params = e:child("Parameters")
   local unknown = {}
   for _, pe in ipairs(params and params.children or {}) do
-    local p = param_key(id, pe)
+    local p = param_key(id, pe, tag == "ClapPlugin" or tag == "Vst3Plugin")
     if p then
       if pe.attr.id then
         ctx.params[pe.attr.id] = { kind = "param", track = track, device = id, key = p.key, min = p.min, max = p.max,

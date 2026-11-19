@@ -1080,7 +1080,7 @@ impl super::Session {
         }
         let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
         self.capture_states();
-        let project = super::media::for_file(&self.project, &file);
+        let project = self.file_project(&file);
         let transport = serde_json::to_value(&self.transport)?;
         let layout = layout(&project, &transport, self.screen.as_ref(), &dir)?;
         Ok(Some((dir, layout)))
@@ -1312,7 +1312,8 @@ impl super::Session {
     /// Returns the files written.
     pub fn chain_write(&mut self, track: u64, file: &Path) -> Result<Vec<PathBuf>> {
         self.capture_states();
-        let t = self.project.track(track).with_context(|| format!("no track {track}"))?.clone();
+        let mut t = self.project.track(track).with_context(|| format!("no track {track}"))?.clone();
+        self.keep_param_ids(&mut t);
         let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
         let (devices, states) = chain_files(&t)?;
         let mut written = Vec::new();
@@ -1376,7 +1377,7 @@ impl super::Session {
             .then(|| dir.file_name().map(|s| s.to_string_lossy().into_owned()))
             .flatten()
             .filter(|name| !name.is_empty());
-        let mut project = super::media::for_file(&self.project, &file);
+        let mut project = self.file_project(&file);
         if let Some(name) = &named {
             project.name = name.clone();
         }

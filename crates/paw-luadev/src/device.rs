@@ -91,7 +91,10 @@ impl Param {
             max: self.max,
             default: self.default,
             unit: self.unit.clone(),
+            steps: self.choices.len().saturating_sub(1) as u32,
             choices: self.choices.clone(),
+            automatable: true,
+            ..ParamInfo::default()
         }
     }
 }

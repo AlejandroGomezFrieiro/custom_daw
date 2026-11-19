@@ -200,6 +200,15 @@ struct World {
     side_chain: *mut LilvNode,
     group: *mut LilvNode,
     side_chain_of: *mut LilvNode,
+    integer: *mut LilvNode,
+    enumeration: *mut LilvNode,
+    not_automatic: *mut LilvNode,
+    unit: *mut LilvNode,
+    unit_symbol: *mut LilvNode,
+    label: *mut LilvNode,
+    name: *mut LilvNode,
+    minor_version: *mut LilvNode,
+    micro_version: *mut LilvNode,
 }
 
 // Created and used on the main thread only.
@@ -244,6 +253,15 @@ fn world() -> &'static World {
             side_chain: uri(format!("{LV2_CORE}isSideChain")),
             group: uri("http://lv2plug.in/ns/ext/port-groups#group".into()),
             side_chain_of: uri("http://lv2plug.in/ns/ext/port-groups#sideChainOf".into()),
+            integer: uri(format!("{LV2_CORE}integer")),
+            enumeration: uri(format!("{LV2_CORE}enumeration")),
+            not_automatic: uri("http://lv2plug.in/ns/ext/port-props#notAutomatic".into()),
+            unit: uri("http://lv2plug.in/ns/extensions/units#unit".into()),
+            unit_symbol: uri("http://lv2plug.in/ns/extensions/units#symbol".into()),
+            label: uri("http://www.w3.org/2000/01/rdf-schema#label".into()),
+            name: uri(format!("{LV2_CORE}name")),
+            minor_version: uri(format!("{LV2_CORE}minorVersion")),
+            micro_version: uri(format!("{LV2_CORE}microVersion")),
         }
     })
 }
@@ -318,6 +336,103 @@ unsafe fn take_text(node: *mut LilvNode) -> String {
     }
 }
 
+/// What the plugin says of a control port besides its name and range:
+/// whole steps, named options, its unit, its group, and whether the host
+/// may automate it.
+unsafe fn describe_port(
+    plugin: *const LilvPlugin,
+    port: *const LilvPort,
+    w: &World,
+    info: &mut ParamInfo,
+) {
+    unsafe {
+        let span = (info.max - info.min).round();
+        if !info.boolean
+            && lilv_port_has_property(plugin, port, w.integer)
+            && span >= 1.0
+            && span < 1e6
+        {
+            info.steps = span as u32;
+        }
+        if !info.boolean && lilv_port_has_property(plugin, port, w.enumeration) {
+            info.enumeration = true;
+            // Named options that are the port's whole steps, in order.
+            let points = lilv_port_get_scale_points(plugin, port);
+            let mut named: Vec<(f32, String)> = Vec::new();
+            let mut it = lilv_scale_points_begin(points);
+            while !points.is_null() && !lilv_scale_points_is_end(points, it) {
+                let point = lilv_scale_points_get(points, it);
+                named.push((
+                    lilv_node_as_float(lilv_scale_point_get_value(point)),
+                    node_text(lilv_scale_point_get_label(point)),
+                ));
+                it = lilv_scale_points_next(points, it);
+            }
+            if !points.is_null() {
+                lilv_scale_points_free(points);
+            }
+            named.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let whole = named
+                .iter()
+                .enumerate()
+                .all(|(i, (value, _))| *value == info.min + i as f32);
+            if whole && named.len() >= 2 && named.len() as f32 == span + 1.0 {
+                info.steps = span as u32;
+                info.choices = named.into_iter().map(|(_, label)| label).collect();
+            }
+        }
+        if lilv_port_has_property(plugin, port, w.not_automatic) {
+            info.automatable = false;
+        }
+        let unit = lilv_port_get(plugin, port, w.unit);
+        if !unit.is_null() {
+            let symbol = take_text(lilv_world_get(w.world, unit, w.unit_symbol, ptr::null()));
+            info.unit = if symbol.is_empty() {
+                unit_symbol(&node_text(unit)).to_string()
+            } else {
+                symbol
+            };
+            lilv_node_free(unit);
+        }
+        let group = lilv_port_get(plugin, port, w.group);
+        if !group.is_null() {
+            let mut name = take_text(lilv_world_get(w.world, group, w.label, ptr::null()));
+            if name.is_empty() {
+                name = take_text(lilv_world_get(w.world, group, w.name, ptr::null()));
+            }
+            info.group = name;
+            lilv_node_free(group);
+        }
+    }
+}
+
+/// The symbol of one of LV2's own units, from its URI.
+fn unit_symbol(uri: &str) -> &str {
+    match uri.rsplit('#').next().unwrap_or_default() {
+        "hz" => "Hz",
+        "khz" => "kHz",
+        "mhz" => "MHz",
+        "db" => "dB",
+        "ms" => "ms",
+        "s" => "s",
+        "min" => "min",
+        "pc" => "%",
+        "bpm" => "BPM",
+        "beat" => "beats",
+        "bar" => "bars",
+        "cent" => "ct",
+        "semitone12TET" => "st",
+        "oct" => "oct",
+        "degree" => "deg",
+        "frame" => "frames",
+        "midiNote" => "note",
+        "m" => "m",
+        "cm" => "cm",
+        "mm" => "mm",
+        _ => "",
+    }
+}
+
 /// The first feature the plugin cannot do without that this host lacks.
 unsafe fn missing_feature(plugin: *const LilvPlugin) -> Option<String> {
     let supported = [
@@ -389,6 +504,8 @@ pub(crate) fn scan(registry: &mut Registry, cache: &mut crate::Cache, notes: &mu
             .into(),
             format: "lv2".into(),
             vendor: plugin.vendor,
+            id: plugin.id.clone(),
+            version: plugin.version,
             params: Vec::new(),
         };
         registry.register(std::rc::Rc::new(Lv2Factory {
@@ -440,11 +557,15 @@ fn scan_world(bundles: Vec<(PathBuf, u64)>) -> crate::Lv2Cache {
             }
             let instrument =
                 node_text(class) == node_text(w.instrument) || (audio_in == 0 && audio_out > 0);
+            let subject = lilv_plugin_get_uri(plugin);
+            let minor = take_text(lilv_world_get(w.world, subject, w.minor_version, ptr::null()));
+            let micro = take_text(lilv_world_get(w.world, subject, w.micro_version, ptr::null()));
             found.plugins.push(crate::Found {
                 id: uri,
                 name: take_text(lilv_plugin_get_name(plugin)),
                 vendor: take_text(lilv_plugin_get_author_name(plugin)),
                 instrument,
+                version: if minor.is_empty() { String::new() } else { format!("{minor}.{}", if micro.is_empty() { "0" } else { &micro }) },
             });
         }
     }
@@ -918,9 +1039,13 @@ impl DeviceFactory for Lv2Factory {
                             "",
                         );
                         info.key = symbol.to_string_lossy().into_owned();
+                        info.id = info.key.clone();
                         if lilv_port_has_property(plugin, port, w.toggled) {
                             info.choices = vec!["off".into(), "on".into()];
+                            info.boolean = true;
+                            info.steps = 1;
                         }
+                        describe_port(plugin, port, w, &mut info);
                         params.push(info);
                         param_slots.push(slot);
                         symbols.insert(symbol, slot);

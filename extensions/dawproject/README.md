@@ -93,7 +93,7 @@ files in seconds.
 | Automation | Volume and pan of the tracks and the master, and the parameters of the devices that came across. Points that hold (the default) and linear points | The same |
 | Markers | Markers with their colors. A marker that paw wrote for a region becomes the region again | Markers. A region becomes a marker at its start, with its length in the comment |
 | CLAP plugins | When installed here: the same plugin with its state | With their state (`plugins/*.clap-preset`) |
-| VST3 plugins | When installed here (found by name and vendor): the same plugin with the state of its `.vstpreset` | With their state as a `.vstpreset` |
+| VST3 plugins | When installed here (found by the class id, else by name and vendor): the same plugin with the state of its `.vstpreset` | With their state as a `.vstpreset` |
 | LV2 plugins and the devices of paw | Only from a file that paw wrote: the same device with its parameters | As a device (an LV2 plugin) or a built-in device (`synth`, `gain` and the others) that only paw reads, with its parameters. paw lists them |
 | Bypass | The `Enabled` switch of each device | The same |
 | Other devices | VST2 and Audio Unit plugins, the built-in devices of other programs, and plugins that are not installed: a placeholder in `meta.dawproject_placeholders` of the track (`name`, `format`, `position`, `reason`, the XML and the state), reported | Placeholders return into the chain at their places, with their states |
@@ -114,8 +114,8 @@ paw lists these after each import or export.
   - the clip launcher (scenes and their clips)
   - the master of the file, when merged
 - **paw → DAWproject:**
-  - the class id of VST3 plugins (paw does not know it: a DAW finds the
-    plugin by its name)
+  - the class id of a VST3 plugin that is not installed here and did not
+    come from a DAWproject file (a DAW finds the plugin by its name)
   - the pitch of audio clips, warp markers, the tension of smooth curves
     (they become straight lines), automation lanes that are off (they are
     written as on)
@@ -124,11 +124,17 @@ paw lists these after each import or export.
   - the loop of the transport, record arm, inputs and monitoring
   - clips in the slots of the clip launcher
 
-paw writes the parameters of a device by their place in the device (from
-0) as `parameterID`, and with their names. paw finds the parameters of a
-file by their names first. A DAW that uses the ids of the plugin itself
-(the CLAP parameter ids) does not find the automation of plugin
-parameters that paw wrote.
+For a parameter of a CLAP or VST3 plugin, `parameterID` holds the id
+that the plugin itself gives the parameter. The `deviceID` of a VST3
+plugin holds its class id. Ids of 2^31 and more become negative numbers,
+because the schema has a signed 32-bit number there.
+
+For a device of paw or an LV2 plugin, `parameterID` holds the place of
+the parameter in the device (the first is 0).
+
+When paw reads a file, it finds a parameter by the id of the plugin
+first, then by its name. See
+[Device parameters](../../docs/reference/device-parameters.md).
 
 ### Tests
 

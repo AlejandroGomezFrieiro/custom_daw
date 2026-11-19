@@ -407,16 +407,38 @@ end
 
 -- Tracks ---------------------------------------------------------------------------
 
---- A plugin parameter envelope (`<PARMENV index[:name] min max default`,
---- after the plugin it belongs to) as a lane of the device. REAPER counts
---- the parameters of a plugin from 0 in the plugin's own order, which is
---- the order paw lists them in; the values go from min to max, which
---- become the range of the parameter in paw.
+--- The parameter of `params` that a `PARMENV` names: `index[:ident]`.
+--- REAPER counts the parameters of a plugin from 0 in the plugin's own
+--- order, which is the order paw lists them in, and after the colon gives
+--- the plugin's own id for a CLAP or VST3 parameter (signed, 32 bits).
+--- The id wins: it finds the parameter in a version of the plugin that
+--- orders them otherwise.
+local function param_of(token, params)
+  local index, ident = tostring(token):match("^(%d+):?(.*)$")
+  local n = tonumber(ident)
+  if n then
+    if n < 0 then n = n + 2 ^ 32 end
+    local id = string.format("%d", n)
+    for _, p in ipairs(params) do
+      if p.id == id then return p end
+    end
+  end
+  index = tonumber(index)
+  local info = index and params[index + 1]
+  -- A name after the colon (REAPER's own "wet", "bypass") must be the parameter's.
+  if info and ident ~= "" and not n and info.id ~= ident and info.key ~= ident then return nil end
+  return info
+end
+M.param_of = param_of
+
+--- A plugin parameter envelope (`<PARMENV index[:ident] min max default`,
+--- after the plugin it belongs to) as a lane of the device (see
+--- `param_of`); the values go from min to max, which become the range of
+--- the parameter in paw.
 local function import_param_env(env, device, track, track_name, ctx)
   local where = track_name .. ": " .. tostring(env.tokens[2])
-  local index = tonumber(tostring(env.tokens[2]):match("^(%d+)"))
   local params = device and api.device_get(device).param_info or {}
-  local info = index and params[index + 1]
+  local info = param_of(env.tokens[2], params)
   if not info then
     ctx.report:add("Plugin parameter automation", where .. (device and " (no such parameter here)" or " (its plugin did not come across)"))
     return

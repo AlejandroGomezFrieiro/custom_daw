@@ -801,6 +801,25 @@ impl Controller for RemoteController {
         std::mem::take(&mut self.pending)
     }
 
+    fn value_text(&mut self, index: usize, value: f64) -> Option<String> {
+        let mut payload = PARAM_TEXT.as_bytes().to_vec();
+        payload.push(0);
+        payload.extend_from_slice(&(index as u32).to_le_bytes());
+        payload.extend_from_slice(&value.to_le_bytes());
+        let answer = self.ask(CALL, &payload, QUICK_LIMIT).ok()?;
+        (!answer.is_empty()).then(|| String::from_utf8_lossy(&answer).into_owned())
+    }
+
+    fn text_value(&mut self, index: usize, text: &str) -> Option<f64> {
+        let mut payload = PARAM_VALUE.as_bytes().to_vec();
+        payload.push(0);
+        payload.extend_from_slice(&(index as u32).to_le_bytes());
+        payload.extend_from_slice(text.as_bytes());
+        let answer = self.ask(CALL, &payload, QUICK_LIMIT).ok()?;
+        let bytes: [u8; 8] = answer.get(..8)?.try_into().ok()?;
+        Some(f64::from_le_bytes(bytes))
+    }
+
     fn has_editor(&self) -> bool {
         self.has_editor
     }
@@ -923,9 +942,12 @@ struct RemoteFactory {
 fn param_from(value: &Value) -> ParamInfo {
     let text = |key: &str| value[key].as_str().unwrap_or_default().to_string();
     let number = |key: &str| value[key].as_f64().unwrap_or(0.0) as f32;
+    let flag = |key: &str, or: bool| value[key].as_bool().unwrap_or(or);
     ParamInfo {
         key: text("key"),
+        id: text("id"),
         name: text("name"),
+        group: text("group"),
         min: number("min"),
         max: number("max"),
         default: number("default"),
@@ -938,15 +960,29 @@ fn param_from(value: &Value) -> ParamInfo {
                     .collect()
             })
             .unwrap_or_default(),
+        steps: value["steps"].as_u64().unwrap_or(0) as u32,
+        boolean: flag("boolean", false),
+        enumeration: flag("enumeration", false),
+        automatable: flag("automatable", true),
+        read_only: flag("read_only", false),
+        per_note: flag("per_note", false),
     }
 }
 
 fn param_to(param: &ParamInfo) -> Value {
     json!({
-        "key": param.key, "name": param.name, "min": param.min, "max": param.max,
-        "default": param.default, "unit": param.unit, "choices": param.choices,
+        "key": param.key, "id": param.id, "name": param.name, "group": param.group,
+        "min": param.min, "max": param.max, "default": param.default, "unit": param.unit,
+        "choices": param.choices, "steps": param.steps, "boolean": param.boolean,
+        "enumeration": param.enumeration, "automatable": param.automatable,
+        "read_only": param.read_only, "per_note": param.per_note,
     })
 }
+
+/// The methods by which the stand-in asks the helper for a parameter's
+/// text and value (see [`Controller::value_text`]).
+const PARAM_TEXT: &str = "paw.param.text";
+const PARAM_VALUE: &str = "paw.param.value";
 
 /// How long a plugin may take to be made: [`CREATE_LIMIT`], or the seconds
 /// in `PAW_PLUGIN_CREATE_LIMIT` (for tests).
@@ -1544,9 +1580,26 @@ pub fn serve_with(
                             .unwrap_or(payload.len());
                         let method = String::from_utf8_lossy(&payload[..split]).into_owned();
                         let data = payload.get(split + 1..).unwrap_or(&[]);
+                        let index = data
+                            .get(..4)
+                            .map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize);
                         if method == "sandbox.hang" {
                             TEST_HANG.store(data != b"0", Ordering::Relaxed);
                             Some(Ok(Vec::new()))
+                        } else if method == PARAM_TEXT
+                            && let (Some(index), Some(value)) = (index, data.get(4..12))
+                        {
+                            let value = f64::from_le_bytes(value.try_into().unwrap());
+                            let text = controller.value_text(index, value).unwrap_or_default();
+                            Some(Ok(text.into_bytes()))
+                        } else if method == PARAM_VALUE
+                            && let Some(index) = index
+                        {
+                            let text = String::from_utf8_lossy(&data[4..]);
+                            Some(Ok(controller
+                                .text_value(index, &text)
+                                .map(|v| v.to_le_bytes().to_vec())
+                                .unwrap_or_default()))
                         } else {
                             Some(controller.call(&method, data))
                         }

@@ -7800,6 +7800,27 @@ function paw.api.device_move(id, track, index) end
 ---@param id integer
 function paw.api.device_note_names(id) end
 
+--- One parameter of a device, named by its key, the device's own id for it
+--- or its name: its entry of `param_info`, with `value` (now) and `text`
+--- (that value as the device writes it).
+---@param id integer
+---@param name string
+function paw.api.device_param(id, name) end
+
+--- The value that a text stands for, for a parameter, as the device reads it.
+--- An error when the device cannot read the text.
+---@param id integer
+---@param name string
+---@param text string
+function paw.api.device_param_parse(id, name, text) end
+
+--- A value of a parameter as text, as the device writes it ("440 Hz").
+--- Without a value, the value now.
+---@param id integer
+---@param name string
+---@param value number?
+function paw.api.device_param_text(id, name, value) end
+
 --- Data for all devices of a kind, now and in the future (also the devices
 --- of a render). nil removes the topic. Returns `{ { device, error } }` for
 --- the devices that refused it.
@@ -7820,9 +7841,12 @@ function paw.api.device_restart(id) end
 ---@param value any
 function paw.api.device_set(id, key, value) end
 
+--- Set a parameter of a device, named by its key, the device's own id for
+--- it or its name. The value is a number, or text as the device reads it
+--- ("440 Hz", "Saw").
 ---@param id integer
 ---@param name string
----@param value number
+---@param value any
 function paw.api.device_set_param(id, name, value) end
 
 --- The state of a plugin. Give it as `state` when you add a copy of the device.

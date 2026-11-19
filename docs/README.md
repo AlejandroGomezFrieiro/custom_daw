@@ -171,6 +171,7 @@ writers of extensions come after them.
 - [Devices](reference/devices.md): the built-in devices, wet/dry and output gain, presets
 - [Plugins](reference/plugins.md): formats, scan, editors, processes, status, offline devices
 - [Lua devices](reference/lua-devices.md): the fields of a device in Lua, the block, MIDI, helpers, reload
+- [Device parameters](reference/device-parameters.md): the fields of each parameter, the ids of plugins, values as text, the plugin itself
 - [MIDI controllers](reference/learn.md): bind knobs, faders and pads to controls
 - [Harmony](reference/harmony.md): the chords and keys that paw reads, providers, theory functions, voicings, ranges
 - [Snippets](reference/snippets.md): keys, the first set, the fields of a snippet
