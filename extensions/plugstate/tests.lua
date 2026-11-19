@@ -429,3 +429,6 @@ test("plugstate: Soundshed Guitar presets of a pack, scenes and block models", f
   end
 end)
 
+
+-- The search of TONE3000's library, against a mock of its API.
+assert(loadfile("extensions/plugstate/tests_tone3000.lua"))(T)
