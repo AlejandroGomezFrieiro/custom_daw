@@ -40,6 +40,7 @@ writers of extensions come after them.
 - [How to add an audio track for a microphone or a guitar](how-to/add-an-audio-track.md): the input, the monitor, an amp
 - [How to name, color, reorder and group tracks](how-to/organize-tracks.md): groups are folders and buses
 - [How to change the sound of an instrument](how-to/change-the-sound-of-an-instrument.md): parameters, presets, the editor of the plugin
+- [How to switch amp models and presets from paw](how-to/switch-amp-models-and-presets.md): presets, models and impulse responses of TONE3000 and Soundshed Guitar, scenes, snapshots
 - [How to play a hardware synth from a track](how-to/play-a-hardware-synth.md)
 - [How to route the outputs of a drum plugin](how-to/route-the-outputs-of-a-drum-plugin.md)
 

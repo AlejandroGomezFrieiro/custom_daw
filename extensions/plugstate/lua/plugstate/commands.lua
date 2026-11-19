@@ -29,7 +29,9 @@ end
 local function load(id, slot, path)
   local ok, err = plugstate.set(id, slot.key, path)
   if not ok then return paw.notify(device_name(id) .. ": " .. tostring(err), "error") end
-  said(id, slot, path)
+  -- What the slot holds now can be of another kind (a model where an
+  -- impulse response was).
+  said(id, plugstate.slot(id, slot.key) or slot, path)
   return true
 end
 
@@ -128,7 +130,9 @@ command("plugstate.info", function()
   for _, s in ipairs(plugstate.slots(id)) do
     local value = s.value
     if value == nil or value == "" then value = "none" end
-    lines[#lines + 1] = string.format("%s (%s): %s", s.label or s.key, s.key, tostring(value))
+    -- The key first: it is what `slot=` takes.
+    local label = s.label and s.label ~= s.key and (" (" .. s.label .. ")") or ""
+    lines[#lines + 1] = string.format("%s%s: %s", s.key, label, tostring(value))
     if s.kind == "file" and s.value and s.value ~= "" then
       local words = words_of(id, s, s.value)
       if words then lines[#lines + 1] = "  " .. words end

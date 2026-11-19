@@ -368,6 +368,77 @@ test("guide: change the sound of an instrument", function()
   keys("<Esc>")
 end)
 
+--- The plugin of a package that a variable names (`PAW_TEST_TONE3000`), when
+--- the run gives the plugins a scratch HOME: they write to ~/.config.
+local function amp_plugin(var, format, name)
+  local pkg = os.getenv(var)
+  if not pkg or pkg == "" then return nil, "skipped: " .. var .. " names no package" end
+  local user, home = os.getenv("USER") or "", nil
+  for line in (T.read_file("/etc/passwd")):gmatch("[^\n]+") do
+    local n, dir = line:match("^([^:]*):[^:]*:[^:]*:[^:]*:[^:]*:([^:]*):")
+    if n == user then home = dir end
+  end
+  if not home or (os.getenv("HOME") or ""):gsub("/+$", "") == home then
+    return nil, "skipped: the plugin would write to the home folder"
+  end
+  for _, info in ipairs(paw.device_types()) do
+    if info.format == format and info.name == name then return info.kind, pkg end
+  end
+  return nil, "skipped: " .. name .. " not found"
+end
+
+test("guide: switch amp models and presets from paw", function()
+  local kind, pkg = amp_plugin("PAW_TEST_TONE3000", "clap", "TONE3000")
+  if not kind then return pkg end
+  start()
+  load_bundled("plugstate")
+  local plugstate = require("plugstate")
+  local t = paw.add_track({ name = "Guitar" })
+  t:add_device("synth")
+  t:add_clip({ start = 0, length = 4, notes = { { pitch = "A2", start = 0, length = 4 } } })
+  local amp = t:add_device(kind)
+  paw.flush()
+  paw.cursor.set_track(t)
+  api.undo_checkpoint()
+  local factory = pkg .. "/share/tone3000/factory-presets/"
+  keys(",d")
+  eq(paw.ui.focused, "devices", "the device panel")
+  keys("]m")
+  eq(plugstate.slot(amp.id).value, factory .. "Ampeg Bass Drive.t3kpreset", "]m loads the next preset")
+  shows("Ampeg Bass Drive", "the message line shows its name")
+  keys("]m")
+  keys("[m")
+  eq(plugstate.slot(amp.id).value, factory .. "Ampeg Bass Drive.t3kpreset", "[m the preset before")
+  keys("3]m")
+  eq(plugstate.slot(amp.id).value, factory .. "Marshall Bluesbreaker.t3kpreset", "a count skips more")
+  keys("u")
+  eq(plugstate.slot(amp.id).value, factory .. "Ampeg Bass Drive.t3kpreset", "u: the preset before plays again")
+  keys(":plugstate.load bogner<CR>")
+  eq(amp:get().meta.preset, "Bogner Fullstack", "a preset by words of its name")
+  -- A model into a block: one of a factory preset, written out.
+  local t3k, juce = require("plugstate.tone3000"), require("plugstate.juce")
+  local preset = t3k.read_preset(factory .. "Stereo Fuzz.t3kpreset")
+  local cached = juce.child(juce.child(t3k.blocks(preset)[1].block, "ModelCache"), "CachedModel")
+  local nam = T.scratch .. "/deluxe.nam"
+  T.write_file(nam, juce.get(cached, "data").binary)
+  keys(":plugstate.info<CR>")
+  keys(":messages<CR>")
+  shows("block2 (Block 2", ":messages lists the blocks")
+  keys("<Esc>")
+  while paw.ui.float do paw.ui.close() end
+  paw.ui.focus("devices")
+  keys(":plugstate.load slot=block2 " .. nam .. "<CR>")
+  eq(plugstate.slot(amp.id, "block2").value, nam, "the block plays the model")
+  os.remove(nam)
+  eq(plugstate.slot(amp.id, "block2").label, "Block 2 (deluxe)", "TONE3000 keeps the model when the file is gone")
+  keys("\\s")
+  keys(":plugstate.load ampeg<CR>")
+  keys("\\s")
+  keys("]v")
+  eq(plugstate.current(amp.id), "A", "]v switches to the other snapshot")
+  eq(amp:get().meta.preset, "A", "with its sound")
+end)
+
 -- Edit and arrange ---------------------------------------------------------------
 
 local function clip_layout(t)
