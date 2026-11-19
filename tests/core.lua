@@ -714,6 +714,7 @@ test("tracks are processed on several threads, and sound the same", function()
   paw.opt.threads = 1
   paw.wait(200)
   eq(api.engine_get().threads, 1, "the number changes while the song plays")
+  eq(type(api.engine_get().shared_groups), "number", "the engine counts the groups it shared out")
   paw.transport.stop()
   paw.opt.threads = before
   paw.wait(100)

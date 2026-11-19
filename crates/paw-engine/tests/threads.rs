@@ -26,6 +26,8 @@ fn device(kind: &str) -> Box<dyn paw_engine::Device> {
 /// some also send to another bus, a few from before their fader and late.
 fn project(entries: impl FnOnce(Vec<SchedEntry>) -> Vec<SchedEntry>) -> (Engine, EngineHandle) {
     let (mut engine, mut handle) = Engine::new(SR);
+    // As a render: shared between threads whenever that is faster.
+    engine.set_offline(true);
     let buses: Vec<Slot> = (1..=4).collect();
     let sources: Vec<Slot> = (5..45).collect();
     let mut next_device = 0;
@@ -205,4 +207,40 @@ fn a_schedule_that_names_a_track_twice_or_shares_a_device_does_no_harm() {
     engine.set_pool(Some(Box::new(Pool::new(8))));
     let out = play(&mut engine);
     assert!(out.iter().all(|bits| f32::from_bits(*bits).is_finite()));
+}
+
+#[test]
+fn only_a_group_with_enough_work_is_shared_between_threads() {
+    // Forty synths and delays: worth sharing out.
+    let (mut engine, _handle) = project(|entries| entries);
+    engine.set_pool(Some(Box::new(Pool::new(4))));
+    play(&mut engine);
+    assert!(
+        engine.shared().shared_groups() > 0,
+        "forty busy tracks are shared out"
+    );
+
+    // Four tracks with nothing on them, live: waking the other threads
+    // would cost more than the work.
+    let (mut engine, mut handle) = Engine::new(SR);
+    let mut list = Vec::new();
+    for slot in 1..=4 {
+        let track = TrackRt::new();
+        send(&mut handle, &mut engine, Msg::InsertTrack { slot, track });
+        list.push(SchedEntry::new(slot, MASTER));
+    }
+    list.push(SchedEntry::new(MASTER, NO_SLOT));
+    let schedule = Box::new(Schedule::new(list, 0));
+    send(&mut handle, &mut engine, Msg::SetSchedule(schedule));
+    send(&mut handle, &mut engine, Msg::Play);
+    engine.set_pool(Some(Box::new(Pool::new(4))));
+    let (mut left, mut right) = (vec![0.0f32; 256], vec![0.0f32; 256]);
+    for _ in 0..2000 {
+        engine.process(&mut left, &mut right);
+    }
+    assert!(
+        engine.shared().shared_groups() < 10,
+        "{} of 2000 blocks shared four empty tracks out",
+        engine.shared().shared_groups()
+    );
 }

@@ -3853,6 +3853,9 @@ impl Session {
             "device_sleep": self.sleep,
             "device_runs": self.handle.shared.device_blocks().0,
             "device_sleeps": self.handle.shared.device_blocks().1,
+            // Groups of tracks shared out between threads since the engine
+            // started: one with little work runs on the audio thread alone.
+            "shared_groups": self.handle.shared.shared_groups(),
             // What went wrong while playing, for the status line: blocks
             // plugins did not deliver in time, MIDI events dropped, frames
             // of the take being recorded lost to a slow disk, devices that

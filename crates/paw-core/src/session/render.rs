@@ -428,6 +428,7 @@ impl Session {
         let (mut engine, mut handle) = Engine::new(sample_rate as f64);
         engine.set_pool(self.pool(opts.threads));
         engine.set_sleep(opts.sleep.unwrap_or(self.sleep()));
+        engine.set_offline(true);
         // The render gets its own instances of every device, plugins included.
         let mut live = LiveDevices::new();
         let latency;

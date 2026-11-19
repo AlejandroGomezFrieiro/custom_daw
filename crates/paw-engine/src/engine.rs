@@ -310,6 +310,15 @@ pub struct Schedule {
     pub latency: u32,
     /// Where each group ends in `entries`.
     groups: Vec<usize>,
+    /// What each group takes to process, in nanoseconds of work over the
+    /// last few blocks, and whether it is shared out: a group is shared
+    /// between threads only when there is enough work in it.
+    costs: Vec<(u64, bool)>,
+    /// The most work a block has taken while playing, falling slowly: so
+    /// that the first blocks after a stop, or after a silence that devices
+    /// slept through, are shared out as the song needs, before it is
+    /// measured again.
+    peak: u64,
 }
 
 impl Schedule {
@@ -351,8 +360,24 @@ impl Schedule {
         Self {
             entries: keyed.into_iter().map(|(_, entry)| entry).collect(),
             latency,
+            costs: vec![(0, false); groups.len()],
+            peak: 0,
             groups,
         }
+    }
+
+    /// Whether the group `group`, entries `first..last`, is worth sharing
+    /// between threads. Waking other threads costs more than a little work:
+    /// a group is shared out when it took long enough on one thread, and
+    /// kept shared out until it takes much less.
+    fn worth_sharing(&self, group: usize, first: usize, last: usize) -> bool {
+        let (cost, shared) = self.costs.get(group).copied().unwrap_or((0, false));
+        last > first + 1
+            && if shared {
+                cost >= SHARE_NS / 2
+            } else {
+                cost >= SHARE_NS
+            }
     }
 
     /// Where the group that starts at entry `first` ends.
@@ -748,6 +773,8 @@ pub struct Shared {
     /// [`Device::resting`]), since the engine was made.
     device_runs: AtomicU64,
     device_sleeps: AtomicU64,
+    /// Groups of tracks shared out between threads, since the engine was made.
+    shared_groups: AtomicU64,
 }
 
 impl Shared {
@@ -755,6 +782,12 @@ impl Shared {
     /// engine was made: what sleeping saves, whatever else the machine does.
     pub fn device_blocks(&self) -> (u64, u64) {
         (self.device_runs.load(Relaxed), self.device_sleeps.load(Relaxed))
+    }
+
+    /// Groups of tracks shared out between threads since the engine was
+    /// made: a group with little work is done on the audio thread alone.
+    pub fn shared_groups(&self) -> u64 {
+        self.shared_groups.load(Relaxed)
     }
 
     /// Things the audio thread could not hand back to be freed and leaked
@@ -1031,6 +1064,10 @@ pub struct Engine {
     preview_leaving: Option<Box<Preview>>,
     /// Devices at rest sleep through silent blocks (see [`Msg::SetSleep`]).
     sleep: bool,
+    /// Rendering to a file, as fast as it goes: work is shared between
+    /// threads whenever that is faster. Live, only when one thread could
+    /// come near the time a block has.
+    offline: bool,
 }
 
 /// A count-in: see [`Msg::CountIn`]. Frames count from when it began.
@@ -1181,6 +1218,7 @@ impl Engine {
             preview_seconds: AtomicU64::new(0),
             device_runs: AtomicU64::new(0),
             device_sleeps: AtomicU64::new(0),
+            shared_groups: AtomicU64::new(0),
         });
         let mut tracks: Vec<Guarded<Option<Box<TrackRt>>>> =
             (0..MAX_TRACKS).map(|_| Guarded::new(None)).collect();
@@ -1224,6 +1262,7 @@ impl Engine {
             preview: None,
             preview_leaving: None,
             sleep: true,
+            offline: false,
         };
         (
             engine,
@@ -1259,6 +1298,14 @@ impl Engine {
     /// [`Msg::SetSleep`].
     pub fn set_sleep(&mut self, sleep: bool) {
         self.sleep = sleep;
+    }
+
+    /// Say that the engine renders to a file, as fast as it can, rather
+    /// than live: then tracks are shared between threads whenever that is
+    /// faster, where live they are only when one thread would take a good
+    /// part of the time a block has, and the other threads' time is saved.
+    pub fn set_offline(&mut self, offline: bool) {
+        self.offline = offline;
     }
 
     fn discard(&mut self, garbage: Garbage) {
@@ -2084,15 +2131,24 @@ impl Engine {
             }
         }
 
+        // Live, a block that one thread does in a quarter of the time it
+        // has is done on one: the other threads are not woken at all.
+        let total: u64 = schedule.costs.iter().map(|c| c.0).sum();
+        let budget = (n as f64 / self.sample_rate * 1e9) as u64;
+        let held = if playing { schedule.peak } else { 0 };
+        let share = self.offline || total.max(held) >= budget / 4;
         let mut first = 0;
+        let mut group = 0;
         while first < schedule.entries.len() {
             let last = schedule.group_end(first);
+            let worth = share && schedule.worth_sharing(group, first, last);
+            let spent = AtomicU64::new(0);
             // The tracks of a group do not feed each other: each makes its
             // own sound, on whichever thread takes it. What they send on is
             // then added up here, in the order of the entries, so the sums
             // are the same however many threads ran.
-            match self.pool.as_deref_mut() {
-                Some(pool) if last - first > 1 && pool.threads() > 1 => {
+            let threads = match self.pool.as_deref_mut() {
+                Some(pool) if last - first > 1 && pool.threads() > 1 && worth => {
                     let work = Work {
                         block: &block,
                         entries: &schedule.entries[first..last],
@@ -2100,11 +2156,29 @@ impl Engine {
                         devices: &self.devices,
                         inputs: &self.inputs[..self.input_count],
                         shared: &self.shared,
+                        spent: &spent,
                     };
                     pool.run(last - first, &|index| work.track(index));
+                    self.shared.shared_groups.fetch_add(1, Relaxed);
+                    // No more sharing in this block: the workers need not
+                    // look for any.
+                    let mut rest = last;
+                    let mut more = false;
+                    for later in group + 1..schedule.groups.len() {
+                        let end = schedule.groups[later];
+                        more |= share && schedule.worth_sharing(later, rest, end);
+                        rest = end;
+                    }
+                    // A render goes on to the next block at once, where the
+                    // workers are wanted again.
+                    if !more && !self.offline {
+                        pool.idle();
+                    }
+                    let threads = pool.threads().min(last - first);
                     for entry in schedule.entries[first..last].iter_mut() {
                         self.route(entry, &block, out_l, out_r);
                     }
+                    threads
                 }
                 // Alone, a track is sent on while its block is still at hand.
                 _ => {
@@ -2116,13 +2190,30 @@ impl Engine {
                             devices: &self.devices,
                             inputs: &self.inputs[..self.input_count],
                             shared: &self.shared,
+                            spent: &spent,
                         }
                         .track(0);
                         self.route(entry, &block, out_l, out_r);
                     }
+                    1
                 }
+            };
+            // The work of the tracks themselves, whichever threads did it,
+            // without the waiting: smoothed, so that one block the thread
+            // was held up in does not change how the next is done.
+            if let Some(slot) = schedule.costs.get_mut(group) {
+                *slot = ((slot.0 * 3 + spent.load(Relaxed)) / 4, threads > 1);
             }
             first = last;
+            group += 1;
+        }
+        if let Some(pool) = self.pool.as_deref().filter(|_| !self.offline) {
+            pool.idle();
+        }
+        if playing {
+            // Falls by half in about 7000 blocks: a minute at 256 frames.
+            let total: u64 = schedule.costs.iter().map(|c| c.0).sum();
+            schedule.peak = total.max(schedule.peak - schedule.peak / 10_000);
         }
         // The click belongs with what is heard, which is this far behind.
         let behind = schedule.latency as f64 / self.sample_rate;
@@ -2349,6 +2440,11 @@ fn key_into(devices: &mut [Guarded<Option<DeviceSlot>>], key: &mut KeyRt, src: [
     }
 }
 
+/// Nanoseconds of work in a group of tracks, on one thread, above which it
+/// is shared between threads: less is done sooner on one than it takes to
+/// wake the others.
+const SHARE_NS: u64 = 60_000;
+
 /// Most metronome clicks in one block: at 999 BPM in x/64 a block of
 /// [`MAX_BLOCK`] frames at 8 kHz holds about 34.
 const MAX_CLICKS: usize = 64;
@@ -2379,13 +2475,23 @@ struct Work<'a> {
     devices: &'a [Guarded<Option<DeviceSlot>>],
     inputs: &'a [Vec<f32>],
     shared: &'a Shared,
+    /// Nanoseconds the tracks of the group took, added up.
+    spent: &'a AtomicU64,
 }
 
 impl Work<'_> {
+    /// Make one track's block, and count the time it took.
+    fn track(&self, index: usize) {
+        let began = std::time::Instant::now();
+        self.make(index);
+        self.spent
+            .fetch_add(began.elapsed().as_nanos() as u64, Relaxed);
+    }
+
     /// Make one track's block: its clips and input, through its devices and
     /// its fader. What has been sent into it by the tracks that feed it is
     /// already in its buffer. Touches nothing but the track and its devices.
-    fn track(&self, index: usize) {
+    fn make(&self, index: usize) {
         let entry = &self.entries[index];
         let Block {
             ref ctx,
