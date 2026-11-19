@@ -28,6 +28,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub type StateId = u64;
 
+/// A state that holds this many bytes beyond its parent is heavy to weigh.
+const HEAVY: usize = 64 << 10;
+/// A heavy state whose parent was dropped is weighed again after this many
+/// such steps; until then its weight is reckoned from those dropped.
+const RECKON: u32 = 32;
+
 /// Seconds since the Unix epoch, as a state's time.
 pub fn now() -> f64 {
     SystemTime::now()
@@ -57,6 +63,9 @@ pub struct State<T> {
     /// About how many bytes the snapshot holds that its parent's does not
     /// share with it.
     pub weight: usize,
+    /// How many states have been dropped between it and its parent since
+    /// it was last weighed: its weight is reckoned from theirs until then.
+    reckoned: u32,
 }
 
 pub struct History<T> {
@@ -151,6 +160,27 @@ impl<T: Clone> History<T> {
         let state = self.states.get_mut(&id).unwrap();
         self.bytes = self.bytes - state.weight + weight;
         state.weight = weight;
+        state.reckoned = 0;
+    }
+
+    /// A state's parent `dropped` was dropped, and it hangs from the
+    /// parent's parent now: it holds at most what it held beyond the state
+    /// dropped and what that held beyond its own parent. To weigh it again
+    /// costs about as much as what it holds, which grows as states are
+    /// dropped (a state shares less and less with an older parent): a heavy
+    /// state is weighed again only after [`RECKON`] such steps, and its
+    /// weight is the sum until then.
+    fn reparent_weight(&mut self, id: StateId, dropped: (usize, u32)) {
+        let Some(state) = self.states.get_mut(&id) else { return };
+        let reckoned = state.weight + dropped.0;
+        let steps = state.reckoned.max(dropped.1) + 1;
+        if reckoned < HEAVY || steps >= RECKON {
+            self.reweigh(id);
+        } else {
+            self.bytes = self.bytes - state.weight + reckoned;
+            state.weight = reckoned;
+            state.reckoned = steps;
+        }
     }
 
     /// Forget every state and start again from `snapshot`, which counts as
@@ -184,6 +214,7 @@ impl<T: Clone> History<T> {
             keep: false,
             snapshot,
             weight: 0,
+            reckoned: 0,
         }
     }
 
@@ -485,7 +516,7 @@ impl<T: Clone> History<T> {
             self.states.get_mut(child).unwrap().parent = Some(parent_id);
             // What it shared with the state dropped it may not share with
             // its new parent.
-            self.reweigh(*child);
+            self.reparent_weight(*child, (state.weight, state.reckoned));
         }
         let parent = self.states.get_mut(&parent_id).unwrap();
         let at = parent.children.iter().position(|c| *c == id).unwrap();
@@ -696,6 +727,34 @@ mod tests {
         assert_eq!(t.at(), "cccc");
         t.h.reset("new".into(), 2000.0);
         assert_eq!(t.h.bytes(), 0);
+    }
+
+    #[test]
+    fn heavy_states_are_weighed_again_now_and_then_as_older_ones_go() {
+        use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+        static WEIGHED: AtomicUsize = AtomicUsize::new(0);
+        // Each state holds 100 kB that its parent does not share, and
+        // weighing one is counted.
+        let mut t = T::new(10);
+        t.h = History::new("root".into(), 1000.0, 10).weigh_with(
+            |_, _: &String| {
+                WEIGHED.fetch_add(1, Relaxed);
+                100 << 10
+            },
+            usize::MAX,
+        );
+        for _ in 0..200 {
+            t.edit("a");
+        }
+        let weighed = WEIGHED.load(Relaxed);
+        // One for each state made, and about one for each 32 dropped.
+        assert!(weighed < 200 + 200 / 32 + 2, "weighed {weighed} times");
+        assert_eq!(t.h.len(), 10);
+        // The weight reckoned is never below what it holds, and comes back
+        // to it when weighed again.
+        let bytes = t.h.bytes();
+        assert!(bytes >= 9 * (100 << 10), "{bytes}");
+        assert!(bytes <= 9 * (100 << 10) + 32 * (100 << 10), "{bytes}");
     }
 
     #[test]

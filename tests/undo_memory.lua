@@ -67,6 +67,50 @@ test("a one-note edit to a clip of many notes costs the undo history a few kilob
   end
 end)
 
+test("a clip moved on a track of thousands of clips costs what it moved, and undo and redo are exact", function()
+  fresh()
+  local track = api.track_add({ name = "Many" })
+  local ids = {}
+  for i = 1, 3000 do
+    ids[i] = api.clip_add(track, { start = (i - 1) * 4, length = 4, notes = { { start = 0, length = 1, pitch = 60 } } })
+  end
+  paw.flush()
+  api.undo_checkpoint()
+  local changed, added, removed = {}, 0, 0
+  local on = {
+    paw.on("clip.changed", function(e) changed[#changed + 1] = e.id end),
+    paw.on("clip.added", function() added = added + 1 end),
+    paw.on("clip.removed", function() removed = removed + 1 end),
+  }
+  -- A step holds about a run of the track's clips, not a pointer to each.
+  local moved = per_step(function(i) api.clip_set(ids[i * 97], "start", (i * 97 - 1) * 4 + 1) end, 30)
+  eq(moved < 8 * 1024, true, string.format("one clip moved: %d bytes a step", moved))
+  eq(#changed, 30, "each move says which clip changed")
+  eq(changed[30], ids[30 * 97])
+  local gone = per_step(function(i) api.clip_remove(ids[i * 13]) end, 10)
+  eq(gone < 8 * 1024, true, string.format("one clip removed: %d bytes a step", gone))
+  eq(removed, 10, "each removal is said")
+  api.clip_add(track, { start = 2, length = 1 })
+  paw.flush()
+  api.undo_checkpoint()
+  eq(added, 1)
+  for _, id in ipairs(on) do paw.off(id) end
+
+  local function starts()
+    local out = {}
+    for _, c in ipairs(api.clip_list(track)) do out[#out + 1] = c.id .. "@" .. c.start end
+    return table.concat(out, " ")
+  end
+  local now = starts()
+  for _ = 1, 41 do api.undo() end
+  paw.flush()
+  eq(#api.clip_list(track), 3000, "undone to the clips as they were made")
+  eq(api.clip_get(ids[97]).start, 96 * 4, "and where they were")
+  for _ = 1, 41 do api.redo() end
+  paw.flush()
+  eq(starts(), now, "redone to every clip where it was")
+end)
+
 test("the undo history keeps as many steps and as much memory as its options say", function()
   fresh()
   local tree = api.undo_tree()

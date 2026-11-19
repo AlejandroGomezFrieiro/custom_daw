@@ -689,6 +689,46 @@ fn the_audio_thread_never_allocates() {
         handle.collect_garbage();
     }
 
+    // Clips sent as a part each, then edited a few at a time while playing:
+    // the parts taken out go to the garbage queue in the edit.
+    let part = |id: u64, order: u64| {
+        let set = clips(&audio, 8 + id as usize % 5);
+        let audio = set.audio.iter().take(2).map(|r| AudioRegion {
+            start: r.start + id as f64,
+            end: r.end + id as f64,
+            data: r.data.clone(),
+            offset: r.offset,
+            gain: r.gain,
+            fade_in: r.fade_in,
+            fade_out: r.fade_out,
+            declick_in: r.declick_in,
+            declick_out: r.declick_out,
+            hold: Default::default(),
+        });
+        let midi: Vec<_> = set.midi.iter().map(|e| paw_engine::MidiEv { beat: e.beat + id as f64, kind: e.kind }).collect();
+        paw_engine::Part::new(id, order, midi.into(), audio.collect())
+    };
+    for &slot in &tracks[..3] {
+        let parts = (0..40).map(|id| part(id, (id + 1) * 1000)).collect();
+        let set = Box::new(ClipSet::default().with_parts(parts, 64));
+        send(&mut handle, Msg::SetClips { track: slot, clips: set });
+    }
+    send(&mut handle, Msg::Seek(2.0));
+    assert_eq!(run(&mut engine, 4, 512, 2), 0, "parts set");
+    for round in 0..30u64 {
+        for &slot in &tracks[..3] {
+            let gone = round % 40;
+            let edit = paw_engine::PartEdit {
+                remove: vec![(gone, (gone + 1) * 1000 + round / 40), (1000 + round, 500 + round - 1)],
+                add: vec![part(gone, (gone + 1) * 1000 + round / 40 + 1), part(1000 + round + 1, 500 + round)],
+                removed: Vec::with_capacity(2),
+            };
+            send(&mut handle, Msg::EditClips { track: slot, edit: Box::new(edit) });
+        }
+        assert_eq!(run(&mut engine, 3, 512, 2), 0, "parts edited, round {round}");
+        handle.collect_garbage();
+    }
+
     // Removing everything, stopping, and messages for slots that do not exist.
     for (i, &slot) in tracks.iter().enumerate() {
         for k in 0..kinds.len() {

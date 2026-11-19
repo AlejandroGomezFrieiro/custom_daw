@@ -517,6 +517,12 @@ pub enum Msg {
         track: Slot,
         clips: Box<ClipSet>,
     },
+    /// Take out and put in some of the parts of a track's clips (see
+    /// [`ClipSet::edit`]): what an edit of a few clips sends.
+    EditClips {
+        track: Slot,
+        edit: Box<crate::clip::PartEdit>,
+    },
     /// While playing, the lanes set the track's fader, pan and device
     /// parameters at the start of each block, over whatever was set directly.
     SetAutomation {
@@ -634,6 +640,7 @@ enum Garbage {
     Schedule(#[allow(dead_code)] Box<Schedule>),
     Chain(#[allow(dead_code)] Box<[Slot]>),
     Clips(#[allow(dead_code)] Box<ClipSet>),
+    PartEdit(#[allow(dead_code)] Box<crate::clip::PartEdit>),
     Automation(#[allow(dead_code)] Box<Automation>),
     Take(#[allow(dead_code)] Box<Take>),
     Pool(#[allow(dead_code)] Box<Pool>),
@@ -1486,6 +1493,18 @@ impl Engine {
                 }
                 None => self.discard(Garbage::Clips(clips)),
             },
+            Msg::EditClips { track, mut edit } => {
+                if let Some(t) = self.track_mut(track) {
+                    // The main thread keeps count of the room there is, so
+                    // an edit always fits.
+                    if t.clips.edit(&mut edit) {
+                        // Notes that were sounding may no longer have a note-off.
+                        t.flush = true;
+                        t.chase = true;
+                    }
+                }
+                self.discard(Garbage::PartEdit(edit));
+            }
             Msg::SetAutomation { track, automation } => match self.track_mut(track) {
                 Some(t) => {
                     let old = std::mem::replace(&mut t.automation, automation);
@@ -2585,20 +2604,19 @@ impl Work<'_> {
             }
             t.launcher.advance(end - start);
         } else if playing {
-            let first = t.clips.midi.partition_point(|e| e.beat < start);
-            for ev in &t.clips.midi[first..] {
-                if ev.beat >= end {
-                    break;
-                }
-                let frame = match self.block.bpf {
+            t.clips.find_sounding(start, end);
+            let bpf = self.block.bpf;
+            let events = &mut t.events;
+            t.clips.events(start, end, |ev| {
+                let frame = match bpf {
                     Some(bpf) => ((ev.beat - start) / bpf) as usize,
                     None => ((map.seconds(ev.beat) - ctx.seconds) * sr) as usize,
                 };
-                t.events.push(Event {
+                events.push(Event {
                     frame: frame.min(n - 1) as u32,
                     kind: ev.kind,
                 });
-            }
+            });
             let [left, right] = &mut t.buf;
             mix_audio(
                 &t.clips,
@@ -2861,7 +2879,7 @@ fn mix_audio(
     let n = left.len();
     let sr = ctx.sample_rate as f64;
     let t0 = ctx.seconds;
-    for region in &clips.audio {
+    for region in clips.regions() {
         if region.end <= start || region.start >= end {
             continue;
         }
@@ -2936,7 +2954,7 @@ pub(crate) fn mix_audio_constant(
     let n = left.len();
     let sr = ctx.sample_rate as f64;
     let beats_per_frame = ctx.tempo / (60.0 * sr);
-    for region in &clips.audio {
+    for region in clips.regions() {
         if region.end <= start || region.start >= end {
             continue;
         }
