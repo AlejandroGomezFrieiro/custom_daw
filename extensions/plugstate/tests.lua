@@ -215,8 +215,8 @@ end)
 -- --- TONE3000 and Soundshed Guitar ---------------------------------------------
 -- These plugins are not in nixpkgs: their tests run when PAW_TEST_TONE3000
 -- or PAW_TEST_SOUNDSHED names the package (its store path), and the run
--- gives the plugins a scratch home (`XDG_CONFIG_HOME`, where both keep
--- their files). `tests/tools/suite.sh plugins` does both.
+-- gives the plugins a scratch HOME: both keep their files in ~/.config
+-- whatever XDG_CONFIG_HOME says. `tests/tools/suite.sh plugins` does both.
 
 --- The package a variable names, when the plugin's files go to a scratch
 --- folder; else nil and why the test is skipped.
@@ -230,9 +230,9 @@ local function package(var)
     local name, dir = line:match("^([^:]*):[^:]*:[^:]*:[^:]*:[^:]*:([^:]*):")
     if name == user then home = dir end
   end
-  local config = os.getenv("XDG_CONFIG_HOME")
-  if not config or config == "" or (home and config:gsub("/+$", "") == home .. "/.config") then
-    return nil, "skipped: the plugin would write to the home folder (set XDG_CONFIG_HOME to a scratch folder)"
+  local now = (os.getenv("HOME") or ""):gsub("/+$", "")
+  if now == "" or not home or now == home then
+    return nil, "skipped: the plugin would write to the home folder (give the test run a scratch HOME)"
   end
   return dir
 end
@@ -321,7 +321,7 @@ test("plugstate: TONE3000 presets and block models are chosen with keys, undone,
   eq(block.label, "Block 2 (magnatone)", "named after it")
   local with_model = sound()
   differs(with_model, ampeg, "the model plays")
-  local log = T.read_file(os.getenv("XDG_CONFIG_HOME") .. "/TONE3000/TONE3000.log")
+  local log = T.read_file(os.getenv("HOME") .. "/.config/TONE3000/TONE3000.log")
   eq(log:find("tone 0 model %d+ %(cached%)") ~= nil, true, "the plugin loads it from the state, not the network")
 
   -- Snapshots, and the project.

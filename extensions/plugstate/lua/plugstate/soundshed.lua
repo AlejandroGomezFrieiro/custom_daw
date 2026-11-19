@@ -88,11 +88,10 @@ function M.blocks(text, root)
   return out
 end
 
---- Where the plugin keeps its files: `$XDG_CONFIG_HOME/Soundshed Guitar/data/v1`.
+--- Where the plugin keeps its files: `~/.config/Soundshed Guitar/data/v1`
+--- (JUCE's folder of application data; it does not read XDG_CONFIG_HOME).
 function M.data_dir()
-  local base = os.getenv("XDG_CONFIG_HOME")
-  if not base or base == "" then base = (os.getenv("HOME") or "") .. "/.config" end
-  return base .. "/Soundshed Guitar/data/v1"
+  return (os.getenv("HOME") or "") .. "/.config/Soundshed Guitar/data/v1"
 end
 
 --- A name for a file the library names by id: the plugin's copy of a

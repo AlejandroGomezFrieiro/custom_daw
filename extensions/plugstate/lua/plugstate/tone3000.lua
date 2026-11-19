@@ -155,11 +155,10 @@ function M.fnv(data)
   return h
 end
 
---- Where TONE3000 keeps its files: `$XDG_CONFIG_HOME/TONE3000`.
+--- Where TONE3000 keeps its files: `~/.config/TONE3000` (JUCE's folder of
+--- application data; it does not read XDG_CONFIG_HOME).
 function M.root()
-  local base = os.getenv("XDG_CONFIG_HOME")
-  if not base or base == "" then base = (os.getenv("HOME") or "") .. "/.config" end
-  return base .. "/TONE3000"
+  return (os.getenv("HOME") or "") .. "/.config/TONE3000"
 end
 
 local EQ_BANDS = {
@@ -231,30 +230,6 @@ function M.preset_folders()
   local dirs = { M.root() .. "/Presets" }
   for _, dir in ipairs(plugstate.share_dirs("tone3000/factory-presets")) do dirs[#dirs + 1] = dir end
   return dirs
-end
-
---- The presets in the order in which program changes pick them: the
---- user's first, then the factory presets, each sorted by name, as
---- TONE3000 sorts them. `{ path, name, id }`.
-function M.programs()
-  local root = M.root() .. "/Presets"
-  local user, factory = {}, {}
-  local function scan(dir, into)
-    for _, e in ipairs(api.read_dir(dir)) do
-      if not e.is_dir and e.name:lower():match("%.t3kpreset$") then
-        local path = dir .. "/" .. e.name
-        local head = M.preset_header(path) or {}
-        into[#into + 1] = { path = path, name = head.name or plugstate.stem(path), id = head.id }
-      end
-    end
-  end
-  scan(root, user)
-  scan(root .. "/Factory", factory)
-  local function by_name(a, b) return a.name:lower() < b.name:lower() end
-  table.sort(user, by_name)
-  table.sort(factory, by_name)
-  for _, p in ipairs(factory) do user[#user + 1] = p end
-  return user
 end
 
 -- --- the adapter --------------------------------------------------------------
