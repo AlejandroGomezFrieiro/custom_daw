@@ -185,7 +185,7 @@ return function(gui)
   --- when it was on a point, a handle or a note's vibrato switch.
   function M.pointer(view, e, clip, list, x, y)
     local S = gui.S or {}
-    local tempo = api.project_get().tempo
+    local tempo = api.project_get("tempo")
     if e.kind == "double" then
       local note, index = note_over(list, beat_at(x))
       if not note then return true end
@@ -262,7 +262,7 @@ return function(gui)
       local step = e.shift and 1 or 5
       d.dticks = math.floor(ticks / step + 0.5) * step
       d.label = string.format("phoneme %s starts %+d ticks (%+d ms) from where it was; Shift for single ticks",
-        d.name, d.dticks, math.floor(shapes.ms(d.dticks / proto.TICKS, api.project_get().tempo) + 0.5))
+        d.name, d.dticks, math.floor(shapes.ms(d.dticks / proto.TICKS, api.project_get("tempo")) + 0.5))
     elseif e.kind == "up" then
       gui.drag = nil
       if d.dticks ~= 0 then

@@ -48,7 +48,7 @@ local function strip_gesture(_, e)
       -- The strips scroll with the track the cursor is on.
       paw.cursor.move_track(step)
     else
-      A.set_volume(id, api.track_get(id).volume - step)
+      A.set_volume(id, api.track_get(id, "volume") - step)
     end
     return api.ui_redraw()
   end
@@ -74,13 +74,13 @@ local function strip_gesture(_, e)
   if kind == "fader" then
     if e.double then return A.set_volume(id, 0) end
     local rows = e.rect.h
-    return drag(e, function() return fader_position(api.track_get(id).volume) end, function(start, d)
+    return drag(e, function() return fader_position(api.track_get(id, "volume")) end, function(start, d)
       local per = (mouse.has(d, "S") and 0.25 or 1) / math.max(1, rows - 1)
       A.set_volume(id, fader_volume(start - d.dy * per))
     end, id, "volume")
   elseif kind == "volume" then
     if e.double then return A.set_volume(id, 0) end
-    return drag(e, function() return api.track_get(id).volume end, function(start, d)
+    return drag(e, function() return api.track_get(id, "volume") end, function(start, d)
       A.set_volume(id, start + d.dx * (mouse.has(d, "S") and 0.1 or 1))
     end, id, "volume")
   elseif kind == "pan" then

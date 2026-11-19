@@ -19,8 +19,8 @@ local volumes = {}
 local function id_of(track) return type(track) == "table" and track.id or track end
 
 local function meta(id)
-  local ok, t = pcall(api.track_get, id)
-  return ok and t.meta or {}
+  local ok, m = pcall(api.track_get, id, "meta")
+  return ok and m or {}
 end
 
 local function set_meta(id, key, value)
@@ -152,7 +152,7 @@ function M.remove(track, stay)
   track = id_of(track)
   local group = M.of(track)
   if not group then return false end
-  if api.track_get(track).output == group then api.track_set(track, "output", api.track_get(group).output) end
+  if api.track_get(track, "output") == group then api.track_set(track, "output", api.track_get(group, "output")) end
   set_meta(track, "group", M.of(group))
   -- Out of the group's block of rows: after its last member.
   local members = M.members(group)
@@ -189,7 +189,7 @@ function M.dissolve(group)
   if not M.is_group(group) then return false end
   local outer = M.of(group)
   for _, id in ipairs(M.members(group)) do
-    if api.track_get(id).output == group then api.track_set(id, "output", api.track_get(group).output) end
+    if api.track_get(id, "output") == group then api.track_set(id, "output", api.track_get(group, "output")) end
     set_meta(id, "group", outer)
   end
   local t = api.track_get(group)
@@ -216,7 +216,7 @@ end
 --- Note the faders of a group's members: linked faders move by what they
 --- have moved since.
 local function note(group)
-  for _, id in ipairs(M.members(group)) do volumes[id] = api.track_get(id).volume end
+  for _, id in ipairs(M.members(group)) do volumes[id] = api.track_get(id, "volume") end
 end
 
 --- True if the faders of the members of a group are linked. When one moves,
@@ -241,13 +241,13 @@ paw.on("track.*", function(event, name)
   -- Undo, redo and opening a project restore every fader themselves.
   if event.restored or name == "track.added" then return note(group) end
   if name ~= "track.changed" then return end
-  local now = api.track_get(event.id).volume
+  local now = api.track_get(event.id, "volume")
   local before = volumes[event.id]
   volumes[event.id] = now
   if before == nil or before == now then return end
   for _, id in ipairs(M.members(group)) do
     if id ~= event.id then
-      local was = volumes[id] or api.track_get(id).volume
+      local was = volumes[id] or api.track_get(id, "volume")
       volumes[id] = util.clamp(was + now - before, -120, 24)
       api.track_set(id, "volume", volumes[id])
     end

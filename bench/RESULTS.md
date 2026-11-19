@@ -121,6 +121,65 @@ synth tracks at 128 frames, it went from 0.43 ms to 0.26 ms. For 10 synth
 tracks at 128 frames, it went from 0.18 ms to 0.26 ms, with a budget of
 2.67 ms. These tracks now play on one thread. This uses less processor
 time, but each block takes longer.
+## 2026-11-19: edits, memory and startup again
+
+A new run of the matrix (`results/remeasure-2026-11-19.jsonl`, not in the
+repository) showed a faster engine but slower work around it. 1000 clip moves
+took 435 ms (before: 50 ms). 100 tracks took 86 MB (before: 37 MB). A start
+took 62 ms (before: 15 ms). And `edit.lua clips 5000` stopped with "out of
+Lua stack". The causes, and the changes:
+
+- **The crash.** Each edit started a timer for `address.changed` and then
+  sent the event at once, so the timer stayed. A script that `-l` runs does
+  not let timers run. Each timer kept its function in a slot of a stack with
+  room for about 8000 values. Now the event stops its timer. Timers keep
+  their functions in the Lua registry, which has no such limit.
+- **Edits.** The handlers of each edit (learn, freeze, groups) asked for the
+  whole track, which lists every clip. The `address` module asked for the
+  whole project, and the length of the project looks at every clip. Now
+  `paw.api.track_get(id, key)` and `paw.api.project_get(key)` give one entry,
+  and `track.volume` and `paw.project.edits` use them. The undo history, the
+  names of notes, the change events and the clip cache of the engine
+  compared two states through a hash map of every clip. Now they compare by
+  place first. A project without audio does not look through its history
+  for audio files.
+- **Memory.** Each device had a line of 128 kB that holds back its dry
+  signal. Each block wrote it, but most devices have no latency. Each delay
+  wrote silence into its lines of 2 MB while the engine ran. So the memory
+  of a project grew with the time that the engine ran. Now a device without
+  latency does not write its line, and the line takes no memory until a
+  write. A delay that hears only silence does not write its lines.
+- **Startup.** The parse of 2.4 MB of Lua took most of the time. Now the
+  build compiles the runtime to LuaJIT bytecode, which loads about 15 times
+  faster.
+
+The table compares the commit before (`main` at 0694042) and after. The runs
+are interleaved, on the same eight cores, under load from other jobs (load
+average 6 to 9). Each figure is the median of five runs (three for memory),
+with the smallest and largest in brackets.
+
+| | Before | After | Tracktion |
+| --- | ---: | ---: | ---: |
+| 1000 clip adds, each an undo step and a sync | 365 ms (355 to 392) | 100 ms (85 to 119) | 16 ms |
+| 1000 clip moves | 563 ms (511 to 578) | 163 ms (130 to 177) | 2.3 ms |
+| 1000 clip deletes | 434 ms (412 to 535) | 166 ms (108 to 184) | 2.1 ms |
+| 998 undo steps | 324 ms (292 to 393) | 124 ms (96 to 153) | 25 ms |
+| 998 redo steps | 317 ms (273 to 379) | 120 ms (83 to 133) | 25 ms |
+| 5000 clips: adds, moves | stops | 1.45 s, 2.67 s | 0.10 s, 0.02 s |
+| 1000 note moves in a clip of 1000 notes | 228 ms (164 to 233) | 181 ms (156 to 192) | 1.8 ms |
+| Memory, 100 tracks of 8 clips, after 1000 undo steps | 99 MB | 44 MB | 113 MB |
+| Memory, 500 tracks of 8 clips, after 1000 undo steps | 629 MB | 94 MB | 499 MB |
+| Start and quit, no plugins | 74.8 ms (74.0 to 85.5) | 43.0 ms (41.6 to 43.3) | 115 ms |
+
+The note moves show no measurable difference. The first build in the history
+of the repository is 43aad5d. In interleaved runs under the same load, it
+did 1000 clip moves in 154 ms (128 to 192). That is level with this build. The
+50 ms in the first table came from a machine without load.
+
+What is left: an edit still costs in proportion to the clips of its track.
+The undo step copies the list of clips of the track, and the engine gets all
+the clips of the track again. A list that shares its parts (a persistent
+vector) can make that cost independent of the size.
 
 ## Machine and method
 

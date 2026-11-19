@@ -334,7 +334,7 @@ local function write(state, result)
     state.span.from = math.min(state.span.from, n.start)
     state.span.to = math.max(state.span.to, n.start + n.length)
   end
-  state.edits = api.project_get().edits
+  state.edits = api.project_get("edits")
 end
 
 local function describe(state)
@@ -393,7 +393,7 @@ function M.active()
   if not active then return nil end
   local roll = paw.ui.views.pianoroll
   local clip = roll and roll:clip()
-  local stale = api.project_get().edits ~= active.edits or not pcall(api.clip_get, active.clip)
+  local stale = api.project_get("edits") ~= active.edits or not pcall(api.clip_get, active.clip)
   local away = not clip or clip.id ~= active.clip
     or clip.start + roll.beat < active.span.from - 1e-9 or clip.start + roll.beat > active.span.to + 1e-9
   if stale or away then M.finish() end

@@ -29,6 +29,59 @@ local M = {}
 
 M.extensions = { "mid", "midi", "smf", "kar" }
 
+--- True if a path names a MIDI 2.0 clip file (`.midi2`), from its ending.
+function M.is_clip_file(path)
+  return (tostring(path):match("%.([^./]+)$") or ""):lower() == "midi2"
+end
+
+-- The clip file open alone, if one is: `{ path, clip }` (see `open_clip`).
+M.document = nil
+
+--- Open a MIDI 2.0 clip file alone, as a new project with no file: one
+--- track that plays it on the default instrument, the clip, and the piano
+--- roll on it. `:w` writes the clip back to its file. Returns the clip.
+function M.open_clip(path)
+  local read = paw.api.midi2_read(path)
+  local name = (path:match("([^/]+)$") or path):gsub("%.[^.]+$", "")
+  paw.api.project_new()
+  paw.api.project_set("name", name)
+  local track = paw.add_track({ name = name })
+  track:add_device("synth")
+  local clip = track:add_clip({ name = name, start = 0, length = read.length > 0 and read.length or nil,
+    notes = read.notes, controls = read.controls })
+  paw.api.undo_reset()
+  M.document = { path = path, clip = clip.id }
+  paw.cursor.set_track(track)
+  paw.cursor.beat = 0
+  -- `project_new` above says `project.loaded` later: this clip stays open.
+  M.document.opening = true
+  pcall(paw.ui.views.pianoroll.edit, paw.ui.views.pianoroll, clip)
+  return clip, read
+end
+
+--- Write the clip open alone back to its file. Returns its path.
+function M.write_clip()
+  local doc = M.document
+  local clip = paw.api.clip_get(doc.clip)
+  paw.api.midi2_write(doc.path, { notes = paw.api.clip_notes(doc.clip), controls = paw.api.clip_controls(doc.clip), length = clip.length })
+  paw.api.project_mark_saved()
+  return doc.path
+end
+
+paw.on("project.loaded", function()
+  if M.document and M.document.opening then
+    M.document.opening = nil
+  else
+    M.document = nil
+  end
+end)
+
+--- Bring a MIDI 2.0 clip file in as a clip that refers to it, on a track at
+--- a beat. The first edit makes it the project's own. Returns the clip.
+function M.import_clip(path, track, start)
+  return track:add_clip({ file = path, start = start })
+end
+
 --- True if a path names a MIDI file, from its file ending.
 function M.is_midi_file(path)
   local ext = (tostring(path):match("%.([^./]+)$") or ""):lower()
@@ -709,7 +762,10 @@ end
 
 --- One track of the file from clips of a track (all its MIDI clips when
 --- `clips` is nil): what sounds of them, where it sounds.
-local function export_track(track, only)
+--- Whether a time in ticks or a value falls between the steps of MIDI 1.0.
+local function between(x) return math.abs(x - math.floor(x + 0.5)) > 1e-6 end
+
+local function export_track(track, only, lost)
   local out = { name = track.name, notes = {}, controls = {} }
   local channel = default_channel(track)
   local last = 0
@@ -726,6 +782,7 @@ local function export_track(track, only)
             lyric = type(meta.lyric) == "string" and meta.lyric or nil, attr = n.attr,
           }
           last = math.max(last, c.start + n.start + length)
+          if between((c.start + n.start) * EXPORT_PPQ) or between(length * EXPORT_PPQ) then lost.times = lost.times + 1 end
         end
       end
       for _, k in ipairs(c.control_count > 0 and clip:controls() or {}) do
@@ -740,12 +797,27 @@ local function export_track(track, only)
           local plain = not k.key or k.type == "pressure"
           if plain and (k.type == "cc" or k.type == "bend" or k.type == "pressure" or k.type == "program") then
             out.controls[#out.controls + 1] = raw
+            if raw.value and between(raw.value) then lost.values = lost.values + 1 end
+          else
+            lost.dropped = lost.dropped + 1
           end
         end
       end
     end
   end
   return out, last
+end
+
+--- What the last export could not keep, as one line, or nil: MIDI 1.0
+--- has 960 ticks to a beat here, values of 7 bits (14 for the pitch
+--- bend), and no controllers of one note but its pressure.
+function M.lost_text()
+  local lost, out = M.last_export, {}
+  if not lost then return nil end
+  if lost.times > 0 then out[#out + 1] = string.format("rounded %d note time%s to a tick", lost.times, lost.times == 1 and "" or "s") end
+  if lost.values > 0 then out[#out + 1] = string.format("rounded %d controller value%s to 7 bits", lost.values, lost.values == 1 and "" or "s") end
+  if lost.dropped > 0 then out[#out + 1] = string.format("left out %d move%s of a controller of one note or of an RPN/NRPN", lost.dropped, lost.dropped == 1 and "" or "s") end
+  return #out > 0 and table.concat(out, ", ") or nil
 end
 
 --- Write a format 1 MIDI file with the tempo map, time signatures and
@@ -770,10 +842,12 @@ function M.export(path, opts)
   else
     tracks = paw.tracks()
   end
-  local file = { format = 1, ppq = EXPORT_PPQ, tracks = { { name = paw.api.project_get().name } }, signatures = {}, markers = {} }
+  local file = { format = 1, ppq = EXPORT_PPQ, tracks = { { name = paw.api.project_get("name") } }, signatures = {}, markers = {} }
   local notes, last = 0, 0
+  local lost = { times = 0, values = 0, dropped = 0 }
+  M.last_export = lost
   for _, track in ipairs(tracks) do
-    local t, ends = export_track(track, only)
+    local t, ends = export_track(track, only, lost)
     if #t.notes > 0 or #t.controls > 0 then
       file.tracks[#file.tracks + 1] = t
       notes, last = notes + #t.notes, math.max(last, ends)

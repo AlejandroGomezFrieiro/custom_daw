@@ -565,7 +565,7 @@ function M.doc(opts)
       receives[t.output] = receives[t.output] or {}
       table.insert(receives[t.output], { from = t.id, level = 0 })
       ctx.report:add("Routing written as a send (REAPER folders need the child right after its parent)",
-        t.name .. " -> " .. api.track_get(t.output).name)
+        t.name .. " -> " .. api.track_get(t.output, "name"))
     end
     for _, s in ipairs(t.sends or {}) do
       receives[s.target] = receives[s.target] or {}

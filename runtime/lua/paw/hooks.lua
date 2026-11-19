@@ -180,7 +180,7 @@ local save = api.project_save
 --- `project.saving` before a project is written, which may refuse it;
 --- `project.saved` comes after, as a change event.
 function api.project_save(path)
-  local ok, why = events.emit("project.saving", { path = path or api.project_get().path })
+  local ok, why = events.emit("project.saving", { path = path or api.project_get("path") })
   if ok == false then error("not saved: " .. tostring(why or "an extension refused"), 2) end
   return save(path)
 end

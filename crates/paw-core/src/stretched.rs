@@ -360,6 +360,11 @@ impl Renders {
         }
     }
 
+    /// True when nothing is made or being made.
+    pub fn is_empty(&self) -> bool {
+        self.jobs.is_empty() && self.made.is_empty()
+    }
+
     /// Forget what was made from files not in `keep`, and everything when
     /// `keep` is `None`.
     pub fn retain(&mut self, keep: Option<&HashSet<PathBuf>>) {

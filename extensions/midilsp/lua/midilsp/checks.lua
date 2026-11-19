@@ -41,7 +41,7 @@ local function lower_master(db)
   if not db or db <= 0 then return nil end
   db = math.ceil(db * 10) / 10
   return { title = string.format("Lower the master by %.1f dB", db),
-    edit = { { uri = A.track(0), set = { volume = api.track_get(0).volume - db } } } }
+    edit = { { uri = A.track(0), set = { volume = api.track_get(0, "volume") - db } } } }
 end
 
 -- Where a finding is: the render, at its time.

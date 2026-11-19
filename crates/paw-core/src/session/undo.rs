@@ -905,6 +905,8 @@ mod tests {
             fade_in: 0.0,
             fade_out: 0.0,
             meta: Default::default(),
+            source: None,
+            origin: None,
         }));
         a.tracks.push(Arc::new(track));
         let empty = diff(&a, &a);

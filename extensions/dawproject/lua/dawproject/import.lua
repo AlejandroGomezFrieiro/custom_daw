@@ -200,7 +200,7 @@ local function import_tracks(parent_el, parent_track, ctx)
         ctx.report:add("The master of the file (merged: the project keeps its own)", e.attr.name or "Master")
       else
         local id = api.track_add({ name = name })
-        local t = { id = id, el = e, channel = c, parent = parent_track, name = api.track_get(id).name }
+        local t = { id = id, el = e, channel = c, parent = parent_track, name = api.track_get(id, "name") }
         ctx.list[#ctx.list + 1] = t
         ctx.tracks[e.attr.id or ""] = id
         if e.attr.color and e.attr.color:match("^#%x%x%x%x%x%x$") then api.track_set(id, "color", e.attr.color:lower()) end
@@ -556,7 +556,7 @@ local function walk_lanes(e, ctx, track, unit)
   end
   track = t or track
   unit = e.attr.timeUnit or unit
-  if track then ctx.label = track == 0 and "Master" or api.track_get(track).name end
+  if track then ctx.label = track == 0 and "Master" or api.track_get(track, "name") end
   if e.name == "Lanes" then
     for _, c in ipairs(e.children) do walk_lanes(c, ctx, track, unit) end
   elseif e.name == "Clips" then
@@ -691,7 +691,7 @@ function M.files(files, opts)
   if structure then import_tracks(structure, nil, ctx) end
   routing(ctx)
   for track, holders in pairs(ctx.placeholders) do
-    local meta = api.track_get(track).meta or {}
+    local meta = api.track_get(track, "meta") or {}
     meta.dawproject_placeholders = holders
     api.track_set(track, "meta", meta)
   end

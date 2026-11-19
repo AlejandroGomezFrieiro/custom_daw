@@ -755,7 +755,7 @@ function view:paste(value, before, count)
   if not clip then return end
   local at = self.beat
   if not before then
-    local edits = api.project_get().edits
+    local edits = api.project_get("edits")
     if last_paste and last_paste.clip == clip.id and last_paste.beat == at and last_paste.edits == edits then
       -- Pasting again right after a paste carries on where that one ended.
       at = last_paste.finish
@@ -773,7 +773,7 @@ function view:paste(value, before, count)
     at = finish
   end
   self:set(nil, start)
-  last_paste = { clip = clip.id, beat = self.beat, finish = at, edits = api.project_get().edits }
+  last_paste = { clip = clip.id, beat = self.beat, finish = at, edits = api.project_get("edits") }
 end
 
 -- Insert mode: notes entered from the keyboard, one step after another.

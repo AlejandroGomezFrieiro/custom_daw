@@ -22,8 +22,8 @@ function M.diagnostic(f)
   local location = { uri = uri, selector = f.beat and { time = { f.beat, f.beat } } or nil }
   local fixes = {}
   if f.lower and ok then
-    local name = paw.api.track_get(track).name
-    local now = paw.api.track_get(track).volume
+    local name = paw.api.track_get(track, "name")
+    local now = paw.api.track_get(track, "volume")
     fixes[1] = {
       title = string.format("Lower %s by %.1f dB", track == 0 and "the master" or name, f.lower),
       edit = { { uri = A.track(track), set = { volume = now - f.lower } } },

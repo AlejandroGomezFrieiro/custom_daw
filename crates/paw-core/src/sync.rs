@@ -261,6 +261,15 @@ impl AudioCache {
         Ok(peaks)
     }
 
+    /// True when no file, nor anything worked out from one, is kept.
+    pub fn holds_nothing(&self) -> bool {
+        self.files.is_empty()
+            && self.summaries.is_empty()
+            && self.peaks.is_empty()
+            && self.converted.is_empty()
+            && self.renders.is_empty()
+    }
+
     /// Forget every file but those in `keep`, and what was worked out from
     /// them (converted copies, overviews, peaks). Files a clip in the engine
     /// or a running render still plays stay in memory until they let go.
@@ -1440,21 +1449,15 @@ fn build_clips(
 ) -> ClipSet {
     let mut set = ClipSet::default();
     let cached = map.clip_events.remove(&track.id).unwrap_or_default();
-    let mut by_ptr: Option<HashMap<*const Clip, &Arc<[MidiEv]>>> = None;
-    let mut kept = Vec::new();
-    for (i, clip) in track.clips.iter().enumerate().filter(|(_, c)| !c.muted) {
+    // Clips mostly stay where they were in the list: looked for there first.
+    let mut by_ptr = crate::model::ByKey::new(&cached[..], |(c, _): &(Arc<Clip>, Arc<[MidiEv]>)| {
+        Arc::as_ptr(c)
+    });
+    let mut kept = Vec::with_capacity(cached.len() + 1);
+    for clip in track.clips.iter().filter(|c| !c.muted) {
         match &clip.content {
             ClipContent::Midi { notes, controls } => {
-                // Clips mostly stay where they were in the list; look there first.
-                let reuse = match cached.get(i) {
-                    Some((c, events)) if Arc::ptr_eq(c, clip) => Some(events.clone()),
-                    _ => by_ptr
-                        .get_or_insert_with(|| {
-                            cached.iter().map(|(c, e)| (Arc::as_ptr(c), e)).collect()
-                        })
-                        .get(&Arc::as_ptr(clip))
-                        .map(|e| (*e).clone()),
-                };
+                let reuse = by_ptr.find(Arc::as_ptr(clip)).map(|(_, events)| events.clone());
                 let events = reuse.unwrap_or_else(|| compile_clip(clip, notes, controls));
                 set.midi.extend_from_slice(&events);
                 kept.push((clip.clone(), events));
@@ -1572,59 +1575,43 @@ fn item_events<T>(
         .filter(|t| touched(t.id))
         .map(|t| (*t, old.get(&t.id)))
         .collect();
-    // The usual edit changes items in place: every touched track is still
-    // there and holds the same ids in the same order. Then comparing pointers
-    // pairwise is enough, with no index of every item.
-    let in_place = old.keys().all(|id| new.contains_key(id))
-        && changed.iter().all(|(t, was)| {
-            was.is_some_and(|was| {
-                items(was).len() == items(t).len()
-                    && items(was)
-                        .iter()
-                        .zip(items(t))
-                        .all(|(a, b)| id_of(a) == id_of(b))
-            })
-        });
-    if in_place {
-        for (t, was) in changed {
-            let was = was.expect("checked above");
-            for (a, b) in items(was).iter().zip(items(t)) {
-                if !Arc::ptr_eq(a, b) {
-                    emit(
-                        &format!("{kind}.changed"),
-                        json!({ "id": id_of(b), "track": t.id }),
-                    );
+    // Each changed track against itself as it was: items in the same place
+    // are found at once, and only what is left over (added, removed, or
+    // moved from one track to another) is looked up by id.
+    let mut added: Vec<(Id, Id)> = Vec::new();
+    let mut removed: Vec<(Id, Id)> = Vec::new();
+    for (t, was) in &changed {
+        let before: &[Arc<T>] = was.map_or(&[], |w| &items(w)[..]);
+        let mut by_id = crate::model::ByKey::new(before, |x: &Arc<T>| id_of(x));
+        let mut matched = vec![false; before.len()];
+        for item in items(t) {
+            match by_id.position(id_of(item)) {
+                Some(k) => {
+                    matched[k] = true;
+                    if !Arc::ptr_eq(&before[k], item) {
+                        emit(
+                            &format!("{kind}.changed"),
+                            json!({ "id": id_of(item), "track": t.id }),
+                        );
+                    }
                 }
+                None => added.push((id_of(item), t.id)),
             }
         }
-        return;
-    }
-    let index = |tracks: &TrackIndex| -> HashMap<Id, (Id, *const T)> {
-        tracks
-            .values()
-            .filter(|t| touched(t.id))
-            .flat_map(|t| {
-                items(t)
-                    .iter()
-                    .map(move |c| (id_of(c), (t.id, Arc::as_ptr(c))))
-            })
-            .collect()
-    };
-    let (was, now) = (index(old), index(new));
-    for (id, (track, ptr)) in &now {
-        match was.get(id) {
-            None => emit(
-                &format!("{kind}.added"),
-                json!({ "id": id, "track": track }),
-            ),
-            Some(prev) if prev != &(*track, *ptr) => emit(
-                &format!("{kind}.changed"),
-                json!({ "id": id, "track": track }),
-            ),
-            Some(_) => {}
+        for (k, _) in matched.iter().enumerate().filter(|(_, m)| !**m) {
+            removed.push((id_of(&before[k]), t.id));
         }
     }
-    for (id, (track, _)) in was.iter().filter(|(id, _)| !now.contains_key(id)) {
+    // Tracks that are gone take their items with them.
+    for (id, t) in old.iter().filter(|(id, _)| !new.contains_key(id)) {
+        removed.extend(items(t).iter().map(|item| (id_of(item), *id)));
+    }
+    let mut removed: HashMap<Id, Id> = removed.into_iter().collect();
+    for (id, track) in added {
+        let event = if removed.remove(&id).is_some() { "changed" } else { "added" };
+        emit(&format!("{kind}.{event}"), json!({ "id": id, "track": track }));
+    }
+    for (id, track) in removed {
         emit(
             &format!("{kind}.removed"),
             json!({ "id": id, "track": track }),

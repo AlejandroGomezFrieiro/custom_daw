@@ -184,7 +184,7 @@ function M.choose(track, choice)
     api.track_set(id, "input", value.input)
   end
   if value.midi_port ~= nil or value.midi_channel ~= nil then
-    local midi = api.track_get(id).midi_input or {}
+    local midi = api.track_get(id, "midi_input") or {}
     local port, channel = midi.port, midi.channel
     if value.midi_port ~= nil then port = value.midi_port or nil end
     if value.midi_channel ~= nil then channel = value.midi_channel or nil end
@@ -193,7 +193,7 @@ function M.choose(track, choice)
   end
   -- A channel without a port waits for one.
   if value.midi_out ~= nil or value.midi_out_channel ~= nil or value.midi_out_form ~= nil then
-    local sent = api.track_get(id).midi_output or {}
+    local sent = api.track_get(id, "midi_output") or {}
     local port, channel, form = sent.port, sent.channel, sent.form
     if value.midi_out ~= nil then port = value.midi_out or nil end
     if value.midi_out_channel ~= nil then channel = value.midi_out_channel or nil end

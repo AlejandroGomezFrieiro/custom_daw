@@ -503,6 +503,14 @@ pub struct Clip {
     pub loop_start: f64,
     #[serde(default)]
     pub meta: Map<String, Value>,
+    /// The MIDI clip file outside the project's folder that the notes are
+    /// read from: the project refers to it and keeps no copy. The first
+    /// edit of the notes makes them the project's own (`origin`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<PathBuf>,
+    /// The file outside the project that the notes were copied from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<PathBuf>,
 }
 
 /// What an audio clip keeps when the tempo changes. Either way it keeps its
@@ -857,6 +865,59 @@ impl Clip {
     }
 }
 
+/// Finds the items of an earlier list by a key (an id), for a later list
+/// walked in order. An edit changes a few places, so the two lists mostly
+/// line up: it looks at the places after the last one found first, then
+/// through the whole list, and makes a map only when many are not where
+/// they were. Every edit compares states (for the undo history, the engine
+/// and the change events), so this stays quick for a track of thousands of
+/// clips.
+pub struct ByKey<'a, T, K, F = fn(&T) -> K> {
+    old: &'a [T],
+    key: F,
+    at: usize,
+    misses: usize,
+    map: Option<std::collections::HashMap<K, usize>>,
+}
+
+impl<'a, T, K: Eq + std::hash::Hash + Copy, F: Fn(&T) -> K> ByKey<'a, T, K, F> {
+    pub fn new(old: &'a [T], key: F) -> Self {
+        Self { old, key, at: 0, misses: 0, map: None }
+    }
+
+    /// Where the item with this key is in the earlier list.
+    pub fn position(&mut self, key: K) -> Option<usize> {
+        let of = &self.key;
+        let near = self.at..(self.at + 4).min(self.old.len());
+        let found = match near.clone().find(|&k| of(&self.old[k]) == key) {
+            Some(k) => Some(k),
+            None if self.map.is_none() && self.misses < 8 => {
+                self.misses += 1;
+                self.old.iter().position(|x| of(x) == key)
+            }
+            None => {
+                let old = self.old;
+                let map = self
+                    .map
+                    .get_or_insert_with(|| old.iter().enumerate().map(|(i, x)| (of(x), i)).collect());
+                map.get(&key).copied()
+            }
+        };
+        let k = found?;
+        self.at = k + 1;
+        Some(k)
+    }
+
+    /// The item with this key in the earlier list.
+    pub fn find(&mut self, key: K) -> Option<&'a T> {
+        let old = self.old;
+        self.position(key).map(|k| &old[k])
+    }
+}
+
+/// [`ByKey`] for lists of items with ids.
+pub type ById<'a, T> = ByKey<'a, Arc<T>, Id>;
+
 /// Give every note of a list that has no id, or the id of a note before it,
 /// the next free one. Returns whether any changed. The same notes are always
 /// given the same ids, so a state written without them (an older file, a
@@ -977,28 +1038,43 @@ impl Project {
     /// the clips that are not the very same as in `before` (the state the
     /// last naming saw), and touching only those that need it.
     pub fn name_notes(&mut self, before: &Project) -> bool {
+        self.name_notes_since(&before.tracks, &before.master)
+    }
+
+    /// [`name_notes`](Self::name_notes), with only the tracks of `before`.
+    pub fn name_notes_since(&mut self, before: &[Arc<Track>], master: &Arc<Track>) -> bool {
         let mut named = false;
-        let old_tracks: std::collections::HashMap<Id, &Arc<Track>> = before.all_tracks().map(|t| (t.id, t)).collect();
+        let mut old_tracks = ById::new(before, |t: &Arc<Track>| t.id);
         let tracks = self.tracks.iter_mut().chain(std::iter::once(&mut self.master));
         for track in tracks {
-            let old = old_tracks.get(&track.id);
+            let old = if track.id == MASTER_ID {
+                Some(master)
+            } else {
+                old_tracks.find(track.id)
+            };
             if old.is_some_and(|o| Arc::ptr_eq(o, track)) {
                 continue;
             }
-            let old_clips: std::collections::HashMap<Id, &Arc<Clip>> =
-                old.map(|o| o.clips.iter().map(|c| (c.id, c)).collect()).unwrap_or_default();
-            let needs = |c: &Arc<Clip>| match &c.content {
-                _ if old_clips.get(&c.id).is_some_and(|o| Arc::ptr_eq(o, c)) => false,
-                ClipContent::Midi { notes, .. } => !notes.unnamed().is_empty(),
-                _ => false,
-            };
-            if !track.clips.iter().any(needs) {
+            let mut old_clips = ById::new(old.map_or(&[][..], |o| &o.clips[..]), |c: &Arc<Clip>| c.id);
+            // The places of the clips that this state changed and that have
+            // notes to name.
+            let needs: Vec<usize> = track
+                .clips
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| match &c.content {
+                    _ if old_clips.find(c.id).is_some_and(|o| Arc::ptr_eq(o, c)) => false,
+                    ClipContent::Midi { notes, .. } => !notes.unnamed().is_empty(),
+                    _ => false,
+                })
+                .map(|(i, _)| i)
+                .collect();
+            if needs.is_empty() {
                 continue;
             }
-            for clip in Arc::make_mut(track).clips.iter_mut() {
-                if needs(clip)
-                    && let ClipContent::Midi { notes, .. } = &mut Arc::make_mut(clip).content
-                {
+            let clips = &mut Arc::make_mut(track).clips;
+            for i in needs {
+                if let ClipContent::Midi { notes, .. } = &mut Arc::make_mut(&mut clips[i]).content {
                     named |= name_notes(notes);
                 }
             }
@@ -1010,26 +1086,28 @@ impl Project {
     /// share with it: what keeping it as a step of the undo history costs.
     pub fn weight_over(before: &Project, project: &Project) -> usize {
         use std::mem::size_of;
-        let old: std::collections::HashMap<Id, &Arc<Track>> = before.all_tracks().map(|t| (t.id, t)).collect();
+        let mut old = ById::new(&before.tracks, |t: &Arc<Track>| t.id);
         let mut bytes = 0;
         for track in project.all_tracks() {
-            let was = old.get(&track.id);
+            let was = if track.id == MASTER_ID {
+                Some(&before.master)
+            } else {
+                old.find(track.id)
+            };
             if was.is_some_and(|w| Arc::ptr_eq(w, track)) {
                 continue;
             }
             bytes += size_of::<Track>();
-            let clips: std::collections::HashMap<Id, &Arc<Clip>> =
-                was.map(|w| w.clips.iter().map(|c| (c.id, c)).collect()).unwrap_or_default();
+            let mut clips = ById::new(was.map_or(&[][..], |w| &w.clips[..]), |c: &Arc<Clip>| c.id);
             for clip in &track.clips {
-                let was = clips.get(&clip.id);
+                let was = clips.find(clip.id);
                 if !was.is_some_and(|c| Arc::ptr_eq(c, clip)) {
-                    bytes += clip.weight_over(was.map(|c| &***c));
+                    bytes += clip.weight_over(was.map(|c| &**c));
                 }
             }
-            let devices: std::collections::HashMap<Id, &Arc<DeviceInst>> =
-                was.map(|w| w.devices.iter().map(|d| (d.id, d)).collect()).unwrap_or_default();
+            let mut devices = ById::new(was.map_or(&[][..], |w| &w.devices[..]), |d: &Arc<DeviceInst>| d.id);
             for device in &track.devices {
-                if !devices.get(&device.id).is_some_and(|d| Arc::ptr_eq(d, device)) {
+                if !devices.find(device.id).is_some_and(|d| Arc::ptr_eq(d, device)) {
                     bytes += size_of::<DeviceInst>()
                         + device.state.as_ref().map_or(0, String::len)
                         + device.params.len() * 48;
@@ -1659,6 +1737,31 @@ mod note_ids {
         assert!(!text.contains("\"id\""), "{text}");
         let back: Note = serde_json::from_str(&serde_json::to_string(&note(60, 4)).unwrap()).unwrap();
         assert_eq!(back.id, 4);
+    }
+}
+
+#[cfg(test)]
+mod by_key {
+    use super::*;
+
+    #[test]
+    fn items_are_found_in_place_moved_added_and_removed() {
+        let old: Vec<u64> = (1..=100).collect();
+        // One removed (10), one added (500), one moved to the end (20).
+        let mut new: Vec<u64> = old.iter().copied().filter(|&x| x != 10 && x != 20).collect();
+        new.insert(50, 500);
+        new.push(20);
+        let mut by = ByKey::new(&old[..], |x: &u64| *x);
+        let found: Vec<Option<usize>> = new.iter().map(|&x| by.position(x)).collect();
+        for (x, at) in new.iter().zip(&found) {
+            assert_eq!(*at, old.iter().position(|o| o == x), "{x}");
+        }
+        // Many out of place: a map is made, and still every one is found.
+        let reversed: Vec<u64> = old.iter().rev().copied().collect();
+        let mut by = ByKey::new(&old[..], |x: &u64| *x);
+        assert!(reversed.iter().all(|&x| by.position(x) == Some(x as usize - 1)));
+        assert!(by.map.is_some());
+        assert_eq!(by.position(1000), None);
     }
 }
 
