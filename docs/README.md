@@ -87,7 +87,8 @@ writers of extensions come after them.
 - [How to export part of the song or a loop](how-to/export-part-of-the-song.md)
 - [How to render stems](how-to/render-stems.md)
 - [How to export MIDI for another program](how-to/export-midi.md)
-- [How to open a REAPER project, and save one for REAPER](how-to/open-a-reaper-project.md)
+- [How to move a song between paw and REAPER](how-to/open-a-reaper-project.md)
+- [How to move a song between paw and other DAWs](how-to/move-a-song-to-another-daw.md): Bitwig Studio, Studio One, Cubase
 
 ### Projects and files
 

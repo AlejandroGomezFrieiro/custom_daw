@@ -208,6 +208,7 @@ instructions.
 | [projdiff](extensions/projdiff) | the changes in a project, and a merge of two versions of it, also in git |
 | [mixdiag](extensions/mixdiag) | measurements of the mix, and the problems in it |
 | [rpp](extensions/rpp) | open and write REAPER projects |
+| [dawproject](extensions/dawproject) | open and write DAWproject files of Bitwig Studio, Studio One and Cubase |
 | [vinput](extensions/vinput) | virtual inputs, for example a guitar converted to MIDI |
 | [tutor](extensions/tutor) | the course, inside paw |
 | [doctor](extensions/doctor) | checks of your sound card, MIDI devices and plugins |

@@ -40,6 +40,7 @@
   >
   <TRACK {A0000000-0000-0000-0000-000000000001}
     NAME Band
+    PEAKCOL 16810049
     VOLPAN 0.70794578438414 0.25 -1 -1 1
     MUTESOLO 0 0 0
     ISBUS 1 1
@@ -56,7 +57,7 @@
       DEFSHAPE 0 -1 -1
       VOLTYPE 1
       PT 0 1 0
-      PT 4 0.0625 0
+      PT 4 0.0625 3
       PT 6 1 2
       PT 8 1 0
     >
