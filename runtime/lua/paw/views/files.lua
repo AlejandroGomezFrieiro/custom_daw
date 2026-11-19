@@ -76,9 +76,21 @@ end
 
 --- The full path of a name that the user typed: `~` is the home folder, and
 --- a relative name is in `paw.files.here()`.
----   paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" beside song.json
+---   paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" in the folder of the project
 function M.path(name)
   return resolve(name, M.here())
+end
+
+--- The full path of a project's name that the user typed, as `:w` takes
+--- it: as `path`, but a relative name goes beside a project folder, not
+--- into it.
+---   paw.files.project_path("take2")  -- "/home/me/songs/take2" beside songs/song
+function M.project_path(name)
+  local path = api.project_get("path")
+  if not chosen and path and path:match("/project%.toml$") then
+    return resolve(name, dirname(dirname(resolve(path))))
+  end
+  return M.path(name)
 end
 
 --- Set the folder for relative names, as `:cd` does: `dir` is relative to
@@ -593,7 +605,7 @@ end, { desc = "Set the folder that relative names go to, as in Vim: `cd ~/songs`
 paw.command("pwd", function()
   local how = chosen and "set with `:cd`" or api.project_get("path") and "the project's folder" or "where paw started"
   paw.notify(M.here() .. " (" .. how .. ")")
-end, { desc = "Show the folder that relative names (`:w mix.json`, `:render mix.wav`) go to" })
+end, { desc = "Show the folder that relative names (`:render mix.wav`, `:import loop.wav`) go to" })
 
 paw.command("files", show(false), {
   desc = "The files of a folder as a buffer to edit, in this window: `files`, `files ~/music`, `files media` (the project's own folder)",

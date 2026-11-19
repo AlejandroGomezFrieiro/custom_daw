@@ -7,15 +7,15 @@ and [Files that paw keeps](../reference/state-files.md).
 ## Save a project
 
 1. The first time, give the project a name and a place:
-   `:w /home/ana/songs/demo/demo.json`. Use one folder for each song.
-   Give the full path the first time. A name alone, for example
-   `:w demo.json`, saves into the folder where you started paw.
+   `:w /home/ana/songs/demo`. paw makes the folder `demo`, and keeps the
+   whole song in it. Give the full path the first time. A name alone, for
+   example `:w demo`, saves into the folder where you started paw.
 2. After that, type `:w` to save. The status line shows the name of the
    project, and a mark when there is work that is not saved.
 3. To save and quit, press `ZZ`.
 
-paw puts the recordings of the project into the `media` folder next to
-the project file. An imported sound file stays in its own folder. To
+paw puts the recordings of the project into the `media` folder of the
+project. An imported sound file stays in its own folder. To
 copy each import into `media` too, set `paw.opt.copy_imports = true`.
 
 In the graphical window, choose File → Save, and File → Open recent.
@@ -25,7 +25,7 @@ In the graphical window, choose File → Save, and File → Open recent.
 - To open a project that you used recently, press `,fR`. Type a part of
   its name and press `Enter`.
 - To open the second project in that list, type `:recent 2`.
-- To open a project by its path, type `:e /home/ana/songs/demo/demo.json`.
+- To open a project by its folder, type `:e /home/ana/songs/demo`.
 - To open an example song or a practice project of the lessons, type
   `:example demo-song`. `Tab` completes the names.
 
@@ -36,10 +36,11 @@ other project. Type `:w` to save the work first. To drop the work, type
 
 ## Where a name alone goes
 
-When a project has a file, a name without a folder goes next to the
-project. For example, `:w take2.json` and `:render mix.wav` put the files
-in the folder of the song. Before the first save, a name alone goes to the
-folder where you started paw.
+When a project has a folder, a name without a folder goes in it. For
+example, `:render mix.wav` puts the file in the folder of the song. A
+project name goes next to the folder of the song: `:w take2` makes the
+folder `take2` beside `demo`. Before the first save, a name alone goes to
+the folder where you started paw.
 
 - To see the folder, type `:pwd`.
 - To use a different folder, type `:cd` and the folder, as in Vim:
@@ -57,13 +58,14 @@ paw.opt.reopen_last = true
 
 paw keeps three kinds of copies for you:
 
-- Each `:w` keeps the file as it was before, as `demo.json.bak`.
+- Each `:w` that changes `project.toml` keeps the file as it was before,
+  as `project.toml.bak`.
 - Every 60 seconds, paw writes a safety copy of the work that is not
   saved. To make copies more often, type `:set autosave 30`.
 - After a crash, `:recover` opens the safety copies. See
   [How to recover lost work](recover-lost-work.md).
 
 To keep a backup on a different disk, copy the whole folder of the song.
-The folder holds the project file and its `media` folder. If the project uses sound files
+The folder holds the project files and its `media` folder. If the project uses sound files
 from other folders, type `:media.collect` first. paw then copies these
 files into `media`.

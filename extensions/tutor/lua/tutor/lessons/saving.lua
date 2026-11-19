@@ -5,30 +5,30 @@ return {
   intro = [[
 In this lesson, we change a song, save it, and render it to a WAV file.
 
-A project is a file (JSON) that contains all of the song. It has the tracks,
+A project is a folder that contains all of the song. It has the tracks,
 the devices and their settings, the clips, the notes, the automation and the
-loop. Recordings are in a
-`media` folder next to the project file. To render, paw plays the whole song
+loop. Each part is in a file of its own. Recordings are in the `media`
+folder of the project. To render, paw plays the whole song
 into a WAV file, which other programs can play.
 
-This practice project already has a file in the folder of the tutor, so `:w`
-saves it there. paw saves your own projects where you tell it: `:w song.json`.]],
+This practice project already has a folder of its own in the folder of the tutor, so `:w`
+saves it there. paw saves your own projects where you tell it: `:w song`.]],
   idea = [[
-`:w` saves, and `<C-s>` also saves. `:w name.json` saves under a new name.
-`:e name.json` opens a project. `:e song.mid` makes a project from a MIDI
-file, and the project has no file until `:w name.json`. `:new` starts an
+`:w` saves, and `<C-s>` also saves. `:w name` saves under a new name.
+`:e name` opens a project. `:e song.mid` makes a project from a MIDI
+file, and the project has no folder until `:w name`. `:new` starts an
 empty project. `:wq` or `ZZ` save and quit, and `:q` or `ZQ` quit without a
 save.
 
 The status line shows the name of the project, with `[+]` when there are
 changes that are not saved. `:render name.wav` writes the song to a file.
 `tail=2` adds two seconds for the echoes to stop, and `bits=16` makes a
-16-bit file. A name without a folder goes next to the project. `:pwd`
+16-bit file. A name without a folder goes into the folder of the project. `:pwd`
 shows that folder, and `:cd` changes it.]],
   vim = [[
 `:w`, `:e`, `:wq`, `:x`, `ZZ` and `ZQ` work as in Vim, but on projects, not
 on files. Only one project is open at a time, and `:e` replaces it. `:w
-name.json` is the `:saveas` of Vim: you continue to work in the new file. In
+name` is the `:saveas` of Vim: you continue to work in the new file. In
 Vim, `:w name` writes a copy and you stay in the old file. paw does not make
 such a copy.]],
   setup = function(look)
@@ -65,7 +65,7 @@ such a copy.]],
       say = "`:render` plays the song into a WAV file. Type `:render tutor-song.wav tail=2` and `<CR>`.",
       keys = { ":render tutor-song.wav tail=2", "<CR>" },
       check = function(ctx, look) return look.ran(ctx, "render") and look.said(ctx, "tutor-song.wav") end,
-      done = "tutor-song.wav is next to the project, in the folder of the tutor. The message line shows its length and peak level.",
+      done = "tutor-song.wav is in the folder of the practice project. The message line shows its length and peak level.",
       hint = "`tail=2` keeps two more seconds after the last note, so the echo does not stop too early.",
     },
     {

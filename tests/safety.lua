@@ -71,6 +71,44 @@ test("a project that will not parse offers its .bak and its newest safety copy",
   autosave.dir = old_dir
 end)
 
+test("a project folder keeps its project.toml as .bak, and :recover opens it with the folder when project.toml is damaged", function()
+  fresh()
+  local autosave = paw.autosave
+  local old_dir = autosave.dir
+  autosave.dir = T.scratch .. "/recovery-damaged-folder"
+  T.after(function() autosave.dir = old_dir end)
+  local dir = T.scratch .. "/damaged-folder"
+  local first = paw.add_track({ name = "First" })
+  first:add_clip({ start = 0, length = 4, notes = { { start = 0, length = 1, pitch = 60 } } })
+  paw.project.save(dir)
+  eq(io.open(dir .. "/project.toml.bak"), nil, "a first save has nothing to keep")
+  paw.add_track({ name = "Second" })
+  api.undo_checkpoint()
+  T.keys(":w<CR>")
+  local bak = T.read_file(dir .. "/project.toml.bak")
+  eq(bak:find('"First"', 1, true) ~= nil and bak:find('"Second"', 1, true) == nil, true, "the .bak is project.toml as it was")
+  -- project.toml is cut short.
+  local text = T.read_file(dir .. "/project.toml")
+  T.write_file(dir .. "/project.toml", text:sub(1, 12))
+  T.keys(":e! " .. dir .. "<CR>")
+  local said = {}
+  for i = math.max(1, #paw.ui.messages - 4), #paw.ui.messages do said[#said + 1] = paw.ui.messages[i].text end
+  said = table.concat(said, "\n")
+  eq(said:find("damaged-folder will not open; `:recover` opens its backup instead", 1, true) ~= nil, true,
+    "says what opens instead: " .. said)
+  eq(paw.autosave.choices()[1].name, "backup (before the last save)", ":recover lists project.toml.bak first")
+  T.keys(":recover 1<CR>")
+  local names = {}
+  for _, t in ipairs(paw.tracks()) do names[#names + 1] = t.name end
+  eq(table.concat(names, ","), "First", "the tracks of the project file before the last save")
+  eq(#paw.tracks()[1]:clips()[1]:notes(), 1, "with the clip read from its file")
+  eq(paw.project.path, dir .. "/project.toml", "it opens as the damaged project")
+  eq(paw.project.modified, true, "unsaved until saved over it")
+  T.keys(":w<CR>")
+  eq(pcall(paw.project.load, dir), true, "and once saved, the project opens again")
+  eq(#paw.tracks(), 1, "as it was recovered")
+end)
+
 -- Recording ------------------------------------------------------------------
 
 local function with_input(fn)

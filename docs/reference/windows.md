@@ -77,7 +77,7 @@ A name that is not a clip or a track shows a message, and the window shows the v
 | `:sp roll`, `:vs roll` | Split the window, one above the other or side by side, and show a buffer. Without a name, show the same buffer, as in Vim. A list edited as text and a view with a state for each window show in both windows, the new one from the state of this one. A view shown in one window at a time gives the start page. |
 | `Ctrl-w s`, `Ctrl-w v` | The same as `:sp` and `:vs` without a name. |
 | `:vnew`, `Ctrl-w n` | Open an empty window, with the start page. |
-| `:e roll`, `:b roll`, `:b 3` | Show a buffer in this window, by name or number. The name of a buffer or a view, or an address such as `paw://tracks`, comes before a file. Only a file asks about unsaved work: `:e song.json`, `:e song.mid`, `:e take.wav`. A folder shows as a [file buffer](file-manager.md). |
+| `:e roll`, `:b roll`, `:b 3` | Show a buffer in this window, by name or number. The name of a buffer or a view, or an address such as `paw://tracks`, comes before a file. Only a file asks about unsaved work: `:e song`, `:e song.mid`, `:e take.wav`. A folder shows as a [file buffer](file-manager.md). |
 | `:e roll://riff`, `:vs notation://7` | Show a view on a clip (see [Names of a clip in a view](#names-of-a-clip-in-a-view)). |
 | `:bn`, `:bp` | Show the next or the previous buffer. |
 | `:ls` | Lists the buffers. |

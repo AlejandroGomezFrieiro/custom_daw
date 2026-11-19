@@ -302,8 +302,8 @@ test(":plugins.offline and :edit offline cover devices written in Lua", function
   eq(said(), "1 plugin offline", "and counts it")
   keys(":plugins.online<CR>")
   eq(fx:get().offline, false, ":plugins.online brings it up")
-  keys(":w " .. dir .. "/song.json<CR>")
-  keys(":edit " .. dir .. "/song.json offline<CR>")
+  keys(":w " .. dir .. "/song<CR>")
+  keys(":edit " .. dir .. "/song offline<CR>")
   local again = paw.track("Lead"):devices()[2]
   eq(again:get().offline, true, ":edit offline opens it offline too")
 end)

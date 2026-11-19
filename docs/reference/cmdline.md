@@ -67,7 +67,7 @@ from a MIDI file or a REAPER project. These commands do not replace a project wi
 and `:q`. They show a message and stop.
 
 - `:w` saves the work first.
-- The same command with `!` discards the work: `:open! song.json`, `:new!`, `:q!`.
+- The same command with `!` discards the work: `:open! song`, `:new!`, `:q!`.
 - `:e!` alone opens the project again as you saved it last, as in Vim.
 
 The graphical window asks in a dialog box.
@@ -77,9 +77,10 @@ The graphical window asks in a dialog box.
 
 ## Relative names
 
-A file name without a folder (`:w take2.json`, `:render mix.wav`,
-`:import loop.wav`) goes into the folder of the project file. Before the
-first save, it goes into the folder where paw started.
+A file name without a folder (`:render mix.wav`, `:import loop.wav`) goes
+into the folder of the project. A project name (`:w take2`) goes beside
+that folder. Before the first save, a name goes into the folder where paw
+started.
 
 | Command | Effect |
 | --- | --- |

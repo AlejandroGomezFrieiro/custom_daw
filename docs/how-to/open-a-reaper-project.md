@@ -18,7 +18,7 @@ Type `:ext.load rpp`. To load it at each start, see
    and the clips appear in the arrange view.
 2. If a page opens, read it. It lists what paw could not bring across,
    for example plugins that paw does not have. Press `q` to close it.
-3. To keep the project, save it as a project of paw: `:w song.json`.
+3. To keep the project, save it as a project of paw: `:w song`.
 
 If the MIDI tracks are silent because their instrument stayed in REAPER,
 type `:rpp.import song.rpp instrument=synth`. paw gives each of these
@@ -36,7 +36,7 @@ To add the tracks of a REAPER project to the open project, type
    controllers, automation and markers are there.
 
 `:w song.rpp` does not change the project file of paw. The project stays
-`song.json`.
+the folder `song`.
 
 ## Work in both programs
 

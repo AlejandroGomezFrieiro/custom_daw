@@ -1462,7 +1462,7 @@ fn build_clips(
                 set.midi.extend_from_slice(&events);
                 kept.push((clip.clone(), events));
             }
-            ClipContent::Audio { file, offset, gain } => {
+            ClipContent::Audio { file, offset, gain, .. } => {
                 clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut set.audio)
             }
         }
@@ -1539,7 +1539,7 @@ fn build_slots(track: &Track, tempo: &paw_engine::TempoMap, ctx: &mut SyncCtx) -
                 clips.midi = compile_clip(clip, notes, controls).to_vec();
                 downgrade(track, &mut clips, tempo);
             }
-            ClipContent::Audio { file, offset, gain } => {
+            ClipContent::Audio { file, offset, gain, .. } => {
                 clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut clips.audio)
             }
         }

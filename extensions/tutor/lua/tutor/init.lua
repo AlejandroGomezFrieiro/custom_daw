@@ -324,7 +324,7 @@ function M.start(which, opts)
   n = M.number(lesson)
 
   if unsaved_work() and not opts.force then
-    return paw.notify("Your project has changes that are not saved. Save them with `:w` (or `:w name.json`) "
+    return paw.notify("Your project has changes that are not saved. Save them with `:w` (or `:w name`) "
       .. "and start again, or `:tutor! " .. n .. "` to start anyway and lose them.", "warn")
   end
 
