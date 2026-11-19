@@ -109,7 +109,7 @@ type StillKey = (Rect, Rect, [f32; 3], Vec<usize>, u64);
 
 /// A window's scene, and what is drawn of it.
 #[derive(Default)]
-struct Shown {
+pub struct Shown {
     scene: Scene,
     /// The scene lowered to cells, as rows of runs.
     rows: Vec<Vec<Run>>,
@@ -156,6 +156,11 @@ impl Scenes {
     /// The scenes, counting the patches taken when `count` (`PAW_GUI_STATS`).
     pub fn counting(count: bool) -> Scenes {
         Scenes { counted: count.then(|| (HashMap::new(), std::time::Instant::now())), ..Scenes::default() }
+    }
+
+    /// The scene of the window `win`, as drawn.
+    pub fn shown_of(&self, win: &str) -> Option<&Shown> {
+        self.shown.get(win)
     }
 
     /// The window's cell, or the size it has before it is measured.
@@ -456,7 +461,7 @@ impl Shown {
     /// under the pointer) is drawn over the rest. The window draws a frame
     /// again only where its shapes changed (crate::damage), so what does
     /// not move costs no drawing.
-    fn draw(&mut self, ui: &Ui, id: &str, rect: Rect, clip: Rect, cell: (f32, f32), live: &Value) {
+    fn draw(&mut self, ui: &Ui, id: &str, rect: Rect, clip: Rect, cell: (f32, f32), live: &Value, parts: &mut crate::live::Parts) {
         let painter = ui.painter().with_clip_rect(clip.intersect(ui.clip_rect()));
         let ppp = ui.ctx().pixels_per_point();
         // What moves: the roles bound to live values, and the one under
@@ -495,8 +500,28 @@ impl Shown {
             });
         }
         for i in moving {
+            // A role the live values move is a live part: painted again by
+            // itself while only they change (crate::live).
+            let (node, at, _) = &self.roles[i];
+            let part = node.bind.is_some().then(|| {
+                let under = ui.rect_contains_pointer(roles::rect_of(*at, rect.min, cell));
+                parts.begin(&painter, crate::live::Part::Role { win: id.to_string(), index: i, from: rect.min, cell, under })
+            });
             self.role(ui, &painter, id, i, rect.min, cell, live);
+            if let Some(n) = part {
+                parts.end(&painter, n);
+            }
         }
+    }
+
+    /// Paint the role `i`, which the live values move, again with
+    /// `painter` as `role` painted it, with no `Ui`: `under` says whether
+    /// the pointer was over it.
+    pub fn role_live(&self, painter: &egui::Painter, i: usize, from: Pos2, cell: (f32, f32), live: &Value, under: bool) {
+        let Some((node, at, cut)) = self.roles.get(i) else { return };
+        let (cut, at) = (roles::rect_of(*cut, from, cell), roles::rect_of(*at, from, cell));
+        let role_painter = if cut.contains_rect(at) { painter.clone() } else { painter.with_clip_rect(cut.intersect(painter.clip_rect())) };
+        roles::paint_live(&role_painter, node, at, cell, live, under);
     }
 
     /// Paint what does not move of the scene with `still`: the ground, the
@@ -630,6 +655,11 @@ impl View {
             self.repaint = true;
         }
         let patches = self.k.borrow_mut().patches();
+        self.take_patches(patches);
+    }
+
+    /// Take in patches of the scenes.
+    pub fn take_patches(&mut self, patches: Vec<Value>) {
         for patch in patches {
             let Ok(patch) = serde_json::from_value::<Patch>(patch) else { continue };
             // What comes for a window after it went is of no use: a window
@@ -683,7 +713,7 @@ impl View {
             self.call_later("scene.area", json!([id, size[0], size[1]]));
         }
         if let Some(shown) = self.scenes.shown.get_mut(id) {
-            shown.draw(ui, id, rect, clip, cell, &self.scenes.live);
+            shown.draw(ui, id, rect, clip, cell, &self.scenes.live, &mut self.live);
         }
         let pointer = Id::unique(("scene-pointer", id));
         // Whether the press that a release ends was in this window.

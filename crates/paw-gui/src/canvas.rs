@@ -7,7 +7,7 @@
 use std::collections::HashSet;
 
 use egui::{CornerRadius, Id, Rect, Stroke, ViewportBuilder, ViewportId, pos2, vec2};
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::app::View;
 use crate::model::{flag, number, rows, text};
@@ -25,10 +25,18 @@ pub struct Canvases {
     open: HashSet<String>,
 }
 
+impl Canvases {
+    /// No view is in a window of its own.
+    pub fn is_empty(&self) -> bool {
+        self.open.is_empty()
+    }
+}
+
 impl View {
     /// Open and close the windows the kernel lists, and draw each.
     pub fn canvas_windows(&mut self, ctx: &egui::Context) {
-        let windows: Vec<Value> = rows(&self.s.modal["windows"]).to_vec();
+        let modal = self.s.modal.clone();
+        let windows = rows(&modal["windows"]);
         let names: Vec<String> = windows.iter().map(|w| text(&w["name"])).collect();
         let gone = self.canvases.open.iter().any(|n| !names.contains(n));
         self.canvases.open.retain(|name| names.contains(name));

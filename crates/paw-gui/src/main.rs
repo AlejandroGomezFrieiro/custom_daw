@@ -19,6 +19,7 @@ mod dialogs;
 mod icons;
 mod damage;
 mod keys;
+mod live;
 mod menu;
 mod model;
 mod panes;
@@ -183,6 +184,10 @@ impl runner::App for Window {
         self.view.cache
     }
 
+    fn replay(&mut self, ctx: &egui::Context, raw: &egui::RawInput) -> Option<Vec<(u32, Vec<egui::epaint::ClippedShape>)>> {
+        self.view.replay(ctx, raw)
+    }
+
     /// Keys go to the kernel's mappings unless a text box of the window's
     /// has them: they are taken here, before egui would move its focus
     /// with Tab or press a button with Space.
@@ -311,10 +316,11 @@ fn run() -> Result<()> {
         if let Err(err) = client.eval("paw.frontend.window_renderer_set(...)", json!([report])) {
             eprintln!("paw-gui: {err:#}");
         }
-        let ctx = ctx.clone();
         // A frame for what came, and one only: egui draws two for a
-        // request to draw at once.
-        client.wake_on_events(move || ctx.request_repaint_after(std::time::Duration::from_millis(1)));
+        // request to draw at once, and does not ask again while no pass
+        // ran (crate::live).
+        let wake = gl.wake.clone();
+        client.wake_on_events(move || wake());
         let mut view = app::View::new(Box::new(client), ours);
         view.software = software;
         Ok(Box::new(Window { view, child }))

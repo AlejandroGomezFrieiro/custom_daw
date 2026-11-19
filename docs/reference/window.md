@@ -30,7 +30,7 @@ paw-gui --connect <host:port> --token-file <path>
 | `--listen-audio` | | Plays the kernel's sound on this machine (about 1 Mbit/s). The engine menu has the same switch. |
 | `--renderer` | `gpu` (default) or `software` | `gpu` draws with OpenGL on the system's driver. `software` asks Mesa for llvmpipe, which draws on the processor. |
 | `PAW_GUI_RENDERER` | `gpu` or `software` | The environment variable for the renderer, when `--renderer` is absent. |
-| `PAW_GUI_STATS` | any value | Each 10 seconds, the window writes to its log the passes of its layout, the frames that it showed, the pixels that it drew in each frame, the textures that it sent to OpenGL, and the age of the buffers that the driver gave. |
+| `PAW_GUI_STATS` | any value | Each 10 seconds, the window writes to its log the passes of its layout, the frames that it made without a pass, the frames that it showed, the pixels that it drew in each frame, the textures that it sent to OpenGL, and the age of the buffers that the driver gave. |
 | `-h`, `--help` | | Shows the options. |
 
 The token, the certificates and the TLS rules are in [The control
@@ -120,6 +120,15 @@ copies only the changed parts to the window
 so a part that an X server without a compositor lost returns. With
 `paw.opt.window_cache = false`, the window draws each frame in full. A
 view in a window of its own always draws in full.
+
+While the song plays, often only the live values change. Then the window
+makes a frame without a pass of its layout. It keeps the shapes of the
+last pass. It paints again only the parts that the live values move: the
+playhead, the meters, the clock and the load of the engine. A key, the
+pointer, a new scene or a change of mode starts a full pass. So a click
+always finds what the window shows. A full pass also runs after 30 such
+frames. It also runs when a character of these parts shows for the first
+time at its place.
 
 A view that the kernel paints as a picture (notation) keeps the page of
 the picture as one image. The window makes again only the small images

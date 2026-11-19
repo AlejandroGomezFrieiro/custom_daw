@@ -47,12 +47,23 @@ pub trait App {
     }
     /// The window is closing.
     fn on_exit(&mut self) {}
+    /// The live parts of the last pass painted again, each by its number,
+    /// when nothing but the live values changed since it (crate::live):
+    /// the frame is then made from the last pass's shapes and these, with
+    /// no pass. None: a pass runs.
+    fn replay(&mut self, _ctx: &egui::Context, _raw: &egui::RawInput) -> Option<Vec<(u32, Vec<egui::epaint::ClippedShape>)>> {
+        None
+    }
 }
 
 /// The OpenGL the window draws with, for the program to report.
 pub struct GlInfo {
     pub renderer: String,
     pub version: String,
+    /// Ask for a frame of the main window at once, from any thread. egui's
+    /// own request does not reach the loop again while no pass has run
+    /// since the last (a frame made from the live values runs none).
+    pub wake: Arc<dyn Fn() + Send + Sync>,
 }
 
 /// A frame of a window is asked for, at a time.
@@ -61,6 +72,8 @@ struct Wake {
     viewport: ViewportId,
     when: Instant,
     pass: u64,
+    /// Asked by the program (`GlInfo::wake`), not by egui: never old.
+    direct: bool,
 }
 
 /// How long to wait for the compositor's call to draw (Wayland paces the
@@ -278,6 +291,8 @@ impl Gl {
 struct Stats {
     since: Option<Instant>,
     passes: u64,
+    /// Frames made from the live values, with no pass.
+    replays: u64,
     shown: u64,
     drawn_px: u64,
     rects: u64,
@@ -297,8 +312,9 @@ impl Stats {
         let shown = self.shown.max(1) as f64;
         let all = (screen[0] as f64 * screen[1] as f64).max(1.0);
         eprintln!(
-            "paw-gui: stats: {} passes, {} frames shown in {seconds:.1} s ({:.1}/s), {:.0} pixels drawn a frame ({:.1}% of the window) in {:.1} rectangles, {:.0} changed, {} uploads, buffer ages 0/1/2/3+: {:?}",
+            "paw-gui: stats: {} passes, {} frames without a pass, {} frames shown in {seconds:.1} s ({:.1}/s), {:.0} pixels drawn a frame ({:.1}% of the window) in {:.1} rectangles, {:.0} changed, {} uploads, buffer ages 0/1/2/3+: {:?}",
             self.passes,
+            self.replays,
             self.shown,
             self.shown as f64 / seconds,
             self.drawn_px as f64 / shown,
@@ -311,6 +327,13 @@ impl Stats {
         *self = Stats { since: Some(Instant::now()), ..Stats::default() };
         true
     }
+}
+
+/// What a frame is made from: egui's pass (its shapes, at its scale), or
+/// the live parts of the last pass painted again (crate::live).
+enum Frame {
+    Pass(Vec<egui::epaint::ClippedShape>, f32),
+    Live(Vec<(u32, Vec<egui::epaint::ClippedShape>)>),
 }
 
 /// The loop's state.
@@ -337,6 +360,14 @@ struct Runner {
     copied_all: Option<Instant>,
     closing: bool,
     failed: Option<anyhow::Error>,
+    /// Frames may be made from the live values (crate::live): the last
+    /// pass was drawn, and the damage keeps its shapes. What its input
+    /// was, when egui asked to run again, and the frames made so in a row.
+    replayable: bool,
+    last_input: Option<(Option<egui::Rect>, bool)>,
+    egui_due: Option<Instant>,
+    in_a_row: u32,
+    glyphs: crate::live::Glyphs,
 }
 
 thread_local! {
@@ -371,7 +402,7 @@ pub fn run(builder: ViewportBuilder, make: impl FnOnce(&egui::Context, &GlInfo) 
         let proxy = proxy.clone();
         ctx.set_request_repaint_callback(move |info| {
             if let Ok(proxy) = proxy.lock() {
-                let _ = proxy.send_event(Wake { viewport: info.viewport_id, when: Instant::now() + info.delay, pass: info.current_cumulative_pass_nr });
+                let _ = proxy.send_event(Wake { viewport: info.viewport_id, when: Instant::now() + info.delay, pass: info.current_cumulative_pass_nr, direct: false });
             }
         });
     }
@@ -392,6 +423,11 @@ pub fn run(builder: ViewportBuilder, make: impl FnOnce(&egui::Context, &GlInfo) 
         copied_all: None,
         closing: false,
         failed: None,
+        replayable: false,
+        last_input: None,
+        egui_due: None,
+        in_a_row: 0,
+        glyphs: crate::live::Glyphs::default(),
     };
     event_loop.run_app(&mut runner)?;
     let _ = &runner.proxy;
@@ -496,7 +532,13 @@ impl Runner {
         gl.open(ViewportId::ROOT, event_loop)?;
         let info = unsafe {
             let raw = gl.painter.gl();
-            GlInfo { renderer: raw.get_parameter_string(glow::RENDERER), version: raw.get_parameter_string(glow::VERSION) }
+            let proxy = self.proxy.clone();
+            let wake = move || {
+                if let Ok(proxy) = proxy.lock() {
+                    let _ = proxy.send_event(Wake { viewport: ViewportId::ROOT, when: Instant::now(), pass: 0, direct: true });
+                }
+            };
+            GlInfo { renderer: raw.get_parameter_string(glow::RENDERER), version: raw.get_parameter_string(glow::VERSION), wake: Arc::new(wake) }
         };
         let gl = Rc::new(RefCell::new(gl));
         {
@@ -519,6 +561,33 @@ impl Runner {
         let (Some(gl), Some(app)) = (self.gl.clone(), self.app.as_mut()) else { return };
         self.asked.remove(&ViewportId::ROOT);
         let Some(mut raw) = gl.borrow_mut().input(ViewportId::ROOT) else { return };
+        // Nothing but the live values moved: the frame is the last pass's,
+        // with its live parts painted again.
+        let input = (raw.screen_rect, raw.focused);
+        let replay = draw
+            && self.replayable
+            && self.shown
+            && !self.exposed
+            && self.in_a_row < crate::live::MOST_IN_A_ROW
+            && self.last_input == Some(input)
+            && !raw.viewport().close_requested()
+            && self.egui_due.is_none_or(|at| Instant::now() < at)
+            && gl.borrow().viewports.len() == 1;
+        if replay
+            && let Some(parts) = app.replay(&self.ctx, &raw)
+            && self.glyphs.know(&parts)
+        {
+            self.in_a_row += 1;
+            self.stats.replays += 1;
+            let partial = app.partial();
+            let clear = app.clear_color();
+            let mut gl = gl.borrow_mut();
+            self.paint(&mut gl, Frame::Live(parts), &mut egui::TexturesDelta::default(), partial, clear);
+            self.report(&gl);
+            return;
+        }
+        self.in_a_row = 0;
+        self.last_input = Some(input);
         app.raw_input_hook(&self.ctx, &mut raw);
         let close = raw.viewport().close_requested();
         // The program's pass: it may draw the views in windows of their own.
@@ -539,8 +608,14 @@ impl Runner {
         }
         let mut delta = output.textures_delta;
         self.stats.uploads += delta.set.len() as u64;
+        // When egui asked to run again (an animation, a hint's delay, the
+        // program's own timers): no frame is made without a pass from then.
+        let delay = output.viewport_output.get(&ViewportId::ROOT).map_or(Duration::MAX, |o| o.repaint_delay);
+        self.egui_due = (delay < Duration::from_secs(3600)).then(|| Instant::now() + delay);
+        self.replayable = false;
         if draw {
-            self.paint(gl, output.shapes, output.pixels_per_point, &mut delta, partial, clear);
+            self.glyphs.learn(&output.shapes);
+            self.paint(gl, Frame::Pass(output.shapes, output.pixels_per_point), &mut delta, partial, clear);
         }
         // Textures not drawn with are set (and let go) all the same.
         for (id, images) in delta.set.drain() {
@@ -552,6 +627,14 @@ impl Runner {
             gl.painter.free_texture(id);
         }
         gl.outputs(Some(event_loop), &output.viewport_output);
+        self.report(gl);
+        if self.closing {
+            event_loop.exit();
+        }
+    }
+
+    /// The counts, every 10 seconds with `PAW_GUI_STATS`.
+    fn report(&mut self, gl: &Gl) {
         let screen = gl.viewports.get(&ViewportId::ROOT).and_then(|v| v.window.as_ref()).map_or([0, 0], |w| w.inner_size().into());
         if self.stats.report(screen) {
             let passes = self.damage.passes.max(1);
@@ -562,26 +645,37 @@ impl Runner {
             );
             (self.damage.counted, self.damage.pushes, self.damage.passes) = (0, 0, 0);
         }
-        if self.closing {
-            event_loop.exit();
-        }
     }
 
     /// Draw what changed of the main window, onto the buffer as the driver
     /// gives it back, and show it.
-    fn paint(&mut self, gl: &mut Gl, shapes: Vec<egui::epaint::ClippedShape>, ppp: f32, delta: &mut egui::TexturesDelta, partial: bool, clear: [f32; 4]) {
+    fn paint(&mut self, gl: &mut Gl, frame: Frame, delta: &mut egui::TexturesDelta, partial: bool, clear: [f32; 4]) {
         let Some(window) = gl.viewports.get(&ViewportId::ROOT).and_then(|v| v.window.clone()) else { return };
         let screen: [u32; 2] = window.inner_size().into();
         if screen[0] == 0 || screen[1] == 0 {
             return;
         }
-        // A picture given new pixels is drawn again where it shows; the
-        // font's texture made anew changes all the text.
-        let font = egui::TextureId::default();
-        let fonts_anew = delta.set.iter().any(|(id, images)| *id == font && images.iter().any(|image| image.pos.is_none()));
-        let textures: HashSet<egui::TextureId> = delta.set.iter().map(|(id, _)| *id).filter(|id| *id != font).collect();
-        let all = !partial || !self.shown || fonts_anew || std::mem::take(&mut self.exposed);
-        if !self.damage.frame(shapes, ppp, screen, &textures, all) {
+        let (changed, ppp, all) = match frame {
+            Frame::Pass(shapes, ppp) => {
+                // A picture given new pixels is drawn again where it shows; the
+                // font's texture made anew changes all the text.
+                let font = egui::TextureId::default();
+                let fonts_anew = delta.set.iter().any(|(id, images)| *id == font && images.iter().any(|image| image.pos.is_none()));
+                let textures: HashSet<egui::TextureId> = delta.set.iter().map(|(id, _)| *id).filter(|id| *id != font).collect();
+                let all = !partial || !self.shown || fonts_anew || std::mem::take(&mut self.exposed);
+                let changed = self.damage.frame(shapes, ppp, screen, &textures, all);
+                self.replayable = true;
+                (changed, ppp, all)
+            }
+            Frame::Live(parts) => {
+                if screen != self.damage.screen() {
+                    self.replayable = false;
+                    return;
+                }
+                (self.damage.replay(parts, !partial), self.damage.ppp(), !partial)
+            }
+        };
+        if !changed {
             return;
         }
         if gl.current(ViewportId::ROOT).is_err() {
@@ -722,7 +816,7 @@ impl ApplicationHandler<Wake> for Runner {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, wake: Wake) {
         let pass = self.ctx.cumulative_pass_nr_for(wake.viewport);
         // A request made before the frame that answered it is old.
-        if pass == wake.pass || pass == wake.pass + 1 {
+        if wake.direct || pass == wake.pass || pass == wake.pass + 1 {
             self.wake(wake.viewport, wake.when);
         }
         self.schedule(event_loop);

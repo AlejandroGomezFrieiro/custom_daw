@@ -112,6 +112,63 @@ impl Damage {
         self.fresh.iter().any(|f| *f)
     }
 
+    /// The frame's shapes as the last frame's, but the live parts painted
+    /// again (crate::live): `parts`, each by its number. Only the squares
+    /// that their shapes reach, now or before, are compared and changed.
+    /// `all` says that every square is to be drawn again. Returns whether
+    /// any square changed.
+    pub fn replay(&mut self, parts: Vec<(u32, Vec<ClippedShape>)>, all: bool) -> bool {
+        let ranges = crate::live::ranges(&self.shapes);
+        let fits = parts.iter().all(|(n, new)| ranges.iter().any(|(m, first, end)| m == n && end - first == new.len()));
+        if !fits || all {
+            // A part has more shapes or fewer: all of it is compared.
+            let shapes = crate::live::splice(&self.shapes, &parts);
+            return self.frame(shapes, self.ppp, self.screen, &HashSet::new(), all);
+        }
+        let squares = (self.cols * self.rows).max(0) as usize;
+        let mut fresh = vec![false; squares];
+        for (n, new) in parts {
+            let Some(&(_, first, _)) = ranges.iter().find(|(m, _, _)| *m == n) else { continue };
+            for (k, shape) in new.into_iter().enumerate() {
+                let i = first + k;
+                if same(&shape, &self.shapes[i]) {
+                    continue;
+                }
+                let (before, now) = (self.bounds[i], self.pixels(&shape));
+                for (px, add) in [(before, false), (now, true)] {
+                    let Some(((x0, x1), (y0, y1))) = self.squares_of(px) else { continue };
+                    for y in y0..=y1 {
+                        for x in x0..=x1 {
+                            let square = (y * self.cols + x) as usize;
+                            fresh[square] = true;
+                            let bin = &mut self.bins[square];
+                            match (bin.binary_search(&(i as u32)), add) {
+                                (Ok(at), false) => {
+                                    bin.remove(at);
+                                }
+                                (Err(at), true) => bin.insert(at, i as u32),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                self.shapes[i] = shape;
+                self.bounds[i] = now;
+            }
+        }
+        self.fresh = fresh;
+        self.fresh.iter().any(|f| *f)
+    }
+
+    /// The scale and the size of the screen of the last frame.
+    pub fn ppp(&self) -> f32 {
+        self.ppp
+    }
+
+    pub fn screen(&self) -> [u32; 2] {
+        self.screen
+    }
+
     /// The rectangles changed in this frame: what is shown again.
     pub fn changed(&self) -> Vec<Px> {
         self.rects(&self.fresh)
@@ -374,6 +431,43 @@ mod tests {
         assert!(!d.frame(frame(&shapes), 1.0, SCREEN, &none, false));
         assert!(d.frame(frame(&shapes), 1.0, SCREEN, &HashSet::from([texture]), false));
         assert_eq!(d.changed(), vec![[32, 32, 64, 64]], "the square of the picture");
+    }
+
+    #[test]
+    fn a_live_part_painted_again_changes_the_squares_a_whole_frame_would() {
+        let none = HashSet::new();
+        let ground = fill(0.0, 0.0, 320.0, 200.0, Color32::BLACK);
+        let mark = |n: u32, end: bool| {
+            let mut p = crate::live::Parts::default();
+            let ctx = egui::Context::default();
+            let painter = egui::Painter::new(ctx.clone(), egui::LayerId::background(), Rect::EVERYTHING);
+            if end {
+                p.list.push((egui::LayerId::background(), Rect::EVERYTHING, crate::live::Part::Clock { rect: Rect::NOTHING }));
+                p.end(&painter, n);
+            } else {
+                p.begin(&painter, crate::live::Part::Clock { rect: Rect::NOTHING });
+            }
+            ctx.graphics_mut(|g| g.entry(egui::LayerId::background()).all_entries().next().cloned().unwrap())
+        };
+        let at = |x: f32| vec![ground.clone(), mark(0, false), fill(x, 10.0, 4.0, 4.0, Color32::RED), mark(0, true), fill(150.0, 150.0, 8.0, 8.0, Color32::WHITE)];
+        let (mut whole, mut live) = (Damage::default(), Damage::default());
+        for d in [&mut whole, &mut live] {
+            d.frame(at(10.0), 1.0, SCREEN, &none, false);
+            d.shown();
+        }
+        // The part moves twice: the same squares as a whole frame, each time.
+        for x in [200.0, 40.0] {
+            assert!(whole.frame(at(x), 1.0, SCREEN, &none, false));
+            assert!(live.replay(vec![(0, vec![fill(x, 10.0, 4.0, 4.0, Color32::RED)])], false));
+            assert_eq!(live.changed(), whole.changed());
+            assert_eq!(live.bins, whole.bins, "each square keeps the shapes in it");
+            whole.shown();
+            live.shown();
+        }
+        // The same again: nothing to draw. More shapes: as a whole frame.
+        assert!(!live.replay(vec![(0, vec![fill(40.0, 10.0, 4.0, 4.0, Color32::RED)])], false));
+        assert!(live.replay(vec![(0, vec![fill(40.0, 10.0, 4.0, 4.0, Color32::RED), fill(90.0, 90.0, 4.0, 4.0, Color32::RED)])], false));
+        assert_eq!(live.shapes.len(), 6);
     }
 
     #[test]

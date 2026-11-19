@@ -101,7 +101,9 @@ pub fn cache_on(option: &Value) -> bool {
 pub struct State {
     /// What moves on its own: the playhead, the mode.
     pub tick: Value,
-    pub modal: Value,
+    /// The mode, the panes and what the keyboard does: shared, as each
+    /// frame reads it in many places.
+    pub modal: std::rc::Rc<Value>,
     pub project: Value,
     pub tracks: Vec<Track>,
     pub kinds: Vec<String>,
@@ -182,6 +184,8 @@ pub struct View {
     pub cache: bool,
     /// The window's title as last set.
     title: String,
+    /// The parts of the last pass that the live values move (crate::live).
+    pub live: crate::live::Parts,
 }
 
 impl View {
@@ -220,6 +224,7 @@ impl View {
             fps: 0.0,
             cache: true,
             title: String::new(),
+            live: crate::live::Parts::default(),
         }
     }
 
@@ -351,7 +356,7 @@ impl View {
             self.message_dismissed = self.message_time;
             self.last_mode = mode;
         }
-        self.s.modal = modal.clone();
+        self.s.modal = std::rc::Rc::new(modal.clone());
         // A floating page is drawn by the kernel as text.
         self.float = if modal["float"].is_string() {
             let page = self.ask("return paw.frontend.float(...)", json!([self.float_size.0, self.float_size.1]));
@@ -386,6 +391,7 @@ impl View {
             self.ctx = Some(ctx.clone());
         }
         self.again = None;
+        self.live.list.clear();
         self.scenes_watch(&ctx);
         self.poll();
         self.answers();
@@ -441,8 +447,8 @@ impl View {
     /// the kernel paints.
     fn main_area(&mut self, ui: &mut Ui, area: Rect) {
         self.pane_area(ui, area);
-        let modal = self.s.modal["panes"].clone();
-        self.draw_kernel_panes(ui, area, &modal);
+        let modal = self.s.modal.clone();
+        self.draw_kernel_panes(ui, area, &modal["panes"]);
     }
 
     /// Where keys go: to a text box of the window's while one has them, else
