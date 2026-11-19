@@ -130,3 +130,42 @@ plays. The project keeps the device's own state, and does not read the
 lane's state back from the plugin. This is the same as for a parameter
 that a lane moves. When you stop or remove the lane, paw gives the
 device its own state again.
+
+## After a saved state: the state is the truth
+
+A saved state, a snapshot, a preset and an undo all give a plugin a whole
+state. After this, the state is the truth. The values of the parameters
+that paw shows are only a mirror of the state.
+
+Some plugins take the state only at the start of their next block. JUCE
+plugins, for example Surge XT, do this. paw lets a plugin sleep when its
+sound stops. A plugin that sleeps processes no block, and so it never
+takes the state.
+
+For this reason, a plugin that gets a state always processes its next
+block. Its tail time then starts again. A
+VST3 controller reads its values from the processor when it gets the
+state, before the processor has the new values. For this reason, paw
+gives the controller the state of the component again after the next
+block.
+
+After a state, a plugin tells paw the values of its parameters. These
+messages are the echo of the state, not an edit. For 750 milliseconds
+after a state, paw only updates the values that it shows:
+
+- The echo makes no undo step, and does not change the project.
+- The echo does not remove a parameter that the project sets.
+- The echo does not write automation, and does not change the parameter
+  that `:param.last` uses.
+- paw does not send the echo of a VST3 plugin back to its processor,
+  because the processor already has the state. So, after an undo soon
+  after a state, an old echo cannot play the values of the earlier state.
+
+In these 750 milliseconds, a move in the window of a VST3 plugin still
+goes to the processor. The plugin marks such a move as a move of the
+user (`beginEdit`). In these 750 milliseconds, a move in the window of a
+plugin does not write automation.
+
+Surge XT stops the notes that sound when it takes a whole state. This
+also stops a note that starts in the same block as the state. Put a
+point of a saved state before the next note, not on it.

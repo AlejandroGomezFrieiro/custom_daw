@@ -453,6 +453,30 @@ pub struct LiveDevice {
     /// Why the device has stopped working, once it has (see
     /// [`Controller::health`]).
     pub stopped: Option<String>,
+    /// When it was last given a state. What a plugin tells of its
+    /// parameters for a moment after is the echo of that state, not an edit
+    /// (see [`LiveDevice::echoes`]).
+    pub loaded: Option<std::time::Instant>,
+}
+
+/// How long after a state is given what the plugin reports of its
+/// parameters is taken as the echo of that state. A plugin can take a
+/// state on only in its next block, and tell of it from its main thread
+/// after that.
+pub const ECHO: std::time::Duration = std::time::Duration::from_millis(750);
+
+impl LiveDevice {
+    /// The device was given a state now.
+    pub fn given_state(&mut self) {
+        self.loaded = Some(std::time::Instant::now());
+    }
+
+    /// Whether what the device reports now is the echo of a state it was
+    /// given: the state is the truth, and the values it reports only
+    /// mirror it.
+    pub fn echoes(&self) -> bool {
+        self.loaded.is_some_and(|at| at.elapsed() < ECHO)
+    }
 }
 
 pub type LiveDevices = HashMap<Id, LiveDevice>;
@@ -1111,6 +1135,7 @@ fn add_device(device: &DeviceInst, map: &mut Mapper, ctx: &mut SyncCtx, send: &m
             controller,
             latency,
             stopped: None,
+            loaded: Some(std::time::Instant::now()),
         },
     );
 }
@@ -1251,6 +1276,7 @@ pub fn install(
             controller,
             latency,
             stopped: None,
+            loaded: Some(std::time::Instant::now()),
         },
     );
 }
@@ -1271,6 +1297,9 @@ fn update_device(
     // what the state says, not the default.
     let preset = device.loaded != before.loaded;
     let with_state = preset && device.state.is_some() && live.controller.is_some();
+    if with_state {
+        live.given_state();
+    }
     if with_state && let Some(controller) = live.controller.as_mut() {
         let loaded = BASE64
             .decode(device.state.as_deref().unwrap_or(""))
@@ -1303,6 +1332,12 @@ fn update_device(
                 controller.set_value(index, value);
             }
         }
+    }
+    if device.state != before.state
+        && !with_state
+        && live.controller.as_ref().is_some_and(|c| c.follows_state())
+    {
+        live.given_state();
     }
     if device.state != before.state
         && !with_state
@@ -2260,6 +2295,9 @@ fn release_targets(
                 else {
                     continue;
                 };
+                if inst.state.is_some() {
+                    live.given_state();
+                }
                 if let Some(controller) = live.controller.as_mut()
                     && let Some(state) = &inst.state
                     && let Ok(bytes) = BASE64.decode(state)
