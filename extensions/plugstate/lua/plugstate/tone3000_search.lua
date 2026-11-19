@@ -306,8 +306,14 @@ paw.health.register("plugstate.tone3000", function(h)
   local file = paw.opt.plugstate_tone3000_token_file or ""
   if file ~= "" then sources[#sources + 1] = "the token file " .. file end
   if paw.health.executable(client.secret_tool) then sources[#sources + 1] = "the keyring (secret-tool), if it has an entry" end
+  local auth = client.auth
+  if auth then
+    sources[#sources + 1] = "the sign-in of :plugstate.tone3000_login, if there is one"
+    if auth.client_id() then h.ok("client_id for the sign-in: " .. auth.client_id())
+    else h.info("no client_id: set paw.opt.plugstate_tone3000_client_id to sign in with :plugstate.tone3000_login") end
+  end
   if paw.opt.plugstate_tone3000_plugin_session then sources[#sources + 1] = "the session of the TONE3000 plugin" end
-  if #sources > 0 then h.ok("a token from: " .. table.concat(sources, ", "))
+  if #sources > 0 then h.ok("a token from (the first that has one): " .. table.concat(sources, ", "))
   else h.info("no token: the search works only where TONE3000 lets it without one; a download needs one") end
   h.info("downloads in " .. client.cache_dir())
 end, { desc = "TONE3000's library: curl, where the token comes from, the cache" })

@@ -50,9 +50,9 @@ keeps the path of the file, so do not move the file.
 
 ## Find a model in TONE3000's library
 
-TONE3000 needs a token of your account to download a model. Give it to paw
-first: for example, put the token in the environment variable
-`TONE3000_TOKEN` before you start paw. For the other places, see
+TONE3000 needs a token of your account to download a model. Sign in from
+paw first: see [How to sign in to TONE3000 from paw](sign-in-to-tone3000.md).
+For the other places of a token, see
 [TONE3000 tokens](../../extensions/plugstate/README.md#tone3000-tokens).
 
 1. In the device panel, put the row on the amp plugin and press `\t`.
