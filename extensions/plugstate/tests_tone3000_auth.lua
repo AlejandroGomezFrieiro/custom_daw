@@ -12,8 +12,17 @@ local api = paw.api
 local H = T.t3k
 
 local auth, client
+-- The messages of the test (paw.ui.messages keeps only the last 500).
+local log = {}
 
 local function start()
+  log = {}
+  local notify = paw.notify
+  paw.notify = function(text, ...)
+    log[#log + 1] = tostring(text)
+    return notify(text, ...)
+  end
+  T.after(function() paw.notify = notify end)
   H.load()
   auth = require("plugstate.tone3000_auth")
   client = H.client()
@@ -38,7 +47,7 @@ local function settled() return H.idle() and auth.busy() == 0 end
 --- The messages since `from`, as one text.
 local function said(from)
   local out = {}
-  for i = (from or 0) + 1, #paw.ui.messages do out[#out + 1] = paw.ui.messages[i].text end
+  for i = (from or 0) + 1, #log do out[#out + 1] = log[i] end
   return table.concat(out, "\n")
 end
 
@@ -115,14 +124,14 @@ test("plugstate: :plugstate.tone3000_login signs in by the device flow: a code, 
   local m = start()
   oauth(m, { polls = { "authorization_pending", "slow_down", "authorization_pending", TOKENS } })
   T.fresh()
-  local from = #paw.ui.messages
+  local from = #log
 
   T.keys(":plugstate.tone3000_login<CR>")
   eq(#m.requests, 0, "without a client_id nothing is asked")
   has(said(from), "no client_id", "it says what is missing")
 
   paw.opt.plugstate_tone3000_client_id = "pk_test"
-  from = #paw.ui.messages
+  from = #log
   T.keys(":plugstate.tone3000_login<CR>")
   wait(m, function() return auth.flow and auth.flow.user_code ~= nil end, "the code")
   local req = m.requests[1]
@@ -162,18 +171,18 @@ test("plugstate: :plugstate.tone3000_login signs in by the device flow: a code, 
   local token, result = token_of_search(m)
   eq(token, "at-1", "a search sends the token of the sign-in")
   eq(result.source, "session", "and says where it came from")
-  for _, msg in ipairs(paw.ui.messages) do
-    eq(msg.text:find("at-1", 1, true) or msg.text:find("rt-1", 1, true) or msg.text:find("dc-1", 1, true), nil,
-      "no message shows a token: " .. msg.text)
+  for _, text in ipairs(log) do
+    eq(text:find("at-1", 1, true) or text:find("rt-1", 1, true) or text:find("dc-1", 1, true), nil,
+      "no message shows a token: " .. text)
   end
 
-  from = #paw.ui.messages
+  from = #log
   T.keys(":plugstate.tone3000_status<CR>")
   wait(m, settled, "the status")
   has(said(from), "signed in as tester", "the status names the account")
   has(said(from), file, "and where the tokens are")
 
-  from = #paw.ui.messages
+  from = #log
   T.keys(":plugstate.tone3000_logout<CR>")
   wait(m, settled, "the sign-out")
   eq(read(file), nil, "the sign-out removes the file")
@@ -187,7 +196,7 @@ test("plugstate: the TONE3000 sign-in stops when the code expires, is declined o
   T.fresh()
 
   oauth(m, { polls = { "authorization_pending", "expired_token" } })
-  local from = #paw.ui.messages
+  local from = #log
   auth.login()
   wait(m, function() return auth.flow == nil and settled() end, "the end")
   has(said(from), "has expired", "TONE3000 says the code expired")
@@ -195,7 +204,7 @@ test("plugstate: the TONE3000 sign-in stops when the code expires, is declined o
   paw.ui.close()
 
   oauth(m, { polls = { "access_denied" } })
-  from = #paw.ui.messages
+  from = #log
   auth.login()
   wait(m, function() return auth.flow == nil and settled() end, "the end")
   has(said(from), "declined", "a declined sign-in")
@@ -203,7 +212,7 @@ test("plugstate: the TONE3000 sign-in stops when the code expires, is declined o
 
   -- The code expires before TONE3000 is asked again.
   oauth(m, { polls = { "authorization_pending" }, expires_in = 1 })
-  from = #paw.ui.messages
+  from = #log
   local polled = m.polled
   auth.login()
   wait(m, function() return auth.flow == nil and settled() end, "the end")
@@ -213,7 +222,7 @@ test("plugstate: the TONE3000 sign-in stops when the code expires, is declined o
 
   oauth(m)
   paw.opt.plugstate_tone3000_client_id = "pk_wrong"
-  from = #paw.ui.messages
+  from = #log
   auth.login()
   wait(m, function() return auth.flow == nil and settled() end, "the end")
   has(said(from), "does not know the client_id pk_wrong", "a wrong client_id")
@@ -225,7 +234,7 @@ test("plugstate: the TONE3000 sign-in stops when the code expires, is declined o
   wait(m, function() return auth.flow and auth.flow.user_code end, "the code")
   local socket = client.unix_socket
   client.unix_socket = T.scratch .. "/t3k-mock/nobody-listens.sock"
-  from = #paw.ui.messages
+  from = #log
   wait(m, function() return auth.flow and auth.flow.offline and settled() end, "offline")
   has(said(from), "paw keeps waiting", "offline for a moment")
   client.unix_socket = socket
@@ -282,7 +291,7 @@ test("plugstate: paw renews the TONE3000 sign-in when it expires and after a 401
   T.write_file(session_file(), api.json_encode({ access_token = "at-1", refresh_token = "rt-gone", client_id = "pk_test",
     expires_at = os.time() - 10 }))
   auth.state = nil
-  local from = #paw.ui.messages
+  local from = #log
   token, result = token_of_search(m)
   eq(token, nil, "no token")
   has(said(from), "sign in again with :plugstate.tone3000_login", "it says to sign in again")
@@ -325,7 +334,7 @@ test("plugstate: the TONE3000 sign-in goes into the keyring through secret-tool,
   paw.opt.plugstate_tone3000_client_id = "pk_test"
   oauth(m, { polls = { TOKENS } })
 
-  local from = #paw.ui.messages
+  local from = #log
   auth.login()
   wait(m, function() return auth.flow == nil and settled() and auth.state and auth.state.username end, "signed in")
   has(said(from), "in the keyring", "it says where the tokens are")
