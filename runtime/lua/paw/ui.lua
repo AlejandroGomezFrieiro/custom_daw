@@ -925,10 +925,21 @@ function M.render_scene(name, w, h, cell, win)
   if view and view.paint then
     local px = { w * cell.w, h * cell.h }
     if win then L.bind(win) end
-    local ok, drawing = pcall(paw.canvas.paint, name, px[1], px[2], { cell = cell, glyphs = true })
+    -- What the view marks over its picture (`ctx.marks`): roles that the
+    -- frontend paints, such as a playhead that the live values move.
+    local marks = {}
+    local ok, drawing = pcall(paw.canvas.paint, name, px[1], px[2], { cell = cell, glyphs = true, marks = marks })
     L.settle()
     if not ok then error(drawing, 0) end
     api.scene_picture({ x = 0, y = 0, w = w, h = h }, { ops = drawing and drawing.ops or {}, px = px })
+    for i, m in ipairs(marks) do
+      local r = { x = m.x / cell.w, y = m.y / cell.h, w = m.w / cell.w, h = m.h / cell.h }
+      local props = {}
+      for k, v in pairs(m.props or {}) do
+        if k ~= "bind" then props[k] = v end
+      end
+      if api.scene_open(r, { role = m.role, props = props, bind = m.props and m.props.bind, key = "mark:" .. i }) then api.scene_close() end
+    end
     return
   end
   -- The roles it marks are nodes of the scene (paw/roles.lua).

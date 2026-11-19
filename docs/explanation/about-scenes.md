@@ -33,6 +33,17 @@ changed. While the song plays, the values that move (the playhead, the clock,
 the meters, the parameters that lanes move) come as small live messages.
 The window moves its widgets with them.
 
+The window does this without a pass of its layout. It keeps the shapes
+of the last pass and paints again only the parts that move.
+
+A view can also move in other ways as the song plays. Notation follows the
+playhead from system to system, and the session view fills the slots that
+play. Such a view gives a key of what its drawing shows, without the live
+values (`view:scene_key()`). Notation gives the system of the playhead and
+puts its playhead in the scene as a role that the live values move. The
+session view gives the cells that the slots fill. While the key does not
+change, the kernel sends no new scene of the view.
+
 The full description is in [The control
 protocol](../reference/protocol.md).
 

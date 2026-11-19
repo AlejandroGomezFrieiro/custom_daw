@@ -49,8 +49,29 @@ end
 --- and a watcher that paints them all needs no new scene of it as the song
 --- plays, unless the view says it moves all the same (`view:moving()`: the
 --- arrange view scrolls to follow the playhead).
-local function still(w, name)
+---
+--- A view can also give a key of what its drawing in a window shows but
+--- the live values (`view:scene_key()`, a string; notation: the system of
+--- the playhead): while the key stays the same as at the last drawing of
+--- the window `area`, the scene stays too. It names the roles that it
+--- moves by the live values in `view.scene_roles`.
+local function key_of(view, win)
+  if not view.scene_key then return nil end
+  if win then L.bind(win) end
+  local ok, key = pcall(view.scene_key, view)
+  L.settle()
+  return ok and key or nil
+end
+
+local function still(w, name, area, win)
   local view = paw.ui.views[name]
+  if view and view.scene_key then
+    for _, role in ipairs(view.scene_roles or {}) do
+      if not w.roles[role] then return false end
+    end
+    local key = key_of(view, win)
+    return key ~= nil and key == area.key
+  end
   local roles = view and view.live_roles
   if not roles then return false end
   -- A view may draw other things that move, only at times (`view:moving()`).
@@ -85,10 +106,11 @@ local function push(client, all)
         if area.drawn then api.scene_forget(client, id) end
         area.drawn, area.view = nil, nil
       elseif area.drawn ~= redraws or area.view ~= what.view
-        or (all and now - area.at >= (playing and every(what.view) or 1000) - 5 and not still(w, what.view)) then
+        or (all and now - area.at >= (playing and every(what.view) or 1000) - 5 and not still(w, what.view, area, what.win)) then
         area.drawn, area.view, area.at = redraws, what.view, now
         local ok, err = pcall(paw.ui.render_scene, what.view, area.w, area.h, w.cell, what.win)
         if not ok then api.log("the scene of " .. what.view .. " failed: " .. tostring(err)) end
+        area.key = key_of(paw.ui.views[what.view] or {}, what.win)
         local _, open = api.scene_end(client, id)
         if not open then return M.closed(client) end
       end
