@@ -29,6 +29,59 @@ pub fn params() -> [ParamInfo; 2] {
     [wet, gain]
 }
 
+/// Zeroed samples in memory of their own from the system, whose pages take
+/// no memory until they are written. Most devices have no latency, so the
+/// line that holds back their dry signal is never written, and costs them
+/// nothing (it was 128 kB a device). Made and dropped on the main thread.
+struct Zeroed {
+    ptr: std::ptr::NonNull<f32>,
+    len: usize,
+}
+
+// Owned memory, like a `Box<[f32]>`.
+unsafe impl Send for Zeroed {}
+
+impl Zeroed {
+    fn new(len: usize) -> Self {
+        let bytes = len * std::mem::size_of::<f32>();
+        // SAFETY: a private anonymous mapping, read and written only as
+        // the `len` samples it holds; the system gives it zeroed.
+        let ptr = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                bytes,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+                -1,
+                0,
+            )
+        };
+        if ptr == libc::MAP_FAILED {
+            std::alloc::handle_alloc_error(std::alloc::Layout::array::<f32>(len).expect("layout"));
+        }
+        Self { ptr: std::ptr::NonNull::new(ptr.cast()).expect("mapped"), len }
+    }
+
+    fn as_ref(&self) -> &[f32] {
+        // SAFETY: `len` samples, mapped while `self` lives.
+        unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
+    }
+
+    fn as_mut(&mut self) -> &mut [f32] {
+        // SAFETY: as above, and borrowed mutably once.
+        unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
+    }
+}
+
+impl Drop for Zeroed {
+    fn drop(&mut self) {
+        // SAFETY: the mapping made in `new`, unmapped once.
+        unsafe {
+            libc::munmap(self.ptr.as_ptr().cast(), self.len * std::mem::size_of::<f32>());
+        }
+    }
+}
+
 pub struct HostPath {
     /// The position of the first host parameter in the device's list.
     pub base: u32,
@@ -39,7 +92,8 @@ pub struct HostPath {
     latency: usize,
     /// The input of the last frames, as long as the longest latency and a
     /// block more, so that a whole block can go in before any is read.
-    ring: [Box<[f32]>; 2],
+    /// Written only while there is a latency.
+    ring: [Zeroed; 2],
     pos: usize,
     dry: [Box<[f32]>; 2],
     /// Set once a block has been processed: before that, a setting is taken
@@ -54,7 +108,7 @@ impl HostPath {
     /// Made on the main thread, for a device with `base` parameters of its
     /// own, processing blocks of at most `max_block` frames.
     pub fn new(base: u32, latency: u32, max_block: usize) -> Self {
-        let ring = || vec![0.0f32; MAX_LATENCY + max_block.max(1)].into_boxed_slice();
+        let ring = || Zeroed::new(MAX_LATENCY + max_block.max(1));
         let dry = || vec![0.0f32; max_block].into_boxed_slice();
         Self {
             base,
@@ -83,7 +137,15 @@ impl HostPath {
     }
 
     pub fn set_latency(&mut self, frames: u32) {
-        self.latency = (frames as usize).min(MAX_LATENCY);
+        let latency = (frames as usize).min(MAX_LATENCY);
+        if self.latency == 0 && latency > 0 {
+            // Not written while there was no latency: it starts from silence.
+            for ring in &mut self.ring {
+                ring.as_mut().fill(0.0);
+            }
+            self.pos = 0;
+        }
+        self.latency = latency;
         self.quiet = 0;
     }
 
@@ -104,9 +166,13 @@ impl HostPath {
     /// A silent block that the device sleeps through: the dry signal moves
     /// on as if it had been processed.
     pub fn skip(&mut self, n: usize) {
-        let len = self.ring[0].len();
+        if self.latency == 0 {
+            return;
+        }
+        let len = self.ring[0].len;
         let n = n.min(self.dry[0].len());
         for ring in &mut self.ring {
+            let ring = ring.as_mut();
             let first = (len - self.pos).min(n);
             ring[self.pos..self.pos + first].fill(0.0);
             ring[..n - first].fill(0.0);
@@ -126,20 +192,23 @@ impl HostPath {
         io: &mut Io,
     ) -> bool {
         let n = io.left.len().min(self.dry[0].len());
-        // The input goes through the delay line always, so that the dry
-        // signal is ready whenever the mix moves.
         // A bypassed device holds nothing back: the track's lining up
         // leaves it out (see the schedule).
         let delay = if bypass { 0 } else { self.latency };
-        let len = self.ring[0].len();
+        let len = self.ring[0].len;
         let at = self.pos;
-        for (ring, input) in self.ring.iter_mut().zip([&*io.left, &*io.right]) {
-            let first = (len - at).min(n);
-            ring[at..at + first].copy_from_slice(&input[..first]);
-            ring[..n - first].copy_from_slice(&input[first..n]);
-        }
-        self.pos = (at + n) % len;
+        // With a latency the input goes through the delay line always, so
+        // that the dry signal is ready whenever the mix moves. Without one
+        // the line is left alone, so that a device without latency (most)
+        // never touches its memory: the dry signal is the input.
         if self.latency > 0 {
+            for (ring, input) in self.ring.iter_mut().zip([&*io.left, &*io.right]) {
+                let ring = ring.as_mut();
+                let first = (len - at).min(n);
+                ring[at..at + first].copy_from_slice(&input[..first]);
+                ring[..n - first].copy_from_slice(&input[first..n]);
+            }
+            self.pos = (at + n) % len;
             if crate::device::silent(&io.left[..n]) && crate::device::silent(&io.right[..n]) {
                 self.quiet = self.quiet.saturating_add(n);
             } else {
@@ -148,7 +217,13 @@ impl HostPath {
         }
         // The dry signal: the input `delay` frames ago, read once the whole
         // block is in (the ring is longer than any delay by a block).
-        let read_dry = |ring: &[f32], dry: &mut [f32]| {
+        let from_ring = self.latency > 0;
+        let read_dry = |ring: &Zeroed, input: &[f32], dry: &mut [f32]| {
+            if !from_ring {
+                dry[..n].copy_from_slice(&input[..n]);
+                return;
+            }
+            let ring = ring.as_ref();
             let from = (at + len - delay) % len;
             let first = (len - from).min(n);
             dry[..first].copy_from_slice(&ring[from..from + first]);
@@ -163,16 +238,18 @@ impl HostPath {
         }
         if self.wet_now == 0.0 && target == 0.0 {
             // Off, and faded out: only the dry signal.
-            read_dry(&self.ring[0], &mut io.left[..n]);
-            read_dry(&self.ring[1], &mut io.right[..n]);
+            if from_ring {
+                read_dry(&self.ring[0], &[], &mut io.left[..n]);
+                read_dry(&self.ring[1], &[], &mut io.right[..n]);
+            }
             return true;
         }
         if self.wet_now == 1.0 && target == 1.0 && self.gain_now == 1.0 && self.gain == 1.0 {
             // All wet: the dry signal is not needed.
             return crate::guard::process(device, ctx, io);
         }
-        read_dry(&self.ring[0], &mut self.dry[0]);
-        read_dry(&self.ring[1], &mut self.dry[1]);
+        read_dry(&self.ring[0], io.left, &mut self.dry[0]);
+        read_dry(&self.ring[1], io.right, &mut self.dry[1]);
         if !crate::guard::process(device, ctx, io) {
             return false;
         }
@@ -297,6 +374,24 @@ mod tests {
         let mut device = Invert {
             delay: vec![0.0; 30],
         };
+        let out = run(&mut path, &mut device, 20, |_, _| false);
+        for s in out.iter().skip(128 * 4) {
+            assert!(s.abs() < 1e-6, "left over {s}");
+        }
+    }
+
+    #[test]
+    fn a_device_without_latency_leaves_the_delay_line_alone_until_it_has_one() {
+        let mut path = HostPath::new(0, 0, 128);
+        path.set_param(0, 50.0);
+        let mut device = Invert {
+            delay: vec![0.0; 1],
+        };
+        run(&mut path, &mut device, 8, |_, _| false);
+        assert!(path.ring.iter().all(|r| r.as_ref().iter().all(|&x| x == 0.0)), "not written");
+        // A latency told later: once it has passed, the dry signal waits again.
+        path.set_latency(30);
+        device.delay = vec![0.0; 30];
         let out = run(&mut path, &mut device, 20, |_, _| false);
         for s in out.iter().skip(128 * 4) {
             assert!(s.abs() < 1e-6, "left over {s}");

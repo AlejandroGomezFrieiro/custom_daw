@@ -500,6 +500,12 @@ pub struct Delay {
     filters: [[Svf; 2]; 2],
     started: bool,
     rest: Rest,
+    /// How many frames of silence the lines last took in, up to their
+    /// length: at their length they hold nothing but silence (as a new
+    /// delay does), and silence in gives silence out without writing them.
+    /// A delay that never hears a sound then never touches the memory of
+    /// its lines, which is most of the memory of a project with many.
+    quiet: usize,
 }
 
 impl Delay {
@@ -515,9 +521,18 @@ impl Delay {
             filters: Default::default(),
             started: false,
             rest: Rest::default(),
+            quiet: usize::MAX,
         };
         d.apply();
         d
+    }
+
+    /// True when the lines and the filters hold nothing and this block's
+    /// input is silence: the block's output is then its input.
+    fn silent(&self, io: &Io) -> bool {
+        self.quiet >= self.lines[0].capacity() + 4
+            && self.filters.iter().flatten().all(|f| f.is_zero())
+            && io.left.iter().chain(io.right.iter()).all(|x| x.to_bits() == 0)
     }
 
     fn apply(&mut self) {
@@ -559,6 +574,14 @@ impl Device for Delay {
             self.time.snap();
         }
         self.started = true;
+        if self.silent(io) {
+            for _ in 0..io.left.len() {
+                self.time.step();
+            }
+            // Holding nothing, and settled: at rest.
+            self.rest.resting = !self.time.moving();
+            return;
+        }
         let feedback = self.p[D_FEEDBACK].clamp(0.0, 0.95);
         let mix = self.p[D_MIX].clamp(0.0, 1.0);
         let pingpong = self.p[D_MODE] >= 0.5;
@@ -591,8 +614,10 @@ impl Device for Delay {
             } else {
                 (*l + back[0], *r + back[1])
             };
-            self.lines[0].push(dsp::flush(input_l));
-            self.lines[1].push(dsp::flush(input_r));
+            let (input_l, input_r) = (dsp::flush(input_l), dsp::flush(input_r));
+            self.lines[0].push(input_l);
+            self.lines[1].push(input_r);
+            self.quiet = if input_l == 0.0 && input_r == 0.0 { self.quiet.saturating_add(1) } else { 0 };
             if width < 1.0 {
                 let mid = (wet[0] + wet[1]) * 0.5;
                 wet[0] = mid + (wet[0] - mid) * width;
@@ -607,7 +632,12 @@ impl Device for Delay {
                 && !self.rest.resting
                 && !self.time.moving()
             {
-                self.lines.iter_mut().for_each(DelayLine::clear);
+                // Lines that took in only silence for their whole length hold
+                // nothing, and are left alone (their memory untouched).
+                if self.quiet < self.lines[0].capacity() + 4 {
+                    self.lines.iter_mut().for_each(DelayLine::clear);
+                }
+                self.quiet = usize::MAX;
                 self.filters = Default::default();
                 self.rest.resting = true;
             }
@@ -631,6 +661,40 @@ impl Device for Delay {
 mod tests {
     use super::*;
     use crate::devices::testkit::*;
+
+    #[test]
+    fn a_delay_in_silence_writes_nothing_and_sounds_the_same() {
+        // A sound, silence for longer than the lines, a sound again, with
+        // the filters on. Negative zeros are silence that the delay still
+        // writes, so they give what it gave before it left silence alone.
+        let sr = 48000.0;
+        let mut input = vec![0.0f32; (sr * 12.0) as usize];
+        input[100] = 1.0;
+        input[(sr * 10.0) as usize] = 0.5;
+        let written: Vec<f32> = input.iter().map(|&x| if x == 0.0 { -0.0 } else { x }).collect();
+        let run = |input: &[f32]| {
+            let mut fx = Fx::new("delay", sr);
+            fx.set("feedback", 0.6);
+            fx.set("low_cut", 200.0);
+            fx.set("high_cut", 5000.0);
+            fx.run_stereo(input, input, 256)
+        };
+        let (a, b) = (run(&input), run(&written));
+        assert!(a.0.iter().zip(&b.0).all(|(x, y)| x == y), "left");
+        assert!(a.1.iter().zip(&b.1).all(|(x, y)| x == y), "right");
+        let after = (sr * 10.0) as usize;
+        assert!(a.0[after + 1..].iter().any(|x| x.abs() > 0.01), "the second sound echoes");
+        // A new delay that hears only silence leaves its lines alone.
+        let mut d = Delay::new(sr);
+        let (mut l, mut r) = (vec![0.0f32; 512], vec![0.0f32; 512]);
+        let ctx = ProcessCtx::at(sr, 120.0, 4, 4, false);
+        for _ in 0..100 {
+            let mut events = crate::EventBuf::with_capacity(4);
+            let mut io = Io { left: &mut l, right: &mut r, events: &mut events, sidechain: None, outputs: &mut [] };
+            d.process(&ctx, &mut io);
+        }
+        assert_eq!(d.quiet, usize::MAX);
+    }
 
     #[test]
     fn mix_at_zero_is_transparent() {
