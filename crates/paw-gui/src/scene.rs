@@ -20,7 +20,6 @@ use serde_json::{Value, json};
 use unicode_width::UnicodeWidthChar;
 
 use crate::app::View;
-use crate::layer::Layer;
 use crate::panes::pointer_events;
 use crate::roles;
 use crate::theme::{hex, mono, mono_medium};
@@ -45,10 +44,68 @@ struct Picture {
     under: bool,
     /// The size in pixels it was drawn for.
     px: [f32; 2],
-    ops: Value,
-    /// The image, and its size in pixels.
+    /// The drawing read, and what its page shows, as a hash.
+    drawing: std::sync::Arc<paw_raster::Drawing>,
+    page_key: u64,
+    /// The page's image, and its size in pixels.
+    image: Option<(TextureHandle, [usize; 2])>,
+    /// The overlay (what moves over the page: a playhead, a caret), in
+    /// pieces that do not touch, each made apart, so that a playhead
+    /// moving over a page does not make the page's image or the rest of
+    /// the overlay anew.
+    over: Vec<Piece>,
+}
+
+/// A piece of a drawing's overlay: its items, what they show as a hash, its
+/// box in the drawing's pixels, and its image with its size in pixels.
+struct Piece {
+    items: Vec<paw_raster::Item>,
+    key: u64,
+    area: [f32; 4],
     image: Option<(TextureHandle, [usize; 2])>,
 }
+
+/// The overlay's items in pieces that do not touch (2 pixels apart at
+/// least), each in the order drawn.
+fn pieces(items: &[paw_raster::Item]) -> Vec<Piece> {
+    let mut groups: Vec<([f32; 4], Vec<usize>)> = Vec::new();
+    for (i, item) in items.iter().enumerate() {
+        let [l, t, r, b] = item.bounds;
+        if !(r > l && b > t) {
+            continue;
+        }
+        let mut area = [l - 2.0, t - 2.0, r + 2.0, b + 2.0];
+        let mut members = vec![i];
+        // Every group it reaches joins it, and the groups those reach.
+        loop {
+            let Some(at) = groups.iter().position(|(a, _)| a[0] < area[2] && area[0] < a[2] && a[1] < area[3] && area[1] < a[3]) else { break };
+            let (a, m) = groups.swap_remove(at);
+            area = [area[0].min(a[0]), area[1].min(a[1]), area[2].max(a[2]), area[3].max(a[3])];
+            members.extend(m);
+        }
+        groups.push((area, members));
+    }
+    groups
+        .into_iter()
+        .map(|(a, mut members)| {
+            members.sort_unstable();
+            let items: Vec<paw_raster::Item> = members.iter().map(|&i| items[i].clone()).collect();
+            let mut hasher = std::hash::DefaultHasher::new();
+            for item in &items {
+                std::hash::Hash::hash(&item.key, &mut hasher);
+            }
+            let (l, t) = ((a[0] + 2.0).floor().max(0.0), (a[1] + 2.0).floor().max(0.0));
+            let area = [l, t, (a[2] - 2.0).ceil() - l, (a[3] - 2.0).ceil() - t];
+            std::hash::Hash::hash(&area.map(f32::to_bits), &mut hasher);
+            Piece { items, key: std::hash::Hasher::finish(&hasher), area, image: None }
+        })
+        .filter(|p| p.area[2] > 0.0 && p.area[3] > 0.0)
+        .collect()
+}
+
+/// What the still part of a scene was painted for: its rectangle, its cut,
+/// the cell and scale, the roles that moved, and the clips' pictures made.
+type StillKey = (Rect, Rect, [f32; 3], Vec<usize>, u64);
 
 /// A window's scene, and what is drawn of it.
 #[derive(Default)]
@@ -68,6 +125,9 @@ struct Shown {
     /// The shapes of what is drawn over the roles, each with what it is
     /// cut to, made as the cells' are.
     over_shapes: Option<(Vec<(Rect, Shape)>, [f32; 5])>,
+    /// The shapes of what does not move, as last painted, and for what:
+    /// where, cut to what, at what cell and scale, with which roles moving.
+    still: Option<(StillKey, Vec<egui::epaint::ClippedShape>)>,
 }
 
 #[derive(Default)]
@@ -87,9 +147,17 @@ pub struct Scenes {
     pub cell: Option<(f32, f32)>,
     /// What bound nodes are moved by, as the kernel last sent it.
     pub live: Value,
+    /// With `PAW_GUI_STATS`: the patches taken by window, the nodes they
+    /// set, and since when.
+    pub counted: Option<(HashMap<String, (u64, u64)>, std::time::Instant)>,
 }
 
 impl Scenes {
+    /// The scenes, counting the patches taken when `count` (`PAW_GUI_STATS`).
+    pub fn counting(count: bool) -> Scenes {
+        Scenes { counted: count.then(|| (HashMap::new(), std::time::Instant::now())), ..Scenes::default() }
+    }
+
     /// The window's cell, or the size it has before it is measured.
     pub fn cell(&self) -> (f32, f32) {
         self.cell.unwrap_or((7.8, 17.0))
@@ -166,7 +234,26 @@ fn blocks(c: char) -> Option<(Vec<[f32; 4]>, f32)> {
 impl Shown {
     /// Take in a patch, and what it changes of the cells and the pictures.
     fn take(&mut self, patch: &Patch, blobs: &HashMap<String, Value>) {
+        // A patch that only draws pictures anew where they were (a canvas
+        // view's playhead, as the song plays) leaves the cells and the
+        // roles as they are.
+        let pictures_only = !patch.full
+            && patch.size.is_none()
+            && patch.root.is_none()
+            && patch.drop.is_empty()
+            && patch.colors.is_none()
+            && patch.cursor.is_none()
+            && !patch.set.is_empty()
+            && patch.set.iter().all(|new| {
+                matches!(new.kind, Kind::Picture(_))
+                    && self.scene.nodes.get(&new.key).is_some_and(|old| matches!(old.kind, Kind::Picture(_)) && old.rect == new.rect && old.clip == new.clip && old.kids == new.kids)
+            });
         self.scene.apply(patch);
+        if pictures_only {
+            self.take_pictures(blobs);
+            self.still = None;
+            return;
+        }
         self.over = self.scene.over_roles(&|role| roles::KNOWN.contains(&role));
         // What is drawn over a role is painted over it; in the cells under
         // the roles it would be painted twice.
@@ -178,20 +265,7 @@ impl Shown {
             }
         }
         self.rows = under.to_cells().runs(fg, bg);
-        let mut before: HashMap<String, Picture> = self.pictures.drain(..).map(|p| (p.key.clone(), p)).collect();
-        let mut pictures = Vec::new();
-        self.scene.walk(&mut |node| {
-            let Kind::Picture(picture) = &node.kind else { return };
-            let ops = match (&picture.ops, &picture.blob) {
-                (Some(ops), _) => ops.clone(),
-                (None, Some(key)) => blobs.get(key).cloned().unwrap_or(Value::Null),
-                _ => Value::Null,
-            };
-            // A drawing that did not change keeps its image.
-            let image = before.remove(&node.key).filter(|p| p.rect == node.rect && p.px == picture.px && p.ops == ops).and_then(|p| p.image);
-            pictures.push(Picture { key: node.key.clone(), rect: node.rect, clip: node.clip, under: picture.under, px: picture.px, ops, image });
-        });
-        self.pictures = pictures;
+        self.take_pictures(blobs);
         let mut placed = Vec::new();
         self.scene.placed(&mut |node, rect, cut| {
             if let Kind::Role { role, .. } = &node.kind
@@ -203,6 +277,54 @@ impl Shown {
         self.roles = placed;
         self.shapes = None;
         self.over_shapes = None;
+        self.still = None;
+    }
+
+    /// The scene's pictures, each keeping its image while its drawing is
+    /// the same.
+    fn take_pictures(&mut self, blobs: &HashMap<String, Value>) {
+        let mut before: HashMap<String, Picture> = self.pictures.drain(..).map(|p| (p.key.clone(), p)).collect();
+        let mut pictures = Vec::new();
+        self.scene.walk(&mut |node| {
+            let Kind::Picture(picture) = &node.kind else { return };
+            let ops = match (&picture.ops, &picture.blob) {
+                (Some(ops), _) => ops.clone(),
+                (None, Some(key)) => blobs.get(key).cloned().unwrap_or(Value::Null),
+                _ => Value::Null,
+            };
+            let drawing = paw_raster::Drawing::parse(&ops);
+            let keys = |items: &[paw_raster::Item]| {
+                let mut hasher = std::hash::DefaultHasher::new();
+                for item in items {
+                    std::hash::Hash::hash(&item.key, &mut hasher);
+                }
+                std::hash::Hasher::finish(&hasher)
+            };
+            let page_key = keys(&drawing.page);
+            // A page that did not change keeps its image; a piece of the
+            // overlay too.
+            let old = before.remove(&node.key).filter(|p| p.rect == node.rect && p.px == picture.px);
+            let image = old.as_ref().filter(|p| p.page_key == page_key).and_then(|p| p.image.clone());
+            let mut over = pieces(&drawing.overlay);
+            if let Some(old) = old {
+                let mut kept: HashMap<u64, (TextureHandle, [usize; 2])> = old.over.into_iter().filter_map(|p| Some((p.key, p.image?))).collect();
+                for piece in &mut over {
+                    piece.image = kept.remove(&piece.key);
+                }
+            }
+            pictures.push(Picture {
+                key: node.key.clone(),
+                rect: node.rect,
+                clip: node.clip,
+                under: picture.under,
+                px: picture.px,
+                drawing: std::sync::Arc::new(drawing),
+                page_key,
+                image,
+                over,
+            });
+        });
+        self.pictures = pictures;
     }
 
     /// The shapes of the runs and fills a view drew over the roles painted
@@ -330,14 +452,58 @@ impl Shown {
     }
 
     /// Draw the window's scene over `rect`, cut to `clip`; `id` is the
-    /// window's. With a `layer`, what does not move is kept there as
-    /// textures; what moves (the roles bound to live values and the one
-    /// under the pointer) is drawn over it each frame.
-    fn draw(&mut self, ui: &Ui, id: &str, rect: Rect, clip: Rect, cell: (f32, f32), live: &Value, layer: Option<&mut Layer>) {
+    /// window's. What moves (the roles bound to live values and the one
+    /// under the pointer) is drawn over the rest. The window draws a frame
+    /// again only where its shapes changed (crate::damage), so what does
+    /// not move costs no drawing.
+    fn draw(&mut self, ui: &Ui, id: &str, rect: Rect, clip: Rect, cell: (f32, f32), live: &Value) {
         let painter = ui.painter().with_clip_rect(clip.intersect(ui.clip_rect()));
-        // The still part, painted where the layer takes it from, or on the screen.
-        let kept = egui::LayerId::new(egui::Order::Background, Id::unique(("scene-still", id)));
-        let still = if layer.is_some() { egui::Painter::new(ui.ctx().clone(), kept, painter.clip_rect()) } else { painter.clone() };
+        let ppp = ui.ctx().pixels_per_point();
+        // What moves: the roles bound to live values, and the one under
+        // the pointer.
+        let moving: Vec<usize> = (0..self.roles.len())
+            .filter(|&i| {
+                let (node, at, _) = &self.roles[i];
+                node.bind.is_some() || ui.rect_contains_pointer(roles::rect_of(*at, rect.min, cell))
+            })
+            .collect();
+        // The rest is painted once, and its shapes are given again while
+        // nothing of it changes: no layout, no painting of roles.
+        let still_key = (rect, painter.clip_rect(), [cell.0, cell.1, ppp], moving.clone(), crate::timeline::pictures_made());
+        if self.still.as_ref().is_none_or(|(key, _)| *key != still_key) {
+            let kept = egui::LayerId::new(painter.layer_id().order, Id::unique(("scene-still", id)));
+            let still = egui::Painter::new(ui.ctx().clone(), kept, painter.clip_rect());
+            self.paint_still(ui, &still, id, rect, cell, live, &moving);
+            let shapes = ui.ctx().graphics_mut(|g| std::mem::take(g.entry(kept)));
+            self.still = Some((still_key, shapes.all_entries().cloned().collect()));
+        } else {
+            // What it says to a reader of the window, as when painted, and
+            // the clips' pictures it shows, kept.
+            for (i, (node, at, _)) in self.roles.iter().enumerate() {
+                if !moving.contains(&i) {
+                    roles::name(ui, Id::unique(("scene-role", id, &node.key)), node, roles::rect_of(*at, rect.min, cell));
+                    crate::timeline::keep_picture(node);
+                }
+            }
+        }
+        if let Some((_, shapes)) = &self.still {
+            ui.ctx().graphics_mut(|g| {
+                let list = g.entry(painter.layer_id());
+                for shape in shapes {
+                    list.add(shape.clip_rect, shape.shape.clone());
+                }
+            });
+        }
+        for i in moving {
+            self.role(ui, &painter, id, i, rect.min, cell, live);
+        }
+    }
+
+    /// Paint what does not move of the scene with `still`: the ground, the
+    /// cells, the pictures, the roles but those `moving`, what is drawn
+    /// over them, the cursor.
+    #[allow(clippy::too_many_arguments)]
+    fn paint_still(&mut self, ui: &Ui, still: &egui::Painter, id: &str, rect: Rect, cell: (f32, f32), live: &Value, moving: &[usize]) {
         still.rect_filled(rect, CornerRadius::ZERO, colour(&self.scene.bg));
         let ppp = ui.ctx().pixels_per_point();
         let key = [rect.min.x, rect.min.y, cell.0, cell.1, ppp];
@@ -348,16 +514,12 @@ impl Shown {
         let Some((back, text, _)) = &self.shapes else { return };
         still.extend(back.iter().cloned());
         let text = text.clone();
-        self.pictures(ui, &still, rect.min, cell, true);
+        self.pictures(ui, still, rect.min, cell, true);
         still.extend(text);
-        let mut moving = Vec::new();
-        for (i, (node, at, _)) in self.roles.iter().enumerate() {
-            let at = roles::rect_of(*at, rect.min, cell);
-            if node.bind.is_some() || ui.rect_contains_pointer(at) {
-                moving.push(i);
-                continue;
+        for i in 0..self.roles.len() {
+            if !moving.contains(&i) {
+                self.role(ui, still, id, i, rect.min, cell, live);
             }
-            self.role(ui, &still, id, i, rect.min, cell, live);
         }
         if self.over_shapes.as_ref().is_none_or(|s| s.1 != key) {
             self.over_shapes = Some((self.over_shapes(ui.ctx(), rect.min, cell), key));
@@ -371,17 +533,10 @@ impl Shown {
                 }
             }
         }
-        self.pictures(ui, &still, rect.min, cell, false);
+        self.pictures(ui, still, rect.min, cell, false);
         if let Some([x, y]) = self.scene.cursor {
             let bar = Rect::from_min_size(pos2(rect.min.x + x * cell.0, rect.min.y + y * cell.1), vec2(2.0, cell.1));
             still.rect_filled(bar, CornerRadius::ZERO, colour(&self.scene.fg));
-        }
-        if let Some(layer) = layer {
-            let shapes = ui.ctx().graphics_mut(|g| std::mem::take(g.entry(kept)));
-            layer.draw(ui.ctx(), &painter, id, rect, shapes.all_entries().cloned().collect());
-        }
-        for i in moving {
-            self.role(ui, &painter, id, i, rect.min, cell, live);
         }
     }
 
@@ -405,20 +560,48 @@ impl Shown {
         for p in self.pictures.iter_mut().filter(|p| p.under == under) {
             let rect = units(p.rect);
             let size = [(rect.width() * ppp).round().max(1.0) as usize, (rect.height() * ppp).round().max(1.0) as usize];
+            // The drawing's pixels to the image's: the drawing fills it.
+            let scale = size[0] as f32 / p.px[0].max(1.0);
             if p.image.as_ref().is_none_or(|(_, made)| *made != size) {
-                // The drawing's pixels to the image's: the drawing fills it.
-                let scale = size[0] as f32 / p.px[0].max(1.0);
-                let image = match paw_raster::Drawing::parse(&p.ops).paint_scaled(size[0] as u32, size[1] as u32, scale) {
-                    Some(pixmap) => ColorImage::from_rgba_premultiplied(size, pixmap.data()),
-                    None => ColorImage::new(size, vec![Color32::TRANSPARENT; size[0] * size[1]]),
-                };
-                let texture = ui.ctx().load_texture("scene-picture", image, egui::TextureOptions::LINEAR);
+                let at = tiny_skia::Transform::from_scale(scale, scale);
+                let texture = ui.ctx().load_texture("scene-picture", raster(size, &p.drawing.page, at), egui::TextureOptions::LINEAR);
                 p.image = Some((texture, size));
             }
-            let Some((texture, _)) = &p.image else { continue };
+            // The overlay's pieces, each in an image of its own the size
+            // of its box.
+            for piece in &mut p.over {
+                let b = piece.area;
+                let made = [(b[2] * scale).ceil().max(1.0) as usize, (b[3] * scale).ceil().max(1.0) as usize];
+                if piece.image.as_ref().is_none_or(|(_, size)| *size != made) {
+                    let at = tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, -b[0] * scale, -b[1] * scale);
+                    let texture = ui.ctx().load_texture("scene-overlay", raster(made, &piece.items, at), egui::TextureOptions::LINEAR);
+                    piece.image = Some((texture, made));
+                }
+            }
             let shown = p.clip.map_or(painter.clip_rect(), |c| units(c).intersect(painter.clip_rect()));
-            painter.with_clip_rect(shown).image(texture.id(), rect, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), Color32::WHITE);
+            let whole = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
+            if let Some((texture, _)) = &p.image {
+                painter.with_clip_rect(shown).image(texture.id(), rect, whole, Color32::WHITE);
+            }
+            for piece in &p.over {
+                let Some((texture, made)) = &piece.image else { continue };
+                // Its pixels are the page's: from the box's corner, as big.
+                let corner = rect.min + vec2(piece.area[0] * scale, piece.area[1] * scale) / ppp;
+                let over = Rect::from_min_size(corner, vec2(made[0] as f32, made[1] as f32) / ppp);
+                painter.with_clip_rect(shown).image(texture.id(), over, whole, Color32::WHITE);
+            }
         }
+    }
+}
+
+/// Some items of a drawing on an image of `size` pixels, placed by `at`.
+fn raster(size: [usize; 2], items: &[paw_raster::Item], at: tiny_skia::Transform) -> ColorImage {
+    match tiny_skia::Pixmap::new(size[0] as u32, size[1] as u32) {
+        Some(mut pixmap) => {
+            paw_raster::paint_with(&mut pixmap, items, at);
+            ColorImage::from_rgba_premultiplied(size, pixmap.data())
+        }
+        None => ColorImage::new(size, vec![Color32::TRANSPARENT; size[0] * size[1]]),
     }
 }
 
@@ -464,6 +647,17 @@ impl View {
             }
             let shown = self.scenes.shown.entry(patch.win.clone()).or_default();
             shown.take(&patch, &self.scenes.blobs);
+            if let Some((counts, since)) = &mut self.scenes.counted {
+                let count = counts.entry(patch.win.clone()).or_default();
+                count.0 += 1;
+                count.1 += patch.set.len() as u64;
+                if since.elapsed().as_secs() >= 10 {
+                    let mut all: Vec<_> = counts.drain().collect();
+                    all.sort();
+                    eprintln!("paw-gui: stats: scene patches (window: patches, nodes set) {all:?}");
+                    *since = std::time::Instant::now();
+                }
+            }
             self.repaint = true;
         }
     }
@@ -488,11 +682,8 @@ impl View {
             self.scenes.told.insert(id.to_string(), size);
             self.call_later("scene.area", json!([id, size[0], size[1]]));
         }
-        // Textures for what does not move, in the main window only (a
-        // view in a window of its own is drawn straight).
-        let layer = self.layer.as_mut().filter(|layer| self.cache && !layer.failed() && ui.ctx().viewport_id() == egui::ViewportId::ROOT);
         if let Some(shown) = self.scenes.shown.get_mut(id) {
-            shown.draw(ui, id, rect, clip, cell, &self.scenes.live, layer);
+            shown.draw(ui, id, rect, clip, cell, &self.scenes.live);
         }
         let pointer = Id::unique(("scene-pointer", id));
         // Whether the press that a release ends was in this window.
@@ -529,9 +720,6 @@ impl View {
     /// the kernel is told (a size of nothing), so that it keeps nothing of
     /// them either.
     pub fn scenes_done(&mut self) {
-        if let Some(layer) = &mut self.layer {
-            layer.frame_done();
-        }
         let hovering = self.scenes.hovering.take();
         if let Some(left) = std::mem::replace(&mut self.scenes.hovered, hovering.clone())
             && Some(&left) != hovering.as_ref()
@@ -563,6 +751,50 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_patch_that_only_draws_a_picture_anew_keeps_the_cells_laid_out() {
+        let picture = |ops: Value| Node::new("p", Kind::Picture(paw_scene::Picture { ops: Some(ops), blob: None, px: [40.0, 20.0], under: false }), [0.0, 0.0, 4.0, 2.0]);
+        let run = |text: &str| Node::new("r", Kind::Run { text: text.into() }, [0.0, 1.0, 4.0, 1.0]);
+        let mut shown = Shown::default();
+        let blobs = HashMap::new();
+        let full = Patch { win: "1".into(), rev: 1, full: true, size: Some([10.0, 2.0]), root: Some(vec!["r".into(), "p".into()]), set: vec![run("abc"), picture(json!([["r", 0, 0, 10, 10, "#ff0000", "", 1, 0]]))], ..Patch::default() };
+        shown.take(&full, &blobs);
+        assert_eq!(shown.rows.len(), 2);
+        let before = shown.pictures[0].page_key;
+        // As drawn once: the shapes of the cells kept.
+        shown.shapes = Some((Vec::new(), Vec::new(), [0.0; 5]));
+        let playhead = Patch { win: "1".into(), rev: 2, set: vec![picture(json!([["r", 0, 0, 10, 10, "#00ff00", "", 1, 0]]))], ..Patch::default() };
+        shown.take(&playhead, &blobs);
+        assert!(shown.shapes.is_some(), "the cells are not laid out again");
+        assert_ne!(shown.pictures[0].page_key, before, "the picture is new");
+        let text = Patch { win: "1".into(), rev: 3, set: vec![run("abd")], ..Patch::default() };
+        shown.take(&text, &blobs);
+        assert!(shown.shapes.is_none(), "a run changed: the cells are laid out again");
+    }
+
+    #[test]
+    fn an_overlay_is_cut_into_pieces_apart_so_a_moving_playhead_is_its_own() {
+        let ops = |playhead: f32| {
+            json!([
+                ["r", 0, 0, 400, 300, "#ffffff", "", 1, 0],
+                ["layer", "playhead"],
+                ["r", playhead, 40, 2, 200, "#ff8800", "", 1, 0],
+                // The toolbar: two buttons side by side, far from the staff.
+                ["r", 10, 270, 30, 20, "#333333", "", 1, 0],
+                ["r", 41, 270, 30, 20, "#333333", "", 1, 0]
+            ])
+        };
+        let (a, b) = (paw_raster::Drawing::parse(&ops(100.0)), paw_raster::Drawing::parse(&ops(120.0)));
+        assert_eq!(a.page.len(), 1);
+        let (pa, pb) = (pieces(&a.overlay), pieces(&b.overlay));
+        assert_eq!(pa.len(), 2, "the playhead, and the toolbar's buttons together");
+        let toolbar = |p: &[Piece]| p.iter().find(|p| p.items.len() == 2).map(|p| (p.key, p.area));
+        assert_eq!(toolbar(&pa), toolbar(&pb), "the toolbar did not move: its image is kept");
+        let head = |p: &[Piece]| p.iter().find(|p| p.items.len() == 1).map(|p| p.key);
+        assert_ne!(head(&pa), head(&pb));
+        assert_eq!(pa.iter().find(|p| p.items.len() == 1).unwrap().area, [100.0, 40.0, 2.0, 200.0]);
+    }
 
     #[test]
     fn eighth_blocks_fill_from_the_bottom_and_quadrants_are_their_corners() {

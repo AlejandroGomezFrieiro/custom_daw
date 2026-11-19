@@ -14,7 +14,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use egui::{Align2, Color32, CornerRadius, Painter, Rect, Shape, Stroke, StrokeKind, TextureHandle, Ui, pos2, vec2};
-use paw_scene::Node;
+use paw_scene::{Kind, Node};
 use serde_json::{Value, json};
 
 use crate::app::View;
@@ -40,6 +40,14 @@ struct Pictures {
     made: HashMap<(i64, i64), (String, Option<TextureHandle>)>,
     wanted: Vec<Want>,
     painted: HashSet<(i64, i64)>,
+    /// How many pictures were made: what was painted before one came is
+    /// painted again.
+    made_count: u64,
+}
+
+/// How many clips' pictures have been made so far.
+pub fn pictures_made() -> u64 {
+    PICTURES.with(|p| p.borrow().made_count)
 }
 
 thread_local! {
@@ -244,6 +252,16 @@ fn recording(painter: &Painter, props: &Value, bind: Option<&str>, live: &Value,
 /// The picture inside a clip `width` points wide (or inside one of its
 /// takes, in a take lane), by its key: the one made for it, else asked for
 /// (and the last one made shown meanwhile).
+/// A clip's picture is still shown, though its role was not painted in
+/// this frame (its shapes were kept from an earlier one): it is kept.
+pub fn keep_picture(node: &Node) {
+    if let Kind::Role { props, .. } = &node.kind
+        && let (Some(id), Some(_)) = (props["id"].as_i64(), props["content"].as_str())
+    {
+        PICTURES.with(|p| p.borrow_mut().painted.insert((id, props["take"].as_i64().unwrap_or(0))));
+    }
+}
+
 fn picture(props: &Value, midi: bool, length: f32, width: f32) -> Option<TextureHandle> {
     let of = (props["id"].as_i64()?, props["take"].as_i64().unwrap_or(0));
     let key = props["content"].as_str()?;
@@ -408,7 +426,11 @@ impl View {
             let flat: Vec<f32> = self.k.borrow_mut().call("eval", call).map(|v| rows(&v).iter().map(number).collect()).unwrap_or_default();
             let made = if w.midi { notes_picture(&flat, w.length) } else { wave_picture(&flat) };
             let texture = made.map(|image| ctx.load_texture(format!("clip-{id}-{take}"), notched(image, &w.notches), egui::TextureOptions::NEAREST));
-            PICTURES.with(|p| p.borrow_mut().made.insert(w.of, (w.key, texture)));
+            PICTURES.with(|p| {
+                let mut p = p.borrow_mut();
+                p.made.insert(w.of, (w.key, texture));
+                p.made_count += 1;
+            });
         }
         self.repaint = true;
         ctx.request_repaint();
