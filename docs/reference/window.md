@@ -102,7 +102,8 @@ nothing. While the song plays, it draws the playhead, the clock and the
 meters at most `paw.opt.window_fps` times a second. The value `"auto"`
 (the default) is 30 on a graphics card and 15 on the processor, where
 each frame costs much more. A key, the pointer and an edit show in the
-next frame all the same.
+next frame all the same. The window tells the kernel this rate, and the
+kernel sends the values that move at the same rate, not faster.
 
 The window also keeps the parts of the panes that do
 not move in a texture of the size of the window (`paw.opt.window_cache`).

@@ -43,6 +43,8 @@ lists the fields for the graphical window (`title`, `window`, `paint`,
 | `status(self, line)` | the part of the status line for the view |
 | `help` | the topic of `:help` for the key line of the view |
 | `live_roles` | the roles that change while the song plays (see [Roles](#roles)) |
+| `still` | true when nothing in the view changes while the song plays (see [Roles](#roles)) |
+| `live_part` | true when all of the view changes while the song plays, as the status line does (see [Roles](#roles)) |
 | `live_values()` | values of its own for the live messages, by name (see [Roles](#roles)) |
 | `moving(self)` | true while the view also shows something else that moves (see [Roles](#roles)) |
 | `redraw_every` | the milliseconds between two scenes of a view that moves while the song plays |
@@ -176,7 +178,13 @@ The widget roles:
   for example `{ "meter", "peak" }` in the mixer. If those are the only
   parts that change, and the graphical window paints them all, the window
   gets only the live values, not new scenes. The piano roll names
-  `{ "playhead" }`.
+  `{ "playhead" }`. The terminal also draws only these roles again while
+  the song plays, not the whole view.
+- A view with `still = true` shows nothing that changes while the song
+  plays, for example the command line. A view with `live_part = true`
+  is drawn again whole, as one part, for example the status line. A view
+  with none of `live_roles`, `still` and `live_part` makes the terminal
+  draw the whole screen for each frame while the song plays.
 - A view can add values of its own to the live messages:
   `view.live_values()` returns a table, and each of its fields goes into
   the message under its name. The device panel sends `params`, the

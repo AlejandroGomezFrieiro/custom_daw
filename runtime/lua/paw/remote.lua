@@ -113,13 +113,66 @@ function M.push(client)
   if not api.rpc_push(client, "frontend.state", state) then M.closed(client) end
 end
 
+-- While something moves (the song plays, meters fall), the state is
+-- pushed at the watchers' pace (`frontend.pace`); else once a second, for
+-- what changes slowly on its own (the engine's load). What a key, the
+-- pointer, a call or an edit changes is pushed after its turn (`M.turn`).
+local fast  -- the timer waiting is at the pace
+local touched = false
+local last_push, pending = 0, nil
+local seen_revision, seen_redraws
+
+local function push_all()
+  last_push = api.now()
+  for client in pairs(watchers) do M.push(client) end
+end
+
 local function retime()
   local fastest
   for _, w in pairs(watchers) do fastest = math.min(fastest or w.interval, w.interval) end
   if timer then paw.cancel(timer) end
-  timer = fastest and paw.every(fastest, function()
-    for client in pairs(watchers) do M.push(client) end
-  end) or nil
+  timer = nil
+  if not fastest then return end
+  fast = paw.ui.active()
+  timer = paw.defer(function()
+    timer = nil
+    push_all()
+    retime()
+  end, fast and fastest or 1000)
+end
+
+--- Something started to move (the song, a note played): push at the pace
+--- from now.
+function M.wake()
+  if next(watchers) and not fast then retime() end
+end
+
+paw.on("transport.play", M.wake)
+
+--- A turn had input: a key, the pointer, a call. What the frontends show
+--- may have changed.
+function M.touch()
+  touched = true
+  M.touches = M.touches + 1
+end
+
+--- How many turns had input: what a frontend is sent of the keyboard and
+--- the panes can change only then (`paw.frontend.state`).
+M.touches = 0
+
+--- After each turn of the kernel: push now what its input or its edits
+--- changed, at most once in 8 ms.
+function M.turn()
+  if not next(watchers) or pending then return end
+  local revision, redraws = paw.frontend.revision, api.ui_redraws()
+  if not touched and revision == seen_revision and redraws == seen_redraws then return end
+  touched, seen_revision, seen_redraws = false, revision, redraws
+  local wait = 8 - (api.now() - last_push)
+  if wait <= 0 then return push_all() end
+  pending = paw.defer(function()
+    pending = nil
+    push_all()
+  end, wait)
 end
 
 M.methods["frontend.watch"] = function(client, opts)
@@ -135,6 +188,17 @@ M.methods["frontend.watch"] = function(client, opts)
   retime()
   -- The whole state at once, without waiting for the first tick.
   M.push(client)
+  return true
+end
+
+--- The window says how often it draws what moves (`paw.opt.window_fps`):
+--- the milliseconds between two frames. The state and the live values are
+--- pushed at that pace while the song plays.
+M.methods["frontend.pace"] = function(client, ms)
+  ms = math.max(8, math.min(1000, tonumber(ms) or 33))
+  if watchers[client] then watchers[client].interval = ms end
+  if paw.scene then paw.scene.set_pace(ms) end
+  retime()
   return true
 end
 

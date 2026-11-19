@@ -473,6 +473,8 @@ end)
 
 paw.ui.view("cmdline", {
   focusable = false,
+  -- Nothing in it moves on its own as the song plays (paw/ui.lua).
+  still = true,
   render = function(_, buf, ctx)
     if active and not anchored(active) then
       local used = buf:text(0, 0, active.prompt, "Accent")

@@ -81,6 +81,25 @@ fn a_plugin_in_an_added_directory_takes_the_attribute_and_names_its_keys() {
         "it plays the articulation it was given"
     );
     assert_eq!(right[100], 0xA as f32 / 16.0);
+    assert!(!instance.device.resting(), "a plugin with a note sounding works");
+
+    // Let go of the note: the plugin says it sleeps, and may be left to.
+    events.clear();
+    events.push(Event {
+        frame: 0,
+        kind: EventKind::NoteOff { key: 60, ch: 0 },
+    });
+    let mut io = Io {
+        left: &mut left,
+        right: &mut right,
+        events: &mut events,
+        sidechain: None,
+        outputs: &mut [],
+    };
+    instance.device.process(&ctx, &mut io);
+    assert!(instance.device.resting(), "the plugin said it sleeps");
+    instance.device.set_param(0, 0.5);
+    assert!(!instance.device.resting(), "a parameter to deliver wakes it");
 
     let names = instance
         .controller

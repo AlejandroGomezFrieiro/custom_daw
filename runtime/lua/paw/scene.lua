@@ -85,7 +85,7 @@ local function push(client, all)
         if area.drawn then api.scene_forget(client, id) end
         area.drawn, area.view = nil, nil
       elseif area.drawn ~= redraws or area.view ~= what.view
-        or (all and now - area.at >= (playing and every(what.view) or 1000) and not still(w, what.view)) then
+        or (all and now - area.at >= (playing and every(what.view) or 1000) - 5 and not still(w, what.view)) then
         area.drawn, area.view, area.at = redraws, what.view, now
         local ok, err = pcall(paw.ui.render_scene, what.view, area.w, area.h, w.cell, what.win)
         if not ok then api.log("the scene of " .. what.view .. " failed: " .. tostring(err)) end
@@ -113,7 +113,7 @@ local function live()
   end
   for _, id in ipairs(api.track_list()) do
     meter(id)
-    inputs[tostring(id)] = round(paw.audio.level(api.track_get(id), levels))
+    inputs[tostring(id)] = round(paw.audio.level({ input = api.track_get(id, "input") }, levels))
   end
   -- The master's, as track 0.
   meter(0)
@@ -148,9 +148,41 @@ local function tick()
   end
 end
 
-local function retime()
+--- The milliseconds between two ticks while something moves: the pace of
+--- the window, which says it with `frontend.pace` (`paw.opt.window_fps`).
+M.pace = 33
+
+-- While something moves, a tick each `M.pace`; else one a second, for
+-- what changes slowly on its own (times). A turn that changes the drawing
+-- pushes at once (`M.turn`).
+local retime
+local function ticked()
+  timer = nil
+  tick()
+  retime()
+end
+
+local fast  -- the timer waiting is at the pace
+function retime()
   if timer then paw.cancel(timer) end
-  timer = next(watchers) and paw.every(33, tick) or nil
+  timer = nil
+  if not next(watchers) then return end
+  fast = paw.ui.active()
+  timer = paw.defer(ticked, fast and M.pace or 1000)
+end
+
+--- Something started to move (the song, a note played): tick at the pace
+--- from now.
+function M.wake()
+  if next(watchers) and not fast then retime() end
+end
+
+paw.on("transport.play", M.wake)
+
+--- Tick every `ms` while something moves (`frontend.pace`).
+function M.set_pace(ms)
+  M.pace = ms
+  retime()
 end
 
 --- Call it after a turn of the kernel. paw pushes now, not at the next

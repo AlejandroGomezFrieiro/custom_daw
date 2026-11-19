@@ -13,7 +13,7 @@
 //! across the stereo field. The wet signal is DC-blocked, widened or
 //! narrowed (mid/side) and mixed with the dry.
 
-use super::dsp::{self, DelayLine, Lfo, OnePole, Smooth};
+use super::dsp::{self, DelayLine, Lfo, OnePole, Rest, Smooth};
 use super::panel::{Face, Pair, param};
 use crate::device::{Device, Io, ParamInfo, ProcessCtx};
 
@@ -103,6 +103,11 @@ pub struct Reverb {
     diffusers: [[AllPass; 4]; 2],
     lines: [DelayLine; LINES],
     lfos: [Lfo; LINES],
+    /// Each line's drift, in frames, at the last update, and how far it
+    /// moves each frame until the next: the drift is worked out on a grid
+    /// of [`UPDATE`] frames and drawn straight between.
+    wobble: [f32; LINES],
+    wobble_step: [f32; LINES],
     gains: [f32; LINES],
     lows: [OnePole; LINES],
     highs: [OnePole; LINES],
@@ -117,6 +122,7 @@ pub struct Reverb {
     early: Smooth,
     clock: u32,
     started: bool,
+    rest: Rest,
 }
 
 impl Reverb {
@@ -141,6 +147,8 @@ impl Reverb {
             lfos: std::array::from_fn(|i| Lfo {
                 phase: i as f64 / LINES as f64,
             }),
+            wobble: [0.0; LINES],
+            wobble_step: [0.0; LINES],
             gains: [0.0; LINES],
             lows: [OnePole::default(); LINES],
             highs: [OnePole::default(); LINES],
@@ -153,6 +161,7 @@ impl Reverb {
             early: Smooth::new(0.0, 0.02, sr),
             clock: 0,
             started: false,
+            rest: Rest::default(),
         };
         for i in 0..r.p.len() {
             r.apply(i);
@@ -204,6 +213,48 @@ impl Reverb {
         }
     }
 
+    /// Whether every setting has got where it glides to.
+    fn settled(&self) -> bool {
+        ![
+            &self.scale,
+            &self.decay,
+            &self.pre,
+            &self.mix,
+            &self.width,
+            &self.early,
+        ]
+        .iter()
+        .any(|s| s.moving())
+    }
+
+    /// Frames of silence the reverb remembers: its longest buffer.
+    fn memory(&self) -> u32 {
+        let diffusers = self.diffusers.iter().flatten();
+        diffusers
+            .map(|ap| ap.line.capacity())
+            .chain([self.predelay[0].capacity(), self.lines[0].capacity()])
+            .max()
+            .unwrap_or(0) as u32
+    }
+
+    /// Let go of a tail that has died away below hearing.
+    fn clear(&mut self) {
+        for line in self.predelay.iter_mut().chain(&mut self.lines) {
+            line.clear();
+        }
+        for ap in self.diffusers.iter_mut().flatten() {
+            ap.line.clear();
+        }
+        for f in self
+            .lows
+            .iter_mut()
+            .chain(&mut self.highs)
+            .chain(&mut self.dc)
+        {
+            f.reset();
+        }
+    }
+
     /// Each line's gain per pass, so that the tail falls 60 dB in the decay.
     fn update_gains(&mut self) {
         let frames_per_second = self.sr;
@@ -235,15 +286,34 @@ fn hadamard(x: &mut [f32; LINES]) {
 }
 
 impl Device for Reverb {
+    fn resting(&self) -> bool {
+        self.rest.resting
+    }
+
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut Io) {
+        if self.rest.sleeps(io) {
+            return;
+        }
         self.started = true;
+        let memory = self.memory();
         let ms = 0.001 * self.sr;
         let diffuse = (self.p[DIFFUSION] * 0.01).clamp(0.0, 1.0) * 0.7;
         let drift = DRIFT_MS * ms;
-        let steps = DRIFT_HZ.map(|hz| hz / self.sr as f64);
+        let steps = DRIFT_HZ.map(|hz| hz / self.sr as f64 * UPDATE as f64);
         for (l, r) in io.left.iter_mut().zip(io.right.iter_mut()) {
-            if self.clock.is_multiple_of(UPDATE) && (self.scale.moving() || self.decay.moving()) {
-                self.update_gains();
+            if self.clock.is_multiple_of(UPDATE) {
+                if self.scale.moving() || self.decay.moving() {
+                    self.update_gains();
+                }
+                // The drift where it is now and where it will be at the
+                // next update: a sine a few times a second is a straight
+                // line over that much.
+                for (i, lfo) in self.lfos.iter_mut().enumerate() {
+                    let from = dsp::sin_cycles(lfo.tick(steps[i])) * drift;
+                    let to = dsp::sin_cycles(lfo.phase) * drift;
+                    self.wobble[i] = from;
+                    self.wobble_step[i] = (to - from) / UPDATE as f32;
+                }
             }
             self.clock = self.clock.wrapping_add(1);
             let scale = self.scale.step();
@@ -277,7 +347,8 @@ impl Device for Reverb {
             // The network: read, damp, mix, feed back with the input.
             let mut taps = [0.0f32; LINES];
             for (i, tap) in taps.iter_mut().enumerate() {
-                let wobble = dsp::sin_cycles(self.lfos[i].tick(steps[i])) * drift;
+                let wobble = self.wobble[i];
+                self.wobble[i] += self.wobble_step[i];
                 let len = LENGTHS_MS[i] * scale * ms + wobble;
                 let x = self.lines[i].get_frac(len);
                 let x = self.highs[i].high(self.lows[i].low(x));
@@ -295,8 +366,10 @@ impl Device for Reverb {
                 }
             }
             hadamard(&mut taps);
+            let mut level = 0.0f32;
             for (i, line) in self.lines.iter_mut().enumerate() {
                 let x = taps[i] + input[i % 2] * 0.5;
+                level = level.max(x.abs());
                 line.push(dsp::flush(x));
             }
             let (wl, wr) = (wl * 0.35, wr * 0.35);
@@ -312,6 +385,15 @@ impl Device for Reverb {
             let (dry, wet) = ((2.0 * (1.0 - mix)).min(1.0), (2.0 * mix).min(1.0));
             *l = dry_l * dry + (mid + side) * wet;
             *r = dry_r * dry + (mid - side) * wet;
+            // Silent for as long as it remembers, and every setting where
+            // it glides to: the tail has died away.
+            if self.rest.frame(dry_l, dry_r, level) >= memory
+                && !self.rest.resting
+                && self.settled()
+            {
+                self.clear();
+                self.rest.resting = true;
+            }
         }
         for f in self
             .lows
@@ -328,6 +410,7 @@ impl Device for Reverb {
         if index < self.p.len() && value.is_finite() {
             self.p[index] = value;
             self.apply(index);
+            self.rest.wake();
             if !self.started {
                 self.update_gains();
             }

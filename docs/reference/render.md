@@ -153,7 +153,11 @@ in a file, not on its command line.
 `range`, `start`, `end`, `tail`, `sample_rate` or `rate`, `bits`,
 `channels` (1, 2, `"mono"`, `"stereo"`), `quality`, `bitrate`, `ffmpeg`,
 `dither`, `normalize`, `loudness`, `tracks = { id, ... }`, `master`,
-`threads`, `tags` and `freeze`.
+`threads`, `sleep`, `tags` and `freeze`.
+
+- `sleep = false` makes each device run on each block, also when it is at
+  rest (see [The audio engine](engine.md#devices-at-rest)). The file is
+  the same to the bit.
 
 - It waits for the file, and returns `{ path, frames, seconds,
   sample_rate, peak, gain, loudness, format, bits, channels, ... }`.

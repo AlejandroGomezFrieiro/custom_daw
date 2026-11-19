@@ -2060,6 +2060,7 @@ end, { desc = "The sound system, as `:audio` lists them: `audio.system pipewire`
 -- Tracks that do not feed each other are processed side by side.
 paw.on("option.changed", function(e)
   if e.name == "threads" then api.engine_set_threads(e.value) end
+  if e.name == "device_sleep" then api.engine_set_sleep(e.value) end
 end)
 command("quit", function()
   if paw.project.unsaved() then

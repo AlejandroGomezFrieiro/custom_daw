@@ -353,6 +353,82 @@ fn silence_after_the_tail_and_no_denormals() {
     }
 }
 
+/// The effects that go to sleep once their tail has died away.
+const SLEEPERS: &[&str] = &[
+    "eq", "reverb", "utility", "chorus", "flanger", "phaser", "tremolo", "delay",
+];
+
+/// Run an effect on `input` in blocks of `block`, setting `change` (a
+/// parameter and value) at frame `change_at`; with `host`, as the host does
+/// when it lets devices sleep: not calling it for a silent block while it
+/// rests. The output, and the blocks it slept through.
+fn run_resting(
+    kind: &str,
+    settings: &[(&str, f32)],
+    input: &[f32],
+    block: usize,
+    change: (usize, usize, f32),
+    host: bool,
+) -> (Vec<f32>, usize) {
+    let sr = 48000.0;
+    let mut fx = configured(kind, settings, sr);
+    let (mut l, mut r) = (input.to_vec(), input.iter().map(|x| -x * 0.5).collect::<Vec<_>>());
+    let mut slept = 0;
+    let mut events = EventBuf::with_capacity(4);
+    for (at, (cl, cr)) in l.chunks_mut(block).zip(r.chunks_mut(block)).enumerate() {
+        let start = at * block;
+        if (start..start + block).contains(&change.0) {
+            fx.set_index(change.1, change.2);
+        }
+        let silent = crate::device::silent(cl) && crate::device::silent(cr);
+        if host && silent && fx.device.resting() {
+            slept += 1;
+            continue;
+        }
+        let mut io = Io {
+            left: cl,
+            right: cr,
+            events: &mut events,
+            sidechain: None,
+            outputs: &mut [],
+        };
+        fx.device.process(&fx.ctx, &mut io);
+    }
+    l.extend(r);
+    (l, slept)
+}
+
+#[test]
+fn an_effect_sounds_the_same_whether_it_sleeps_or_not() {
+    let sr = 48000.0;
+    for (kind, settings, tail) in effects() {
+        // Bursts with silences between them longer than the tail, and a
+        // short one; a setting changed while it sleeps.
+        let burst = busy_input(sr);
+        let mut input = Vec::new();
+        for gap in [tail + 2.0, 0.01, tail + 2.0] {
+            input.extend(&burst);
+            input.extend(vec![0.0; (sr * gap) as usize]);
+        }
+        input.extend(&burst);
+        let change_at = burst.len() + (sr * (tail + 1.5)) as usize;
+        let param = Fx::new(kind, sr).params.len() - 1;
+        let p = &Fx::new(kind, sr).params[param];
+        let change = (change_at, param, (p.default + p.max) * 0.5);
+        for block in [64, 1000] {
+            let (always, _) = run_resting(kind, &settings, &input, block, change, false);
+            let (host, slept) = run_resting(kind, &settings, &input, block, change, true);
+            let same = always.iter().zip(&host).all(|(a, b)| a.to_bits() == b.to_bits());
+            assert!(same, "{kind} in blocks of {block} sounds different asleep");
+            if SLEEPERS.contains(&kind) {
+                assert!(slept > 0, "{kind} never slept");
+            } else {
+                assert_eq!(slept, 0, "{kind} slept");
+            }
+        }
+    }
+}
+
 #[test]
 fn every_parameter_has_a_name_a_range_and_a_default_inside_it() {
     for (kind, _, _) in effects() {

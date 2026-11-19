@@ -59,6 +59,8 @@ impl Session {
 
         let (mut engine, mut handle) = Engine::new(sample_rate as f64);
         engine.set_pool(self.pool(None));
+        engine.set_sleep(self.sleep());
+        engine.set_offline(true);
         let mut live = LiveDevices::new();
         let mut map = Mapper::new();
         {

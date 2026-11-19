@@ -160,6 +160,9 @@ struct Header {
     events_in: u32,
     params_in: u32,
     events_out: u32,
+    /// Whether the plugin was at rest after the block (see
+    /// [`Device::resting`]).
+    resting: u32,
     /// Whether the block comes with a side-chain.
     keyed: u32,
     /// Which further output pairs are asked for, a bit each from the second.
@@ -398,6 +401,8 @@ struct RemoteDevice {
     /// Parameter moves for the next block.
     moves: Vec<ParamMove>,
     told_priority: bool,
+    /// The plugin said it was at rest after the last block.
+    resting: bool,
     /// The longest a render waits for one block: a device that is never
     /// in this process (a script) is ended as soon as live, a plugin is
     /// given [`OFFLINE_LIMIT`].
@@ -416,7 +421,14 @@ impl RemoteDevice {
 }
 
 impl Device for RemoteDevice {
+    /// As the plugin said after its last block, unless a parameter has
+    /// moved since.
+    fn resting(&self) -> bool {
+        self.resting && self.moves.is_empty()
+    }
+
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io) {
+        self.resting = false;
         let link = &*self.link;
         let shm = &link.shm;
         let header = shm.header();
@@ -543,6 +555,7 @@ impl Device for RemoteDevice {
                 r[..frames].copy_from_slice(&shm.out(pair, 1)[..frames]);
             }
         }
+        self.resting = header.resting != 0;
         let out = (header.events_out as usize).min(EVENTS);
         io.events.clear();
         for event in &shm.events()[..out] {
@@ -1058,6 +1071,7 @@ impl RemoteFactory {
                 outstanding: false,
                 moves: Vec::with_capacity(PARAMS),
                 told_priority: false,
+                resting: false,
                 offline_limit: if self.argv.is_some() { STALL_LIMIT } else { OFFLINE_LIMIT },
             }),
             controller: Some(Box::new(controller)),
@@ -1375,6 +1389,7 @@ fn audio_loop(shm: Arc<Shm>, mut device: Box<dyn Device>) {
         let count = out.len().min(EVENTS);
         shm.events()[..count].copy_from_slice(&out[..count]);
         shm.header_mut().events_out = count as u32;
+        shm.header_mut().resting = device.resting() as u32;
         seen = asked;
         header.done.store(asked, Ordering::Release);
         futex_wake(&header.done);

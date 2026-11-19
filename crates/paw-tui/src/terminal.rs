@@ -328,7 +328,7 @@ impl Frontend for Terminal {
         }
         queue!(self.out, terminal::EndSynchronizedUpdate)?;
         self.out.flush()?;
-        self.shown = Some(grid.clone());
+        grid.copy_shown(&mut self.shown);
         Ok(())
     }
 }
