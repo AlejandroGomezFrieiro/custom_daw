@@ -244,6 +244,9 @@ fn packet_words(kind: u32) -> usize {
 struct Open {
     /// Its place among the notes, by when it started.
     seq: usize,
+    /// The tick it starts at: its length is counted in ticks, so that a
+    /// length of 0.25 does not come back as 0.25000000000000006.
+    tick: i64,
     note: Note,
     /// The tick it ends at, when the file said so.
     end: Option<i64>,
@@ -360,6 +363,7 @@ pub fn decode(bytes: &[u8]) -> Result<Clip> {
                         let end = extra.get("len").and_then(Value::as_i64).map(|l| tick + l);
                         open.entry(key).or_default().push(Open {
                             seq: count,
+                            tick,
                             note,
                             end,
                         });
@@ -373,7 +377,7 @@ pub fn decode(bytes: &[u8]) -> Result<Clip> {
                             .or_else(|| queue.iter().position(|o| o.end.is_none()));
                         if let Some(pos) = pos {
                             let mut o = queue.remove(pos);
-                            o.note.length = at - o.note.start;
+                            o.note.length = beat(tick - o.tick, tpq);
                             done.push((o.seq, o.note));
                         }
                     }
@@ -405,7 +409,7 @@ pub fn decode(bytes: &[u8]) -> Result<Clip> {
         for o in queue {
             let mut note = o.note;
             let end = o.end.unwrap_or(end_tick);
-            note.length = beat(end, tpq) - note.start;
+            note.length = beat(end - o.tick, tpq);
             done.push((o.seq, note));
         }
     }

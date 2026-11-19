@@ -438,14 +438,39 @@ fn tmp_of(path: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// Flush the file system that holds `dir` to the disk: one call for every
-/// file written, not one each.
-fn sync_fs(dir: &Path) {
-    use std::os::fd::AsRawFd;
-    if let Ok(file) = std::fs::File::open(dir) {
-        // SAFETY: syncfs takes an open file descriptor.
-        unsafe { libc::syncfs(file.as_raw_fd()) };
+/// Run `f` on each item, on up to eight threads: flushes to the disk that
+/// wait on each other less when they are asked for together.
+fn in_parallel<T: Sync>(
+    items: &[T],
+    f: impl Fn(&T) -> std::io::Result<()> + Sync,
+) -> std::io::Result<()> {
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(8);
+    if items.len() < 8 || threads < 2 {
+        return items.iter().try_for_each(&f);
     }
+    let chunk = items.len().div_ceil(threads);
+    std::thread::scope(|s| {
+        let f = &f;
+        let handles: Vec<_> = items
+            .chunks(chunk)
+            .map(|part| s.spawn(move || part.iter().try_for_each(f)))
+            .collect();
+        handles.into_iter().try_for_each(|h| {
+            h.join()
+                .unwrap_or_else(|_| Err(std::io::Error::other("a writer stopped")))
+        })
+    })
+}
+
+/// Flush directories' entries (the renames in them) to the disk.
+fn sync_dirs(dirs: &BTreeSet<PathBuf>) {
+    let list: Vec<&PathBuf> = dirs.iter().collect();
+    let _ = in_parallel(&list, |d| {
+        crate::safe::sync_dir(d);
+        Ok(())
+    });
 }
 
 /// A place in `unused/` for `rel` that nothing has yet.
@@ -515,21 +540,31 @@ pub fn commit(dir: &Path, layout: &Layout, only: Option<&BTreeSet<PathBuf>>) -> 
             done.moved.push((from, rel.clone()));
             continue;
         }
-        let tmp = tmp_of(&path);
-        std::fs::write(&tmp, bytes).with_context(|| format!("writing {}", tmp.display()))?;
-        staged.push(rel.clone());
+        staged.push((rel.clone(), bytes));
     }
+    // Each file in full on the disk beside its place before any is renamed.
+    in_parallel(&staged, |(rel, bytes)| {
+        use std::io::Write;
+        let tmp = tmp_of(&dir.join(rel));
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()
+    })
+    .context("writing the project's files")?;
     // The project file last, so that a project file is never newer than
     // what it names.
+    let mut staged: Vec<PathBuf> = staged.into_iter().map(|(rel, _)| rel).collect();
     staged.sort_by_key(|rel| rel.as_os_str() == PROJECT_FILE);
-    if !staged.is_empty() {
-        sync_fs(dir);
-    }
+    let mut touched_dirs = BTreeSet::new();
     for rel in &staged {
         let path = dir.join(rel);
         std::fs::rename(tmp_of(&path), &path)
             .with_context(|| format!("writing {}", path.display()))?;
         done.written.push(rel.clone());
+        touched_dirs.extend(path.parent().map(Path::to_path_buf));
+    }
+    for (_, to) in &done.moved {
+        touched_dirs.extend(dir.join(to).parent().map(Path::to_path_buf));
     }
     for rel in leaving.iter().filter(|r| !gone.contains(*r)) {
         let place = unused_place(dir, rel);
@@ -539,6 +574,7 @@ pub fn commit(dir: &Path, layout: &Layout, only: Option<&BTreeSet<PathBuf>>) -> 
         std::fs::rename(dir.join(rel), dir.join(&place))
             .with_context(|| format!("moving {} to {}", rel.display(), place.display()))?;
         done.unused.push(rel.clone());
+        touched_dirs.extend(dir.join(&place).parent().map(Path::to_path_buf));
     }
     // Folders left empty by moves go; `rmdir` takes nothing that has a file.
     for rel in leaving.iter() {
@@ -554,9 +590,8 @@ pub fn commit(dir: &Path, layout: &Layout, only: Option<&BTreeSet<PathBuf>>) -> 
         std::fs::write(dir.join(".gitattributes"), GITATTRIBUTES)?;
         done.written.push(".gitattributes".into());
     }
-    if !staged.is_empty() || !done.moved.is_empty() || !done.unused.is_empty() {
-        sync_fs(dir);
-    }
+    touched_dirs.insert(dir.to_path_buf());
+    sync_dirs(&touched_dirs);
     Ok(done)
 }
 
@@ -878,5 +913,122 @@ impl super::Session {
             }),
         ));
         Ok((file, done))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Clip, ClipContent, Note, Project, Track};
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "paw-folder-{name}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    fn clip(id: u64, name: &str, start: f64, seed: u64) -> Arc<Clip> {
+        let notes: Vec<Note> = (0..12)
+            .map(|i| Note {
+                start: i as f64 / 3.0,
+                length: 0.25,
+                pitch: 48 + ((i * 7 + seed) % 24) as u8,
+                velocity: 64 + ((i * 13 + seed) % 63) as u8,
+                meta: Map::new(),
+                id: i + 1,
+                attr: None,
+            })
+            .collect();
+        let value = json!({
+            "id": id, "name": name, "start": start, "length": 4.0, "muted": false,
+            "content": { "kind": "midi", "notes": [] },
+        });
+        let mut clip: Clip = serde_json::from_value(value).unwrap();
+        clip.content = ClipContent::Midi {
+            notes: Notes::from(notes),
+            controls: Vec::new(),
+        };
+        Arc::new(clip)
+    }
+
+    fn project(tracks: u64, clips: u64) -> Project {
+        let mut p = Project::default();
+        let mut id = 1;
+        for t in 0..tracks {
+            let mut track = Track::new(id);
+            id += 1;
+            track.name = format!("T{t}");
+            for c in 0..clips {
+                track
+                    .clips
+                    .push(clip(id, &format!("c{c}"), c as f64 * 4.0, t * 31 + c));
+                id += 1;
+            }
+            p.tracks.push(Arc::new(track));
+        }
+        p
+    }
+
+    fn notes_of(p: &Project) -> Vec<Vec<Note>> {
+        p.all_tracks()
+            .flat_map(|t| &t.clips)
+            .map(|c| match &c.content {
+                ClipContent::Midi { notes, .. } => notes.to_vec(),
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_project_comes_back_from_its_folder() {
+        let dir = scratch("round");
+        let p = project(3, 4);
+        let layout = layout(&p, &json!({}), None, &dir).unwrap();
+        commit(&dir, &layout, None).unwrap();
+        let read = read(&dir).unwrap();
+        assert_eq!(read.project.tracks.len(), 3);
+        let mut named = read.project.clone();
+        named.name_notes(&Project::default());
+        assert!(notes_of(&named) == notes_of(&p), "the notes differ");
+        // The same project, the same bytes, and nothing written again.
+        let again = super::layout(&read.project, &json!({}), None, &dir).unwrap();
+        assert_eq!(again.files, layout.files);
+        let done = commit(&dir, &again, None).unwrap();
+        assert!(done.written.is_empty(), "{:?}", done.written);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `cargo test --release -p paw-core folder::tests::timing -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn timing() {
+        let dir = scratch("timing");
+        let p = project(100, 8);
+        let layout = layout(&p, &json!({}), None, &dir).unwrap();
+        commit(&dir, &layout, None).unwrap();
+        let text = serde_json::to_string_pretty(&p).unwrap();
+        let mut folder = Vec::new();
+        let mut one = Vec::new();
+        for _ in 0..15 {
+            let t = std::time::Instant::now();
+            let r = read(&dir).unwrap();
+            folder.push(t.elapsed().as_secs_f64() * 1000.0);
+            assert_eq!(r.project.tracks.len(), 100);
+            let t = std::time::Instant::now();
+            let q: Project = serde_json::from_str(&text).unwrap();
+            one.push(t.elapsed().as_secs_f64() * 1000.0);
+            assert_eq!(q.tracks.len(), 100);
+        }
+        folder.sort_by(f64::total_cmp);
+        one.sort_by(f64::total_cmp);
+        println!(
+            "folder read: median {:.2} ms (min {:.2}, max {:.2}); one JSON parse: median {:.2} ms (min {:.2}, max {:.2})",
+            folder[7], folder[0], folder[14], one[7], one[0], one[14]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
