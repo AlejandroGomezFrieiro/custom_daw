@@ -1045,7 +1045,8 @@ command("export", function(ctx)
     return paw.notify("export what: `clip`, `selection`, or nothing for the whole project", "warn")
   end
   local notes = paw.midifile.export(path, opts)
-  paw.notify(string.format("exported %d notes to %s", notes, path))
+  local lost = paw.midifile.lost_text()
+  paw.notify(string.format("exported %d notes to %s%s", notes, path, lost and "; MIDI 1.0 " .. lost or ""))
 end, { desc = "Write a MIDI file of the project, of the clip at the cursor, or of the selection's tracks: `export song.mid`, `export riff.mid clip`, `export part.mid selection`", complete = { "files", function() return { "clip", "selection" } end } })
 
 command("set", function(ctx)
@@ -2239,6 +2240,9 @@ command("info", function()
     lines[#lines + 1] = string.format("  %s to %s, %g beats%s", paw.time.format(c.start), paw.time.format(c.start + c.length), c.length, c.muted and ", muted" or "")
     if c.kind == "midi" then
       lines[#lines + 1] = string.format("  %d notes", c.note_count)
+      -- A clip from a file outside the project, or a copy of one.
+      if c.source then lines[#lines + 1] = string.format("  refers to %s%s", c.source, c.offline and " (missing)" or "") end
+      if c.origin then lines[#lines + 1] = string.format("  copied from %s", c.origin) end
     else
       lines[#lines + 1] = string.format("  %s", c.file)
       lines[#lines + 1] = string.format("  from %.3f s into the file, gain %+.1f dB", c.offset, c.gain)

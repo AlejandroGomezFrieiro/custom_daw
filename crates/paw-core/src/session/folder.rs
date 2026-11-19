@@ -880,9 +880,7 @@ impl super::Session {
         let mut out = Vec::new();
         for (rel, bytes) in &layout.files {
             let modified = std::fs::read(dir.join(rel)).map_or(true, |old| &old != bytes);
-            let track = rel
-                .ancestors()
-                .find_map(|a| owner.get(a).map(|o| o.0));
+            let track = rel.ancestors().find_map(|a| owner.get(a).map(|o| o.0));
             let what = match rel.extension().and_then(|e| e.to_str()) {
                 Some("midi2") => "clip",
                 Some("state") => "state",
@@ -914,7 +912,11 @@ impl super::Session {
     /// in it. The project counts as saved when no file differs any more.
     /// Returns the paths written.
     pub fn project_save_files(&mut self, paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
-        let Some(file) = self.path.clone().filter(|f| f.file_name().is_some_and(|n| n == PROJECT_FILE)) else {
+        let Some(file) = self
+            .path
+            .clone()
+            .filter(|f| f.file_name().is_some_and(|n| n == PROJECT_FILE))
+        else {
             bail!("the project is not kept in a folder: `:w` saves all of it");
         };
         let mut only: BTreeSet<PathBuf> = paths.iter().cloned().collect();
@@ -1005,6 +1007,20 @@ impl super::Session {
         let transport = serde_json::to_value(&self.transport)?;
         let layout = layout(&project, &transport, self.screen.as_ref(), &dir)?;
         let done = commit(&dir, &layout, only)?;
+        // Its own writes are not changes made outside paw.
+        for rel in &done.written {
+            let bytes = layout.files.get(rel).map(Vec::as_slice);
+            self.files_watch.wrote(dir.join(rel), bytes);
+        }
+        for (from, to) in &done.moved {
+            self.files_watch.wrote(dir.join(from), None);
+            let bytes = layout.files.get(to).map(Vec::as_slice);
+            self.files_watch.wrote(dir.join(to), bytes);
+        }
+        for rel in &done.unused {
+            self.files_watch.wrote(dir.join(rel), None);
+        }
+        let renamed = self.path.as_ref() != Some(&file);
         self.path = Some(file.clone());
         if let Some(name) = named {
             // Not an edit to undo: the saved state is the named one.
@@ -1017,6 +1033,12 @@ impl super::Session {
             self.history.mark_saved(false);
         }
         self.remember_for_panic();
+        if renamed || !done.written.is_empty() || !done.moved.is_empty() {
+            // New folders, or a new place: watch them.
+            let changed = std::mem::take(&mut self.files_watch.changed);
+            self.watch_project_files();
+            self.files_watch.changed = changed;
+        }
         self.events.push((
             "project.saved".into(),
             json!({

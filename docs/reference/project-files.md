@@ -1,29 +1,163 @@
 # Project files
 
-<!-- tags: saving safety-copies recover autosave project-file -->
+<!-- tags: saving safety-copies recover autosave project-file project-folder midi2 collect on_external_change -->
 
-A project is one JSON file, with a `media` folder next to it. This page
-describes how paw saves a project, keeps safety copies and recovers work.
-For why paw saves this way, see
+A project is a folder of files. A project can also be one JSON file. This
+page describes the files of a project, how paw saves them, keeps safety
+copies and recovers work. For why paw saves this way, see
 [About project files](../explanation/about-project-files.md). For the
 steps, see [How to recover lost work](../how-to/recover-lost-work.md).
 
+## The project folder
+
+```text
+song/
+├── project.toml            name, tempo, meter, tempo map, order of the tracks, transport
+├── meta.json               the data of extensions (`paw.project.meta`), if there is some
+├── screen.json             the tabs and windows that the project opens with
+├── .gitattributes          *.midi2 diff=paw-midi2
+├── master/                 the master track, as a track folder
+├── tracks/
+│   └── Keys/               one folder for each track, with the name of the track
+│       ├── track.json      the track and its clips, without the notes
+│       ├── devices.json    the chain and its parameters
+│       ├── 1-synth.state   the state of a plugin, as the plugin gives it
+│       ├── automation/volume.json
+│       └── clips/riff.midi2
+├── media/take1.wav         sound files
+└── unused/                 files that the project does not use now
+```
+
+- The project's file is `song/project.toml`. `:e song`, `:open song`
+  and `paw song` open the folder.
+- A track folder and a clip file have the name of the track and of the
+  clip. Letters, digits, `-`, `_` and `.` stay; paw changes other
+  characters to `-`. Two of the same name get `-2`, `-3`.
+- An automation file has the name of what it automates: `volume.json`,
+  `pan.json`, or the device and the parameter: `1-synth-wave.json`.
+- The JSON files have their keys in alphabetical order.
+- `track.json` names each clip file by its path in the folder. It names a
+  file outside the folder by its full path, or from the home folder as
+  `~/…`.
+- Clips with the same notes, controller moves and length share one file.
+- `.gitattributes` is written when the folder has none.
+
 ## Save
 
-- A save writes a temporary file next to the project and writes it to the
-  disk. Then it gives the file the name of the project, and writes the
-  directory to the disk. So the file on the disk is always the old project or the new
-  project, complete.
+| Command | Effect |
+| --- | --- |
+| `:w song` | Save the project as the folder `song`. A name with no extension is a folder. |
+| `:w song.json` | Save the project in one JSON file. |
+| `:w` | In the piano roll: write the file of the clip. In the device panel: write the files of the chain. Also the `track.json` and `project.toml` if they changed. Elsewhere: write all the files. |
+| `:wa`, `:wall` | Write all the files of the project. |
+| `:ls` | Also list the files of the project. `+` marks a file that is different from the file on the disk. |
+
+- paw writes only the files that are different from the files on the
+  disk.
+- paw writes each file next to its place, writes it to the disk, and
+  renames it over the old file. It writes `project.toml` last.
+- `:w` of a folder that has other files and no `project.toml` does not
+  save: name a folder in it.
+- A file that the project does not use now goes to `unused/` at the same
+  path. A file that is there already stays, and the new one gets `-2`.
+  paw never deletes a file from `unused/`.
+- A file with the same bytes as a new file moves to the place of the new
+  file (a renamed track).
+- The project is saved when no file is different from the disk. An undo
+  back to the saved state makes the files the same again.
+- `:q` refuses to quit with changes that are not saved. `:q!` quits without
+  them.
+
+A project in one JSON file:
+
 - paw keeps the file as it was before the save next to it, as
   `song.json.bak`.
 - A `.bak` names media relative to the project, as the project does, so it
   opens with its media.
-- `:q` refuses to quit with changes that are not saved. `:q!` quits without
-  them.
+
+## MIDI clip files
+
+A MIDI clip is a MIDI 2.0 Clip File (`SMF2CLIP`, M2-116-U).
+
+- A beat has 61440 ticks. paw rounds the time of a note and of a
+  controller move to a tick.
+- Notes are MIDI 2.0 note-on and note-off messages with velocities of 16
+  bits and their attribute. Controller moves are MIDI 2.0 messages with
+  values of 32 bits.
+- The `meta` of a note, its id (when the ids are not 1, 2, 3 in order),
+  and the start of a note before the start of the clip are in Flex Data
+  text that starts with `paw:`.
+- End of Clip is at the length of the clip.
+- paw also reads MIDI 1.0 messages in a clip file, and a file with a
+  different number of ticks to a beat. It tells what it left out.
+- paw keeps a velocity at 7 bits. A clip file from another program with
+  velocities of 16 bits gets velocities of 7 bits in paw.
+
+| Command or function | Effect |
+| --- | --- |
+| `paw clip cat riff.midi2` | Print the clip as text, one note or controller move on each line. |
+| `:e riff.midi2`, `paw riff.midi2` | Open the clip alone, on a track with the synth, in the piano roll. `:w` writes it back to its file. |
+| `:import riff.midi2` | Put the clip on the track of the cursor, at the cursor. The clip refers to the file. |
+| `paw.api.midi2_read(path)` | `{ notes, controls, length, skipped }` of a clip file. |
+| `paw.api.midi2_write(path, clip)` | Write `{ notes, controls, length }` as a clip file. |
+| `paw.api.midi2_text(path)` | The text that `paw clip cat` prints. |
+
+To show clip files as text in `git diff`, set the driver one time:
+
+```sh
+git config --global diff.paw-midi2.textconv "paw clip cat"
+```
+
+## Files outside the folder
+
+- A clip from a clip file outside the folder refers to the file:
+  `paw.clip(id).source` is its path. A save keeps the path and writes no
+  copy.
+- The first edit of the notes makes them the project's own, in the same
+  undo step. paw says this one time:
+  "riff is now this project's own copy (was ~/library/riff.midi2)".
+  `paw.clip(id).origin` keeps the path, and `K` shows it.
+- An undo of that edit makes the clip refer to the file again.
+- A file that paw cannot find leaves the clip empty and offline. A save
+  keeps its path.
+
+| Command | Effect |
+| --- | --- |
+| `:collect` | Make every clip from outside the project's own, and copy every sound file from outside into `media`. The next save writes the clip files into the folder. |
+
+## Changes from outside paw
+
+paw watches the folders of a project folder, and the folders of the files
+outside it that the project uses. A save of paw is not a change. Changes
+close together (a `git checkout`) are one change. paw acts at the next
+key, as `paw.opt.on_external_change` tells:
+
+| Value | Effect |
+| --- | --- |
+| `"ask"` (default) | Ask: `y` reads the files again, another key keeps the version of paw. |
+| `"reload"` | Read the files again when the project has no changes that are not saved. Else ask. |
+| `"keep"` | Keep the version of paw, and say so. The next save writes over the files. |
+
+- To read the files again is one undo step. The parts that did not change
+  keep their plugins.
+
+| Function | Effect |
+| --- | --- |
+| `paw.api.project_changed_files()` | The files that changed outside paw, not acted on yet. |
+| `paw.api.project_reload()` | Read the project folder again, as one undo step. |
+| `paw.api.project_keep_changes()` | Keep the version of paw. |
+| `paw.api.project_files()` | Each file of a project folder: `{ path, modified, what, track, clip }`. |
+| `paw.api.project_save_files(paths)` | Write these files, and the files that they name that are not on the disk. |
+
+## A second paw on the same project
+
+`paw song` when a paw on this computer has `song` open does not open a
+second copy. The terminal joins the running paw as a new seat, as
+`paw attach` does (see [About seats](../explanation/about-seats.md)). `:detach` leaves.
 
 ## The same file each time
 
-paw writes a project as JSON. The fields are in the order of the model,
+paw writes a project in one file as JSON. The fields are in the order of the model,
 the maps are by key, and the numbers have the fewest digits that read
 back exactly. So a save of a project with no change writes the same bytes, and
 one change gives a small diff.

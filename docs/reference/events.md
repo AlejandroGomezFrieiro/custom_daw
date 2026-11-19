@@ -41,7 +41,8 @@ gets.
 | `project.changed` | `{}` | a field of the project changed: tempo, signature, name, meta |
 | `project.loaded` | `{ path }` | a project opened, or a new project started |
 | `project.saving` | `{ path }` | paw will write a project. A handler can refuse |
-| `project.saved` | `{ path }` | paw wrote the project |
+| `project.saved` | `{ path, written, unused, moved }` | paw wrote the project; for a project folder, the files written, moved to `unused/` and moved |
+| `files.changed` | `{ paths }` | files of the project changed outside paw (see [Project files](project-files.md#changes-from-outside-paw)) |
 | `track.added`, `track.changed`, `track.removed` | `{ id }` | a track, by its id |
 | `track.moved` | `{ order }` | the order of the tracks changed |
 | `track.frozen`, `track.thawed` | `{ id, file }` | a track is rendered to a file and plays from it, or plays live again |
@@ -51,6 +52,7 @@ gets.
 | `preset.loaded` | `{ id, name }` | a preset loaded into a device |
 | `param.touched` | `{ device, param, from }` | a parameter moved in the editor of the plugin |
 | `clip.added`, `clip.changed`, `clip.removed` | `{ id, track }` | a clip |
+| `clip.copied` | `{ clip, name, origin }` | the first edit of a clip from a file outside the project made it the project's own |
 | `lane.added`, `lane.changed`, `lane.removed` | `{ id, track }` | an automation lane |
 | `lanes.changed` | `{}` | the shown lanes changed |
 | `slot.changed` | `{ track }` | a slot of the clip launcher |

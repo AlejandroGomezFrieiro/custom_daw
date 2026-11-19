@@ -77,6 +77,9 @@ paw.ex = {}
 ---@class paw.ext
 paw.ext = {}
 
+---@class paw.external
+paw.external = {}
+
 ---@class paw.files
 paw.files = {}
 
@@ -2517,6 +2520,15 @@ function paw.ext.satisfies(version, want) end
 ---@param opts any
 function paw.ext.unload(name, opts) end
 
+--- Act on the changes as the option says: called at the next key after them.
+function paw.external.act() end
+
+--- Keep paw's version of the project.
+function paw.external.keep() end
+
+--- Read the changed files again, as one undo step.
+function paw.external.reload() end
+
 --- The name of the buffer that lists a folder, as a tree or not.
 ---@param dir any
 ---@param tree any
@@ -3693,6 +3705,11 @@ function paw.keymap.marks(view) end
 --- part of the current command, not as a separate command.
 ---@param keys any
 function paw.keymap.normal(keys) end
+
+--- Run `fn` once, before the next key is handled: for what waits until the
+--- person is back at the keyboard (a file changed outside paw).
+---@param fn any
+function paw.keymap.on_next_key(fn) end
 
 --- Define an operator: `fn(region, ctx)` acts on a region of the focused
 --- view. A region has `r0`, `r1` (rows, inclusive), `c0`, `c1` (beats, the
@@ -4962,15 +4979,37 @@ function paw.midifile.export(path, opts) end
 ---@param opts any
 function paw.midifile.import(path, opts) end
 
+--- Bring a MIDI 2.0 clip file in as a clip that refers to it, on a track at
+--- a beat. The first edit makes it the project's own. Returns the clip.
+---@param path any
+---@param track any
+---@param start any
+function paw.midifile.import_clip(path, track, start) end
+
+--- True if a path names a MIDI 2.0 clip file (`.midi2`), from its ending.
+---@param path any
+function paw.midifile.is_clip_file(path) end
+
 --- True if a path names a MIDI file, from its file ending.
 ---@param path any
 function paw.midifile.is_midi_file(path) end
+
+--- What the last export could not keep, as one line, or nil: MIDI 1.0
+--- has 960 ticks to a beat here, values of 7 bits (14 for the pitch
+--- bend), and no controllers of one note but its pressure.
+function paw.midifile.lost_text() end
 
 --- Open a MIDI file as a new project with no file (see the top of this
 --- file). Returns { tracks, notes, skipped }. If paw cannot read the file,
 --- it raises an error, and the open project does not change.
 ---@param path any
 function paw.midifile.open(path) end
+
+--- Open a MIDI 2.0 clip file alone, as a new project with no file: one
+--- track that plays it on the default instrument, the clip, and the piano
+--- roll on it. `:w` writes the clip back to its file. Returns the clip.
+---@param path any
+function paw.midifile.open_clip(path) end
 
 --- Read the bytes of a Standard MIDI File. Returns, in ticks (`ppq` for
 --- each beat) from the start:
@@ -5008,6 +5047,9 @@ function paw.midifile.read(path) end
 --- What was left out of a file, as one line, or nil.
 ---@param file any
 function paw.midifile.skipped_text(file) end
+
+--- Write the clip open alone back to its file. Returns its path.
+function paw.midifile.write_clip() end
 
 --- The row under the cursor, and the track it is on.
 function paw.mixer_rows.current() end
@@ -7587,6 +7629,10 @@ function paw.api.clip_add(track, opts) end
 ---@param notes any
 function paw.api.clip_add_notes(id, notes) end
 
+--- Make every clip that refers to a MIDI clip file outside the
+--- project the project's own. Returns how many.
+function paw.api.clip_collect() end
+
 --- Controller, pitch wheel and pressure moves of a MIDI clip:
 --- { start, type = "cc" | "bend" | "pressure", number, value }.
 ---@param id integer
@@ -8023,6 +8069,23 @@ function paw.api.media_search(dir) end
 ---@param keep number?
 function paw.api.media_store(megabytes, keep) end
 
+--- A MIDI 2.0 clip file (`.midi2`): `{ notes, controls, length,
+--- skipped }`, with times in beats; `skipped` says what the file held
+--- that a clip has no place for.
+---@param path string
+function paw.api.midi2_read(path) end
+
+--- A MIDI 2.0 clip file as text, one note or controller move to a line,
+--- as `paw clip cat` prints it.
+---@param path string
+function paw.api.midi2_text(path) end
+
+--- Write notes and controller moves (`{ notes, controls, length }`) as
+--- a MIDI 2.0 clip file, all or nothing.
+---@param path string
+---@param clip any
+function paw.api.midi2_write(path, clip) end
+
 ---@param name string
 function paw.api.midi_close_output(name) end
 
@@ -8151,17 +8214,33 @@ function paw.api.proc_write(id, data) end
 ---@param note any
 function paw.api.project_backup(path, note) end
 
+--- The files of the open project that changed outside paw and are not
+--- acted on yet: paths in its folder, or full paths outside it.
+function paw.api.project_changed_files() end
+
 ---@param value any
 function paw.api.project_file_text(value) end
 
+--- The files of a project kept in a folder, with what each holds and
+--- whether it differs from the disk (see `:ls`).
+function paw.api.project_files() end
+
 --- --- project ---
 function paw.api.project_get() end
+
+--- Keep the project as paw has it: forget the changes made outside.
+function paw.api.project_keep_changes() end
 
 --- `opts.plugins_offline` opens it with all plugins offline.
 --- `opts.offline` is a list of devices (by id) to open offline.
 ---@param path string
 ---@param opts any
 function paw.api.project_load(path, opts) end
+
+--- Count the project as it is now as saved, for a script that wrote
+--- what it holds somewhere itself (a clip opened alone, written
+--- back to its file).
+function paw.api.project_mark_saved() end
 
 function paw.api.project_new() end
 
@@ -8173,8 +8252,16 @@ function paw.api.project_new() end
 ---@param opts any
 function paw.api.project_recover(path, opts) end
 
+--- Read a project kept in a folder again, as one undo step.
+function paw.api.project_reload() end
+
 ---@param path string?
 function paw.api.project_save(path) end
+
+--- Save only these files of a project kept in a folder, by their path
+--- in it. Returns the paths written.
+---@param paths string[]
+function paw.api.project_save_files(paths) end
 
 --- The tabs and windows that the project file keeps, as plain data,
 --- or nil. They are not part of the song: setting them is not an

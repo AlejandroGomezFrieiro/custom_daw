@@ -30,6 +30,7 @@ use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
 mod audition;
 mod clipops;
 mod encode;
+mod files_watch;
 pub mod folder;
 mod keep;
 pub mod launcher;
@@ -454,6 +455,8 @@ pub struct Session {
     open_opts: loading::OpenOpts,
     /// The audio device and MIDI ports, watched for going and coming back.
     watch: watch::Watch,
+    /// Changes made outside paw to the open project's files.
+    files_watch: files_watch::FileWatch,
     /// When files played from the disk were last read ahead of the playhead.
     read_ahead_at: Instant,
     /// The project put aside while a scratch one is open: see
@@ -583,6 +586,7 @@ impl Session {
             loads: Default::default(),
             open_opts: Default::default(),
             watch: Default::default(),
+            files_watch: Default::default(),
             read_ahead_at: Instant::now(),
             shelf: None,
             trial: None,
@@ -977,6 +981,7 @@ impl Session {
         self.launcher_reset();
         // The old project's audio is not needed for undo any more.
         self.trim_audio();
+        self.watch_project_files();
         self.events
             .push(("project.loaded".into(), json!({ "path": self.path })));
     }
@@ -1836,6 +1841,7 @@ impl Session {
         self.poll_loads();
         self.poll_stretches();
         self.watch_devices();
+        self.poll_file_changes();
         let mut changed: Vec<(Id, Vec<String>)> = Vec::new();
         // What was moved in a plugin's own window, for writing automation.
         let mut moved: Vec<(Id, String, f64)> = Vec::new();

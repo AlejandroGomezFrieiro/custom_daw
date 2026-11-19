@@ -354,3 +354,63 @@ test("MIDI 1.0 notes and controllers go into a clip file and back with no loss",
   api.midi2_write(again, { notes = back.notes, controls = back.controls, length = back.length })
   eq(T.read_file(again) == T.read_file(path), true, "the same bytes")
 end)
+
+--- Write `text` to `path` as an editor does: beside it, then renamed over it.
+local function save_outside(path, text)
+  T.write_file(path .. ".swp", text)
+  os.rename(path .. ".swp", path)
+end
+
+local function wait_for_change()
+  local limit = api.now() + 3000
+  while #api.project_changed_files() == 0 and api.now() < limit do paw.wait(50) end
+  paw.flush()
+end
+
+test("a file changed outside paw is asked about at the next key, read again as one undo step", function()
+  local _, bass = song()
+  local dir = folder("watch")
+  paw.project.save(dir)
+  paw.wait(400)
+  eq(#api.project_changed_files(), 0, "paw's own save is not a change from outside")
+  local path = dir .. "/tracks/Bass/track.json"
+  local text = T.read_file(path)
+  save_outside(path, (text:gsub('"volume": [%-%d.]+', '"volume": -12.0')))
+  wait_for_change()
+  eq(api.project_changed_files()[1], "tracks/Bass/track.json", "the change is seen")
+  T.keys("j")
+  eq(require("paw.views.cmdline").state().prompt:match("^1 file changed outside paw") ~= nil, true, "asked at the next key")
+  T.keys("y")
+  eq(api.track_get(bass).volume, -12, "read again")
+  eq(api.project_get().modified, false, "as on the disk")
+  eq(#api.project_changed_files(), 0, "acted on")
+  api.undo()
+  eq(api.track_get(bass).volume, 0, "one undo step")
+end)
+
+test("on_external_change keep says so once and the next save writes over the file", function()
+  local _, bass = song()
+  local dir = folder("keep")
+  paw.project.save(dir)
+  paw.opt.on_external_change = "keep"
+  T.after(function() paw.opt.on_external_change = "ask" end)
+  local path = dir .. "/tracks/Bass/track.json"
+  local text = T.read_file(path)
+  save_outside(path, (text:gsub('"volume": [%-%d.]+', '"volume": -12.0')))
+  wait_for_change()
+  T.keys("j")
+  eq(paw.ui.message.text:match("^kept paw.s version: 1 file changed outside paw") ~= nil, true, "said: " .. tostring(paw.ui.message.text) .. tostring(paw.external))
+  eq(api.track_get(bass).volume, 0, "paw's version")
+  T.keys(":wa<CR>")
+  eq(T.read_file(path), text, "written over")
+end)
+
+test(":export to a MIDI 1.0 file says what it rounded and what it left out", function()
+  fresh()
+  local t = paw.add_track({ name = "Keys" })
+  t:add_clip({ start = 0, length = 4, notes = { { start = 1 / 7, length = 1, pitch = 60 } },
+    controls = { { start = 0, type = "cc", number = 1, value = 0.123 }, { start = 1, type = "bend", key = 60, value = 0.5 } } })
+  local path = T.scratch .. "/lost.mid"
+  T.keys(":export " .. path .. "<CR>")
+  eq(paw.ui.message.text, "exported 1 notes to " .. path .. "; MIDI 1.0 rounded 1 note time to a tick, rounded 1 controller value to 7 bits, left out 1 move of a controller of one note or of an RPN/NRPN", "said")
+end)

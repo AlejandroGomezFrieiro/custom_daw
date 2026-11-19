@@ -474,6 +474,36 @@ fn doctor_args(argv: impl Iterator<Item = String>) -> Result<Option<Args>> {
     Ok(Some(args))
 }
 
+/// The file a project path names: a folder's `project.toml`, or itself.
+fn project_file_of(path: &std::path::Path) -> Option<PathBuf> {
+    let path = if path.is_dir() {
+        path.join("project.toml")
+    } else {
+        path.to_path_buf()
+    };
+    path.canonicalize().ok()
+}
+
+/// Whether the paw on this machine's socket has this project open.
+fn running_has(project: &std::path::Path) -> bool {
+    let Some(wanted) = project_file_of(project) else {
+        return false;
+    };
+    let socket = rpc::default_path();
+    if !socket.exists() {
+        return false;
+    }
+    let Ok(mut connection) = rpc::Connection::unix(&socket) else {
+        return false;
+    };
+    let Ok(Value::String(open)) =
+        connection.call("eval", serde_json::json!(["return paw.api.project_get().path"]))
+    else {
+        return false;
+    };
+    project_file_of(std::path::Path::new(&open)).is_some_and(|open| open == wanted)
+}
+
 /// `paw clip cat <file.midi2>`: a MIDI 2.0 clip file as text, one note or
 /// controller move to a line, for `git diff` (as its textconv) and reading.
 fn clip_command(mut argv: impl Iterator<Item = String>) -> Result<i32> {
@@ -537,6 +567,23 @@ fn run() -> Result<i32> {
         return Ok(0);
     };
     let scripted = args.script.is_some();
+    // A project that a running paw has open: this terminal joins it as a
+    // new seat, so that two people edit the one project, not two copies.
+    if !scripted
+        && !args.headless
+        && args.listen.is_none()
+        && let Some(project) = &args.project
+        && running_has(project)
+    {
+        eprintln!(
+            "paw: {} is open in a running paw: joining it as a new seat (`:detach` leaves)",
+            project.display()
+        );
+        let result = attach(std::iter::empty());
+        terminal::restore();
+        result?;
+        return Ok(0);
+    }
     // A terminal older than the display it names cannot open a plugin's
     // window. Put that right while this is still the only thread.
     let display_note = paw_plugins::repair_display_env();

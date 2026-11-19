@@ -762,7 +762,10 @@ end
 
 --- One track of the file from clips of a track (all its MIDI clips when
 --- `clips` is nil): what sounds of them, where it sounds.
-local function export_track(track, only)
+--- Whether a time in ticks or a value falls between the steps of MIDI 1.0.
+local function between(x) return math.abs(x - math.floor(x + 0.5)) > 1e-6 end
+
+local function export_track(track, only, lost)
   local out = { name = track.name, notes = {}, controls = {} }
   local channel = default_channel(track)
   local last = 0
@@ -779,6 +782,7 @@ local function export_track(track, only)
             lyric = type(meta.lyric) == "string" and meta.lyric or nil, attr = n.attr,
           }
           last = math.max(last, c.start + n.start + length)
+          if between((c.start + n.start) * EXPORT_PPQ) or between(length * EXPORT_PPQ) then lost.times = lost.times + 1 end
         end
       end
       for _, k in ipairs(c.control_count > 0 and clip:controls() or {}) do
@@ -793,12 +797,27 @@ local function export_track(track, only)
           local plain = not k.key or k.type == "pressure"
           if plain and (k.type == "cc" or k.type == "bend" or k.type == "pressure" or k.type == "program") then
             out.controls[#out.controls + 1] = raw
+            if raw.value and between(raw.value) then lost.values = lost.values + 1 end
+          else
+            lost.dropped = lost.dropped + 1
           end
         end
       end
     end
   end
   return out, last
+end
+
+--- What the last export could not keep, as one line, or nil: MIDI 1.0
+--- has 960 ticks to a beat here, values of 7 bits (14 for the pitch
+--- bend), and no controllers of one note but its pressure.
+function M.lost_text()
+  local lost, out = M.last_export, {}
+  if not lost then return nil end
+  if lost.times > 0 then out[#out + 1] = string.format("rounded %d note time%s to a tick", lost.times, lost.times == 1 and "" or "s") end
+  if lost.values > 0 then out[#out + 1] = string.format("rounded %d controller value%s to 7 bits", lost.values, lost.values == 1 and "" or "s") end
+  if lost.dropped > 0 then out[#out + 1] = string.format("left out %d move%s of a controller of one note or of an RPN/NRPN", lost.dropped, lost.dropped == 1 and "" or "s") end
+  return #out > 0 and table.concat(out, ", ") or nil
 end
 
 --- Write a format 1 MIDI file with the tempo map, time signatures and
@@ -825,8 +844,10 @@ function M.export(path, opts)
   end
   local file = { format = 1, ppq = EXPORT_PPQ, tracks = { { name = paw.api.project_get().name } }, signatures = {}, markers = {} }
   local notes, last = 0, 0
+  local lost = { times = 0, values = 0, dropped = 0 }
+  M.last_export = lost
   for _, track in ipairs(tracks) do
-    local t, ends = export_track(track, only)
+    local t, ends = export_track(track, only, lost)
     if #t.notes > 0 or #t.controls > 0 then
       file.tracks[#file.tracks + 1] = t
       notes, last = notes + #t.notes, math.max(last, ends)

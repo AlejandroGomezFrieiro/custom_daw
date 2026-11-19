@@ -689,6 +689,20 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn clip_collect(_, sh, () => ()) {
             Ok(sh.session.borrow_mut().clip_collect())
         }
+        // The files of the open project that changed outside paw and are not
+        // acted on yet: paths in its folder, or full paths outside it.
+        fn project_changed_files(lua, sh, () => ()) {
+            to_lua(lua, &sh.session.borrow().changed_files())
+        }
+        // Keep the project as paw has it: forget the changes made outside.
+        fn project_keep_changes(_, sh, () => ()) {
+            sh.session.borrow_mut().keep_changed_files();
+            Ok(())
+        }
+        // Read a project kept in a folder again, as one undo step.
+        fn project_reload(_, sh, () => ()) {
+            sh.session.borrow_mut().project_reload().lua()
+        }
         fn project_save(_, sh, path => Option<String>) {
             let saved = sh.session.borrow_mut().project_save(path.as_deref().map(AsRef::as_ref)).lua()?;
             Ok(saved.to_string_lossy().into_owned())
