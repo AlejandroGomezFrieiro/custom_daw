@@ -29,6 +29,59 @@ pub fn params() -> [ParamInfo; 2] {
     [wet, gain]
 }
 
+/// Zeroed samples in memory of their own from the system, whose pages take
+/// no memory until they are written. Most devices have no latency, so the
+/// line that holds back their dry signal is never written, and costs them
+/// nothing (it was 128 kB a device). Made and dropped on the main thread.
+struct Zeroed {
+    ptr: std::ptr::NonNull<f32>,
+    len: usize,
+}
+
+// Owned memory, like a `Box<[f32]>`.
+unsafe impl Send for Zeroed {}
+
+impl Zeroed {
+    fn new(len: usize) -> Self {
+        let bytes = len * std::mem::size_of::<f32>();
+        // SAFETY: a private anonymous mapping, read and written only as
+        // the `len` samples it holds; the system gives it zeroed.
+        let ptr = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                bytes,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+                -1,
+                0,
+            )
+        };
+        if ptr == libc::MAP_FAILED {
+            std::alloc::handle_alloc_error(std::alloc::Layout::array::<f32>(len).expect("layout"));
+        }
+        Self { ptr: std::ptr::NonNull::new(ptr.cast()).expect("mapped"), len }
+    }
+
+    fn as_ref(&self) -> &[f32] {
+        // SAFETY: `len` samples, mapped while `self` lives.
+        unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
+    }
+
+    fn as_mut(&mut self) -> &mut [f32] {
+        // SAFETY: as above, and borrowed mutably once.
+        unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
+    }
+}
+
+impl Drop for Zeroed {
+    fn drop(&mut self) {
+        // SAFETY: the mapping made in `new`, unmapped once.
+        unsafe {
+            libc::munmap(self.ptr.as_ptr().cast(), self.len * std::mem::size_of::<f32>());
+        }
+    }
+}
+
 pub struct HostPath {
     /// The position of the first host parameter in the device's list.
     pub base: u32,
@@ -37,7 +90,7 @@ pub struct HostPath {
     wet_now: f32,
     gain_now: f32,
     latency: usize,
-    ring: [Box<[f32]>; 2],
+    ring: [Zeroed; 2],
     pos: usize,
     dry: [Box<[f32]>; 2],
     /// Set once a block has been processed: before that, a setting is taken
@@ -49,7 +102,7 @@ impl HostPath {
     /// Made on the main thread, for a device with `base` parameters of its
     /// own, processing blocks of at most `max_block` frames.
     pub fn new(base: u32, latency: u32, max_block: usize) -> Self {
-        let ring = || vec![0.0f32; MAX_LATENCY + 1].into_boxed_slice();
+        let ring = || Zeroed::new(MAX_LATENCY + 1);
         let dry = || vec![0.0f32; max_block].into_boxed_slice();
         Self {
             base,
@@ -77,7 +130,15 @@ impl HostPath {
     }
 
     pub fn set_latency(&mut self, frames: u32) {
-        self.latency = (frames as usize).min(MAX_LATENCY);
+        let latency = (frames as usize).min(MAX_LATENCY);
+        if self.latency == 0 && latency > 0 {
+            // Not written while there was no latency: it starts from silence.
+            for ring in &mut self.ring {
+                ring.as_mut().fill(0.0);
+            }
+            self.pos = 0;
+        }
+        self.latency = latency;
     }
 
     /// Run the device on `io` with the mix, the gain and the bypass applied.
@@ -96,16 +157,24 @@ impl HostPath {
         // A bypassed device holds nothing back: the track's lining up
         // leaves it out (see the schedule).
         let delay = if bypass { 0 } else { self.latency };
-        let len = self.ring[0].len();
-        for (ch, input) in [&*io.left, &*io.right].into_iter().enumerate() {
-            let (ring, dry) = (&mut self.ring[ch], &mut self.dry[ch]);
-            for i in 0..n {
-                let at = (self.pos + i) % len;
-                ring[at] = input[i];
-                dry[i] = ring[(at + len - delay) % len];
+        if self.latency == 0 {
+            // Nothing to hold back: the dry signal is the input. The delay
+            // line is left alone, so that a device without latency (most)
+            // never touches its memory.
+            self.dry[0][..n].copy_from_slice(&io.left[..n]);
+            self.dry[1][..n].copy_from_slice(&io.right[..n]);
+        } else {
+            let len = self.ring[0].len;
+            for (ch, input) in [&*io.left, &*io.right].into_iter().enumerate() {
+                let (ring, dry) = (self.ring[ch].as_mut(), &mut self.dry[ch]);
+                for i in 0..n {
+                    let at = (self.pos + i) % len;
+                    ring[at] = input[i];
+                    dry[i] = ring[(at + len - delay) % len];
+                }
             }
+            self.pos = (self.pos + n) % len;
         }
-        self.pos = (self.pos + n) % len;
 
         let target = if bypass { 0.0 } else { self.wet };
         if !self.started {
@@ -246,6 +315,24 @@ mod tests {
         let mut device = Invert {
             delay: vec![0.0; 30],
         };
+        let out = run(&mut path, &mut device, 20, |_, _| false);
+        for s in out.iter().skip(128 * 4) {
+            assert!(s.abs() < 1e-6, "left over {s}");
+        }
+    }
+
+    #[test]
+    fn a_device_without_latency_leaves_the_delay_line_alone_until_it_has_one() {
+        let mut path = HostPath::new(0, 0, 128);
+        path.set_param(0, 50.0);
+        let mut device = Invert {
+            delay: vec![0.0; 1],
+        };
+        run(&mut path, &mut device, 8, |_, _| false);
+        assert!(path.ring.iter().all(|r| r.as_ref().iter().all(|&x| x == 0.0)), "not written");
+        // A latency told later: once it has passed, the dry signal waits again.
+        path.set_latency(30);
+        device.delay = vec![0.0; 30];
         let out = run(&mut path, &mut device, 20, |_, _| false);
         for s in out.iter().skip(128 * 4) {
             assert!(s.abs() < 1e-6, "left over {s}");

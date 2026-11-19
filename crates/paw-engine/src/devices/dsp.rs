@@ -192,6 +192,11 @@ impl Svf {
         self.ic1 = flush(self.ic1);
         self.ic2 = flush(self.ic2);
     }
+
+    /// True when it holds nothing of what it was given.
+    pub fn is_zero(&self) -> bool {
+        self.ic1 == 0.0 && self.ic2 == 0.0
+    }
 }
 
 /// Zero for anything too small to hear (below -400 dB).

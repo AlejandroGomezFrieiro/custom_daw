@@ -95,9 +95,11 @@ local function engine(name, threads)
 end
 
 tbl("Offline render (ms of wall time for 32 s of audio)", "render", { "kind", "fx", "automation", "tracks" },
-  { engine("paw", 1), engine("tracktion", 1), engine("tracktion", "N") }, { "render_ms" })
+  -- paw renders on every core unless told otherwise (`threads=12` rows, ×N); runs
+  -- with `threads=1` fill the ×1 column.
+  { engine("paw", 1), engine("paw", "N"), engine("tracktion", 1), engine("tracktion", "N") }, { "render_ms" })
 tbl("Offline render, per-block processing time (ms; budget 10.7 ms)", "render", { "kind", "fx", "automation", "tracks" },
-  { engine("paw"), engine("tracktion", 1), engine("tracktion", "N") }, { "block_p99_ms", "block_max_ms" })
+  { engine("paw", 1), engine("paw", "N"), engine("tracktion", 1), engine("tracktion", "N") }, { "block_p99_ms", "block_max_ms" })
 tbl("Real-time playback, ms per callback (DAW: null backend on a real-time clock; Tracktion: hosted device, back to back)", "blocks", { "kind", "tracks", "buffer", "edits" },
   { engine("paw"), engine("tracktion", 1), engine("tracktion", "N") }, { "p50_ms", "p99_ms", "max_ms" })
 tbl("Clip edits, one undo step each (ms for all of them)", "edit", { "clips" },
