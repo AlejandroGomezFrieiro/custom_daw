@@ -1082,11 +1082,21 @@ fn demo_song_shows_and_answers_the_pointer() {
     w.assert_alive("after rendering");
 }
 
-/// The window's pixels with the still part of its panes kept as textures
-/// (`paw.opt.window_cache`) or drawn straight, after a frame or two.
-fn look(w: &Scene, cache: bool) -> Vec<[u8; 3]> {
-    w.ctl(&format!("paw.opt.window_cache = {cache}"));
-    w.pause(1.0);
+/// The window's pixels once the song has played a while and stopped:
+/// drawn again only where they changed (`paw.opt.window_cache`), or the
+/// next frame drawn whole.
+fn look(w: &Scene, partial: bool) -> Vec<[u8; 3]> {
+    if partial {
+        w.ctl("paw.opt.window_cache = true paw.api.transport_play()");
+        w.pause(2.0);
+        w.ctl("paw.api.transport_stop()");
+        // The meters fall back to nothing, and their peaks go.
+        w.pause(6.0);
+    } else {
+        // A change of the option draws a frame, whole.
+        w.ctl("paw.opt.window_cache = false");
+        w.pause(1.0);
+    }
     w.pixels((0, 0), (1400, 860))
 }
 
@@ -1103,17 +1113,15 @@ fn differ(a: &[[u8; 3]], b: &[[u8; 3]]) -> (usize, usize) {
     (count, big)
 }
 
-// Panes kept as textures, as they are on the processor (this X server has
-// no graphics card), show what panes drawn straight show: the arrange view
-// with the pointer over a button, the mixer and the devices, the piano
-// roll, the arrange view zoomed. The texture has the screen's pixels;
-// llvmpipe cuts a square's shapes to the square, which may round a smoothed
-// edge by 1 and move by a pixel where a stretched picture changes from one
-// of its pixels to the next: a few hundred pixels at most, of more than a
-// million.
+// A window drawn again only where it changed, frame after frame while the
+// song plays (the playhead, the meters, the time), shows what a window
+// drawn whole shows: the arrange view with the pointer over a button, the
+// mixer and the devices, the piano roll, the arrange view zoomed. Each
+// square drawn again is drawn from every shape that reaches into it, so
+// the pixels are the same.
 #[test]
-fn panes_kept_as_textures_look_as_panes_drawn_straight() {
-    let mut w = scene!("cache-look", DEMO);
+fn a_window_drawn_again_where_it_changed_looks_as_one_drawn_whole() {
+    let mut w = scene!("partial-look", DEMO);
     w.pause(3.0);
     w.mouse_to(arrange_point(&w, "v.flags.mute + 0.5", "row('track', 2) + 0.5"));
     let keys = w.number("return paw.api.clip_list(paw.api.track_list()[3])[1].id") as i32;
@@ -1125,14 +1133,16 @@ fn panes_kept_as_textures_look_as_panes_drawn_straight() {
     ];
     for (what, setup) in views {
         w.ctl(&setup);
-        let straight = look(&w, false);
-        let kept = look(&w, true);
-        let (count, big) = differ(&straight, &kept);
+        let partial = look(&w, true);
+        let whole = look(&w, false);
+        let (count, big) = differ(&partial, &whole);
         eprintln!("{what}: {count} pixels differ, {big} by more than 2");
-        if count > 600 || big > 200 {
-            w.shot(&format!("{what}-kept.png"));
+        if count > 0 {
+            w.ctl("paw.opt.window_cache = true");
+            look(&w, true);
+            w.shot(&format!("{what}-partial.png"));
             look(&w, false);
-            w.shot(&format!("{what}-straight.png"));
+            w.shot(&format!("{what}-whole.png"));
             panic!("{what}: {count} pixels differ, {big} by more than 2");
         }
     }

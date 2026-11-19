@@ -357,7 +357,7 @@ mod tests {
         d.shown();
         assert!(!d.frame(frame(&shapes), 1.0, SCREEN, &none, false));
         assert!(d.frame(frame(&shapes), 1.0, SCREEN, &HashSet::from([texture]), false));
-        assert_eq!(d.changed(), vec![[32, 32, 96, 96]], "the squares of the picture");
+        assert_eq!(d.changed(), vec![[32, 32, 64, 64]], "the square of the picture");
     }
 
     #[test]

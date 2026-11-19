@@ -21,7 +21,7 @@ use anyhow::{Context as _, Result, anyhow};
 use egui::{ViewportBuilder, ViewportClass, ViewportCommand, ViewportId, ViewportIdPair, ViewportInfo};
 use egui_glow::glow::{self, HasContext as _};
 use glutin::config::{Config, ConfigTemplateBuilder};
-use glutin::context::{ContextApi, ContextAttributesBuilder, GlProfile, NotCurrentContext, NotCurrentGlContext as _, PossiblyCurrentContext};
+use glutin::context::{ContextApi, ContextAttributesBuilder, GlProfile, NotCurrentContext, NotCurrentGlContext as _, PossiblyCurrentContext, PossiblyCurrentGlContext as _};
 use glutin::display::{GetGlDisplay as _, GlDisplay as _};
 use glutin::surface::{GlSurface as _, Surface, SurfaceAttributesBuilder, SwapInterval, WindowSurface};
 use winit::application::ApplicationHandler;
@@ -30,7 +30,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::raw_window_handle::{HasDisplayHandle as _, HasWindowHandle as _, RawDisplayHandle};
 use winit::window::{Window, WindowId};
 
-use crate::damage::{Damage, Px};
+use crate::damage::Damage;
 
 /// What the loop runs: the program's window.
 pub trait App {
@@ -201,7 +201,7 @@ impl Gl {
 
     /// After a pass: the windows it named are made or changed, and those
     /// it did not name are closed.
-    fn outputs(&mut self, event_loop: Option<&ActiveEventLoop>, outputs: &egui::ViewportIdMap<egui::ViewportOutput>) {
+    fn outputs(&mut self, event_loop: Option<&ActiveEventLoop>, outputs: &egui::OrderedViewportIdMap<egui::ViewportOutput>) {
         for (id, output) in outputs {
             let ids = ViewportIdPair::from_self_and_parent(*id, output.parent);
             let viewport = self.viewports.entry(*id).or_insert_with(|| Viewport::new(ids, output.builder.clone()));
@@ -399,10 +399,23 @@ impl Runner {
             i.raw.viewports.insert(ViewportId::ROOT, info.clone());
             i.pixels_per_point = ppp;
         });
+        // The main window's surface, and the context current on it: glow
+        // asks OpenGL its version when it starts.
+        let (w, h): (u32, u32) = window.inner_size().into();
+        let attributes = SurfaceAttributesBuilder::<WindowSurface>::new().build(
+            window.window_handle()?.as_raw(),
+            NonZeroU32::new(w).unwrap_or(NonZeroU32::MIN),
+            NonZeroU32::new(h).unwrap_or(NonZeroU32::MIN),
+        );
+        let surface = unsafe { config.display().create_window_surface(&config, &attributes)? };
+        let current = context.make_current(&surface)?;
+        if let Err(err) = surface.set_swap_interval(&current, swap_interval) {
+            eprintln!("paw-gui: the swap interval: {err}");
+        }
         let mut root = Viewport::new(ViewportIdPair::ROOT, builder);
         root.info = info;
         root.window = Some(Arc::new(window));
-        // A surface needs a context to be made current with: a passing one.
+        root.surface = Some(surface);
         let display = config.display();
         let gl = unsafe {
             glow::Context::from_loader_function(|name| {
@@ -415,9 +428,9 @@ impl Runner {
             ctx: self.ctx.clone(),
             config,
             swap_interval,
-            current: None,
-            not_current: Some(context),
-            current_on: None,
+            current: Some(current),
+            not_current: None,
+            current_on: Some(ViewportId::ROOT),
             painter,
             viewports: HashMap::from([(ViewportId::ROOT, root)]),
             by_window: HashMap::new(),
@@ -473,10 +486,12 @@ impl Runner {
             self.paint(gl, output.shapes, output.pixels_per_point, &mut delta, partial, clear);
         }
         // Textures not drawn with are set (and let go) all the same.
-        for (id, image) in delta.set.drain(..) {
-            gl.painter.set_texture(id, &image);
+        for (id, images) in delta.set.drain() {
+            for image in images {
+                gl.painter.set_texture(id, &image);
+            }
         }
-        for id in delta.free.drain(..) {
+        for id in delta.free.drain() {
             gl.painter.free_texture(id);
         }
         gl.outputs(Some(event_loop), &output.viewport_output);
@@ -498,7 +513,7 @@ impl Runner {
         // A picture given new pixels is drawn again where it shows; the
         // font's texture made anew changes all the text.
         let font = egui::TextureId::default();
-        let fonts_anew = delta.set.iter().any(|(id, image)| *id == font && image.pos.is_none());
+        let fonts_anew = delta.set.iter().any(|(id, images)| *id == font && images.iter().any(|image| image.pos.is_none()));
         let textures: HashSet<egui::TextureId> = delta.set.iter().map(|(id, _)| *id).filter(|id| *id != font).collect();
         let all = !partial || !self.shown || fonts_anew;
         if !self.damage.frame(shapes, ppp, screen, &textures, all) {
@@ -736,10 +751,12 @@ fn immediate(ctx: &egui::Context, gl: &RefCell<Gl>, viewport: egui::ImmediateVie
             eprintln!("paw-gui: showing a window: {err}");
         }
     }
-    for (texture, image) in delta.set.drain(..) {
-        gl.painter.set_texture(texture, &image);
+    for (texture, images) in delta.set.drain() {
+        for image in images {
+            gl.painter.set_texture(texture, &image);
+        }
     }
-    for texture in delta.free.drain(..) {
+    for texture in delta.free.drain() {
         gl.painter.free_texture(texture);
     }
     if let Some(viewport) = gl.viewports.get_mut(&id)

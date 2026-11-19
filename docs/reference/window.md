@@ -30,7 +30,7 @@ paw-gui --connect <host:port> --token-file <path>
 | `--listen-audio` | | Plays the kernel's sound on this machine (about 1 Mbit/s). The engine menu has the same switch. |
 | `--renderer` | `gpu` (default) or `software` | `gpu` draws with OpenGL on the system's driver. `software` asks Mesa for llvmpipe, which draws on the processor. |
 | `PAW_GUI_RENDERER` | `gpu` or `software` | The environment variable for the renderer, when `--renderer` is absent. |
-| `PAW_GUI_STATS` | any value | Each 10 seconds, the window writes to its log the frames that it drew, and the squares and pixels of the texture of the panes that it painted again. |
+| `PAW_GUI_STATS` | any value | Each 10 seconds, the window writes to its log the passes of its layout, the frames that it showed, the pixels that it drew in each frame, the textures that it sent to OpenGL, and the age of the buffers that the driver gave. |
 | `-h`, `--help` | | Shows the options. |
 
 The token, the certificates and the TLS rules are in [The control
@@ -77,7 +77,7 @@ window opens at the top left of the main screen.
 ## Graphics
 
 The window is written with [egui](https://github.com/emilk/egui). It draws
-with OpenGL through eframe's glow renderer, on the system's driver: the
+with OpenGL through egui's glow renderer, on the system's driver: the
 driver of the graphics card, or Mesa's llvmpipe on the processor. On NixOS,
 `hardware.graphics.enable` supplies the driver. If OpenGL cannot start,
 the window shows one line that tells so, and stops.
@@ -105,14 +105,18 @@ each frame costs much more. A key, the pointer and an edit show in the
 next frame all the same. The window tells the kernel this rate, and the
 kernel sends the values that move at the same rate, not faster.
 
-The window also keeps the parts of the panes that do
-not move in a texture of the size of the window (`paw.opt.window_cache`).
-Each frame copies the texture to the screen. Then it draws the parts that
-move over it. These are the playhead, the meters, the live values and the
-control under the pointer. The window paints a square of 256 by 256 pixels of the texture
-again only when a part in the square changes. The texture has the pixels of
-the screen, so the panes look the same as without it. A view in a window of
-its own does not use it.
+The window also draws a frame again only where it changed
+(`paw.opt.window_cache`). It divides the window into squares of 32 by 32
+pixels. A square whose shapes are the same as in the last frame keeps its
+pixels. While the song plays, only the squares of the playhead, the clock,
+the meters and the live values change: a few percent of the window. A
+frame that changes no square is not drawn and not shown. The window draws
+each changed square from all the shapes in it, so the pixels are the same
+as when it draws the full window. Where the platform permits it (EGL), the
+window also tells the display server or the compositor which parts
+changed, so they copy only those parts. With `paw.opt.window_cache =
+false`, the window draws each frame in full. A view in a window of its own
+always draws in full.
 
 The piano roll and the timeline get
 only the notes, lines and points near the visible area. So a clip of
