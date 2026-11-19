@@ -418,9 +418,12 @@ test("dawproject: plugins go out and come back with their settings", function()
   local want = api.device_get(v.id).params.sidechain_reactivity
   local path = T.scratch .. "/fx.dawproject"
   local result = d.export(path)
-  eq(has_item(result.report, "VST3 plugins written without their class id (paw does not know it; a DAW finds them by name)",
-    "FX: Gate Mono"), true, "the VST3 class id is listed")
+  eq(has_item(result.report, "VST3 plugins written without their class id (not installed here; a DAW finds them by name)",
+    "FX: Gate Mono"), false, "the VST3 class id is known")
   local files = d.zip.read(T.read_file(path))
+  local cid = api.device_get(v.id).plugin.id
+  eq(files["project.xml"]:find('<Vst3Plugin id="[^"]*" name="Gate Mono" deviceID="' .. cid .. '"') ~= nil, true,
+    "written as deviceID")
   eq(files["plugins/001.clap-preset"] ~= nil, true, "the CLAP state")
   eq(files["plugins/002.vstpreset"]:sub(1, 4), "VST3", "the VST3 state as a .vstpreset")
   d.import(path)
