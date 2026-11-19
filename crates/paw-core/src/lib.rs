@@ -3,6 +3,7 @@
 
 pub mod api;
 pub mod attr_map;
+pub mod clipfile;
 pub mod audio;
 pub mod freeze;
 pub mod fs_api;

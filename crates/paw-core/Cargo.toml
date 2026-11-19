@@ -18,6 +18,8 @@ mlua = { version = "0.12", features = ["luajit", "vendored", "serde"] }
 include_dir = "0.7"
 unicode-width = "0.2"
 base64 = "0.22"
+# project.toml, the settings of a project folder.
+toml = "1.1"
 rtrb = "0.4"
 libc = "0.2"
 # Pure Rust FLAC encoder, for renders to .flac.

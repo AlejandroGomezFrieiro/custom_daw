@@ -30,6 +30,7 @@ use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
 mod audition;
 mod clipops;
 mod encode;
+pub mod folder;
 mod keep;
 pub mod launcher;
 mod loading;
@@ -922,6 +923,9 @@ impl Session {
     }
 
     pub fn project_load(&mut self, path: &Path) -> Result<()> {
+        if folder::is_folder_path(path) {
+            return self.project_load_folder(path);
+        }
         let text =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let mut file: ProjectFile =
@@ -1006,6 +1010,9 @@ impl Session {
             .map(Path::to_path_buf)
             .or_else(|| self.path.clone())
             .context("the project has no file yet: give a path")?;
+        if folder::is_folder_path(&path) {
+            return self.project_save_folder(&path, None).map(|(path, _)| path);
+        }
         self.adopt_recordings(&path)?;
         self.capture_states();
         // What is saved is everything up to here and nothing after: an edit
@@ -2158,6 +2165,8 @@ impl Session {
                 fade_in: opts.fade_in,
                 fade_out: opts.fade_out,
                 meta: opts.meta,
+                source: None,
+                origin: None,
             });
             match opts.slot {
                 Some(row) => launcher::put_slot(
