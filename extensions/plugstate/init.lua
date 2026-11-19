@@ -8,8 +8,10 @@ package.loaded["paw.plugstate"] = plugstate
 require("plugstate.adapters")
 require("plugstate.tone3000")
 require("plugstate.soundshed")
+require("plugstate.juceplugins")
 require("plugstate.commands")
 require("plugstate.tone3000_search")
+require("plugstate.tone3000_auth")
 
 paw.health.register("plugstate", function(h)
   local names = {}

@@ -15,12 +15,12 @@ out=$SCRATCH/suite.out
 case "$1" in
   plugins)
     # Plugins that are not in nixpkgs come in by their package's store
-    # path (PAW_TEST_TONE3000, PAW_TEST_SOUNDSHED). The plugins get a
+    # path (PAW_TEST_TONE3000, PAW_TEST_SOUNDSHED, PAW_TEST_MUSIO). The plugins get a
     # scratch home: some write beside it, not only to XDG_CONFIG_HOME.
     mkdir -p "$SCRATCH/home"
     PAW_SCRATCH_HOME=$SCRATCH/home nix develop -c sh -c '
       export HOME=$PAW_SCRATCH_HOME
-      for pkg in $PAW_TEST_TONE3000 $PAW_TEST_SOUNDSHED; do PAW_TEST_PLUGINS=$PAW_TEST_PLUGINS:$pkg/lib; done
+      for pkg in $PAW_TEST_TONE3000 $PAW_TEST_SOUNDSHED $PAW_TEST_MUSIO; do PAW_TEST_PLUGINS=$PAW_TEST_PLUGINS:$pkg/lib; done
       export CLAP_PATH=$(echo $PAW_TEST_PLUGINS | sed "s#:#/clap:#g")/clap
       export LV2_PATH=$(echo $PAW_TEST_PLUGINS | sed "s#:#/lv2:#g")/lv2
       export VST3_PATH=$(echo $PAW_TEST_PLUGINS | sed "s#:#/vst3:#g")/vst3

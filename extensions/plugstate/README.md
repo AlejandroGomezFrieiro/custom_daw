@@ -15,7 +15,7 @@ it.
 extensions/plugstate/
   init.lua, lua/plugstate/   the adapters, the library, snapshots, commands
   tests.lua                  tests with real plugins (Neural Amp Modeler, LSP, sfizz,
-                             TONE3000, Soundshed Guitar)
+                             TONE3000, Soundshed Guitar, Surge XT, Musio)
 ```
 
 ## Try it
@@ -61,8 +61,8 @@ TONE3000 (www.tone3000.com) is a library of amp models and impulse
 responses that its users share. plugstate finds them and loads them into
 TONE3000, Neural Amp Modeler and the impulse response plugins of LSP.
 
-1. Give paw a token of your TONE3000 account. See
-   [TONE3000 tokens](#tone3000-tokens).
+1. Sign in to your TONE3000 account with `:plugstate.tone3000_login`. See
+   [How to sign in to TONE3000 from paw](../../docs/how-to/sign-in-to-tone3000.md).
 2. In the device panel, put the row on the plugin and press `\t`. Type
    words, for example `plexi crunch`, and press Enter. Or type
    `:plugstate.search plexi crunch`.
@@ -112,6 +112,22 @@ plugstate.adapter({
 An LV2 plugin that lists its files as properties needs no adapter: the
 `lv2` adapter finds them. See [Adapters](#adapters).
 
+### How to find where a JUCE plugin keeps a setting
+
+Most commercial plugins use JUCE. paw reads their state as a tree.
+
+1. Put the row of the device panel on the plugin.
+2. Type `:plugstate.mark`. paw keeps the state of the plugin.
+3. Change one setting in the window of the plugin.
+4. Type `:plugstate.changes`. paw lists the paths that changed, for
+   example `set /patch/parameters/a_octave@value: "0" → "1"`.
+5. To keep the change as a preset, type `:plugstate.preset_write ~/octave`.
+   The preset loads into each format of the plugin with `:plugstate.load`.
+
+`:plugstate.tree` shows the whole tree, and `:plugstate.path <path> <value>`
+sets one value. To give names to the paths, add a description. See
+[The state of JUCE plugins](../../docs/reference/juce-plugin-state.md).
+
 ## Reference
 
 ### Keys
@@ -140,9 +156,17 @@ These keys are in the device panel. They act on the device of the row.
 | `:plugstate.recall_next`, `:plugstate.recall_prev` | brings back the next or the previous snapshot |
 | `:plugstate.forget <name>` | removes a snapshot |
 | `:plugstate.adapters` | lists the kinds of plugin that plugstate knows |
+| `:plugstate.tree [path]` | shows the state of a JUCE plugin as a tree, or the part at the path. A count sets the depth |
+| `:plugstate.mark` | keeps the state of a JUCE plugin, for `:plugstate.changes` |
+| `:plugstate.changes` | lists the paths of the state that changed after `:plugstate.mark` |
+| `:plugstate.path <path> [value]` | shows a value of the state of a JUCE plugin, or sets it as one undo step |
+| `:plugstate.preset_write <file>` | writes the changes after `:plugstate.mark` as a `.jucepreset` file |
 | `:plugstate.search [gear=<gear>] [type=nam\|ir] [by=<user>] [sort=<order>] [arch=<n>] [slot=<key>] [words]` | searches TONE3000's library and opens a picker of the tones. Enter on a tone shows its models, and Enter on a model loads it |
 | `:plugstate.search_more` | shows the next page of the last search (a count skips more) |
 | `:plugstate.search_prompt` | asks for words, then does `:plugstate.search` |
+| `:plugstate.tone3000_login` | signs in to TONE3000: shows a code to enter at `https://www.tone3000.com/activate`, then keeps the tokens |
+| `:plugstate.tone3000_logout` | forgets the tokens of the sign-in, and stops a sign-in that waits for its code |
+| `:plugstate.tone3000_status` | tells if paw is signed in, where the token comes from and when it expires. It does not use the network |
 
 - The commands act on the device of the row of the device panel when
   plugstate knows it. Else, they act on the first device of the cursor
@@ -161,6 +185,9 @@ These keys are in the device panel. They act on the device of the row.
 | `plugstate_tone3000_token_file` | `""` | a file that holds a TONE3000 access token on its first line. paw uses it only if its mode is 600 or 400 |
 | `plugstate_tone3000_plugin_session` | `false` | when `true`, paw also uses the session of the TONE3000 plugin (see [TONE3000 tokens](#tone3000-tokens)) |
 | `plugstate_tone3000_api` | `""` | another address of the API. Empty: `https://www.tone3000.com/api/v1` |
+| `plugstate_tone3000_client_id` | `""` | the publishable key of your TONE3000 app, for `:plugstate.tone3000_login`. Empty: the environment variable `TONE3000_CLIENT_ID` |
+| `plugstate_tone3000_store` | `"auto"` | where the sign-in keeps its tokens: `auto` (the keyring, else the file), `keyring` or `file` |
+| `plugstate_tone3000_session_file` | `""` | the file of the sign-in. Empty: `$XDG_STATE_HOME/paw/tone3000-session.json` |
 
 ### The search of TONE3000
 
@@ -200,14 +227,31 @@ the token in this order, and uses the first one that it finds:
    can read the file: `chmod 600 <file>`.
 3. The keyring, through `secret-tool`. Keep the token there with
    `secret-tool store --label="TONE3000 for paw" application paw service tone3000`.
-4. Only when `paw.opt.plugstate_tone3000_plugin_session` is `true`: the
+4. The sign-in of `:plugstate.tone3000_login`. paw gets a new access
+   token with the refresh token when the access token expires, or when
+   TONE3000 refuses it (`401`). If the refresh token expired too, paw
+   tells you to sign in again.
+5. Only when `paw.opt.plugstate_tone3000_plugin_session` is `true`: the
    session of the TONE3000 plugin, from the `t3k_tokens` value in
    `~/.config/TONE3000/ui-preferences.settings`. paw only reads this
    file. When the session expires, open the window of the plugin one time.
    paw does not renew it.
 
 paw sends the token to curl on its standard input. The token is not on a
-command line, in a log, in a project or in a file that paw writes.
+command line, in a log, in a project or in a message.
+
+The sign-in uses the device flow of `OAuth` (RFC 8628), as the API
+reference of TONE3000 gives it. paw asks for a code at
+`/api/v1/oauth/device_authorization`. Then it asks `/api/v1/oauth/token`
+at the interval that TONE3000 gives (5 s, and 5 s more after
+`slow_down`). It stops when you enter the code, or when the code expires
+(10 minutes).
+
+paw keeps the tokens of the sign-in in the keyring entry `application paw service tone3000-session`,
+through `secret-tool store` with the tokens on its standard input. If
+there is no keyring, paw keeps them in the file of
+`plugstate_tone3000_session_file`, of mode 600. The form of a request of
+the sign-in also goes to curl on its standard input.
 
 ### The terms of TONE3000
 
@@ -234,6 +278,7 @@ paw obeys them in these ways:
 | `sfizz` | sfizz (VST3) | sfizz has no properties as a VST3 plugin. The adapter writes the SFZ file into the saved state of the plugin, and paw loads that state |
 | `lv2` | each other LV2 plugin with properties (`patch:writable`) | the property, with a message to the plugin as from its own window |
 | `tone3000` | TONE3000 (CLAP, VST3, LV2) | it writes the state of the plugin. Slots: `preset` (a `.t3kpreset` file: its chain and the values of its parameters), and `block1` to `block5`, `right1` to `right5` (the blocks of the two rows of the chain). A `.nam` or `.wav` file goes into a block with its bytes, as a file that you drop on the block in the window. The name of a model that the block holds switches to that model |
+| `juce` | each JUCE plugin with a description that has slots: Surge XT (CLAP, VST3, LV2) and Musio (VST3) | it writes the state of the plugin. Slots: `preset` (a `.jucepreset` file: its edits apply to the state of the device, in its format), and the values of the description (Surge XT: `name`, `octave`. Musio: `reverb`, `room`, `reverb_amount`) |
 | `soundshed` | Soundshed Guitar (VST3, LV2) | it writes the JSON state of the plugin. Slots: `preset` (a preset of a `.soundshed.presets` pack, or a `.json` preset), `scene` (the title or the number of a scene), and the blocks of the scene that take a file (`amp1`, `fx1`, `cab1` and other), set by the path of the file |
 
 ### The Lua module
@@ -252,6 +297,9 @@ paw obeys them in these ways:
 | `snapshot(id, name)`, `recall(id, name)`, `step(id, n)`, `forget(id, name)` | the snapshots |
 | `snapshots(id)`, `current(id)` | the snapshots of a device, and the name of the last one recalled or kept |
 | `share_dirs(sub)` | the folders `share/<sub>` of the packages in the plugin folders (`CLAP_PATH`, `VST3_PATH`, `LV2_PATH`, the Nix profiles), for factory presets |
+
+The JUCE layer is in `require("plugstate.jucestate")`. See
+[The state of JUCE plugins](../../docs/reference/juce-plugin-state.md).
 
 An adapter can also give `name_of(path)`: the name of a choice in the
 messages.
@@ -291,6 +339,11 @@ The extension sends the events `plugstate.loaded` (`device`, `slot`,
   with less than a second of sound without the model.
 - Soundshed Guitar keeps the path of a file. paw copies the files of a
   preset of a pack to `~/.local/share/paw/plugstate/<pack>`.
+- The commands of JUCE plugins act on the device of the row of the
+  device panel, else on the first plugin of the cursor track.
+  `:plugstate.mark` keeps its state in memory, not in the project.
+- Surge XT as a VST3 plugin does not take a state from paw. Its presets
+  load in CLAP and LV2.
 - The search of TONE3000 needs curl. paw does not sign in to TONE3000
   itself: it uses a token that you give (see [TONE3000 tokens](#tone3000-tokens)).
   paw loads models (`nam`) and impulse responses (`ir`), not the other

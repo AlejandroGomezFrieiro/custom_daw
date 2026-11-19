@@ -229,3 +229,7 @@ vimper
 reavim
 ReaLeader
 Soundshed
+Musio
+gzip
+zlib
+(?i)wavetables?

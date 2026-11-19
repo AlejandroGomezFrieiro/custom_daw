@@ -41,6 +41,7 @@ writers of extensions come after them.
 - [How to name, color, reorder and group tracks](how-to/organize-tracks.md): groups are folders and buses
 - [How to change the sound of an instrument](how-to/change-the-sound-of-an-instrument.md): parameters, presets, the editor of the plugin
 - [How to switch amp models and presets from paw](how-to/switch-amp-models-and-presets.md): presets, models and impulse responses of TONE3000 and Soundshed Guitar, scenes, snapshots
+- [How to sign in to TONE3000 from paw](how-to/sign-in-to-tone3000.md): the `client_id`, the code, where the tokens go, the live tests
 - [How to play a hardware synth from a track](how-to/play-a-hardware-synth.md)
 - [How to route the outputs of a drum plugin](how-to/route-the-outputs-of-a-drum-plugin.md)
 
@@ -173,6 +174,7 @@ writers of extensions come after them.
 - [Plugins](reference/plugins.md): formats, scan, editors, processes, status, offline devices
 - [Lua devices](reference/lua-devices.md): the fields of a device in Lua, the block, MIDI, helpers, reload
 - [Device parameters](reference/device-parameters.md): the fields of each parameter, the ids of plugins, values as text, the plugin itself
+- [The state of JUCE plugins](reference/juce-plugin-state.md): the layers of a state, paths, parameters, differences, descriptions of plugins, presets
 - [MIDI controllers](reference/learn.md): bind knobs, faders and pads to controls
 - [Harmony](reference/harmony.md): the chords and keys that paw reads, providers, theory functions, voicings, ranges
 - [Snippets](reference/snippets.md): keys, the first set, the fields of a snippet
