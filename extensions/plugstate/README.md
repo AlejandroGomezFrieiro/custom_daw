@@ -15,7 +15,7 @@ it.
 extensions/plugstate/
   init.lua, lua/plugstate/   the adapters, the library, snapshots, commands
   tests.lua                  tests with real plugins (Neural Amp Modeler, LSP, sfizz,
-                             TONE3000, Soundshed Guitar)
+                             TONE3000, Soundshed Guitar, Surge XT, Musio)
 ```
 
 ## Try it
@@ -112,6 +112,22 @@ plugstate.adapter({
 An LV2 plugin that lists its files as properties needs no adapter: the
 `lv2` adapter finds them. See [Adapters](#adapters).
 
+### How to find where a JUCE plugin keeps a setting
+
+Most commercial plugins use JUCE. paw reads their state as a tree.
+
+1. Put the row of the device panel on the plugin.
+2. Type `:plugstate.mark`. paw keeps the state of the plugin.
+3. Change one setting in the window of the plugin.
+4. Type `:plugstate.changes`. paw lists the paths that changed, for
+   example `set /patch/parameters/a_octave@value: "0" → "1"`.
+5. To keep the change as a preset, type `:plugstate.preset_write ~/octave`.
+   The preset loads into each format of the plugin with `:plugstate.load`.
+
+`:plugstate.tree` shows the whole tree, and `:plugstate.path <path> <value>`
+sets one value. To give names to the paths, add a description. See
+[The state of JUCE plugins](../../docs/reference/juce-plugin-state.md).
+
 ## Reference
 
 ### Keys
@@ -140,6 +156,11 @@ These keys are in the device panel. They act on the device of the row.
 | `:plugstate.recall_next`, `:plugstate.recall_prev` | brings back the next or the previous snapshot |
 | `:plugstate.forget <name>` | removes a snapshot |
 | `:plugstate.adapters` | lists the kinds of plugin that plugstate knows |
+| `:plugstate.tree [path]` | shows the state of a JUCE plugin as a tree, or the part at the path. A count sets the depth |
+| `:plugstate.mark` | keeps the state of a JUCE plugin, for `:plugstate.changes` |
+| `:plugstate.changes` | lists the paths of the state that changed after `:plugstate.mark` |
+| `:plugstate.path <path> [value]` | shows a value of the state of a JUCE plugin, or sets it as one undo step |
+| `:plugstate.preset_write <file>` | writes the changes after `:plugstate.mark` as a `.jucepreset` file |
 | `:plugstate.search [gear=<gear>] [type=nam\|ir] [by=<user>] [sort=<order>] [arch=<n>] [slot=<key>] [words]` | searches TONE3000's library and opens a picker of the tones. Enter on a tone shows its models, and Enter on a model loads it |
 | `:plugstate.search_more` | shows the next page of the last search (a count skips more) |
 | `:plugstate.search_prompt` | asks for words, then does `:plugstate.search` |
@@ -234,6 +255,7 @@ paw obeys them in these ways:
 | `sfizz` | sfizz (VST3) | sfizz has no properties as a VST3 plugin. The adapter writes the SFZ file into the saved state of the plugin, and paw loads that state |
 | `lv2` | each other LV2 plugin with properties (`patch:writable`) | the property, with a message to the plugin as from its own window |
 | `tone3000` | TONE3000 (CLAP, VST3, LV2) | it writes the state of the plugin. Slots: `preset` (a `.t3kpreset` file: its chain and the values of its parameters), and `block1` to `block5`, `right1` to `right5` (the blocks of the two rows of the chain). A `.nam` or `.wav` file goes into a block with its bytes, as a file that you drop on the block in the window. The name of a model that the block holds switches to that model |
+| `juce` | each JUCE plugin with a description that has slots: Surge XT (CLAP, VST3, LV2) and Musio (VST3) | it writes the state of the plugin. Slots: `preset` (a `.jucepreset` file: its edits apply to the state of the device, in its format), and the values of the description (Surge XT: `name`, `octave`. Musio: `reverb`, `room`, `reverb_amount`) |
 | `soundshed` | Soundshed Guitar (VST3, LV2) | it writes the JSON state of the plugin. Slots: `preset` (a preset of a `.soundshed.presets` pack, or a `.json` preset), `scene` (the title or the number of a scene), and the blocks of the scene that take a file (`amp1`, `fx1`, `cab1` and other), set by the path of the file |
 
 ### The Lua module
@@ -252,6 +274,9 @@ paw obeys them in these ways:
 | `snapshot(id, name)`, `recall(id, name)`, `step(id, n)`, `forget(id, name)` | the snapshots |
 | `snapshots(id)`, `current(id)` | the snapshots of a device, and the name of the last one recalled or kept |
 | `share_dirs(sub)` | the folders `share/<sub>` of the packages in the plugin folders (`CLAP_PATH`, `VST3_PATH`, `LV2_PATH`, the Nix profiles), for factory presets |
+
+The JUCE layer is in `require("plugstate.jucestate")`. See
+[The state of JUCE plugins](../../docs/reference/juce-plugin-state.md).
 
 An adapter can also give `name_of(path)`: the name of a choice in the
 messages.
@@ -291,6 +316,11 @@ The extension sends the events `plugstate.loaded` (`device`, `slot`,
   with less than a second of sound without the model.
 - Soundshed Guitar keeps the path of a file. paw copies the files of a
   preset of a pack to `~/.local/share/paw/plugstate/<pack>`.
+- The commands of JUCE plugins act on the device of the row of the
+  device panel, else on the first plugin of the cursor track.
+  `:plugstate.mark` keeps its state in memory, not in the project.
+- Surge XT as a VST3 plugin does not take a state from paw. Its presets
+  load in CLAP and LV2.
 - The search of TONE3000 needs curl. paw does not sign in to TONE3000
   itself: it uses a token that you give (see [TONE3000 tokens](#tone3000-tokens)).
   paw loads models (`nam`) and impulse responses (`ir`), not the other

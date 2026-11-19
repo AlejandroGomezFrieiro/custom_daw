@@ -21,6 +21,7 @@ local ffi = require("ffi")
 local bit = require("bit")
 local plugstate = require("plugstate")
 local juce = require("plugstate.juce")
+local jucestate = require("plugstate.jucestate")
 local bytes = require("plugstate.bytes")
 
 local M = {}
@@ -36,15 +37,23 @@ end
 
 -- --- the state ----------------------------------------------------------------
 
+-- The description for the JUCE layer: a tree after "T3KB" in each format.
+M.desc = jucestate.plugin({
+  name = "tone3000", title = "TONE3000", prefix = "T3KB", root = "TONE3000State",
+  ids = { clap = M.IDS.clap, lv2 = M.IDS.lv2, vst3 = "TONE3000" },
+  params = "/TONE3000State/PARAMETERS",
+  paths = { preset = "/TONE3000State@activePresetName", preset_id = "/TONE3000State@activePresetId" },
+})
+
 --- The plugin's tree in a state (paw's base64) and a function that gives
 --- the state with another tree.
 function M.open(state64, format)
-  local data, close = juce.open(state64, format)
-  local at = data:find("T3KB", 1, true)
-  if not at then error("not a state of TONE3000", 0) end
-  local root, stop = juce.parse(data, at + 4)
-  if root.type ~= "TONE3000State" then error("not a state of TONE3000", 0) end
-  return root, function(tree) return close(data:sub(1, at + 3) .. juce.write(tree) .. data:sub(stop)) end
+  local ok, doc = pcall(jucestate.open, state64, format, { desc = M.desc })
+  if not ok then error("not a state of TONE3000 (" .. tostring(doc) .. ")", 0) end
+  return doc.root, function(tree)
+    doc.root, doc.changed = tree, true
+    return doc:write()
+  end
 end
 
 --- The `T3KPreset` tree of a preset file and its header (`id`, `name`), or
