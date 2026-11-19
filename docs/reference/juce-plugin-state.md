@@ -5,7 +5,8 @@ Most commercial plugins use the JUCE library. The
 state of a JUCE plugin as a tree, and writes it back. This page describes
 the forms that it reads, the paths, the descriptions of plugins and the
 presets. The modules are `plugstate.jucestate` (the layer),
-`plugstate.juce` (trees and paths) and `plugstate.jucexml` (XML).
+`plugstate.juce` (trees and paths) and `plugstate.jucexml` (XML). For the
+other frameworks, see [The saved state of plugins](plugin-state.md).
 
 ## The layers of a state
 
@@ -132,6 +133,7 @@ extension describes these plugins:
 | `tone3000` | TONE3000 | CLAP, VST3, LV2 | `T3KB`, a ValueTree | none (the `tone3000` adapter) |
 | `surge-xt` | Surge XT | CLAP, VST3, LV2 | `sub3` header, XML of the patch, wavetables | `name`, `octave` |
 | `musio` | Musio | VST3 | `VC2!`, XML (`PluginState`) | `reverb`, `room`, `reverb_amount` |
+| `decent-sampler` | DecentSampler | VST3 | `VC2!`, XML (`DecentSampler`) | none. Paths: `preset_name`, `sample_path`, `library_url`, `tuning` |
 
 ## Presets
 

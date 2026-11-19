@@ -42,6 +42,7 @@ writers of extensions come after them.
 - [How to change the sound of an instrument](how-to/change-the-sound-of-an-instrument.md): parameters, presets, the editor of the plugin
 - [How to change a sound at a point in the song](how-to/change-a-sound-at-a-point-in-the-song.md): a state lane gives a plugin another preset, model or state from a point, also in a rendered file
 - [How to switch amp models and presets from paw](how-to/switch-amp-models-and-presets.md): presets, models and impulse responses of TONE3000 and Soundshed Guitar, scenes, snapshots
+- [How to find and change a setting inside a plugin](how-to/find-and-change-a-setting-inside-a-plugin.md): the saved state of any plugin as a tree, the paths that a change touches, a value set from paw, presets of the changes
 - [How to sign in to TONE3000 from paw](how-to/sign-in-to-tone3000.md): the `client_id`, the code, where the tokens go, the live tests
 - [How to play a hardware synth from a track](how-to/play-a-hardware-synth.md)
 - [How to route the outputs of a drum plugin](how-to/route-the-outputs-of-a-drum-plugin.md)
@@ -175,6 +176,7 @@ writers of extensions come after them.
 - [Plugins](reference/plugins.md): formats, scan, editors, processes, status, offline devices
 - [Lua devices](reference/lua-devices.md): the fields of a device in Lua, the block, MIDI, helpers, reload
 - [Device parameters](reference/device-parameters.md): the fields of each parameter, the ids of plugins, values as text, the plugin itself
+- [The saved state of plugins](reference/plugin-state.md): the readers of each framework (JUCE, DPF, LSP, iPlug2, Dplug, nih-plug, Vital, LV2), their forms and trees, hints from the binary
 - [The state of JUCE plugins](reference/juce-plugin-state.md): the layers of a state, paths, parameters, differences, descriptions of plugins, presets
 - [MIDI controllers](reference/learn.md): bind knobs, faders and pads to controls
 - [Harmony](reference/harmony.md): the chords and keys that paw reads, providers, theory functions, voicings, ranges
