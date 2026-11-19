@@ -211,3 +211,221 @@ test("plugstate: a state codec gives sfizz (VST3) another instrument", function(
   T.near(T.frequency(a, 0.5, 1.5), 220, 5, "the first plays the note")
   T.near(T.frequency(b, 0.5, 1.5), 440, 10, "the second an octave higher")
 end)
+
+-- --- TONE3000 and Soundshed Guitar ---------------------------------------------
+-- These plugins are not in nixpkgs: their tests run when PAW_TEST_TONE3000
+-- or PAW_TEST_SOUNDSHED names the package (its store path), and the run
+-- gives the plugins a scratch home (`XDG_CONFIG_HOME`, where both keep
+-- their files). `tests/tools/suite.sh plugins` does both.
+
+--- The package a variable names, when the plugin's files go to a scratch
+--- folder; else nil and why the test is skipped.
+local function package(var)
+  local dir = os.getenv(var)
+  if not dir or dir == "" then return nil, "skipped: " .. var .. " names no package" end
+  -- The home folder of the user in the system's list, which a changed HOME
+  -- does not hide.
+  local user, home = os.getenv("USER") or os.getenv("LOGNAME") or "", nil
+  for line in (io.open("/etc/passwd") and io.open("/etc/passwd"):read("*a") or ""):gmatch("[^\n]+") do
+    local name, dir = line:match("^([^:]*):[^:]*:[^:]*:[^:]*:[^:]*:([^:]*):")
+    if name == user then home = dir end
+  end
+  local config = os.getenv("XDG_CONFIG_HOME")
+  if not config or config == "" or (home and config:gsub("/+$", "") == home .. "/.config") then
+    return nil, "skipped: the plugin would write to the home folder (set XDG_CONFIG_HOME to a scratch folder)"
+  end
+  return dir
+end
+
+--- The loudness (RMS, 0 to 1) of a render at 16 bits, from `from` seconds:
+--- a plugin that loads its model in the background in the render's own
+--- copy of it plays dry for its first moments.
+local function level(info, from)
+  local data = T.read_file(info.path)
+  local at = data:find("data", 1, true) + 8 + math.floor((from or 0) * info.sample_rate) * 4
+  local sum, n = 0, 0
+  for i = at, #data - 1, 2 do
+    local lo, hi = data:byte(i, i + 1)
+    local v = lo + hi * 256
+    if v >= 32768 then v = v - 65536 end
+    sum, n = sum + v * v, n + 1
+  end
+  return math.sqrt(sum / math.max(n, 1)) / 32768
+end
+
+local function loudness(from) return level(T.render({ tail = 0, bits = 16 }), from) end
+
+--- A track that holds a note for two bars, with the cursor on it.
+local function long_guitar(name)
+  local track = T.tone(name or "guitar", 8, "A2")
+  paw.cursor.set_track(track.id)
+  return track
+end
+
+--- The sound after the first second (see `level`).
+local function sound() return loudness(1) end
+
+local function same(a, b, what) T.near(a, b, 0.002, what) end
+local function differs(a, b, what) eq(math.abs(a - b) > 0.005, true, what .. string.format(" (%.4f, %.4f)", a, b)) end
+
+local function devices_on(id)
+  paw.ui.focus("devices")
+  paw.fx.select(id)
+end
+
+test("plugstate: TONE3000 presets and block models are chosen with keys, undone, kept in snapshots and in the project", function()
+  local pkg, why = package("PAW_TEST_TONE3000")
+  if not pkg then return why end
+  local kind = kind_of("clap", "^TONE3000$")
+  if not kind then return "skipped: TONE3000 not found" end
+  load()
+  local t3k, juce = require("plugstate.tone3000"), require("plugstate.juce")
+  local factory = pkg .. "/share/tone3000/factory-presets"
+
+  fresh()
+  local track = long_guitar()
+  local amp = track:add_device(kind)
+  paw.flush()
+  api.undo_checkpoint()
+  eq(plugstate.adapter_of(amp.id).name, "tone3000", "the TONE3000 adapter knows the plugin")
+  local slot = plugstate.slot(amp.id)
+  eq(slot.key, "preset", "its first slot is the preset")
+  eq(#plugstate.files(slot), 8, "the eight factory presets beside the plugin")
+  eq(#plugstate.slots(amp.id), 11, "and the ten blocks of its chain")
+  local dry = sound()
+
+  devices_on(amp.id)
+  keys("]m")
+  eq(plugstate.slot(amp.id).value, factory .. "/Ampeg Bass Drive.t3kpreset", "]m loads the first preset")
+  eq(amp:get().meta.preset, "Ampeg Bass Drive", "and the device shows its name")
+  local ampeg = sound()
+  differs(ampeg, dry, "the preset changes the sound")
+  keys("]m")
+  eq(plugstate.slot(amp.id).value, factory .. "/Bogner Fullstack.t3kpreset", "]m again, the next one")
+  local bogner = sound()
+  differs(bogner, ampeg, "another preset, another sound")
+  eq(plugstate.slot(amp.id, "block1").label:match("^Block 1 %(.+%)$") ~= nil, true, "the block says its tone")
+
+  keys("u")
+  eq(plugstate.slot(amp.id).value, factory .. "/Ampeg Bass Drive.t3kpreset", "u takes the preset back")
+  same(sound(), ampeg, "and the sound")
+
+  -- A model of a file into a block: one from a preset, written out.
+  local preset = t3k.read_preset(factory .. "/Stereo Fuzz.t3kpreset")
+  local cached = juce.child(juce.child(t3k.blocks(preset)[1].block, "ModelCache"), "CachedModel")
+  local nam = T.scratch .. "/magnatone.nam"
+  T.write_file(nam, juce.get(cached, "data").binary)
+  keys(":plugstate.load slot=block2 " .. nam .. "<CR>")
+  local block = plugstate.slot(amp.id, "block2")
+  eq(block.value, nam, "block 2 holds the file")
+  eq(block.label, "Block 2 (magnatone)", "named after it")
+  local with_model = sound()
+  differs(with_model, ampeg, "the model plays")
+  local log = T.read_file(os.getenv("XDG_CONFIG_HOME") .. "/TONE3000/TONE3000.log")
+  eq(log:find("tone 0 model %d+ %(cached%)") ~= nil, true, "the plugin loads it from the state, not the network")
+
+  -- Snapshots, and the project.
+  keys("\\s")
+  keys(":plugstate.load " .. factory .. "/Bogner Fullstack.t3kpreset<CR>")
+  keys("\\s")
+  eq(plugstate.current(amp.id), "B", "two snapshots, A and B")
+  keys("[v")
+  eq(plugstate.slot(amp.id, "block2").value, nam, "[v brings back A, with its model")
+  same(sound(), with_model, "and its sound")
+  local path = paw.project.save(T.scratch .. "/tone3000.json")
+  fresh()
+  paw.project.load(path)
+  local loaded = paw.tracks()[1]:devices()[2]
+  paw.flush()
+  eq(plugstate.slot(loaded.id, "block2").value, nam, "the project keeps the model")
+  same(sound(), with_model, "and sounds the same")
+  eq(#plugstate.snapshots(loaded.id), 2, "and the snapshots")
+
+  -- The same preset in each format of the plugin sounds the same.
+  for _, format in ipairs({ "vst3", "lv2" }) do
+    local other = kind_of(format, "^TONE3000$")
+    if other then
+      fresh()
+      local d = long_guitar(format):add_device(other)
+      paw.flush()
+      local ok, err = plugstate.set(d.id, nil, factory .. "/Bogner Fullstack.t3kpreset")
+      eq(ok, true, format .. ": " .. tostring(err))
+      same(sound(), bogner, format .. ": Bogner Fullstack sounds as in CLAP")
+    end
+  end
+
+  local bad, why2 = plugstate.set(amp.id, "block3", T.scratch .. "/none.nam")
+  eq(bad, nil, "a file that is not there")
+  eq(why2 ~= nil, true, "says why")
+end)
+
+test("plugstate: Soundshed Guitar presets of a pack, scenes and block models", function()
+  local pkg, why = package("PAW_TEST_SOUNDSHED")
+  if not pkg then return why end
+  local kind = kind_of("vst3", "^Soundshed Guitar$")
+  if not kind then return "skipped: Soundshed Guitar not found" end
+  load()
+
+  fresh()
+  local track = long_guitar()
+  local amp = track:add_device(kind)
+  paw.flush()
+  api.undo_checkpoint()
+  eq(plugstate.adapter_of(amp.id).name, "soundshed", "the Soundshed adapter knows the plugin")
+  local slot = plugstate.slot(amp.id)
+  eq(slot.key, "preset", "its first slot is the preset")
+  eq(#plugstate.files(slot), 21, "the presets of the factory pack beside the plugin")
+  eq(slot.value:find("#Preset%-Pack%-Vol%.%-1__") ~= nil, true, "it plays one of them: " .. tostring(slot.value))
+  -- What the plugin plays from its own library, to compare with.
+  local own = sound()
+
+  devices_on(amp.id)
+  keys("]m")
+  local first = plugstate.slot(amp.id).value
+  eq(first ~= slot.value, true, "]m loads another preset")
+  local after = sound()
+  differs(after, own, "and the sound changes")
+  keys(":plugstate.load black album<CR>")
+  eq(amp:get().meta.preset, "Black Album (Full Rig)", "words find one preset, and it loads")
+  same(sound(), own, "the preset of the pack, with its files by path, sounds as the plugin's own copy")
+  eq(plugstate.slot(amp.id, "scene").value, "Rhythm", "its first scene plays")
+
+  keys(":plugstate.load slot=scene solo<CR>")
+  eq(plugstate.slot(amp.id, "scene").value, "Solo", "the scene changes")
+  local solo = sound()
+  differs(solo, own, "and the sound")
+  keys("u")
+  eq(plugstate.slot(amp.id, "scene").value, "Rhythm", "u: the scene before")
+  same(sound(), own, "and its sound")
+
+  -- A model of a file into a block.
+  local amp1 = plugstate.slot(amp.id, "amp1")
+  eq(amp1.what, "model", "the amp block takes a model")
+  local other
+  for _, f in ipairs(plugstate.files(amp1)) do
+    if f.path ~= amp1.value then other = f.path end
+  end
+  keys(":plugstate.load slot=amp1 " .. other .. "<CR>")
+  eq(plugstate.slot(amp.id, "amp1").value, other, "the block holds the file")
+  local marshall = sound()
+  differs(marshall, own, "and plays it")
+
+  local path = paw.project.save(T.scratch .. "/soundshed.json")
+  fresh()
+  paw.project.load(path)
+  local loaded = paw.tracks()[1]:devices()[2]
+  paw.flush()
+  eq(plugstate.slot(loaded.id, "amp1").value, other, "the project keeps it")
+  same(sound(), marshall, "and sounds the same")
+
+  local lv2 = kind_of("lv2", "^Soundshed Guitar$")
+  if lv2 then
+    fresh()
+    local d = long_guitar("lv2"):add_device(lv2)
+    paw.flush()
+    local ok, err = plugstate.set(d.id, "preset", first)
+    eq(ok, true, "LV2: " .. tostring(err))
+    same(sound(), after, "LV2: the preset sounds as in VST3")
+  end
+end)
+

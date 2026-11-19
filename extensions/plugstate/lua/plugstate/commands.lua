@@ -19,7 +19,9 @@ end
 
 local function said(id, slot, path)
   local words = words_of(id, slot, path)
-  paw.notify(string.format("%s: %s %s%s", device_name(id), slot.what or "file", plugstate.stem(path),
+  local a = plugstate.adapter_of(id)
+  local name = a and a.name_of and a.name_of(path) or plugstate.stem(path)
+  paw.notify(string.format("%s: %s %s%s", device_name(id), slot.what or "file", name,
     words and ("  (" .. words .. ")") or ""))
 end
 
