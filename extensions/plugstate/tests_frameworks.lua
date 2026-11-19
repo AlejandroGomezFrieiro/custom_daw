@@ -321,3 +321,89 @@ for _, c in ipairs(live) do
     eq(back ~= nil, true, "u takes it back")
   end)
 end
+
+test("plugstate live: a DPF plugin with keys: the tree, the changes after a mark, a preset of them and a state lane point", function()
+  if (os.getenv("PAW_TEST_DRAGONFLY") or "") == "" then return "skipped: PAW_TEST_DRAGONFLY names no plugin" end
+  local kind = kind_of("clap", "^Dragonfly Hall Reverb$")
+  if not kind then return "skipped: the plugin is not in the plugin folders" end
+  local fw = load()
+  local plugstate = require("plugstate")
+  local function said() return paw.ui.messages[#paw.ui.messages].text end
+  T.fresh()
+  local track = T.tone("in", 8, "A2")
+  paw.cursor.set_track(track.id)
+  local d = track:add_device(kind)
+  paw.flush()
+  api.undo_checkpoint()
+  paw.ui.focus("devices")
+  paw.fx.select(d.id)
+  eq(plugstate.adapter_of(d.id).name, "state", "the adapter of every plugin knows it")
+  keys(":plugstate.tree<CR>")
+  eq(said():find("DPF", 1, true) ~= nil and said():find("@dry_level = 80", 1, true) ~= nil, true, "the tree: " .. said())
+  keys(":plugstate.info<CR>")
+  eq(said():find("state: DPF", 1, true) ~= nil, true, ":plugstate.info names the framework: " .. said())
+  local wet = level(1)
+  keys(":plugstate.mark<CR>")
+  api.device_set_param(d.id, "dry_level", 0)
+  paw.flush()
+  keys(":plugstate.changes<CR>")
+  eq(said():find("set    /DPF/Parameters@dry_level", 1, true) ~= nil, true, "the change by its path: " .. said())
+  local file = T.scratch .. "/dry.jucepreset"
+  keys(":plugstate.preset_write " .. file .. "<CR>")
+  eq(require("plugstate.jucestate").read_preset(file).framework, "dpf", "the preset names its framework")
+  local dry = level(1)
+  eq(dry < wet - 0.002, true, string.format("without the dry signal it is quieter (%.4f, %.4f)", wet, dry))
+
+  -- The preset in a new device, in each format: the paths are the same.
+  for _, format in ipairs({ "clap", "vst3", "lv2" }) do
+    local k = kind_of(format, "^Dragonfly Hall Reverb$")
+    if k then
+      T.fresh()
+      local t2 = T.tone(format, 8, "A2")
+      paw.cursor.set_track(t2.id)
+      local d2 = t2:add_device(k)
+      paw.flush()
+      api.undo_checkpoint()
+      paw.ui.focus("devices")
+      paw.fx.select(d2.id)
+      keys(":plugstate.load " .. file .. "<CR>")
+      eq(tonumber(holds(fw, d2.id, "/DPF/Parameters@dry_level", "0")), 0, format .. ": the preset sets dry_level")
+      T.near(level(1), dry, 0.003, format .. ": and it sounds as the plugin that made it")
+      keys("u")
+      eq(tonumber(holds(fw, d2.id, "/DPF/Parameters@dry_level", "80")), 80, format .. ": u takes it back")
+    end
+  end
+
+  -- A state lane point: the preset from the second bar on.
+  T.fresh()
+  local t3 = T.tone("lane", 8, "A2")
+  paw.cursor.set_track(t3.id)
+  local d3 = t3:add_device(kind)
+  paw.flush()
+  local state, why = plugstate.lane_state(d3.id, "preset", file)
+  eq(state ~= nil and state.state ~= nil, true, "the preset as a state of the lane: " .. tostring(why))
+  plugstate.snapshot(d3.id, "wet")
+  plugstate.lane_point(d3.id, 0, (plugstate.lane_snapshot(d3.id, "wet")))
+  local lane = plugstate.lane_point(d3.id, 4, state)
+  eq(#lane:states(), 2, "the plugin as it was from the start, the preset from beat 4")
+  local first, second = level(0.2), nil
+  local info = T.render({ tail = 0, bits = 16 })
+  -- The level of the second half (after the point) is the dry-less one.
+  local data = T.read_file(info.path)
+  local function rms(from, to)
+    local sum, n = 0, 0
+    local at = data:find("data", 1, true) + 8
+    for i = at + math.floor(from * info.sample_rate) * 4, at + math.floor(to * info.sample_rate) * 4, 4 do
+      local lo, hi = data:byte(i, i + 1)
+      if not hi then break end
+      local v = lo + hi * 256
+      if v >= 32768 then v = v - 65536 end
+      sum, n = sum + v * v, n + 1
+    end
+    return math.sqrt(sum / math.max(n, 1)) / 32768
+  end
+  local seconds = 4 * 60 / paw.tempo.at(0)
+  second = rms(seconds + 0.5, 2 * seconds - 0.1)
+  eq(second < rms(0.5, seconds - 0.1) - 0.002, true, string.format("after the point the preset plays (%.4f, %.4f, %.4f)",
+    first, rms(0.5, seconds - 0.1), second))
+end)
