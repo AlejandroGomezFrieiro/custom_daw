@@ -29,7 +29,7 @@ pub mod wav;
 
 pub use automation::{AutoLane, AutoTarget, Automation};
 pub use backend::no_denormals;
-pub use clip::{AudioData, AudioRegion, ClipSet, MidiEv, Switch};
+pub use clip::{AudioData, AudioRegion, ClipSet, MidiEv, Part, PartEdit, Switch};
 pub use device::{
     Controller, Device, DeviceFactory, DeviceInfo, Instance, Io, MAX_PAIRS, ParamInfo, Ports,
     ProcessCtx, Registry,

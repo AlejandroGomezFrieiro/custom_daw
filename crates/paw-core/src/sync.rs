@@ -14,7 +14,7 @@ use paw_engine::midi_form::Form;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use paw_engine::launch::{SlotClip, Slots};
 use paw_engine::{
-    AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Controller, Delay,
+    AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Controller, Delay, Part, PartEdit,
     DiskStore, MASTER,
     KeyRt, MAX_BLOCK, MAX_DELAY, MAX_DEVICES, MAX_TRACKS, MidiEv, Msg, NO_SLOT, OutRt, ParamInfo,
     Registry, SchedEntry, Schedule, SendRt, Slot, TrackRt, db_to_gain,
@@ -97,9 +97,10 @@ pub struct Mapper {
     outs: HashMap<Id, Vec<usize>>,
     /// Frames by which the output is behind the transport, as last scheduled.
     pub latency: u32,
-    /// Each track's MIDI clips as engine events, kept from one sync to the
-    /// next so that an edit only compiles again the clips it changed.
-    clip_events: HashMap<Id, Vec<CompiledClip>>,
+    /// What the engine was sent of each track's clips, one part for each
+    /// (see [`Parts`]), so that an edit compiles and sends only the clips
+    /// it changed. Tracks whose clips are sent as one list have none.
+    parts: HashMap<Id, Parts>,
     /// Each device's latency as last told to the host's dry signal.
     host_latency: HashMap<Id, u32>,
     /// Make devices whose factories can ([`DeviceFactory::starts_apart`])
@@ -148,7 +149,7 @@ impl Mapper {
             keyed: HashSet::new(),
             outs: HashMap::new(),
             latency: 0,
-            clip_events: HashMap::new(),
+            parts: HashMap::new(),
             host_latency: HashMap::new(),
             defer: false,
             deferred: Vec::new(),
@@ -616,15 +617,36 @@ pub fn sync(
             clips_changed = true;
         }
         if !same_clips || replayed {
-            let clips = match &plays {
-                Played::Live => build_clips(track, new.tempo_map(), map, ctx),
-                Played::Frozen(file) => frozen_clips(file, new.tempo_map(), ctx),
-                Played::Held => ClipSet::default(),
+            // A few clips changed: the engine is sent only theirs.
+            let edit = match (&plays, prev) {
+                (Played::Live, Some(p)) if !replayed && !retimed_notes && p.attr_map == track.attr_map => {
+                    edit_parts(p, track, new.tempo_map(), map, ctx)
+                }
+                _ => None,
             };
-            send(Msg::SetClips {
-                track: slot,
-                clips: Box::new(clips),
-            });
+            match edit {
+                Some(edit) => send(Msg::EditClips {
+                    track: slot,
+                    edit: Box::new(edit),
+                }),
+                None => {
+                    let clips = match &plays {
+                        Played::Live => build_clips(track, new.tempo_map(), map, ctx),
+                        Played::Frozen(file) => {
+                            map.parts.remove(&track.id);
+                            frozen_clips(file, new.tempo_map(), ctx)
+                        }
+                        Played::Held => {
+                            map.parts.remove(&track.id);
+                            ClipSet::default()
+                        }
+                    };
+                    send(Msg::SetClips {
+                        track: slot,
+                        clips: Box::new(clips),
+                    });
+                }
+            }
         }
 
         let same_slots = !(retimed_notes && !track.slots.is_empty())
@@ -910,7 +932,7 @@ pub fn sync(
     }
 
     for id in old_tracks.keys().filter(|id| new.track(**id).is_none()) {
-        map.clip_events.remove(id);
+        map.parts.remove(id);
         if let Some(slot) = map.tracks.remove(id) {
             // Notes it left sounding on its MIDI output port end there.
             if map.midi_outputs.get(id).is_some_and(|(port, ..)| *port != 0) {
@@ -1260,23 +1282,7 @@ fn update_device(
 fn compile_clip(clip: &Clip, notes: &Notes, controls: &[Control]) -> Arc<[MidiEv]> {
     let mut set = ClipSet::default();
     let Some((from, beats)) = clip.repeat() else {
-        for control in controls
-            .iter()
-            .filter(|c| c.start >= 0.0 && c.start < clip.length)
-        {
-            set.push_event(clip.start + control.start, control.event(0));
-        }
-        for note in notes
-            .iter()
-            .filter(|n| n.start >= 0.0 && n.start < clip.length)
-        {
-            let end = (note.start + note.length).min(clip.length);
-            let vel = note.velocity.clamp(1, 127) as f32 / 127.0;
-            let (start, end) = (clip.start + note.start, clip.start + end);
-            set.push_note_attr(start, end, note.pitch, vel, attr_of(note));
-        }
-        set.finish();
-        return set.midi.into();
+        return compile_part(clip, notes, controls);
     };
     let inside = |at: f64| at >= from && at < from + beats;
     for (base, end) in repeats(from, beats, clip.length) {
@@ -1296,6 +1302,33 @@ fn compile_clip(clip: &Clip, notes: &Notes, controls: &[Control]) -> Arc<[MidiEv
                 set.push_note_attr(start, stop, note.pitch, vel, attr_of(note));
             }
         }
+    }
+    set.finish();
+    set.midi.into()
+}
+
+/// Some of the notes and controllers of a clip that does not loop, as
+/// engine events: what [`compile_clip`] makes of them all.
+fn compile_part<'a>(
+    clip: &Clip,
+    notes: impl IntoIterator<Item = &'a Note>,
+    controls: &[Control],
+) -> Arc<[MidiEv]> {
+    let mut set = ClipSet::default();
+    for control in controls
+        .iter()
+        .filter(|c| c.start >= 0.0 && c.start < clip.length)
+    {
+        set.push_event(clip.start + control.start, control.event(0));
+    }
+    for note in notes
+        .into_iter()
+        .filter(|n| n.start >= 0.0 && n.start < clip.length)
+    {
+        let end = (note.start + note.length).min(clip.length);
+        let vel = note.velocity.clamp(1, 127) as f32 / 127.0;
+        let (start, end) = (clip.start + note.start, clip.start + end);
+        set.push_note_attr(start, end, note.pitch, vel, attr_of(note));
     }
     set.finish();
     set.midi.into()
@@ -1442,36 +1475,233 @@ fn audio_regions(
 /// last sync reuses its events; the track's events are those of its clips in
 /// order, sorted again (stably, so the result is what sorting all the notes at
 /// once gives, and nearly free when the clips follow each other in time).
+/// What the engine has of a track's clips, sent as parts: one for each
+/// clip, or for a long MIDI clip one for its controllers and one for each
+/// run of its notes (see [`Notes`]), so that a note edited compiles and
+/// sends again only the notes of its run.
+#[derive(Default)]
+struct Parts {
+    /// Each clip by id, as compiled and sent.
+    clips: HashMap<Id, Sent>,
+    /// How many parts the engine has, and room for.
+    len: usize,
+    room: usize,
+    /// The clips were sent as one list, through the track's attribute map:
+    /// only their events are kept, to compile only what changed.
+    flat: bool,
+}
+
+/// One clip as the engine was sent it.
+struct Sent {
+    clip: Arc<Clip>,
+    /// Its order (see [`paw_engine::Part::order`]); its parts have this
+    /// order and those after it, one each.
+    order: u64,
+    /// Its events in pieces, each with the run of notes it was compiled
+    /// from (`None` for the controllers, or the whole clip); none for an
+    /// audio clip.
+    pieces: Vec<(Option<*const Vec<Note>>, Arc<[MidiEv]>)>,
+    /// The orders of the parts the engine has of it: those not empty.
+    parts: Vec<u64>,
+}
+
+// The pointers only name runs to compare with: never read through.
+unsafe impl Send for Sent {}
+
+/// The space between the orders of two clips side by side when a track's
+/// parts are sent whole: clips put in between later take orders between.
+const ORDER_GAP: u64 = 1 << 32;
+/// An edit of more clips than this sends the track's clips whole.
+const MAX_EDIT: usize = 512;
+
+/// The pieces of a clip's events: its controllers and a piece for each run
+/// of its notes (in that order, which is the order a clip's events are
+/// compiled in); a short or looped clip in one piece. A run that the clip
+/// `before` had too is not compiled again.
+fn pieces_of(clip: &Clip, before: Option<&Sent>) -> Vec<(Option<*const Vec<Note>>, Arc<[MidiEv]>)> {
+    let ClipContent::Midi { notes, controls } = &clip.content else {
+        return Vec::new();
+    };
+    let same_place = before.is_some_and(|b| {
+        b.clip.start == clip.start && b.clip.length == clip.length && !b.clip.muted
+    });
+    if notes.runs().len() < 2 || clip.repeat().is_some() {
+        return vec![(None, compile_clip(clip, notes, controls))];
+    }
+    let mut out = Vec::with_capacity(notes.runs().len() + 1);
+    // The controllers are compiled again with any change of the clip.
+    out.push((None, compile_part(clip, &[], controls)));
+    for run in notes.runs() {
+        let ptr = Arc::as_ptr(run);
+        let kept = before
+            .filter(|_| same_place)
+            .and_then(|b| b.pieces.iter().find(|(p, _)| *p == Some(ptr)));
+        let events = match kept {
+            Some((_, events)) => events.clone(),
+            None => compile_part(clip, run.iter(), &[]),
+        };
+        out.push((Some(ptr), events));
+    }
+    out
+}
+
+/// A clip's parts from `order` on, compiling only what changed since
+/// `before`, and the clip as sent.
+fn parts_of(
+    clip: &Arc<Clip>,
+    order: u64,
+    before: Option<&Sent>,
+    tempo: &paw_engine::TempoMap,
+    ctx: &mut SyncCtx,
+) -> (Vec<Part>, Sent) {
+    let mut audio = Vec::new();
+    let mut pieces = Vec::new();
+    if !clip.muted {
+        match &clip.content {
+            ClipContent::Midi { .. } => pieces = pieces_of(clip, before),
+            ClipContent::Audio { file, offset, gain } => {
+                clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut audio)
+            }
+        }
+    }
+    let mut parts = Vec::with_capacity(pieces.len().max(1));
+    if !audio.is_empty() {
+        parts.push(Part::new(clip.id, order, Arc::from([]), audio));
+    }
+    for (k, (_, events)) in pieces.iter().enumerate() {
+        parts.push(Part::new(clip.id, order + k as u64, events.clone(), Vec::new()));
+    }
+    parts.retain(|p| !p.is_empty());
+    let sent = Sent {
+        clip: clip.clone(),
+        order,
+        pieces,
+        parts: parts.iter().map(|p| p.order).collect(),
+    };
+    (parts, sent)
+}
+
+/// How many orders a clip's parts take.
+fn orders_taken(clip: &Clip) -> u64 {
+    match &clip.content {
+        ClipContent::Midi { notes, .. } => notes.runs().len() as u64 + 1,
+        ClipContent::Audio { .. } => 1,
+    }
+}
+
+/// Whether a track's events go through its attribute map: then its clips
+/// are sent as one list, which the map changes as a whole.
+fn mapped(track: &Track) -> bool {
+    track.attr_map.as_ref().is_some_and(|m| m.plan().is_ok())
+}
+
 fn build_clips(
     track: &Track,
     tempo: &paw_engine::TempoMap,
     map: &mut Mapper,
     ctx: &mut SyncCtx,
 ) -> ClipSet {
-    let mut set = ClipSet::default();
-    let cached = map.clip_events.remove(&track.id).unwrap_or_default();
-    // Clips mostly stay where they were in the list: looked for there first.
-    let mut by_ptr = crate::model::ByKey::new(&cached[..], |(c, _): &(Arc<Clip>, Arc<[MidiEv]>)| {
-        Arc::as_ptr(c)
-    });
-    let mut kept = Vec::with_capacity(cached.len() + 1);
-    for clip in track.clips.iter().filter(|c| !c.muted) {
-        match &clip.content {
-            ClipContent::Midi { notes, controls } => {
-                let reuse = by_ptr.find(Arc::as_ptr(clip)).map(|(_, events)| events.clone());
-                let events = reuse.unwrap_or_else(|| compile_clip(clip, notes, controls));
-                set.midi.extend_from_slice(&events);
-                kept.push((clip.clone(), events));
+    let cached = map.parts.remove(&track.id).unwrap_or_default();
+    let mut kept = Parts {
+        clips: HashMap::with_capacity(track.clips.len()),
+        flat: mapped(track),
+        ..Parts::default()
+    };
+    if kept.flat {
+        // In the order a clip's events are compiled in, which the sort keeps
+        // on the same beat.
+        let mut set = ClipSet::default();
+        for clip in track.clips.iter() {
+            let (parts, sent) = parts_of(clip, 0, cached.clips.get(&clip.id), tempo, ctx);
+            for part in parts {
+                set.midi.extend_from_slice(&part.midi);
+                set.audio.extend(part.audio);
             }
-            ClipContent::Audio { file, offset, gain } => {
-                clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut set.audio)
-            }
+            kept.clips.insert(clip.id, sent);
+        }
+        set.finish();
+        downgrade(track, &mut set, tempo);
+        map.parts.insert(track.id, kept);
+        return set;
+    }
+    let mut parts = Vec::with_capacity(track.clips.len());
+    for (i, clip) in track.clips.iter().enumerate() {
+        let order = (i as u64 + 1) * ORDER_GAP;
+        let (mut more, sent) = parts_of(clip, order, cached.clips.get(&clip.id), tempo, ctx);
+        parts.append(&mut more);
+        kept.clips.insert(clip.id, sent);
+    }
+    kept.len = parts.len();
+    kept.room = 2 * parts.len() + 64;
+    let set = ClipSet::default().with_parts(parts, kept.room);
+    map.parts.insert(track.id, kept);
+    set
+}
+
+/// The parts of the clips an edit changed, to take out of the engine and
+/// put in again, from the clips of `track` that differ from those of
+/// `prev` (the same track as the engine has it). `None` when the track's
+/// clips are to be sent whole: they are sent as one list, or the edit
+/// changed many, or the parts would not fit in the room the engine has.
+fn edit_parts(
+    prev: &Track,
+    track: &Track,
+    tempo: &paw_engine::TempoMap,
+    map: &mut Mapper,
+    ctx: &mut SyncCtx,
+) -> Option<PartEdit> {
+    let kept = map.parts.get_mut(&track.id)?;
+    if kept.flat || mapped(track) {
+        return None;
+    }
+    let (old, new) = track.clips.changed(&prev.clips);
+    if old.len() + new.len() > MAX_EDIT {
+        return None;
+    }
+    // The orders on each side of the stretch, which the clips put in again
+    // take orders between, each as many as it has parts.
+    let low = match new.start {
+        0 => 0,
+        at => {
+            let c = track.clips.get(at - 1)?;
+            kept.clips.get(&c.id)?.order + orders_taken(c)
+        }
+    };
+    let count = new.len() as u64;
+    let step = match track.clips.get(new.end) {
+        Some(c) => (kept.clips.get(&c.id)?.order.checked_sub(low)?) / (count + 1),
+        None => ORDER_GAP,
+    };
+    if track.clips.range(new.clone()).any(|c| orders_taken(c) >= step) {
+        return None;
+    }
+    let mut edit = PartEdit::default();
+    let mut gone = HashMap::new();
+    for clip in prev.clips.range(old) {
+        if let Some(was) = kept.clips.remove(&clip.id) {
+            edit.remove.extend(was.parts.iter().map(|&order| (clip.id, order)));
+            gone.insert(clip.id, was);
         }
     }
-    set.finish();
-    map.clip_events.insert(track.id, kept);
-    downgrade(track, &mut set, tempo);
-    set
+    let mut sent = Vec::with_capacity(new.len());
+    for (k, clip) in track.clips.range(new).enumerate() {
+        let order = low + (k as u64 + 1) * step;
+        let (mut parts, now) = parts_of(clip, order, gone.get(&clip.id), tempo, ctx);
+        edit.add.append(&mut parts);
+        sent.push(now);
+    }
+    let len = kept.len - edit.remove.len() + edit.add.len();
+    if len > kept.room {
+        // Sent whole, with more room.
+        map.parts.remove(&track.id);
+        return None;
+    }
+    kept.len = len;
+    for now in sent {
+        kept.clips.insert(now.clip.id, now);
+    }
+    edit.removed = Vec::with_capacity(edit.remove.len());
+    Some(edit)
 }
 
 /// What the track's attribute map sends, put among its events.
@@ -1555,9 +1785,6 @@ fn build_slots(track: &Track, tempo: &paw_engine::TempoMap, ctx: &mut SyncCtx) -
     }
     Slots { rows }
 }
-
-/// A MIDI clip and its notes as engine events.
-type CompiledClip = (Arc<Clip>, Arc<[MidiEv]>);
 
 type TrackIndex<'a> = HashMap<Id, &'a Arc<Track>>;
 
@@ -2123,4 +2350,172 @@ fn build_schedule(routing: &Routing, map: &Mapper) -> Schedule {
         .collect();
     entries.push(SchedEntry::new(MASTER, NO_SLOT));
     Schedule::new(entries, master_arrive + master_latency)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use paw_engine::{Engine, EngineHandle};
+
+    /// A track with a synth and `clips` short clips that overlap, the same
+    /// keys in each, and one long clip of 1000 notes and some controllers.
+    fn project(clips: usize) -> Project {
+        let note = |start: f64, pitch: u64| {
+            json!({ "start": start, "length": 0.75, "pitch": pitch, "velocity": 90 })
+        };
+        let mut list: Vec<Value> = (0..clips)
+            .map(|i| {
+                let notes: Vec<Value> = (0..6).map(|k| note(k as f64 * 0.5, 48 + (k % 3))).collect();
+                json!({
+                    "id": 100 + i, "name": "", "start": (i % 9) as f64 * 1.25, "length": 3.0,
+                    "muted": false, "content": { "kind": "midi", "notes": notes },
+                })
+            })
+            .collect();
+        let notes: Vec<Value> = (0..1000).map(|k| note(k as f64 * 0.125, 60 + (k % 7))).collect();
+        let controls: Vec<Value> = (0..20)
+            .map(|k| json!({ "start": k as f64, "type": "cc", "number": 1, "value": k as f64 / 20.0 }))
+            .collect();
+        list.push(json!({
+            "id": 99, "name": "long", "start": 0.5, "length": 130.0, "muted": false,
+            "content": { "kind": "midi", "notes": notes, "controls": controls },
+        }));
+        let track = |id: u64, name: &str, devices: Value, clips: Value| {
+            json!({ "id": id, "name": name, "volume": 0.0, "pan": 0.0, "mute": false, "solo": false,
+                "armed": false, "output": null, "sends": [], "color": null,
+                "devices": devices, "clips": clips })
+        };
+        let synth = json!([{ "id": 2, "kind": "synth", "bypass": false, "params": {} }]);
+        let project = json!({
+            "name": "t", "tempo": 120.0, "sig_num": 4, "sig_den": 4,
+            "master": track(0, "Master", json!([]), json!([])),
+            "tracks": [track(1, "T", synth, Value::Array(list))],
+        });
+        serde_json::from_value(project).unwrap()
+    }
+
+    /// The events compiled for track 1, by where they are kept.
+    fn compiled(map: &Mapper) -> HashMap<*const MidiEv, usize> {
+        let Some(parts) = map.parts.get(&1) else { return HashMap::new() };
+        let pieces = parts.clips.values().flat_map(|s| &s.pieces);
+        pieces.map(|(_, e)| (e.as_ptr(), e.len())).collect()
+    }
+
+    /// An engine brought through each of `states` in turn, as a session
+    /// syncs it; what it was sent for the last, and how many events were
+    /// compiled for it.
+    fn engine(states: &[&Project]) -> (Engine, EngineHandle, (Vec<&'static str>, usize)) {
+        let (mut engine, mut handle) = Engine::new(48000.0);
+        let registry = Registry::with_builtins();
+        let (mut audio, mut live, mut warnings) = (AudioCache::default(), LiveDevices::new(), Vec::new());
+        let mut map = Mapper::new();
+        let empty = Project::default();
+        let mut last = Vec::new();
+        let mut fresh = 0;
+        let mut old = &empty;
+        for state in states {
+            let mut ctx = SyncCtx {
+                registry: &registry,
+                audio: &mut audio,
+                live: &mut live,
+                sample_rate: 48000.0,
+                warnings: &mut warnings,
+                offline: true,
+            };
+            let mut sent = Vec::new();
+            let before = compiled(&map);
+            sync(old, state, &mut map, &mut ctx, &mut |msg| sent.push(msg), &mut Vec::new());
+            let after = compiled(&map);
+            fresh = after.iter().filter(|(p, _)| !before.contains_key(p)).map(|(_, n)| n).sum();
+            last = sent
+                .iter()
+                .map(|m| match m {
+                    Msg::SetClips { .. } => "clips",
+                    Msg::EditClips { .. } => "edit",
+                    _ => "other",
+                })
+                .collect();
+            for msg in sent {
+                handle.send_while(msg, &mut engine);
+            }
+            old = state;
+        }
+        (engine, handle, (last, fresh))
+    }
+
+    fn play(engine: &mut Engine, handle: &mut EngineHandle, from: f64) -> Vec<f32> {
+        handle.send_while(Msg::Seek(from), engine);
+        handle.send_while(Msg::Play, engine);
+        let (mut l, mut r) = (vec![0.0; 512], vec![0.0; 512]);
+        let mut out = Vec::new();
+        for _ in 0..150 {
+            engine.process(&mut l, &mut r);
+            out.extend_from_slice(&l);
+            out.extend_from_slice(&r);
+        }
+        handle.collect_garbage();
+        out
+    }
+
+    type Edit = Box<dyn Fn(&mut Project)>;
+
+    fn long(p: &mut Project) -> &mut Clip {
+        let clips = &mut p.track_mut(1).unwrap().clips;
+        let last = clips.len() - 1;
+        Arc::make_mut(&mut clips[last])
+    }
+
+    /// Edits of a few clips are sent as the parts they changed; what the
+    /// engine plays then is what it plays when sent every clip whole.
+    #[test]
+    fn edits_sent_as_parts_play_as_the_project_sent_whole() {
+        let edits: Vec<Edit> = vec![
+            Box::new(|p| Arc::make_mut(&mut p.track_mut(1).unwrap().clips[150]).start = 2.0),
+            Box::new(|p| {
+                p.track_mut(1).unwrap().clips.remove(10);
+            }),
+            Box::new(|p| {
+                let mut clip = (*p.track(1).unwrap().clips[20]).clone();
+                clip.id = 9000;
+                clip.start = 1.0;
+                p.track_mut(1).unwrap().clips.insert(30, Arc::new(clip));
+            }),
+            Box::new(|p| Arc::make_mut(&mut p.track_mut(1).unwrap().clips[70]).muted = true),
+            // Two notes of the long clip: one run of its notes changes.
+            Box::new(|p| {
+                if let ClipContent::Midi { notes, .. } = &mut long(p).content {
+                    notes[500].pitch = 40;
+                    notes[501].start += 0.0625;
+                }
+            }),
+            Box::new(|p| long(p).start = 1.0),
+            Box::new(|p| {
+                if let ClipContent::Midi { notes, .. } = &mut long(p).content {
+                    notes.remove(3);
+                }
+            }),
+        ];
+        let mut states = vec![project(300)];
+        for edit in &edits {
+            let mut next = states.last().unwrap().clone();
+            edit(&mut next);
+            states.push(next);
+        }
+        for k in 1..states.len() {
+            let path: Vec<&Project> = states[..=k].iter().collect();
+            let (mut a, mut ha, (sent, fresh)) = engine(&path);
+            assert!(sent.contains(&"edit") && !sent.contains(&"clips"), "edit {k} sent {sent:?}");
+            if k == 5 || k == 7 {
+                // Notes of the long clip: only their run is compiled again
+                // (two events a note, 256 notes a run, and the controllers).
+                assert!(fresh <= 2 * 512 + 20, "edit {k}: {fresh} events compiled");
+            }
+            let (mut b, mut hb, _) = engine(&[&states[k]]);
+            for from in [0.0, 3.4, 60.0] {
+                let (x, y) = (play(&mut a, &mut ha, from), play(&mut b, &mut hb, from));
+                assert!(x.iter().any(|s| *s != 0.0));
+                assert!(x == y, "edit {k}: what plays from {from} differs");
+            }
+        }
+    }
 }

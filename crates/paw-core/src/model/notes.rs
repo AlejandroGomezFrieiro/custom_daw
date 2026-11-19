@@ -68,6 +68,12 @@ impl Notes {
         self.ends.last().copied().unwrap_or(0)
     }
 
+    /// The runs the notes are kept in, in order: a run that two copies of
+    /// a clip share is the very same `Arc`.
+    pub fn runs(&self) -> &[Arc<Vec<Note>>] {
+        &self.runs
+    }
+
     pub fn is_empty(&self) -> bool {
         self.runs.is_empty()
     }
