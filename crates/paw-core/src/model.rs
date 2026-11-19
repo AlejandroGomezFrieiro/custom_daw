@@ -1887,7 +1887,18 @@ mod lane_shapes {
     use paw_engine::automation::value_at;
 
     fn lane(shapes: Vec<Segment>) -> Lane {
-        Lane { id: 1, target: Target::Volume, enabled: true, points: vec![(0.0, -12.0), (4.0, 0.0), (8.0, -6.0)], shapes }
+        Lane { id: 1, target: Target::Volume, enabled: true, points: vec![(0.0, -12.0), (4.0, 0.0), (8.0, -6.0)], shapes, states: Vec::new() }
+    }
+
+    #[test]
+    fn a_state_lane_holds_each_state_to_the_next_point() {
+        let mut states = lane(Vec::new());
+        states.target = Target::State { device: 7 };
+        states.points = vec![(0.0, 0.0), (4.0, 1.0), (8.0, 0.0)];
+        assert_eq!(value_at(&states.played(), 3.99), Some(0.0));
+        assert_eq!(value_at(&states.played(), 4.0), Some(1.0));
+        assert_eq!(value_at(&states.played(), 7.0), Some(1.0), "no curve between");
+        assert_eq!(value_at(&states.played(), 9.0), Some(0.0));
     }
 
     #[test]
