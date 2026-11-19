@@ -125,19 +125,24 @@ tempo map of the project, and back.
 | --- | --- | --- |
 | Tempo, time signature | The full tempo map: `TEMPO` and the `TEMPOENVEX` points. Square points become steps. Linear points become ramps (linear in time, as REAPER plays them), with their time signatures (packed as numerator + denominator × 65536). Other point shapes become ramps and are reported. When merged into an open project, the project keeps its own map | `TEMPO`, and `TEMPOENVEX` when the tempo or the signature changes along the song |
 | Loop | Loop points (`SELECTION`) and the repeat switch (`LOOP`) | The same |
-| Markers and regions | Into `project.meta.markers` and `project.meta.regions`: `{ id, name, beat, seconds, color }` and `{ id, name, start, length, seconds, color }`, in beats | From the same tables. Song sections (`project.meta.sections`) become regions, each to the start of the next |
-| Tracks | Name, volume, pan, mute, solo, record arm, audio input and monitoring | The same |
+| Markers and regions | The markers and regions of paw (`paw.markers`), with their colors | The same. Song sections (`project.meta.sections`) become regions, each to the start of the next |
+| Tracks | Name, color (`PEAKCOL`), volume, pan, mute, solo, record arm, audio input and monitoring | The same |
 | Folders | The children of a folder go into the folder track | A track that goes into the track above it (or into its folder) becomes a child of the folder. paw writes other routes into a track as a send from a track with its parent send off, and reports them |
-| Sends | Receives (`AUXRECV`) become sends from the source track, at their level | Sends become receives, post-fader |
+| Sends | Receives (`AUXRECV`) become sends from the source track, at their level. Pre-fader receives become pre-fader sends | Sends become receives, post-fader or pre-fader |
 | Master | Volume, pan, mute, FX chain, volume and pan envelopes | The same |
-| Audio items | A clip with the file (relative to the project folder, as REAPER finds it, also in the recording folder), position, length, start in the source (`SOFFS`, also the start of a section), item volume times take volume as the clip gain, mute. A looped item becomes one clip for each pass | Items with a `WAVE`, `FLAC`, `MP3` or `VORBIS` source. Paths under the folder of the project are relative to it |
-| MIDI items | Notes from inline events and from `.mid` files, with velocity and channel (in `meta.channel` of the note), through the ticks per quarter note of the source. A source that ignores the project tempo runs at its own. Looped items repeat their source. Notes held over the item start begin at it, as REAPER plays them. Muted items stay muted | Inline events at 960 ticks per quarter note, channels from `meta.channel` |
-| Automation | Volume and pan envelopes of tracks and the master, as lanes, on or off as in REAPER. Square points become steps | Volume and pan lanes |
+| Audio items | A clip with the file (relative to the project folder, as REAPER finds it, also in the recording folder), position, length, start in the source (`SOFFS`, also the start of a section), item volume times take volume as the clip gain, fade lengths, play rate and pitch shift, mute. A looped item becomes a looped clip. At a play rate other than 1, it becomes one clip for each pass | Items with a `WAVE`, `FLAC`, `MP3` or `VORBIS` source, with the same fields. A looped clip becomes a looped item that plays a section of the file. Paths under the folder of the project are relative to it |
+| MIDI items | Notes from inline events and from `.mid` files, with velocity and channel (in `meta.channel` of the note), through the ticks per quarter note of the source. Controllers, pitch bend, channel and key pressure, and program changes (with the bank before them) become the controller moves of the clip. A source that ignores the project tempo runs at its own. A looped item becomes a looped clip. Notes held over the item start begin at it, as REAPER plays them. Muted items stay muted | Inline events at 960 ticks per quarter note, channels from `meta.channel`, and the controller moves. A looped clip becomes a looped item |
+| Automation | Volume and pan envelopes of tracks and the master, and the parameter envelopes (`PARMENV`) of plugins that came across, as lanes, on or off as in REAPER. Square points hold. Slow start and end points become smooth | The same |
 | CLAP plugins | When installed here: the same plugin with the state that REAPER saved, which is the own state of the plugin | With their state |
 | VST3 plugins | When installed here (found by name and vendor): the same plugin with its state, from the chunk of REAPER (paw checks the sizes first) | Only plugins that came from a REAPER project: paw keeps the header of REAPER for them, and puts the current state into it |
 | LV2 plugins | When installed here: the same plugin with its control ports (`P` lines. The symbols of the ports are the parameter keys of paw) | With their control ports |
 | Bypass | For each plugin, and a bypassed FX chain | For each plugin |
 | Other plugins | VST2, JSFX, AU, DX, containers, and plugins that are not installed: a placeholder in `meta.rpp_placeholders` of the track (`name`, `format`, `position`, `reason`, and the text of REAPER for it), reported | Placeholders return into the chain at their places, as paw read them |
+
+REAPER counts the parameters of a plugin from 0, in the order of the
+plugin. paw lists them in the same order. A parameter envelope gives values
+from its minimum to its maximum, and paw scales them to the range of the
+parameter.
 
 ### What does not come across
 
@@ -145,16 +150,18 @@ paw lists these after each import or export.
 
 - **REAPER → paw:**
   - tempo envelope points with shapes other than square and linear
-  - inactive takes, fades, play rate (paw plays at 1x) and pitch shift
+  - inactive takes, fade shapes (paw fades on a quarter sine), the play
+    rate and pitch shift of MIDI items
   - take pan, polarity and channel modes, take envelopes and stretch
     markers
-  - MIDI controllers, pitch bend, aftertouch, program changes, sysex and
-    text events, muted MIDI notes
-  - envelopes other than the volume and pan of tracks and the master
-    (width, mute, pre-FX, send envelopes, plugin parameter envelopes)
-  - curve shapes other than linear and square (they become straight lines)
-  - send modes other than post-fader (they become post-fader), send pan,
-    send channel mapping, muted sends and MIDI-only sends
+  - sysex and text events, muted MIDI notes and muted controller events,
+    controllers on MIDI channels other than 1 (they play on channel 1)
+  - envelopes other than volume, pan and plugin parameters (width, mute,
+    send envelopes), and envelopes of plugins that did not come across
+  - the curve shapes 3, 4 and 5 of REAPER (fast start, fast end and a
+    curve with handles: they become straight lines or smooth)
+  - pre-FX sends (they become pre-fader), send pan, send channel mapping,
+    muted sends and MIDI-only sends
   - tracks whose master or parent send is off (in paw they play through
     their output), hardware outputs, frozen tracks
   - empty items, video, subprojects, other sources, media files that paw cannot find
@@ -162,13 +169,17 @@ paw lists these after each import or export.
     MIDI items
 - **paw → REAPER:**
   - built-in devices (`synth`, `drums`, `gain`, `delay`) and other devices
-    that are not plugins
+    that are not plugins, and their automation
   - VST3 plugins added in paw (paw does not know the id of REAPER for them)
-  - LV2 state other than control ports, parameter automation of plugins,
-    track colors
+  - LV2 state other than control ports
+  - the tension of smooth curves, stretch modes and warp markers, the loop
+    of a stretched audio clip
+  - registered and assignable controllers and per-note controllers (MIDI
+    1.0 has no event for them)
   - note attributes (MIDI 2.0 articulations: a REAPER project keeps MIDI
     1.0)
   - note times finer than 1/960 beat are rounded
+  - clips in the slots of the clip launcher
 - paw does not read the settings of a REAPER project that it has no place
   for (render settings, grid, view, metronome, project notes). It writes
   the defaults of REAPER for them.
@@ -184,19 +195,34 @@ The tests cover:
 - an export, then an import, of a project made with the API
 - plugins in all three formats
 - a render of an imported project with audio and MIDI
+- REAPER itself opens an exported project
 
 The parser was checked on 24 project files saved by REAPER, up to 2.9 MB.
 It gave the same bytes, and the same tokens after it wrote every line
 again.
 
-**Nobody opened the exported files in REAPER.** The tests read them back
-with this parser. They compare each line key and its number of arguments
-with projects that REAPER saved. All the keys occur in the files of REAPER,
-except the pan envelope (`PANENV2`). No project here had one. paw writes it
-as REAPER writes the volume envelope.
+The last test opens an exported project in REAPER. Then it compares what
+REAPER read with the project of paw. It compares the tracks, folders, colors
+and sends. It compares the items with their fades, play rates and loops. It
+also compares the notes, the controller events, the envelope shapes, the
+markers and regions. It runs when `PAW_REAPER` names the `reaper` program.
+Otherwise the suite skips it:
 
-Two rules come from projects saved by REAPER 7.84, not from documentation:
+```sh
+PAW_REAPER=/path/to/reaper nix develop -c tests/tools/suite.sh only "rpp: REAPER"
+```
+
+`tools/reaper-open.sh song.rpp dump.txt` does the same for any project.
+REAPER runs in a sandbox (`bwrap`) on a private X display, with no audio
+device and its own new configuration. It does not touch the configuration
+of a REAPER that you have. The startup script `tools/reaper-dump.lua`
+writes what REAPER read, then REAPER stops.
+
+Some rules come from projects saved by REAPER 7.84, and from REAPER 7.84
+itself, not from documentation:
 
 - Volume envelope points are amplitudes in the file, also with
   `VOLTYPE 1`.
 - Pan envelope points go from +1 (left) to -1 (right).
+- A color in the file is red + green × 256 + blue × 65536, plus 0x1000000
+  when the color is in use.
