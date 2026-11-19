@@ -10,6 +10,7 @@ require("plugstate.tone3000")
 require("plugstate.soundshed")
 require("plugstate.juceplugins")
 require("plugstate.commands")
+require("plugstate.tone3000_search")
 
 paw.health.register("plugstate", function(h)
   local names = {}

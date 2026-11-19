@@ -668,3 +668,6 @@ test("plugstate: Musio's state through the JUCE layer (needs PAW_TEST_MUSIO)", f
   eq(plugstate.slot(d.id, "room").value, "Scoring Stage", "u takes it back")
 end)
 
+
+-- The search of TONE3000's library, against a mock of its API.
+assert(loadfile("extensions/plugstate/tests_tone3000.lua"))(T)
