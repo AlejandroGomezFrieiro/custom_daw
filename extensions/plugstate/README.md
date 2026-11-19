@@ -82,6 +82,17 @@ Give the file a name with `slot=`: `:plugstate.load slot=ifn1 hall.wav`.
 `:plugstate.info` lists the names. A slot can also hold a value, for
 example the scene of a Soundshed preset: `:plugstate.load slot=scene solo`.
 
+### How to change the model or the preset at a point in the song
+
+Put the cursor where the sound changes, and type `:plugstate.at` with a
+file or words that find it: `:plugstate.at bogner`, `:plugstate.at
+slot=block2 ~/nam/x.nam`. `:plugstate.at snapshot=B` gives a snapshot.
+The device's state lane (see
+[Automation](../../docs/reference/automation.md#state-lanes)) gives it
+from the cursor on. A model of Neural Amp Modeler changes on the frame
+of the point. A preset of TONE3000 or Soundshed Guitar changes on the
+frame in a rendered file.
+
 ### How to switch sounds while you play
 
 Keep each sound as a snapshot (`:plugstate.snapshot crunch`), then use
@@ -131,6 +142,7 @@ These keys are in the device panel. They act on the device of the row.
 
 | Command | Effect |
 | --- | --- |
+| `:plugstate.at [slot=<key>] <file or words>`, `:plugstate.at snapshot=<name>` | gives the file or the snapshot from the cursor on, on the device's state lane |
 | `:plugstate.load [slot=<key>] [file or words]` | loads a file into the plugin. With words, the one file that they find, else the picker |
 | `:plugstate.next`, `:plugstate.prev` | loads the next or the previous file of the folder |
 | `:plugstate.files [words]` | lists the files that the plugin takes, in the library folders |
@@ -251,6 +263,8 @@ paw obeys them in these ways:
 | `neighbour(slot, n)` | the file `n` places after the current one in its folder |
 | `snapshot(id, name)`, `recall(id, name)`, `step(id, n)`, `forget(id, name)` | the snapshots |
 | `snapshots(id)`, `current(id)` | the snapshots of a device, and the name of the last one recalled or kept |
+| `lane_state(id, key, value)`, `lane_snapshot(id, name)` | a slot set to a value, or a snapshot, as a state lane takes it. Nothing changes in the device |
+| `lane_point(id, beat, state)` | gives the state from `beat` on, on the device's state lane (made if it has none), as one undo step |
 | `share_dirs(sub)` | the folders `share/<sub>` of the packages in the plugin folders (`CLAP_PATH`, `VST3_PATH`, `LV2_PATH`, the Nix profiles), for factory presets |
 
 An adapter can also give `name_of(path)`: the name of a choice in the
@@ -276,8 +290,8 @@ The extension sends the events `plugstate.loaded` (`device`, `slot`,
 
 - A snapshot holds the whole state. paw does not blend two snapshots,
   because the state of a plugin is not a set of numbers.
-- An automation lane does not change a model. Snapshots change with keys
-  and commands only.
+- A parameter lane does not change a model. The device's state lane
+  does: see `:plugstate.at`.
 - A plugin keeps the path of a file. When the file moves, the plugin does
   not find it.
 - The `sfizz` adapter reads the state of sfizz 1.2. Another version of
@@ -286,9 +300,9 @@ The extension sends the events `plugstate.loaded` (`device`, `slot`,
   `soundshed` adapter the state of Soundshed Guitar 1.7.1.
 - A program change in a clip does not change the preset of TONE3000 or
   Soundshed Guitar in paw. The scene parameters of Soundshed Guitar do not
-  change its scene. So an automation lane cannot switch their presets.
-- TONE3000 loads its models in the background. A rendered file starts
-  with less than a second of sound without the model.
+  change its scene. Their state lane changes them through their saved
+  state: exactly on the point in a rendered file, and some milliseconds
+  after it as the song plays.
 - Soundshed Guitar keeps the path of a file. paw copies the files of a
   preset of a pack to `~/.local/share/paw/plugstate/<pack>`.
 - The search of TONE3000 needs curl. paw does not sign in to TONE3000
