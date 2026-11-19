@@ -972,6 +972,45 @@ pub struct Lane {
     /// a straight line, by the beat of the point it leaves.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub shapes: Vec<Segment>,
+    /// For a state lane: the states its device takes. The value of a
+    /// point is the index of one of them, and it holds up to the next
+    /// point (see [`Target::State`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub states: Vec<Arc<LaneState>>,
+}
+
+/// One of the states a state lane gives its device: a whole saved state,
+/// a request that changes it (an LV2 property set to a file), parameter
+/// values, a program change, or some of these together. A state the device
+/// takes on its audio thread (parameters, a program, a request its
+/// controller can prepare) lands on the point's frame; a whole saved state
+/// is loaded on the main thread. See the explanation of state lanes.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LaneState {
+    /// The name the lane shows for it.
+    pub name: String,
+    /// The plugin's whole saved state, base64 encoded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    /// Parameter values by key.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, f64>,
+    /// A request to the device, as `paw.api.device_call` makes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub call: Option<StateCall>,
+    /// A program change, 0 to 127, with its bank when one is given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub program: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bank: Option<u16>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct StateCall {
+    pub method: String,
+    pub data: String,
 }
 
 /// The shape of the stretch of a lane from one point to the next.
@@ -1011,14 +1050,26 @@ impl Lane {
     /// stretch as a jump at the next point and a smooth one as many short
     /// lines. The points themselves when every stretch is straight.
     pub fn played(&self) -> std::borrow::Cow<'_, [(f64, f64)]> {
-        if self.shapes.is_empty() {
+        // A state lane has no curve: each state holds to the next point.
+        let states = matches!(self.target, Target::State { .. });
+        if self.shapes.is_empty() && !states {
             return std::borrow::Cow::Borrowed(&self.points);
         }
+        let hold = Segment {
+            beat: 0.0,
+            shape: Shape::Hold,
+            tension: 0.0,
+        };
         let mut out = Vec::with_capacity(self.points.len() * 2);
         for (i, &(beat, value)) in self.points.iter().enumerate() {
             out.push((beat, value));
             let Some(&(next, to)) = self.points.get(i + 1) else { break };
-            let Some(seg) = self.shapes.iter().find(|s| s.beat == beat) else { continue };
+            let seg = if states {
+                &hold
+            } else {
+                let Some(seg) = self.shapes.iter().find(|s| s.beat == beat) else { continue };
+                seg
+            };
             match seg.shape {
                 Shape::Linear => {}
                 Shape::Hold => out.push((next, value)),
@@ -1043,12 +1094,16 @@ pub enum Target {
     Pan,
     /// A parameter, by key, of a device on the same track.
     Param { device: Id, param: String },
+    /// The state of a device on the same track: a lane of states, whose
+    /// points each name one of the lane's [`Lane::states`] and hold it up
+    /// to the next point, with no curve between.
+    State { device: Id },
 }
 
 impl Target {
     pub fn device(&self) -> Option<Id> {
         match self {
-            Target::Param { device, .. } => Some(*device),
+            Target::Param { device, .. } | Target::State { device } => Some(*device),
             _ => None,
         }
     }
@@ -1612,14 +1667,21 @@ impl Project {
                     Target::Volume => Some((-120.0, 24.0)),
                     Target::Pan => Some((-1.0, 1.0)),
                     Target::Param { .. } => None,
+                    Target::State { .. } => Some((0.0, l.states.len().saturating_sub(1) as f64)),
                 };
                 if let Some((lo, hi)) = limits {
                     for (_, v) in &l.points {
                         range(&format!("a point of automation lane {}", l.id), *v, lo, hi)?;
                     }
                 }
-                if let Target::Param { device, .. } = &l.target
-                    && !t.devices.iter().any(|d| d.id == *device)
+                if matches!(l.target, Target::State { .. })
+                    && !l.points.is_empty()
+                    && l.states.is_empty()
+                {
+                    bail!("state lane {} has points but no states", l.id);
+                }
+                if let Some(device) = l.target.device()
+                    && !t.devices.iter().any(|d| d.id == device)
                 {
                     bail!(
                         "automation lane {} is for device {device}, which is not on its track",

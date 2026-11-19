@@ -169,6 +169,18 @@ fn lane_stem(target: &Target, track: &Track) -> String {
                 .unwrap_or_else(|| device.to_string());
             file_name(&format!("{device}-{param}"))
         }
+        Target::State { device } => {
+            let device = track
+                .devices
+                .iter()
+                .position(|d| d.id == *device)
+                .map(|i| {
+                    let d = &track.devices[i];
+                    format!("{}-{}", i + 1, d.name.as_deref().unwrap_or(&d.kind))
+                })
+                .unwrap_or_else(|| device.to_string());
+            file_name(&format!("{device}-state"))
+        }
     }
 }
 

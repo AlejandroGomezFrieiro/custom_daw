@@ -105,6 +105,10 @@ function M.name(lane)
   if type(lane) == "number" then lane = api.lane_get(lane) end
   if lane.target == "volume" then return "Volume" end
   if lane.target == "pan" then return "Pan" end
+  if lane.target == "state" then
+    local ok, d = pcall(api.device_get, lane.device)
+    return (ok and d and d.name or "?") .. " › state"
+  end
   local p, d = param_of(lane)
   return (d and d.name or "?") .. " › " .. (p and p.name or tostring(lane.param))
 end
@@ -114,6 +118,10 @@ function M.format(lane, value)
   if type(lane) == "number" then lane = api.lane_get(lane) end
   if lane.target == "volume" then return string.format("%.1f dB", value) end
   if lane.target == "pan" then return paw.draw.pan_text(value) end
+  if lane.target == "state" then
+    local index = math.floor((value or 0) + 0.5)
+    return (lane.states or {})[index + 1] or "-"
+  end
   local p = param_of(lane)
   return p and paw.frontend.format_value(p, value) or string.format("%g", value)
 end
@@ -124,6 +132,7 @@ function M.step(lane)
   if type(lane) == "number" then lane = api.lane_get(lane) end
   if lane.target == "volume" then return 1 end
   if lane.target == "pan" then return 0.05 end
+  if lane.target == "state" then return 1 end
   local p = param_of(lane)
   if p and #p.choices > 0 then return 1 end
   return (lane.max - lane.min) / 100
@@ -139,6 +148,7 @@ function M.value_at(lane, beat)
   local ok, v = pcall(api.lane_value_at, lane.id, beat)
   if ok and v then return v end
   if lane.target == "volume" or lane.target == "pan" then return api.track_get(lane.track, lane.target) end
+  if lane.target == "state" then return 0 end
   local d = api.device_get(lane.device)
   return d.params[lane.param] or 0
 end

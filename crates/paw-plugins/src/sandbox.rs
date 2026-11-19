@@ -58,6 +58,12 @@ const CHANGES: usize = 1024;
 const MAGIC: u32 = 0x4441_5750;
 /// The longest reason a helper can give for stopping.
 const REASON: usize = 1024;
+/// Bytes of state lanes' messages a block may carry to the plugin.
+const MESSAGES: usize = 16384;
+/// The call that asks the helper's controller to prepare a message
+/// ([`Controller::prepare`]): its data is the method, a zero byte, the
+/// request's own data.
+const PREPARE: &str = "sandbox.prepare";
 
 /// How long a plugin may take over each kind of request before it is
 /// taken to have hung.
@@ -159,6 +165,8 @@ struct Header {
     playing: u32,
     events_in: u32,
     params_in: u32,
+    /// Bytes of messages in the block: each its frame, its length and it.
+    messages_in: u32,
     events_out: u32,
     /// Whether the plugin was at rest after the block (see
     /// [`Device::resting`]).
@@ -224,7 +232,8 @@ impl Shm {
         let events = align(outs + 2 * (MAX_PAIRS - 1) * max_block * 4);
         let params = align(events + EVENTS * std::mem::size_of::<Event>());
         let changes = align(params + PARAMS * std::mem::size_of::<ParamMove>());
-        let len = align(changes + CHANGES * std::mem::size_of::<Change>());
+        let messages = align(changes + CHANGES * std::mem::size_of::<Change>());
+        let len = align(messages + MESSAGES);
         Layout {
             left,
             right,
@@ -233,6 +242,7 @@ impl Shm {
             events,
             params,
             changes,
+            messages,
             len,
         }
     }
@@ -326,6 +336,10 @@ impl Shm {
     fn changes(&self) -> &mut [Change] {
         self.part(Self::layout(self.max_block).changes, CHANGES)
     }
+
+    fn messages(&self) -> &mut [u8] {
+        self.part(Self::layout(self.max_block).messages, MESSAGES)
+    }
 }
 
 /// Where each part of the shared memory starts, and its whole length.
@@ -337,6 +351,7 @@ struct Layout {
     events: usize,
     params: usize,
     changes: usize,
+    messages: usize,
     len: usize,
 }
 
@@ -400,6 +415,8 @@ struct RemoteDevice {
     outstanding: bool,
     /// Parameter moves for the next block.
     moves: Vec<ParamMove>,
+    /// Messages for the next block, as the shared memory carries them.
+    messages: Vec<u8>,
     told_priority: bool,
     /// The plugin said it was at rest after the last block.
     resting: bool,
@@ -475,6 +492,7 @@ impl Device for RemoteDevice {
             head.playing = ctx.playing as u32;
             head.events_in = count as u32;
             head.params_in = self.moves.len() as u32;
+            head.messages_in = self.messages.len() as u32;
             head.keyed = io.sidechain.is_some() as u32;
             head.outs = io
                 .outputs
@@ -494,6 +512,8 @@ impl Device for RemoteDevice {
         shm.events()[..count].copy_from_slice(&events[..count]);
         shm.params()[..self.moves.len()].copy_from_slice(&self.moves);
         self.moves.clear();
+        shm.messages()[..self.messages.len()].copy_from_slice(&self.messages);
+        self.messages.clear();
 
         self.seq = self.seq.wrapping_add(1);
         header.request.store(self.seq, Ordering::Release);
@@ -561,6 +581,16 @@ impl Device for RemoteDevice {
         for event in &shm.events()[..out] {
             io.events.push(*event);
         }
+    }
+
+    fn message(&mut self, frame: u32, data: &[u8]) -> bool {
+        if self.messages.len() + 8 + data.len() > MESSAGES.min(self.messages.capacity()) {
+            return false;
+        }
+        self.messages.extend_from_slice(&frame.to_le_bytes());
+        self.messages.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        self.messages.extend_from_slice(data);
+        true
     }
 
     fn set_param(&mut self, index: u32, value: f32) {
@@ -722,6 +752,18 @@ impl RemoteController {
     }
 }
 
+/// The processor time a process has used, all its threads together.
+fn process_time(pid: u32) -> Option<Duration> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // The name, in parentheses, may hold spaces: the fields after it count
+    // from the state, the third field.
+    let rest = &stat[stat.rfind(')')? + 2..];
+    let fields: Vec<&str> = rest.split(' ').collect();
+    let ticks = fields.get(11)?.parse::<u64>().ok()? + fields.get(12)?.parse::<u64>().ok()?;
+    let per_second = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as u64;
+    Some(Duration::from_nanos(ticks * 1_000_000_000 / per_second))
+}
+
 fn describe(status: std::process::ExitStatus) -> String {
     use std::os::unix::process::ExitStatusExt;
     match (status.signal(), status.code()) {
@@ -881,6 +923,26 @@ impl Controller for RemoteController {
 
     fn late_blocks(&self) -> u64 {
         self.link.late.load(Ordering::Relaxed) as u64
+    }
+
+    fn prepare(&mut self, method: &str, data: &[u8]) -> Result<Option<Vec<u8>>> {
+        let mut payload = PREPARE.as_bytes().to_vec();
+        payload.push(0);
+        payload.extend_from_slice(method.as_bytes());
+        payload.push(0);
+        payload.extend_from_slice(data);
+        let mut answer = self.ask(CALL, &payload, STATE_LIMIT)?;
+        if answer.first() != Some(&1) {
+            return Ok(None);
+        }
+        Ok(Some(answer.split_off(1)))
+    }
+
+    fn busy_time(&mut self) -> Option<Duration> {
+        if self.ended.is_some() {
+            return None;
+        }
+        process_time(self.child.id())
     }
 
     fn health(&mut self) -> Option<String> {
@@ -1106,6 +1168,7 @@ impl RemoteFactory {
                 seq: 0,
                 outstanding: false,
                 moves: Vec::with_capacity(PARAMS),
+            messages: Vec::with_capacity(MESSAGES),
                 told_priority: false,
                 resting: false,
                 offline_limit: if self.argv.is_some() { STALL_LIMIT } else { OFFLINE_LIMIT },
@@ -1380,6 +1443,16 @@ fn audio_loop(shm: Arc<Shm>, mut device: Box<dyn Device>) {
         for event in &shm.events()[..(header.events_in as usize).min(EVENTS)] {
             events.push(*event);
         }
+        let messages = &shm.messages()[..(header.messages_in as usize).min(MESSAGES)];
+        let mut at = 0;
+        while let Some(head) = messages.get(at..at + 8) {
+            let frame = u32::from_le_bytes(head[..4].try_into().unwrap());
+            let len = u32::from_le_bytes(head[4..].try_into().unwrap()) as usize;
+            if let Some(data) = messages.get(at + 8..at + 8 + len) {
+                device.message(frame, data);
+            }
+            at += 8 + len;
+        }
         let ctx = ProcessCtx {
             sample_rate: header.sample_rate,
             tempo: header.tempo,
@@ -1586,6 +1659,17 @@ pub fn serve_with(
                         if method == "sandbox.hang" {
                             TEST_HANG.store(data != b"0", Ordering::Relaxed);
                             Some(Ok(Vec::new()))
+                        } else if method == PREPARE {
+                            let split = data.iter().position(|b| *b == 0).unwrap_or(data.len());
+                            let inner = String::from_utf8_lossy(&data[..split]).into_owned();
+                            let rest = data.get(split + 1..).unwrap_or(&[]);
+                            Some(controller.prepare(&inner, rest).map(|message| match message {
+                                Some(mut bytes) => {
+                                    bytes.insert(0, 1);
+                                    bytes
+                                }
+                                None => vec![0],
+                            }))
                         } else if method == PARAM_TEXT
                             && let (Some(index), Some(value)) = (index, data.get(4..12))
                         {

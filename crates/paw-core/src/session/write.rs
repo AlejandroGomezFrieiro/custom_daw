@@ -158,6 +158,7 @@ impl Session {
             Target::Param { device, param } => {
                 self.project.device(*device)?.params.get(param).copied()
             }
+            Target::State { .. } => None,
         }
     }
 
@@ -231,6 +232,8 @@ impl Session {
             Target::Volume => ("volume", None, None),
             Target::Pan => ("pan", None, None),
             Target::Param { device, param } => ("param", Some(*device), Some(param.clone())),
+            // Nothing moves a state lane but its points.
+            Target::State { .. } => return Ok(None),
         };
         self.lane_add(
             latch.track,
@@ -240,6 +243,7 @@ impl Session {
                 param,
                 enabled: Some(true),
                 points: Vec::new(),
+                states: Vec::new(),
             },
         )
         .map(Some)
