@@ -1247,33 +1247,40 @@ impl Session {
             .iter_mut()
             .chain(std::iter::once(&mut project.master));
         for track in tracks {
-            let mut found = Vec::new();
-            for (at, d) in track.devices.iter().enumerate() {
-                let Some(live) = self.live.get(&d.id) else { continue };
-                let lanes = track.lanes.iter().filter_map(|l| match &l.target {
-                    Target::Param { device, param } if *device == d.id => Some(param),
-                    _ => None,
-                });
-                let mut ids = d.param_ids.clone();
-                for key in d.params.keys().chain(lanes) {
-                    let Some(p) = live.params.iter().find(|p| &p.key == key) else { continue };
-                    if !p.id.is_empty() && p.id != p.key {
-                        ids.insert(key.clone(), p.id.clone());
-                    }
-                }
-                if ids != d.param_ids {
-                    found.push((at, ids));
-                }
-            }
-            if found.is_empty() {
-                continue;
-            }
-            let track = Arc::make_mut(track);
-            for (at, ids) in found {
-                Arc::make_mut(&mut track.devices[at]).param_ids = ids;
-            }
+            self.keep_param_ids(track);
         }
         project
+    }
+
+    /// Note in each device of a track that is about to be written the
+    /// device's own id of each parameter key that it or its lanes use (see
+    /// `DeviceInst::param_ids`), for every place a chain is written.
+    pub(crate) fn keep_param_ids(&self, track: &mut Arc<Track>) {
+        let mut found = Vec::new();
+        for (at, d) in track.devices.iter().enumerate() {
+            let Some(live) = self.live.get(&d.id) else { continue };
+            let lanes = track.lanes.iter().filter_map(|l| match &l.target {
+                Target::Param { device, param } if *device == d.id => Some(param),
+                _ => None,
+            });
+            let mut ids = d.param_ids.clone();
+            for key in d.params.keys().chain(lanes) {
+                let Some(p) = live.params.iter().find(|p| &p.key == key) else { continue };
+                if !p.id.is_empty() && p.id != p.key {
+                    ids.insert(key.clone(), p.id.clone());
+                }
+            }
+            if ids != d.param_ids {
+                found.push((at, ids));
+            }
+        }
+        if found.is_empty() {
+            return;
+        }
+        let track = Arc::make_mut(track);
+        for (at, ids) in found {
+            Arc::make_mut(&mut track.devices[at]).param_ids = ids;
+        }
     }
 
     pub fn project_save(&mut self, path: Option<&Path>) -> Result<PathBuf> {

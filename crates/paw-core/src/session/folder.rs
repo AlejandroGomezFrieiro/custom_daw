@@ -1329,7 +1329,8 @@ impl super::Session {
     /// Returns the files written.
     pub fn chain_write(&mut self, track: u64, file: &Path) -> Result<Vec<PathBuf>> {
         self.capture_states();
-        let t = self.project.track(track).with_context(|| format!("no track {track}"))?.clone();
+        let mut t = self.project.track(track).with_context(|| format!("no track {track}"))?.clone();
+        self.keep_param_ids(&mut t);
         let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
         let (devices, states) = chain_files(&t)?;
         let mut written = Vec::new();

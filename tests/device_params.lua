@@ -72,7 +72,7 @@ end)
 
 local function plugin_kind(format, name)
   for _, info in ipairs(api.device_types()) do
-    if info.format == format and info.name == name then return info.kind, info end
+    if info.format == format and (info.name == name or info.name == "LSP " .. name) then return info.kind, info end
   end
 end
 
@@ -139,5 +139,46 @@ for _, format in ipairs({ "clap", "lv2", "vst3" }) do
     near(p.value, value, 1e-4, "with its value")
     eq(p.automated, true, "and its lane")
     eq(by_key(loaded:get(), "input_gain"), nil, "no other parameter took the old key")
+  end)
+
+  test("device params: a " .. format .. " chain written to its own file keeps the plugin's ids", function()
+    local kind = plugin_kind(format, "Limiter Stereo")
+    if not kind then return "skipped: test plugins not found" end
+    if format == "lv2" then return "skipped: an LV2 parameter's key is its own id" end
+    fresh()
+    local track = paw.add_track({ name = "lim" })
+    local fx = track:add_device(kind)
+    local gain = by_key(fx:get(), "input_gain")
+    local value = gain.min + (gain.max - gain.min) / 4
+    api.device_set_param(fx.id, "input_gain", value)
+    local dir = T.scratch .. "/chain-" .. format
+    api.fs_mkdir(dir)
+    api.chain_write(track.id, dir .. "/devices.json")
+    local text = T.read_file(dir .. "/devices.json")
+    eq(text:find('"input_gain": "' .. gain.id .. '"', 1, true) ~= nil, true, "the chain file keeps the plugin's id of each key")
+    -- A new version of the plugin names the parameter otherwise.
+    T.write_file(dir .. "/devices.json", (text:gsub('"input_gain"', '"in_level"')))
+    fresh()
+    local other = paw.add_track({ name = "again" })
+    api.track_chain_file(other.id, dir .. "/devices.json", true)
+    local loaded = other:devices()[1]
+    local p = api.device_param(loaded.id, gain.id)
+    eq(p.key, "in_level", "the parameter takes the key of the chain file")
+    near(p.value, value, 1e-4, "with its value")
+    -- The first edit makes the chain the project's own: it is saved with the ids.
+    api.undo_checkpoint()
+    api.device_set_param(loaded.id, gain.id, gain.min)
+    api.undo_checkpoint()
+    paw.flush()
+    eq(other:get().chain_source, nil, "the chain is the project's own now")
+    local project = T.scratch .. "/chain-project-" .. format
+    paw.project.save(project)
+    local found
+    for _, entry in ipairs(api.read_dir(project .. "/tracks")) do
+      local file = project .. "/tracks/" .. entry.name .. "/devices.json"
+      local saved = entry.is_dir and io.open(file) and T.read_file(file)
+      if saved and saved:find('"in_level": "' .. gain.id .. '"', 1, true) then found = true end
+    end
+    eq(found, true, "the copied chain is saved in the project with the ids")
   end)
 end
