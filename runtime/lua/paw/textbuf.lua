@@ -429,7 +429,7 @@ function M.reload(buf)
   st.fields, st.conflict = fields, false
   st.order = {}
   for i, l in ipairs(lines) do st.order[l.id] = i end
-  st.seen = api.project_get().edits
+  st.seen = api.project_get("edits")
   st.parsed = {}
   api.ui_redraw()
 end
@@ -439,7 +439,7 @@ end
 function M.sync(buf)
   local st = buf.state
   if st.kind.static then return end
-  local edits = api.project_get().edits
+  local edits = api.project_get("edits")
   if edits == st.seen then return end
   st.seen = edits
   local lines = read(buf)
@@ -1613,7 +1613,7 @@ end
 --- buffer keeps its changes.
 function M.apply(buf, steps)
   api.undo_label("Write " .. buf.name)
-  local before = api.project_get().edits
+  local before = api.project_get("edits")
   -- A step that changes something outside the project (a file) notes how
   -- to take it back in `state.undo`.
   local state = { made = {}, undo = {} }
@@ -1622,11 +1622,11 @@ function M.apply(buf, steps)
       local ok, err = pcall(step.run, state)
       if not ok then
         for i = #state.undo, 1, -1 do pcall(state.undo[i]) end
-        if api.project_get().edits ~= before then
+        if api.project_get("edits") ~= before then
           api.undo_checkpoint()
           paw.undo()
         end
-        buf.state.seen = api.project_get().edits
+        buf.state.seen = api.project_get("edits")
         return false, string.format("%s failed, and nothing was changed: %s", step.text, reason(err))
       end
     end

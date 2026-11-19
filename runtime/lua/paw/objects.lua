@@ -9,11 +9,13 @@ local music = require("paw.music")
 local Track, Device, Clip, Lane = {}, {}, {}, {}
 local M = { Track = Track, Device = Device, Clip = Clip, Lane = Lane }
 
-local function class(cls, name, get, set)
+-- `field(id, key)`, when given, reads one entry without the whole table.
+local function class(cls, name, get, set, field)
   cls.__name = name
   cls.__index = function(self, key)
     local method = cls[key]
     if method ~= nil then return method end
+    if field and type(key) == "string" then return field(rawget(self, "id"), key) end
     return get(rawget(self, "id"))[key]
   end
   cls.__newindex = function(self, key, value)
@@ -36,7 +38,7 @@ end
 class(Track, "Track", api.track_get, function(id, key, value)
   if key == "output" then value = id_of(value) end
   api.track_set(id, key, value)
-end)
+end, api.track_get)
 
 --- A plain table with every field of the track, read once.
 function Track:get() return api.track_get(self.id) end
@@ -238,7 +240,7 @@ function Track:value_at(target, beat)
   local lane = self:lane(target)
   local value = lane and lane.enabled and api.lane_value_at(lane.id, beat)
   if value then return value end
-  return api.track_get(self.id)[target]
+  return api.track_get(self.id, target)
 end
 
 -- Devices --------------------------------------------------------------------
@@ -657,7 +659,7 @@ M.project = setmetatable({
   save = api.project_save,
   get = api.project_get,
 }, {
-  __index = function(_, key) return api.project_get()[key] end,
+  __index = function(_, key) return api.project_get(key) end,
   __newindex = function(_, key, value) api.project_set(key, value) end,
 })
 

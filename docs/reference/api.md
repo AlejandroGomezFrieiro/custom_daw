@@ -2078,7 +2078,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.proc_write(id, data)`
 - `paw.api.project_backup(path, note)`: Write the project as it is now to a different file. The path of the project and its modified flag do not change. The file keeps `note` under `recovery`.
 - `paw.api.project_file_text(value)`
-- `paw.api.project_get()`: --- project ---
+- `paw.api.project_get(key)`: --- project --- The project as a table. With `key`, only that entry of the table: this is quicker (`edits`, which goes up with each change, is asked for on each key and each edit).
 - `paw.api.project_load(path, opts)`: `opts.plugins_offline` opens it with all plugins offline. `opts.offline` is a list of devices (by id) to open offline.
 - `paw.api.project_new()`
 - `paw.api.project_recover(path, opts)`: Open a file written by `project_backup` as the project it was a copy of: under that project's own file name, and as changed. `opts`: `as_path` opens it under that file name instead (for a `.bak`, which has no note), and what `project_load` takes.

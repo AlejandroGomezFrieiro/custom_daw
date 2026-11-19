@@ -1761,7 +1761,7 @@ function A.leave(how, what)
     end
   end
   if how ~= "save" then return go() end
-  if api.project_get().path then
+  if api.project_get("path") then
     paw.project.save()
     return go()
   end

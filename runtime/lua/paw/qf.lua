@@ -637,7 +637,7 @@ end)
 -- Missing sound files ----------------------------------------------------------------------
 
 local function project_dir()
-  local path = api.project_get().path
+  local path = api.project_get("path")
   return path and tostring(path):match("^(.*)/[^/]+$")
 end
 

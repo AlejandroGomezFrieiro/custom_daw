@@ -8155,7 +8155,11 @@ function paw.api.project_backup(path, note) end
 function paw.api.project_file_text(value) end
 
 --- --- project ---
-function paw.api.project_get() end
+--- The project as a table. With `key`, only that entry of the table:
+--- this is quicker (`edits`, which goes up with each change, is asked
+--- for on each key and each edit).
+---@param key string?
+function paw.api.project_get(key) end
 
 --- `opts.plugins_offline` opens it with all plugins offline.
 --- `opts.offline` is a list of devices (by id) to open offline.

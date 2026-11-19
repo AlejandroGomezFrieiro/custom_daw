@@ -275,7 +275,7 @@ test("tutor: a project opened from a MIDI file is not replaced without asking", 
   paw.midifile.export(path)
   T.fresh()
   type_keys(":open " .. path .. "<CR>")
-  eq(api.project_get().modified, false, "an imported project is not modified")
+  eq(api.project_get("modified"), false, "an imported project is not modified")
   type_keys(":tutor 1<CR>")
   eq(tutor.state().active, false, "yet the lesson did not start")
   eq(paw.track("Keys") ~= nil, true, "and the notes are still there")

@@ -485,8 +485,8 @@ test("musicxml: :open makes a project of the file, its tempo, title, key and mar
   local tracks = paw.tracks()
   eq(#tracks, 1, "a track for the part")
   eq(tracks[1].name, "Piano", "named after it")
-  eq(api.project_get().name, "mx-piano", "the project is named after the file")
-  eq(api.project_get().path, nil, "and has no file of its own")
+  eq(api.project_get("name"), "mx-piano", "the project is named after the file")
+  eq(api.project_get("path"), nil, "and has no file of its own")
   eq(api.project_get().meta.title, "Little Piece", "the title for the page")
   eq(math.floor(paw.tempo.at(0) + 0.5), 72, "the tempo mark's bpm is the song's tempo")
   local clip = tracks[1]:clips()[1]

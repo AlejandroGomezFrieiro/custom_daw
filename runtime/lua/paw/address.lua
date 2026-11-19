@@ -426,7 +426,7 @@ local function rendered(info)
   local entry = paw.util.merge(info, { opts = pending_opts[info.path] or {}, at = api.now() })
   pending_opts[info.path] = nil
   M.renders[info.path] = entry
-  paw.emit("address.changed", { uris = { M.render(info.path) }, revision = api.project_get().edits, rendered = entry })
+  paw.emit("address.changed", { uris = { M.render(info.path) }, revision = api.project_get("edits"), rendered = entry })
 end
 paw.on("render.done", rendered)
 paw.on("render.finished", rendered)
@@ -450,7 +450,7 @@ local function tell()
   for uri in pairs(pending) do uris[#uris + 1] = uri end
   table.sort(uris)
   pending = {}
-  paw.emit("address.changed", { uris = uris, revision = api.project_get().edits })
+  paw.emit("address.changed", { uris = uris, revision = api.project_get("edits") })
 end
 local function changed(uris)
   for _, uri in ipairs(uris) do pending[uri] = true end

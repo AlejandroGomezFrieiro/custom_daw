@@ -33,7 +33,7 @@ local cache = { revision = -1, tracks = {} }
 
 --- The panel as a flat list of rows: a device heading, then its parameters.
 local function rows_for(track_id)
-  local edits = api.project_get().edits
+  local edits = api.project_get("edits")
   if cache.revision ~= paw.frontend.revision or cache.edits ~= edits then
     cache = { revision = paw.frontend.revision, edits = edits, tracks = {} }
   end

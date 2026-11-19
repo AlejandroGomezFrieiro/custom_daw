@@ -770,6 +770,22 @@ impl Session {
         })
     }
 
+    /// One entry of [`project_view`](Self::project_view), made alone: its
+    /// `length` looks at every clip, and its `meta` can be large.
+    pub fn project_field(&self, key: &str) -> Value {
+        let p = &self.project;
+        match key {
+            "edits" => json!(self.edits),
+            "name" => json!(p.name),
+            "tempo" => json!(p.tempo),
+            "sig_num" => json!(p.sig_num),
+            "sig_den" => json!(p.sig_den),
+            "path" => json!(self.path),
+            "modified" => json!(self.touched || !self.history.at_saved()),
+            _ => self.project_view().get(key).cloned().unwrap_or(Value::Null),
+        }
+    }
+
     pub fn project_set(&mut self, key: &str, value: Value) -> Result<()> {
         if holds(&Ok(self.project_view()), key, &value) {
             return Ok(());

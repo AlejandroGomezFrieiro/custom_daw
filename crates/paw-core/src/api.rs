@@ -624,7 +624,16 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
 
     define! { lua, api, shared;
         // --- project ---
-        fn project_get(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().project_view()) }
+        // The project as a table. With `key`, only that entry of the table:
+        // this is quicker (`edits`, which goes up with each change, is asked
+        // for on each key and each edit).
+        fn project_get(lua, sh, key => Option<String>) {
+            let session = sh.session.borrow();
+            match key {
+                Some(key) => to_lua(lua, &session.project_field(&key)),
+                None => to_lua(lua, &session.project_view()),
+            }
+        }
         fn project_set(lua, sh, (key, value) => (String, LuaValue)) {
             sh.session.borrow_mut().project_set(&key, from_lua(lua, value)?).lua()
         }

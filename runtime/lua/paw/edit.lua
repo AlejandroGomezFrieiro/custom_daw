@@ -247,7 +247,7 @@ function A.paste(value, before, count)
     return paw.notify(cursor.on_master() and "the master track has no clips: paste on a track" or "no track to paste on", "warn")
   end
   if not before then
-    local edits = api.project_get().edits
+    local edits = api.project_get("edits")
     if last_paste and last_paste.row == row and last_paste.beat == at and last_paste.edits == edits then
       -- Pasting again right after a paste carries on where that one ended.
       at = last_paste.finish
@@ -274,7 +274,7 @@ function A.paste(value, before, count)
     at = at + value.length
   end
   cursor.set_beat(start)
-  last_paste = { row = row, beat = start, finish = at, edits = api.project_get().edits }
+  last_paste = { row = row, beat = start, finish = at, edits = api.project_get("edits") }
   -- Said, so that what the screen said of the yank before is not taken
   -- for what the paste did.
   paw.notify(string.format("pasted %g beats", value.length * (count or 1)))

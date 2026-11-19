@@ -770,7 +770,7 @@ function M.export(path, opts)
   else
     tracks = paw.tracks()
   end
-  local file = { format = 1, ppq = EXPORT_PPQ, tracks = { { name = paw.api.project_get().name } }, signatures = {}, markers = {} }
+  local file = { format = 1, ppq = EXPORT_PPQ, tracks = { { name = paw.api.project_get("name") } }, signatures = {}, markers = {} }
   local notes, last = 0, 0
   for _, track in ipairs(tracks) do
     local t, ends = export_track(track, only)

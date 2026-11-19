@@ -447,7 +447,7 @@ test("clip events name each clip added, changed, moved to another track and remo
   paw.off(handle)
 end)
 
-test("api.track_get with a key gives that entry of the track's table", function()
+test("api.track_get and api.project_get with a key give that entry of the table", function()
   fresh()
   local t = paw.add_track({ name = "Keys", volume = -6, pan = 0.5 })
   t:add_clip({ start = 0, length = 4 })
@@ -458,6 +458,12 @@ test("api.track_get with a key gives that entry of the track's table", function(
   end
   eq(api.track_get(t.id, "nothing"), nil, "a key that is not there")
   eq(pcall(api.track_get, 9999, "volume"), false, "a track that is not there")
+  eq(t.volume, -6, "a track's field reads its entry")
+  local project = api.project_get()
+  for key, value in pairs(project) do
+    eq(paw.inspect(api.project_get(key)), paw.inspect(value), "project " .. key)
+  end
+  eq(paw.project.edits, project.edits, "paw.project reads one entry")
 end)
 
 test("edits in a script that never waits leave no timers behind", function()

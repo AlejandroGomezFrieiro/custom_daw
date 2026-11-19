@@ -131,7 +131,7 @@ function M.roll(g, px, o)
   local function Y(semis) return (o.top - semis) * ch + ch / 2 end
   local cuts = edges(g, px.w, px.h, o.clip.start + o.scroll, ppb, cw)
   local pitd = o.pitd and #o.pitd > 0 and notes.sampler(o.pitd, 0) or nil
-  local tempo = api.project_get().tempo
+  local tempo = api.project_get("tempo")
   local written = M.written(o.list, tempo, pitd and function(beat) return pitd(o.clip.start + beat) end)
   local length = o.clip.length
   local x_at, beat_at = M.warp(o.list, o.scroll, o.zoom, cw)

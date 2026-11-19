@@ -278,7 +278,7 @@ end
 
 --- Whether the project changed since the measurement.
 function M.stale()
-  return M.result and M.result.edits ~= nil and api.project_get().edits ~= M.result.edits
+  return M.result and M.result.edits ~= nil and api.project_get("edits") ~= M.result.edits
 end
 
 function M.clear()

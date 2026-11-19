@@ -1711,7 +1711,7 @@ command("write", function(ctx)
   if path then path = paw.files.path(path) end
   -- A project that has no file yet is asked where it goes, when there is
   -- somebody to ask.
-  if not path and not api.project_get().path and paw.fx.interactive() then return paw.frontend.save_as() end
+  if not path and not api.project_get("path") and paw.fx.interactive() then return paw.frontend.save_as() end
   if path and paw.midifile.is_midi_file(path) then
     return paw.notify("a project is not saved as a MIDI file: `:export " .. path .. "` writes one", "warn")
   end
@@ -1725,7 +1725,7 @@ command("edit", function(ctx)
   -- Alone, as in Vim, it opens the project's own file again: `:e!` goes
   -- back to the saved project and throws away what changed since.
   if not ctx.args[1] then
-    local path = api.project_get().path
+    local path = api.project_get("path")
     if not path then return paw.notify("the project has no file yet: `:e song.json` opens one, `:w song.json` saves this one", "warn") end
     if not paw.project.guard("edit") then return end
     paw.open(path)
