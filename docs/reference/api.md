@@ -1482,6 +1482,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.remote.closed(client)`: A connection closed: nothing more is sent to it.
 - `paw.remote.listeners()`: The listeners: `{ client = { patterns = {...}, watching = bool }, ... }`.
 - `paw.remote.push(client)`: Send to a connection the changes of the state of the frontend after the last send. Send nothing when nothing changed.
+- `paw.remote.touch()`: A turn had input: a key, the pointer, a call. What the frontends show may have changed.
+- `paw.remote.turn()`: After each turn of the kernel: push now what its input or its edits changed, at most once in 8 ms.
+- `paw.remote.wake()`: Something started to move (the song, a note played): push at the pace from now.
 
 ## Module paw.roles
 
@@ -1557,7 +1560,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 - `paw.scene.closed(client)`: A connection closed or stopped to watch. paw keeps no more data for it.
 - `paw.scene.live()`: The values that move the bound nodes of a frontend (see the `bind` of crates/paw-scene). These are the playhead, the clock and the load of the engine. For each track id, they are the meter, the recent peak, the clip light and the input. paw rounds them to what a frontend can show. So a program that does nothing has no new data to send (the load is as `paw.audio.load` gives it, as `frontend.watch` sends it). Each call gives the current values.
+- `paw.scene.set_pace(ms)`: Tick every `ms` while something moves (`frontend.pace`).
 - `paw.scene.turn()`: Call it after a turn of the kernel. paw pushes now, not at the next tick, the windows whose drawing can be different.
+- `paw.scene.wake()`: Something started to move (the song, a note played): tick at the pace from now.
 - `paw.scene.watchers()`: The watchers: `{ client, windows }` each. `windows` is the names of the windows whose size it gave.
 
 ## Module paw.scope
@@ -1781,6 +1786,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 ## Module paw.ui
 
+- `paw.ui.active()`: Whether something moves on its own now: the song plays, or a moment after activity (`poke`), while meters fall.
 - `paw.ui.arrange(width, height)`: The position of each visible view on a screen of the current size: a list of `{ name, win, x, y, w, h }`. The tab line is along the top when there is more than one tab. `.borders` contains the borders between windows, and `.nodes` the position of each node of the tree, to resize them.
 - `paw.ui.ask_value(opts, set)`: Ask for an exact value on the command line: a number is the value, with its sign (`-6` is -6 dB), and `+=2` and `-=3` change the current value by a step.
 

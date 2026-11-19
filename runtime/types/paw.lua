@@ -5755,6 +5755,18 @@ function paw.remote.listeners() end
 ---@param client any
 function paw.remote.push(client) end
 
+--- A turn had input: a key, the pointer, a call. What the frontends show
+--- may have changed.
+function paw.remote.touch() end
+
+--- After each turn of the kernel: push now what its input or its edits
+--- changed, at most once in 8 ms.
+function paw.remote.turn() end
+
+--- Something started to move (the song, a note played): push at the pace
+--- from now.
+function paw.remote.wake() end
+
 --- A view is about to be drawn on the terminal's screen (`win`, the id of
 --- its window, if any): its hit regions start afresh.
 ---@param name any
@@ -6092,9 +6104,17 @@ function paw.scene.closed(client) end
 --- gives it, as `frontend.watch` sends it). Each call gives the current values.
 function paw.scene.live() end
 
+--- Tick every `ms` while something moves (`frontend.pace`).
+---@param ms any
+function paw.scene.set_pace(ms) end
+
 --- Call it after a turn of the kernel. paw pushes now, not at the next
 --- tick, the windows whose drawing can be different.
 function paw.scene.turn() end
+
+--- Something started to move (the song, a note played): tick at the pace
+--- from now.
+function paw.scene.wake() end
 
 --- The watchers: `{ client, windows }` each. `windows` is the names of the
 --- windows whose size it gave.
@@ -7024,6 +7044,10 @@ function paw.track_kinds.set(which, name, args) end
 --- loaded extension defines).
 ---@param which any
 function paw.track_kinds.spec(which) end
+
+--- Whether something moves on its own now: the song plays, or a moment
+--- after activity (`poke`), while meters fall.
+function paw.ui.active() end
 
 --- The position of each visible view on a screen of the current size: a
 --- list of `{ name, win, x, y, w, h }`. The tab line is along the top when

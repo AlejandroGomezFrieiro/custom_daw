@@ -281,6 +281,47 @@ fn a_watching_frontend_is_sent_what_changed_and_nothing_when_nothing_did() {
     assert!(quiet(&c, Duration::from_millis(300)), "no longer watching");
 }
 
+#[test]
+fn a_window_is_sent_what_moves_at_its_own_pace_and_an_edit_at_once() {
+    let instance = start("pace");
+    let mut c = Connection::unix(&instance.socket).unwrap();
+    c.call("eval", json!(["paw.add_track({ name = 'one' }):add_clip({ start = 0, length = 64 })"])).unwrap();
+    c.call("frontend.watch", json!([])).unwrap();
+    c.call("scene.watch", json!([{ "cell": { "w": 8, "h": 16 }, "live": true }])).unwrap();
+    // A window that draws ten frames a second while the song plays.
+    c.notify("frontend.pace", json!([100])).unwrap();
+    while !quiet(&c, Duration::from_millis(300)) {}
+    c.call("cmd", json!(["transport.play"])).unwrap();
+    event(&c, "scene.live");
+    let (mut states, mut lives) = (0, 0);
+    let until = Instant::now() + Duration::from_secs(2);
+    while let Ok((name, _)) = c.events.recv_timeout(until.saturating_duration_since(Instant::now())) {
+        match name.as_str() {
+            "frontend.state" => states += 1,
+            "scene.live" => lives += 1,
+            _ => {}
+        }
+    }
+    assert!((12..=26).contains(&states), "about ten states a second: {states} in 2 s");
+    assert!((12..=26).contains(&lives), "and as many live values: {lives} in 2 s");
+    // Stopped, a moment after the meters fell, the kernel sends nothing.
+    c.call("cmd", json!(["transport.stop"])).unwrap();
+    let until = Instant::now() + Duration::from_secs(10);
+    while !quiet(&c, Duration::from_millis(1500)) {
+        assert!(Instant::now() < until, "quiet once the song stopped");
+    }
+    // An edit is sent after its turn, without waiting for the next tick.
+    let asked = Instant::now();
+    c.call("eval", json!(["paw.add_track({ name = 'two' })"])).unwrap();
+    loop {
+        let state = event(&c, "frontend.state");
+        if state["sections"]["tracks"][1]["name"] == "two" {
+            break;
+        }
+    }
+    assert!(asked.elapsed() < Duration::from_millis(500), "at once: {:?}", asked.elapsed());
+}
+
 /// A window's scene as a frontend keeps it, its patches applied, and what
 /// it shows in cells as lines of text.
 fn scene_lines(scene: &paw_scene::Scene) -> Vec<String> {

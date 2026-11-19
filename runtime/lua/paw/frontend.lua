@@ -431,15 +431,36 @@ function M.vca_words(id)
   return table.concat(names, ", ")
 end
 
+-- What the state's parts that only a turn with input, an edit or a redraw
+-- can change were made for (`still_key`), by seat: the drawn tracks and
+-- the modal state. While the song plays and nobody types, they are kept.
+local kept = {}
+
+--- What those parts depend on: the project's revision, the redraws, the
+--- input that came (`paw.remote.touches`), the seat and the keys typed.
+--- A render in the background changes the modal state on its own.
+local function still_key()
+  if paw.api.render_status() then return nil end
+  local keymap = paw.keymap
+  return table.concat({ M.revision, api.ui_redraws(), paw.remote and paw.remote.touches or 0, paw.seats.current,
+    keymap.mode, keymap.pending() }, ":")
+end
+
 --- The data that paw sends to a graphical frontend: transport, tracks,
 --- clips, devices and the modal state, as plain data. `known` is a list of
 --- the data that the frontend has already.
 function M.state(known)
   M.polled = api.now() -- someone is looking: see `paw.fx.interactive`
   local t, e = api.transport_get(), api.engine_get()
+  local key = still_key()
+  local seat = paw.seats.current
+  local same = key and kept[seat] and kept[seat].key == key and kept[seat]
   -- The tracks that are drawn: those folded away into a group are left out.
-  local ids = paw.groups.rows()
-  ids[#ids + 1] = 0 -- the master track goes last
+  local ids = same and same.ids
+  if not ids then
+    ids = paw.groups.rows()
+    ids[#ids + 1] = 0 -- the master track goes last
+  end
   -- Both sides of every track's meter, one after the other.
   local levels = {}
   for i, id in ipairs(ids) do
@@ -458,7 +479,7 @@ function M.state(known)
     time = paw.time.format(t.position), clock = paw.time.clock(t.position),
     -- The tempo and signature where the playhead is.
     tempo = math.floor(paw.tempo.at(t.position) * 100 + 0.5) / 100, signature = num .. "/" .. den,
-    cpu = paw.audio.load(e.cpu), levels = levels, inputs = inputs, modal = modal(), armed = t.recording,
+    cpu = paw.audio.load(e.cpu), levels = levels, inputs = inputs, modal = same and same.modal or modal(), armed = t.recording,
     -- What went wrong while playing (see `:engine.status`).
     xruns = e.xruns, late_blocks = e.late_blocks, midi_dropped = e.midi_dropped,
     record_dropped = e.record_dropped, devices_stopped = e.devices_stopped,
@@ -468,6 +489,7 @@ function M.state(known)
     window_fps = paw.opt.window_fps,
     window_cache = paw.opt.window_cache,
   }
+  if key and not same then kept[seat] = { key = key, ids = ids, modal = out.modal } end
   if known == M.revision then return out end
 
   local p = api.project_get()
