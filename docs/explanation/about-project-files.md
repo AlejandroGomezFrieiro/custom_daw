@@ -90,7 +90,7 @@ one of the two, it gets a file of its own at the next save.
 
 ## Files from outside the folder
 
-A clip, a sound file or a chain of devices can come from a file outside
+A clip or a sound file can come from a file outside
 the project folder. An example is a library of loops. The project
 names the file and keeps no copy, so many projects can use one library.
 
