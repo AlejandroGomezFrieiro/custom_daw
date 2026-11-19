@@ -44,9 +44,17 @@ struct Picture {
     under: bool,
     /// The size in pixels it was drawn for.
     px: [f32; 2],
-    ops: Value,
-    /// The image, and its size in pixels.
+    /// The drawing read, and what its page and its overlay (what moves
+    /// over the page: a playhead, a caret) show, as hashes.
+    drawing: std::sync::Arc<paw_raster::Drawing>,
+    page_key: u64,
+    over_key: u64,
+    /// The page's image, and its size in pixels.
     image: Option<(TextureHandle, [usize; 2])>,
+    /// The overlay's image, its size in pixels, and its box in the
+    /// drawing's pixels: made apart, so that a playhead moving over a page
+    /// does not make the page's image anew.
+    over: Option<(TextureHandle, [usize; 2], [f32; 4])>,
 }
 
 /// What the still part of a scene was painted for: its rectangle, its cut,
@@ -238,9 +246,31 @@ impl Shown {
                 (None, Some(key)) => blobs.get(key).cloned().unwrap_or(Value::Null),
                 _ => Value::Null,
             };
-            // A drawing that did not change keeps its image.
-            let image = before.remove(&node.key).filter(|p| p.rect == node.rect && p.px == picture.px && p.ops == ops).and_then(|p| p.image);
-            pictures.push(Picture { key: node.key.clone(), rect: node.rect, clip: node.clip, under: picture.under, px: picture.px, ops, image });
+            let drawing = paw_raster::Drawing::parse(&ops);
+            let keys = |items: &[paw_raster::Item]| {
+                let mut hasher = std::hash::DefaultHasher::new();
+                for item in items {
+                    std::hash::Hash::hash(&item.key, &mut hasher);
+                }
+                std::hash::Hasher::finish(&hasher)
+            };
+            let (page_key, over_key) = (keys(&drawing.page), keys(&drawing.overlay));
+            // A page that did not change keeps its image; an overlay too.
+            let old = before.remove(&node.key).filter(|p| p.rect == node.rect && p.px == picture.px);
+            let image = old.as_ref().filter(|p| p.page_key == page_key).and_then(|p| p.image.clone());
+            let over = old.filter(|p| p.over_key == over_key).and_then(|p| p.over);
+            pictures.push(Picture {
+                key: node.key.clone(),
+                rect: node.rect,
+                clip: node.clip,
+                under: picture.under,
+                px: picture.px,
+                drawing: std::sync::Arc::new(drawing),
+                page_key,
+                over_key,
+                image,
+                over,
+            });
         });
         self.pictures = pictures;
     }
@@ -478,20 +508,49 @@ impl Shown {
         for p in self.pictures.iter_mut().filter(|p| p.under == under) {
             let rect = units(p.rect);
             let size = [(rect.width() * ppp).round().max(1.0) as usize, (rect.height() * ppp).round().max(1.0) as usize];
+            // The drawing's pixels to the image's: the drawing fills it.
+            let scale = size[0] as f32 / p.px[0].max(1.0);
             if p.image.as_ref().is_none_or(|(_, made)| *made != size) {
-                // The drawing's pixels to the image's: the drawing fills it.
-                let scale = size[0] as f32 / p.px[0].max(1.0);
-                let image = match paw_raster::Drawing::parse(&p.ops).paint_scaled(size[0] as u32, size[1] as u32, scale) {
-                    Some(pixmap) => ColorImage::from_rgba_premultiplied(size, pixmap.data()),
-                    None => ColorImage::new(size, vec![Color32::TRANSPARENT; size[0] * size[1]]),
-                };
-                let texture = ui.ctx().load_texture("scene-picture", image, egui::TextureOptions::LINEAR);
+                let at = tiny_skia::Transform::from_scale(scale, scale);
+                let texture = ui.ctx().load_texture("scene-picture", raster(size, &p.drawing.page, at), egui::TextureOptions::LINEAR);
                 p.image = Some((texture, size));
             }
-            let Some((texture, _)) = &p.image else { continue };
+            // The overlay: only its box, in an image of its own.
+            let boxed = p.drawing.overlay_box();
+            match boxed {
+                Some(b) => {
+                    let over = [(b[2] * scale).ceil().max(1.0) as usize, (b[3] * scale).ceil().max(1.0) as usize];
+                    if p.over.as_ref().is_none_or(|(_, made, at)| *made != over || *at != b) {
+                        let at = tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, -b[0] * scale, -b[1] * scale);
+                        let texture = ui.ctx().load_texture("scene-overlay", raster(over, &p.drawing.overlay, at), egui::TextureOptions::LINEAR);
+                        p.over = Some((texture, over, b));
+                    }
+                }
+                None => p.over = None,
+            }
             let shown = p.clip.map_or(painter.clip_rect(), |c| units(c).intersect(painter.clip_rect()));
-            painter.with_clip_rect(shown).image(texture.id(), rect, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), Color32::WHITE);
+            let whole = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
+            if let Some((texture, _)) = &p.image {
+                painter.with_clip_rect(shown).image(texture.id(), rect, whole, Color32::WHITE);
+            }
+            if let Some((texture, made, b)) = &p.over {
+                // Its pixels are the page's: from the box's corner, as big.
+                let corner = rect.min + vec2(b[0] * scale, b[1] * scale) / ppp;
+                let over = Rect::from_min_size(corner, vec2(made[0] as f32, made[1] as f32) / ppp);
+                painter.with_clip_rect(shown).image(texture.id(), over, whole, Color32::WHITE);
+            }
         }
+    }
+}
+
+/// Some items of a drawing on an image of `size` pixels, placed by `at`.
+fn raster(size: [usize; 2], items: &[paw_raster::Item], at: tiny_skia::Transform) -> ColorImage {
+    match tiny_skia::Pixmap::new(size[0] as u32, size[1] as u32) {
+        Some(mut pixmap) => {
+            paw_raster::paint_with(&mut pixmap, items, at);
+            ColorImage::from_rgba_premultiplied(size, pixmap.data())
+        }
+        None => ColorImage::new(size, vec![Color32::TRANSPARENT; size[0] * size[1]]),
     }
 }
 
@@ -648,15 +707,16 @@ mod tests {
         let run = |text: &str| Node::new("r", Kind::Run { text: text.into() }, [0.0, 1.0, 4.0, 1.0]);
         let mut shown = Shown::default();
         let blobs = HashMap::new();
-        let full = Patch { win: "1".into(), rev: 1, full: true, size: Some([10.0, 2.0]), root: Some(vec!["r".into(), "p".into()]), set: vec![run("abc"), picture(json!([1]))], ..Patch::default() };
+        let full = Patch { win: "1".into(), rev: 1, full: true, size: Some([10.0, 2.0]), root: Some(vec!["r".into(), "p".into()]), set: vec![run("abc"), picture(json!([["r", 0, 0, 10, 10, "#ff0000", "", 1, 0]]))], ..Patch::default() };
         shown.take(&full, &blobs);
         assert_eq!(shown.rows.len(), 2);
+        let before = shown.pictures[0].page_key;
         // As drawn once: the shapes of the cells kept.
         shown.shapes = Some((Vec::new(), Vec::new(), [0.0; 5]));
-        let playhead = Patch { win: "1".into(), rev: 2, set: vec![picture(json!([2]))], ..Patch::default() };
+        let playhead = Patch { win: "1".into(), rev: 2, set: vec![picture(json!([["r", 0, 0, 10, 10, "#00ff00", "", 1, 0]]))], ..Patch::default() };
         shown.take(&playhead, &blobs);
         assert!(shown.shapes.is_some(), "the cells are not laid out again");
-        assert_eq!(shown.pictures[0].ops, json!([2]), "the picture is new");
+        assert_ne!(shown.pictures[0].page_key, before, "the picture is new");
         let text = Patch { win: "1".into(), rev: 3, set: vec![run("abd")], ..Patch::default() };
         shown.take(&text, &blobs);
         assert!(shown.shapes.is_none(), "a run changed: the cells are laid out again");
