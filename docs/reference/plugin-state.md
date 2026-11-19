@@ -157,9 +157,24 @@ paw keeps the state of an LV2 plugin as Turtle text, as
 ### HISE and Cabbage
 
 HISE and Cabbage make JUCE plugins. plugstate reads their state with the
-JUCE layer. The binary of a HISE plugin has the marker `N4hise` (the type
-names of its classes), and `doc.framework` is then `hise`. No HISE or
-Cabbage plugin was tested.
+JUCE layer.
+
+- The binary of a HISE plugin has the marker `N4hise` (the type names of
+  its classes). Then `doc.framework` is `hise`.
+- The state of a HISE plugin is a ValueTree `ControlData`. Its controls are
+  nodes with `id` and `value` under `/ControlData/InterfaceData/Content`,
+  and `doc:params()` gives them.
+- Circvit Bass (HISE, Windows, through yabridge) was tested. Its state
+  has the `vstw` layer (see
+  [The state of JUCE plugins](juce-plugin-state.md#the-layers-of-a-state)).
+- No Cabbage plugin was tested.
+
+### Windows plugins through yabridge
+
+A Windows plugin through yabridge is a VST3 or CLAP plugin for paw. Its
+state is the state of the Windows plugin, and the readers read it as
+they read the state of another plugin. plugstate does not read the binary
+of a Windows plugin, so no hint comes from its markers.
 
 ### The VST3 SDK and VSTGUI
 

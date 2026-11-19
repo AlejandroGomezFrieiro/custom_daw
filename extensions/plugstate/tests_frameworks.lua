@@ -139,6 +139,29 @@ test("plugstate: an iPlug2 state gives its parameters by name, with the host's l
   eq(c:write(), plain, "written back the same")
 end)
 
+test("plugstate: JUCE's VST3 wrapper that replaces a VST2 plugin (VstW and an FXB or FXP chunk)", function()
+  local fw = load()
+  local b = bytes_of()
+  local juce = require("plugstate.juce")
+  local function be(n) return string.char(math.floor(n / 16777216) % 256, math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256) end
+  local tree = juce.write(juce.tree("ControlData", { { "gain", 0.5 } }))
+  local bank = "FBCh" .. be(2) .. "Bass" .. be(66050) .. be(0) .. ("\0"):rep(128) .. be(#tree) .. tree
+  local program = "FPCh" .. be(1) .. "Bass" .. be(66050) .. be(1) .. ("Init"):rep(7) .. be(#tree) .. tree
+  for _, chunk in ipairs({ bank, program }) do
+    local data = "VstW" .. be(8) .. be(1) .. be(0) .. "CcnK" .. be(#chunk) .. chunk
+    local state = b.encode64(b.le32(#data) .. data .. b.le32(0))
+    local doc = fw.open(state, "vst3")
+    eq(doc.framework, "juce", "a JUCE state")
+    eq(table.concat(doc:layer_names(), " "), "vst3 vstw valuetree", "the layers: " .. table.concat(doc:layer_names(), " "))
+    eq(doc:get("/ControlData@gain"), 0.5, "the tree in the chunk")
+    eq(doc:write(), state, "written back the same")
+    doc:set("/ControlData@name", "a longer value than before")
+    local again = fw.open(doc:write(), "vst3")
+    eq(again:get("/ControlData@name"), "a longer value than before", "a change, with the sizes of the chunk")
+    eq(again:get("/ControlData@gain"), 0.5, "and the rest")
+  end
+end)
+
 test("plugstate: a Dplug state gives its normalized parameters by name, and its own data", function()
   local fw = load()
   local b = bytes_of()
@@ -290,6 +313,12 @@ local live = {
   { var = "PAW_TEST_UGRITONE", format = "vst3", name = "^Ugritone Drums$", framework = "juce",
     path = "/Root@FXChannelCompressorRatio", value = "2.0" },
   { var = "PAW_TEST_MTPDK", format = "vst3", name = "MT%-PowerDrumKit", framework = "binary" },
+  -- Windows plugins through yabridge: the variable names a bundle whose
+  -- Windows plugin is in a wine prefix made for the test (WINEPREFIX).
+  { var = "PAW_TEST_GUITARCATCHER", format = "vst3", name = "^Guitarcatcher$", framework = "juce",
+    path = "/GUITARTRACK/PARAM[id=GT_DELAY_MIX]@value", value = "0.5" },
+  { var = "PAW_TEST_CIRCVIT", format = "vst3", name = "^Circvit Bass$", framework = "juce",
+    path = "/ControlData/InterfaceData/Content/*[id=Master]@value", value = "0.5" },
   { var = "PAW_TEST_GUITARIX", format = "lv2", name = "^GxAmplifier%-X$", framework = "lv2" },
   { var = "PAW_TEST_RATATOUILLE", format = "lv2", name = "^Ratatouille$", framework = "lv2" },
 }

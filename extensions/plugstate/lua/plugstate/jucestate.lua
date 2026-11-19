@@ -37,6 +37,16 @@ local function u64(data, at)
   return lo + hi * 4294967296
 end
 
+local function be32(data, at)
+  local a, b, c, d = data:byte(at, at + 3)
+  if not d then return nil end
+  return ((a * 256 + b) * 256 + c) * 256 + d
+end
+
+local function be32_bytes(n)
+  return string.char(math.floor(n / 16777216) % 256, math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256)
+end
+
 -- --- the format -------------------------------------------------------------------
 
 --- The form of a state when the caller does not know it: "lv2" (Turtle
@@ -81,7 +91,9 @@ function M.unwrap(raw, format)
     local size = bytes.u32(raw, 1)
     if not size or 4 + size > #raw then error("not a VST3 state", 0) end
     local component, rest = raw:sub(5, 4 + size), raw:sub(5 + size)
-    local data, trailer, private = M.split_private(component)
+    -- In a VstW chunk, the private data is inside the chunk: it stays there.
+    local data, trailer, private = component, nil, nil
+    if component:sub(1, 4) ~= "VstW" then data, trailer, private = M.split_private(component) end
     local csize = bytes.u32(rest, 1)
     local controller = csize and rest:sub(5, 4 + csize) or ""
     return {
@@ -164,6 +176,20 @@ function decode(data, layers, desc, depth)
     local root = header_layer(data, desc.header, layers)
     if root then return root end
   end
+  -- JUCE's VST3 wrapper with `JUCE_VST3_CAN_REPLACE_VST2`: "VstW", then
+  -- the plugin's data in an FXB bank ("CcnK", "FBCh") or FXP program
+  -- ("FPCh") chunk, as a VST2 host keeps it. Big-endian numbers.
+  if data:sub(1, 4) == "VstW" and data:sub(17, 20) == "CcnK" then
+    local kind = data:sub(25, 28)
+    local at = (kind == "FBCh" and 173) or (kind == "FPCh" and 73) or nil
+    local size = at and be32(data, at)
+    if size and at + 3 + size <= #data then
+      local inner = data:sub(at + 4, at + 3 + size)
+      layers[#layers + 1] = { name = "vstw", head = data:sub(1, at - 1), tail = data:sub(at + 4 + size), inner = inner,
+        original = data }
+      return decode(inner, layers, nil, depth + 1)
+    end
+  end
   if data:sub(1, 4) == "VC2!" then
     local size = bytes.u32(data, 5)
     if size and 8 + size <= #data then
@@ -233,6 +259,12 @@ local function encode(layers, i, root)
     return head .. inner .. layer.tail
   end
   if inner == layer.inner then return layer.original end
+  if layer.name == "vstw" then
+    -- The sizes: of the chunk, and of the FXB or FXP after "CcnK".
+    local head = layer.head
+    head = head:sub(1, 20) .. be32_bytes(#head - 24 + 4 + #inner) .. head:sub(25)
+    return head .. be32_bytes(#inner) .. inner .. layer.tail
+  end
   if layer.name == "gzip" then return zlib.gzip(inner) .. layer.tail end
   if layer.name == "zlib" then return zlib.zlib(inner) .. layer.tail end
   if layer.name == "base64" then return juce.encode64(inner) end
@@ -338,19 +370,26 @@ end
 -- (often `PARAMETERS`, or the root).
 
 --- The node that holds the `PARAM` nodes (the description's `params` path,
---- else the first node that has one, else nil).
+--- else the first node that has one, else the first node with children
+--- that have an `id` and a `value`, as HISE's `Control` nodes, else nil).
 function Doc:param_holder()
   if self.plugin and self.plugin.params then return juce.ensure(self.root, self.plugin.params) end
-  local function find(node)
+  local function find(node, any)
     for _, c in ipairs(node.children) do
-      if c.type == "PARAM" and juce.get(c, "id") ~= nil then return node end
+      if (any or c.type == "PARAM") and juce.get(c, "id") ~= nil and (not any or juce.get_raw(c, "value") ~= nil) then
+        return node
+      end
     end
     for _, c in ipairs(node.children) do
-      local f = find(c)
+      local f = find(c, any)
       if f then return f end
     end
   end
-  return find(self.root)
+  return find(self.root) or find(self.root, true)
+end
+
+local function is_param(c)
+  return juce.get(c, "id") ~= nil and (c.type == "PARAM" or juce.get_raw(c, "value") ~= nil)
 end
 
 --- The parameters: `{ { id, value }, ... }` in their order (values as
@@ -359,7 +398,7 @@ function Doc:params()
   local holder = self:param_holder()
   local out = {}
   for _, c in ipairs(holder and holder.children or {}) do
-    if c.type == "PARAM" then
+    if is_param(c) then
       local v = juce.get(c, "value")
       out[#out + 1] = { id = juce.get(c, "id"), value = tonumber(v) or v }
     end
@@ -384,7 +423,7 @@ function Doc:set_param(id, v)
   end
   self.changed = true
   for _, c in ipairs(holder.children) do
-    if c.type == "PARAM" and juce.get(c, "id") == id then
+    if is_param(c) and juce.get(c, "id") == id then
       juce.set(c, "value", v)
       return false
     end
