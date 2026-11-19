@@ -24,6 +24,8 @@ Usage:
                                   call a running instance over its socket
   paw attach                      show a running instance's terminal UI here
   paw doctor [options]            check the audio, MIDI, plugins and environment, and print a report
+  paw clip cat <file.midi2>       print a MIDI 2.0 clip file as text, one note to a line
+                                  (git's textconv for project folders)
 
 Options:
   -e <lua>          run Lua code after startup (repeatable)
@@ -472,11 +474,29 @@ fn doctor_args(argv: impl Iterator<Item = String>) -> Result<Option<Args>> {
     Ok(Some(args))
 }
 
+/// `paw clip cat <file.midi2>`: a MIDI 2.0 clip file as text, one note or
+/// controller move to a line, for `git diff` (as its textconv) and reading.
+fn clip_command(mut argv: impl Iterator<Item = String>) -> Result<i32> {
+    match (argv.next().as_deref(), argv.next()) {
+        (Some("cat"), Some(file)) => {
+            let bytes = std::fs::read(&file).with_context(|| format!("reading {file}"))?;
+            let clip = paw_core::clipfile::decode(&bytes).with_context(|| file.clone())?;
+            print!("{}", paw_core::clipfile::text(&clip));
+            Ok(0)
+        }
+        _ => bail!("usage: paw clip cat <file.midi2>"),
+    }
+}
+
 fn run() -> Result<i32> {
     let mut argv = std::env::args().skip(1).peekable();
     let doctor = argv.peek().map(String::as_str) == Some("doctor");
     if doctor {
         argv.next();
+    }
+    if argv.peek().map(String::as_str) == Some("clip") {
+        argv.next();
+        return clip_command(argv);
     }
     if argv.peek().map(String::as_str) == Some("ctl") {
         argv.next();

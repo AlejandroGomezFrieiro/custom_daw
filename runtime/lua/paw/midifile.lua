@@ -29,6 +29,59 @@ local M = {}
 
 M.extensions = { "mid", "midi", "smf", "kar" }
 
+--- True if a path names a MIDI 2.0 clip file (`.midi2`), from its ending.
+function M.is_clip_file(path)
+  return (tostring(path):match("%.([^./]+)$") or ""):lower() == "midi2"
+end
+
+-- The clip file open alone, if one is: `{ path, clip }` (see `open_clip`).
+M.document = nil
+
+--- Open a MIDI 2.0 clip file alone, as a new project with no file: one
+--- track that plays it on the default instrument, the clip, and the piano
+--- roll on it. `:w` writes the clip back to its file. Returns the clip.
+function M.open_clip(path)
+  local read = paw.api.midi2_read(path)
+  local name = (path:match("([^/]+)$") or path):gsub("%.[^.]+$", "")
+  paw.api.project_new()
+  paw.api.project_set("name", name)
+  local track = paw.add_track({ name = name })
+  track:add_device("synth")
+  local clip = track:add_clip({ name = name, start = 0, length = read.length > 0 and read.length or nil,
+    notes = read.notes, controls = read.controls })
+  paw.api.undo_reset()
+  M.document = { path = path, clip = clip.id }
+  paw.cursor.set_track(track)
+  paw.cursor.beat = 0
+  -- `project_new` above says `project.loaded` later: this clip stays open.
+  M.document.opening = true
+  pcall(paw.ui.views.pianoroll.edit, paw.ui.views.pianoroll, clip)
+  return clip, read
+end
+
+--- Write the clip open alone back to its file. Returns its path.
+function M.write_clip()
+  local doc = M.document
+  local clip = paw.api.clip_get(doc.clip)
+  paw.api.midi2_write(doc.path, { notes = paw.api.clip_notes(doc.clip), controls = paw.api.clip_controls(doc.clip), length = clip.length })
+  paw.api.project_mark_saved()
+  return doc.path
+end
+
+paw.on("project.loaded", function()
+  if M.document and M.document.opening then
+    M.document.opening = nil
+  else
+    M.document = nil
+  end
+end)
+
+--- Bring a MIDI 2.0 clip file in as a clip that refers to it, on a track at
+--- a beat. The first edit makes it the project's own. Returns the clip.
+function M.import_clip(path, track, start)
+  return track:add_clip({ file = path, start = start })
+end
+
 --- True if a path names a MIDI file, from its file ending.
 function M.is_midi_file(path)
   local ext = (tostring(path):match("%.([^./]+)$") or ""):lower()

@@ -189,3 +189,168 @@ test("a plugin's state is a file of its own beside devices.json", function()
   paw.project.save(again)
   eq(T.read_file(again .. "/tracks/Lead/1-synth.state"), "hello", "read back and written again")
 end)
+
+test(":w in the piano roll writes the clip's file and what it needs, :ls shows each file, :wa writes them all", function()
+  local keys, bass, riff = song()
+  local dir = folder("buffers")
+  paw.project.save(dir)
+  paw.flush()
+  -- Two edits: a note of the riff, and the bass track's volume.
+  api.clip_note_set(riff, 1, { velocity = 50 })
+  api.track_set(bass, "volume", -10)
+  api.undo_checkpoint()
+  paw.ui.views.pianoroll:edit(paw.clip(riff))
+  paw.flush()
+  T.keys(":ls<CR>")
+  local files = {}
+  for _, f in ipairs(api.project_files()) do files[f.path] = f.modified end
+  eq(files["tracks/Keys/clips/riff.midi2"], true, "the clip differs from the disk")
+  eq(files["tracks/Bass/track.json"], true, "the bass track too")
+  eq(files["tracks/Keys/devices.json"], false, "the chain does not")
+  T.keys("<Esc>:w<CR>")
+  eq(paw.ui.message.text, "wrote riff.midi2", "only the clip's file (its track.json and project.toml did not change)")
+  files = {}
+  for _, f in ipairs(api.project_files()) do files[f.path] = f.modified end
+  eq(files["tracks/Keys/clips/riff.midi2"], false, "written")
+  eq(files["tracks/Bass/track.json"], true, "the bass track is still to write")
+  eq(api.project_get().modified, true, "the project still has a change that is not saved")
+  T.keys(":wa<CR>")
+  eq(api.project_get().modified, false, "all saved")
+  -- Undo of the volume makes the bass track's file differ again, and redo
+  -- makes it the same as the disk.
+  api.undo()
+  paw.flush()
+  files = {}
+  for _, f in ipairs(api.project_files()) do files[f.path] = f.modified end
+  eq(files["tracks/Bass/track.json"], true, "undone: differs from the disk")
+  api.redo()
+  files = {}
+  for _, f in ipairs(api.project_files()) do files[f.path] = f.modified end
+  eq(files["tracks/Bass/track.json"], false, "redone: as on the disk")
+  local _ = keys
+end)
+
+test("a clip file from outside is referred to until its first edit, which makes a copy that undo takes back", function()
+  fresh()
+  local lib = folder("library")
+  os.execute("mkdir -p '" .. lib .. "'")
+  api.midi2_write(lib .. "/riff.midi2", { notes = notes(0), length = 4 })
+  local t = paw.add_track({ name = "Keys" })
+  paw.cursor.set_track(t)
+  paw.cursor.beat = 4
+  T.keys(":import " .. lib .. "/riff.midi2<CR>")
+  local clip = t:clips()[1]
+  eq(clip.start, 4, "at the cursor")
+  eq(clip.length, 4, "the file's length")
+  eq(api.clip_get(clip.id).source, lib .. "/riff.midi2", "it refers to the file")
+  eq(#api.clip_notes(clip.id), 3, "its notes")
+  local dir = folder("refers")
+  paw.project.save(dir)
+  eq(exists(dir .. "/tracks/Keys/clips/riff.midi2"), false, "no copy in the folder")
+  eq(T.read_file(dir .. "/tracks/Keys/track.json"):find(lib .. "/riff.midi2", 1, true) ~= nil, true, "track.json names the file")
+  api.project_load(dir)
+  paw.flush()
+  clip = paw.tracks()[1]:clips()[1]
+  eq(api.clip_get(clip.id).source, lib .. "/riff.midi2", "still referred to after opening")
+  -- The first edit.
+  local copied = 0
+  local id = paw.on("clip.copied", function() copied = copied + 1 end)
+  T.after(function() paw.off(id) end)
+  api.clip_note_set(clip.id, 1, { pitch = 61 })
+  api.undo_checkpoint()
+  paw.flush()
+  eq(paw.ui.message.text, "riff is now this project's own copy (was " .. lib .. "/riff.midi2)", "said once")
+  eq(api.clip_get(clip.id).source, nil, "its own")
+  eq(api.clip_get(clip.id).origin, lib .. "/riff.midi2", "it remembers where it came from")
+  eq(api.midi2_read(lib .. "/riff.midi2").notes[1].pitch, 60, "the library's file did not change")
+  api.clip_note_set(clip.id, 2, { pitch = 65 })
+  api.undo_checkpoint()
+  paw.flush()
+  eq(copied, 1, "not said again")
+  api.undo()
+  api.undo()
+  eq(api.clip_get(clip.id).source, lib .. "/riff.midi2", "undo returns to the reference")
+  api.redo()
+  paw.project.save()
+  eq(exists(dir .. "/tracks/Keys/clips/riff.midi2"), true, "the copy is in the folder")
+end)
+
+test(":collect makes every clip from outside the project's own", function()
+  fresh()
+  local lib = folder("library2")
+  os.execute("mkdir -p '" .. lib .. "'")
+  api.midi2_write(lib .. "/hook.midi2", { notes = notes(0), length = 2 })
+  local t = paw.add_track({ name = "Keys" })
+  t:add_clip({ file = lib .. "/hook.midi2", start = 0 })
+  local dir = folder("collect")
+  paw.project.save(dir)
+  T.keys(":collect<CR>")
+  eq(paw.ui.message.text, "1 clip and 0 sound files are now the project's own; `:w` writes them into its folder", "said")
+  T.keys(":wa<CR>")
+  eq(exists(dir .. "/tracks/Keys/clips/hook.midi2"), true, "copied in")
+  eq(api.clip_get(t:clips()[1].id).origin, lib .. "/hook.midi2", "where it came from")
+end)
+
+test("a clip file opens alone in the piano roll, plays on a track of its own, and :w writes it back", function()
+  local lib = folder("alone")
+  os.execute("mkdir -p '" .. lib .. "'")
+  local path = lib .. "/riff.midi2"
+  api.midi2_write(path, { notes = notes(0), length = 4 })
+  fresh()
+  T.keys(":e " .. path .. "<CR>")
+  eq(paw.ui.message.text, "opened riff.midi2 alone: `:w` writes it back, `:w song` saves a project of it", "said")
+  eq(#paw.tracks(), 1, "one track")
+  eq(paw.tracks()[1]:devices()[1].kind, "synth", "the default instrument")
+  eq(paw.ui.views.pianoroll:clip().name, "riff", "the piano roll shows it")
+  eq(api.project_get().modified, false, "nothing changed yet")
+  local clip = paw.tracks()[1]:clips()[1]
+  api.clip_note_set(clip.id, 1, { pitch = 72 })
+  api.undo_checkpoint()
+  T.keys(":w<CR>")
+  eq(paw.ui.message.text, "wrote " .. path, "written back")
+  eq(api.midi2_read(path).notes[1].pitch, 72, "the file has the edit")
+  eq(api.project_get().modified, false, "saved")
+  eq(api.midi2_text(path):match("^# 3 notes") ~= nil, true, "as text: " .. api.midi2_text(path))
+end)
+
+test("a MIDI 1.0 file written, opened and written again is the same file", function()
+  fresh()
+  local t = paw.add_track({ name = "Keys" })
+  t:add_clip({ start = 0, length = 4, notes = notes(0), controls = { { start = 1, type = "cc", number = 64, value = 1 } } })
+  local a, b = T.scratch .. "/same-a.mid", T.scratch .. "/same-b.mid"
+  -- A MIDI file opened names the project after itself: the same name.
+  api.project_set("name", "same-a")
+  paw.midifile.export(a, {})
+  paw.midifile.open(a)
+  paw.midifile.export(b, {})
+  local x, y = T.read_file(a), T.read_file(b)
+  if x ~= y then
+    local i = 1
+    while x:byte(i) == y:byte(i) do i = i + 1 end
+    error(string.format("differ at byte %d of %d/%d: %q vs %q", i, #x, #y, x:sub(i - 8, i + 24), y:sub(i - 8, i + 24)))
+  end
+end)
+
+test("MIDI 1.0 notes and controllers go into a clip file and back with no loss", function()
+  fresh()
+  local t = paw.add_track({ name = "Keys" })
+  local list = {}
+  for v = 1, 127, 7 do list[#list + 1] = { start = #list * 0.25, length = 0.25, pitch = v, velocity = v } end
+  local controls = {}
+  for v = 0, 127, 9 do controls[#controls + 1] = { start = #controls * 0.125, type = "cc", number = 7, value = v / 127 } end
+  local c = t:add_clip({ start = 0, length = 8, notes = list, controls = controls })
+  local path = T.scratch .. "/seven.midi2"
+  api.midi2_write(path, { notes = api.clip_notes(c.id), controls = api.clip_controls(c.id), length = 8 })
+  local back = api.midi2_read(path)
+  for i, n in ipairs(list) do
+    eq(back.notes[i].velocity, n.velocity, "velocity " .. n.velocity)
+    eq(back.notes[i].pitch, n.pitch, "pitch")
+  end
+  for i, m in ipairs(api.clip_controls(c.id)) do
+    eq(math.floor(back.controls[i].value * 127 + 0.5), math.floor(m.value * 127 + 0.5), "a 7-bit value")
+  end
+  -- And the clip file written again is the same file.
+  local again = T.scratch .. "/seven-again.midi2"
+  api.midi2_write(again, { notes = back.notes, controls = back.controls, length = back.length })
+  eq(T.read_file(again) == T.read_file(path), true, "the same bytes")
+end)

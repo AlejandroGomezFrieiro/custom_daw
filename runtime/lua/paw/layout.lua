@@ -1989,6 +1989,19 @@ function M.setup()
       lines[#lines + 1] = string.format("%3d %s  %-14s %s", buf.id, flags, buf.name, M.title(buf))
     end
     lines[#lines + 1] = { text = "% this window's   a in a window   h in none; `:b <name>` shows one here, `:vs <name>` beside", style = "Dim" }
+    -- A project kept in a folder: its files, each a buffer that `:w`
+    -- writes, `+` when it differs from the disk.
+    local files = paw.api.project_files()
+    if #files > 0 then
+      lines[#lines + 1] = ""
+      lines[#lines + 1] = { text = "Files", style = "Title" }
+      local changed = 0
+      for _, f in ipairs(files) do
+        if f.modified then changed = changed + 1 end
+        lines[#lines + 1] = string.format("  %s  %-10s %s", f.modified and "+" or " ", f.what, f.path)
+      end
+      lines[#lines + 1] = { text = string.format("+ differs from the disk (%d); `:w` writes this window's files, `:wa` all of them", changed), style = "Dim" }
+    end
     paw.ui.page("Buffers", lines)
   end, { desc = "List the buffers" })
   command.alias("ls", "buffers")

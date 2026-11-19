@@ -104,6 +104,8 @@ pub struct Layout {
     /// The file each clip's notes are in, by clip id: a path in the folder,
     /// or a file outside it the clip refers to.
     pub clip_files: HashMap<u64, PathBuf>,
+    /// The folder of each track, by track id.
+    pub track_folders: HashMap<u64, PathBuf>,
 }
 
 fn pretty(value: &Value) -> Vec<u8> {
@@ -192,6 +194,9 @@ struct Writer<'a> {
 
 impl Writer<'_> {
     fn track(&mut self, track: &Track, folder: &Path) -> Result<()> {
+        self.layout
+            .track_folders
+            .insert(track.id, folder.to_path_buf());
         let mut taken = BTreeSet::new();
         let mut entry = track.clone();
         entry.devices = Vec::new();
@@ -839,6 +844,115 @@ fn read_clips(paths: &[PathBuf]) -> Vec<Result<clipfile::Clip>> {
 }
 
 impl super::Session {
+    /// The project's folder and its files as a save would write them now,
+    /// or `None` for a project that is not kept in a folder.
+    fn folder_layout(&mut self) -> Result<Option<(PathBuf, Layout)>> {
+        let Some(file) = self.path.clone() else {
+            return Ok(None);
+        };
+        if file.file_name().is_none_or(|n| n != PROJECT_FILE) {
+            return Ok(None);
+        }
+        let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
+        self.capture_states();
+        let project = super::media::for_file(&self.project, &file);
+        let transport = serde_json::to_value(&self.transport)?;
+        let layout = layout(&project, &transport, self.screen.as_ref(), &dir)?;
+        Ok(Some((dir, layout)))
+    }
+
+    /// The files of a project kept in a folder, each with what it holds and
+    /// whether it differs from the file on the disk: `{ path, modified,
+    /// what, track, clip }`. Empty for a project in one file or none.
+    pub fn project_files(&mut self) -> Result<Value> {
+        let Some((dir, layout)) = self.folder_layout()? else {
+            return Ok(json!([]));
+        };
+        let mut owner: HashMap<&Path, (u64, Option<u64>)> = HashMap::new();
+        for (track, folder) in &layout.track_folders {
+            owner.insert(folder.as_path(), (*track, None));
+        }
+        let clip_of: HashMap<&Path, u64> = layout
+            .clip_files
+            .iter()
+            .map(|(id, p)| (p.as_path(), *id))
+            .collect();
+        let mut out = Vec::new();
+        for (rel, bytes) in &layout.files {
+            let modified = std::fs::read(dir.join(rel)).map_or(true, |old| &old != bytes);
+            let track = rel
+                .ancestors()
+                .find_map(|a| owner.get(a).map(|o| o.0));
+            let what = match rel.extension().and_then(|e| e.to_str()) {
+                Some("midi2") => "clip",
+                Some("state") => "state",
+                Some("toml") => "project",
+                _ if rel.starts_with("tracks") || rel.starts_with("master") => {
+                    match rel.file_name().and_then(|n| n.to_str()) {
+                        Some("track.json") => "track",
+                        Some("devices.json") => "devices",
+                        _ => "automation",
+                    }
+                }
+                _ => match rel.file_name().and_then(|n| n.to_str()) {
+                    Some("screen.json") => "screen",
+                    _ => "meta",
+                },
+            };
+            out.push(json!({
+                "path": rel,
+                "modified": modified,
+                "what": what,
+                "track": track,
+                "clip": clip_of.get(rel.as_path()),
+            }));
+        }
+        Ok(Value::Array(out))
+    }
+
+    /// Save some of the files of a project kept in a folder, by their path
+    /// in it. The project counts as saved when no file differs any more.
+    /// Returns the paths written.
+    pub fn project_save_files(&mut self, paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+        let Some(file) = self.path.clone().filter(|f| f.file_name().is_some_and(|n| n == PROJECT_FILE)) else {
+            bail!("the project is not kept in a folder: `:w` saves all of it");
+        };
+        let mut only: BTreeSet<PathBuf> = paths.iter().cloned().collect();
+        // A file written names others: those not on the disk yet go too,
+        // so that everything the written files name is there.
+        if let Some((dir, layout)) = self.folder_layout()? {
+            loop {
+                let more: Vec<PathBuf> = layout
+                    .files
+                    .keys()
+                    .filter(|rel| !only.contains(*rel) && !dir.join(rel).exists())
+                    .filter(|rel| {
+                        only.iter().any(|o| {
+                            o.as_os_str() == PROJECT_FILE
+                                || (o.file_name().is_some_and(|n| n == "track.json")
+                                    && o.parent().is_some_and(|f| rel.starts_with(f)))
+                        })
+                    })
+                    .cloned()
+                    .collect();
+                if more.is_empty() {
+                    break;
+                }
+                only.extend(more);
+            }
+        }
+        let (_, done) = self.project_save_folder(&file, Some(&only))?;
+        if let Some((dir, layout)) = self.folder_layout()?
+            && layout
+                .files
+                .iter()
+                .all(|(rel, bytes)| std::fs::read(dir.join(rel)).is_ok_and(|old| &old == bytes))
+        {
+            self.history.mark_saved(false);
+        }
+        Ok(done.written)
+    }
+
     /// Open the project kept in a folder: `song`, or `song/project.toml`.
     pub(super) fn project_load_folder(&mut self, path: &Path) -> Result<()> {
         let file = std::path::absolute(project_file(path))?;
