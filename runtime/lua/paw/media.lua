@@ -94,6 +94,28 @@ command("media.collect", function()
     n > 0 and string.format(" (%d missing, not copied)", n) or ""))
 end, { desc = "Copy every sound file from outside the project's folder into its `media` folder" })
 
+command("collect", function()
+  if not api.project_get().path then return paw.notify("the project has no folder yet: `:w song` saves it first", "warn") end
+  local clips = api.clip_collect()
+  local result = api.media_collect()
+  local n = #result.missing
+  paw.notify(string.format("%d clip%s and %d sound file%s are now the project's own%s; `:w` writes them into its folder",
+    clips, clips == 1 and "" or "s", result.copied, result.copied == 1 and "" or "s",
+    n > 0 and string.format(" (%d missing, not copied)", n) or ""))
+end, { desc = "Copy every file from outside the project's folder into it: MIDI clip files and sound files" })
+
+--- A path with the home folder as `~`.
+local function tilde(path)
+  local home = os.getenv("HOME")
+  if home and path:sub(1, #home + 1) == home .. "/" then return "~" .. path:sub(#home + 1) end
+  return path
+end
+
+-- The first edit of a clip that refers to a file outside the project.
+paw.on("clip.copied", function(e)
+  paw.notify(string.format("%s is now this project's own copy (was %s)", e.name, tilde(tostring(e.origin))))
+end)
+
 command("media.missing", function()
   local missing = api.media_missing()
   if #missing == 0 then return paw.notify("no media is missing") end

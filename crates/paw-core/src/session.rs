@@ -30,6 +30,8 @@ use crate::sync::{AudioCache, LiveDevices, Mapper, ModelEvent, SyncCtx, sync};
 mod audition;
 mod clipops;
 mod encode;
+mod files_watch;
+pub mod folder;
 mod keep;
 pub mod launcher;
 mod loading;
@@ -453,6 +455,8 @@ pub struct Session {
     open_opts: loading::OpenOpts,
     /// The audio device and MIDI ports, watched for going and coming back.
     watch: watch::Watch,
+    /// Changes made outside paw to the open project's files.
+    files_watch: files_watch::FileWatch,
     /// When files played from the disk were last read ahead of the playhead.
     read_ahead_at: Instant,
     /// The project put aside while a scratch one is open: see
@@ -582,6 +586,7 @@ impl Session {
             loads: Default::default(),
             open_opts: Default::default(),
             watch: Default::default(),
+            files_watch: Default::default(),
             read_ahead_at: Instant::now(),
             shelf: None,
             trial: None,
@@ -699,6 +704,7 @@ impl Session {
             return;
         }
         self.touched = false;
+        self.own_edited_references();
         // An edit not yet played has notes not yet named: the step keeps them named.
         if self.project.name_notes(&self.checkpoint) {
             self.dirty = true;
@@ -739,6 +745,78 @@ impl Session {
         }
         self.last_sweep = moved.map(|key| (key, Instant::now(), state));
         self.trim_audio_now_and_then();
+    }
+
+    /// A clip that refers to a file outside the project and whose notes
+    /// this step changed is now the project's own, in the same step: it
+    /// keeps where it came from (`origin`). Said once, as `clip.copied`.
+    fn own_edited_references(&mut self) {
+        let before: HashMap<Id, &Arc<Clip>> = self
+            .checkpoint
+            .all_tracks()
+            .flat_map(|t| t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)))
+            .filter(|c| c.source.is_some())
+            .map(|c| (c.id, c))
+            .collect();
+        if before.is_empty() {
+            return;
+        }
+        let same = |a: &Clip, b: &Clip| match (&a.content, &b.content) {
+            (
+                ClipContent::Midi { notes, controls },
+                ClipContent::Midi {
+                    notes: n2,
+                    controls: c2,
+                },
+            ) => notes == n2 && controls == c2,
+            _ => true,
+        };
+        let mut owned = Vec::new();
+        for track in self.project.all_tracks() {
+            for clip in track.clips.iter().chain(track.slots.iter().map(|s| &s.clip)) {
+                if let Some(old) = before.get(&clip.id)
+                    && clip.source.is_some()
+                    && clip.source == old.source
+                    && !Arc::ptr_eq(old, clip)
+                    && !same(old, clip)
+                {
+                    owned.push(clip.id);
+                }
+            }
+        }
+        for id in owned {
+            let Some(clip) = self.project.clip_mut(id) else {
+                continue;
+            };
+            clip.origin = clip.source.take();
+            self.events.push((
+                "clip.copied".into(),
+                json!({ "clip": id, "name": clip.name, "origin": clip.origin }),
+            ));
+        }
+    }
+
+    /// Make every clip that refers to a file outside the project the
+    /// project's own (`:collect`): the next save writes their files into
+    /// its folder. Returns how many.
+    pub fn clip_collect(&mut self) -> usize {
+        let ids: Vec<Id> = self
+            .project
+            .all_tracks()
+            .flat_map(|t| t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)))
+            .filter(|c| c.source.as_ref().is_some_and(|s| s.is_file()))
+            .map(|c| c.id)
+            .collect();
+        for id in &ids {
+            if let Some(clip) = self.project.clip_mut(*id) {
+                clip.origin = clip.source.take();
+            }
+        }
+        if !ids.is_empty() {
+            self.touched = true;
+            self.dirty = true;
+        }
+        ids.len()
     }
 
     pub fn undo(&mut self) -> bool {
@@ -903,6 +981,7 @@ impl Session {
         self.launcher_reset();
         // The old project's audio is not needed for undo any more.
         self.trim_audio();
+        self.watch_project_files();
         self.events
             .push(("project.loaded".into(), json!({ "path": self.path })));
     }
@@ -915,6 +994,12 @@ impl Session {
     /// counts as unchanged: for a project put together by a script from a
     /// file that is not a project, such as a MIDI file, which then opens as
     /// a project file does instead of as edits of an empty one.
+    /// Count the project as it is now as saved, without writing it.
+    pub fn mark_saved(&mut self) {
+        self.checkpoint();
+        self.history.mark_saved(false);
+    }
+
     pub fn undo_reset(&mut self) {
         self.checkpoint = self.project.clone();
         self.history.reset(self.project.clone(), history::now());
@@ -922,6 +1007,9 @@ impl Session {
     }
 
     pub fn project_load(&mut self, path: &Path) -> Result<()> {
+        if folder::is_folder_path(path) {
+            return self.project_load_folder(path);
+        }
         let text =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let mut file: ProjectFile =
@@ -1006,6 +1094,9 @@ impl Session {
             .map(Path::to_path_buf)
             .or_else(|| self.path.clone())
             .context("the project has no file yet: give a path")?;
+        if folder::is_folder_path(&path) {
+            return self.project_save_folder(&path, None).map(|(path, _)| path);
+        }
         self.adopt_recordings(&path)?;
         self.capture_states();
         // What is saved is everything up to here and nothing after: an edit
@@ -1750,6 +1841,7 @@ impl Session {
         self.poll_loads();
         self.poll_stretches();
         self.watch_devices();
+        self.poll_file_changes();
         let mut changed: Vec<(Id, Vec<String>)> = Vec::new();
         // What was moved in a plugin's own window, for writing automation.
         let mut moved: Vec<(Id, String, f64)> = Vec::new();
@@ -2069,6 +2161,30 @@ impl Session {
         if track == MASTER_ID {
             bail!("the master track has no clips: put them on a track");
         }
+        let mut opts = opts;
+        // A MIDI clip file: a MIDI clip that refers to it, as long as it
+        // is not edited (`Clip::source`).
+        let mut source = None;
+        if let Some(file) = opts
+            .file
+            .take_if(|f| f.extension().is_some_and(|e| e == "midi2"))
+        {
+            let file = std::path::absolute(&file).unwrap_or(file);
+            let bytes =
+                std::fs::read(&file).with_context(|| format!("reading {}", file.display()))?;
+            let read = crate::clipfile::decode(&bytes)
+                .with_context(|| format!("reading {}", file.display()))?;
+            opts.kind = Some("midi".into());
+            opts.notes = read.notes;
+            opts.controls = read.controls;
+            if opts.length.is_none() && read.length > 0.0 {
+                opts.length = Some(read.length);
+            }
+            if opts.name.is_none() {
+                opts.name = file.file_stem().map(|s| s.to_string_lossy().into_owned());
+            }
+            source = Some(file);
+        }
         let kind =
             opts.kind
                 .as_deref()
@@ -2158,6 +2274,8 @@ impl Session {
                 fade_in: opts.fade_in,
                 fade_out: opts.fade_out,
                 meta: opts.meta,
+                source,
+                origin: None,
             });
             match opts.slot {
                 Some(row) => launcher::put_slot(
@@ -4339,6 +4457,15 @@ fn clip_json(c: &Clip, track: Id) -> Value {
     });
     match &c.content {
         ClipContent::Midi { notes, controls } => {
+            if let Some(source) = &c.source {
+                v["source"] = json!(source);
+                if !source.is_file() {
+                    v["offline"] = json!(true);
+                }
+            }
+            if let Some(origin) = &c.origin {
+                v["origin"] = json!(origin);
+            }
             v["note_count"] = json!(notes.len());
             v["control_count"] = json!(controls.len());
             // Changes whenever the notes do, so that whoever draws them

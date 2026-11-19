@@ -635,6 +635,13 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             sh.session.borrow_mut().project_new();
             Ok(())
         }
+        // Count the project as it is now as saved, for a script that wrote
+        // what it holds somewhere itself (a clip opened alone, written
+        // back to its file).
+        fn project_mark_saved(_, sh, () => ()) {
+            sh.session.borrow_mut().mark_saved();
+            Ok(())
+        }
         // `opts.plugins_offline` opens it with all plugins offline.
         // `opts.offline` is a list of devices (by id) to open offline.
         fn project_load(lua, sh, (path, opts) => (String, LuaValue)) {
@@ -665,6 +672,36 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             let recovered = session.project_recover(Path::new(&path), as_path.as_deref().map(Path::new));
             session.set_open_opts(Default::default());
             to_lua(lua, &recovered.lua()?)
+        }
+        // The files of a project kept in a folder, with what each holds and
+        // whether it differs from the disk (see `:ls`).
+        fn project_files(lua, sh, () => ()) {
+            to_lua(lua, &sh.session.borrow_mut().project_files().lua()?)
+        }
+        // Save only these files of a project kept in a folder, by their path
+        // in it. Returns the paths written.
+        fn project_save_files(lua, sh, paths => Vec<String>) {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            to_lua(lua, &sh.session.borrow_mut().project_save_files(&paths).lua()?)
+        }
+        // Make every clip that refers to a MIDI clip file outside the
+        // project the project's own. Returns how many.
+        fn clip_collect(_, sh, () => ()) {
+            Ok(sh.session.borrow_mut().clip_collect())
+        }
+        // The files of the open project that changed outside paw and are not
+        // acted on yet: paths in its folder, or full paths outside it.
+        fn project_changed_files(lua, sh, () => ()) {
+            to_lua(lua, &sh.session.borrow().changed_files())
+        }
+        // Keep the project as paw has it: forget the changes made outside.
+        fn project_keep_changes(_, sh, () => ()) {
+            sh.session.borrow_mut().keep_changed_files();
+            Ok(())
+        }
+        // Read a project kept in a folder again, as one undo step.
+        fn project_reload(_, sh, () => ()) {
+            sh.session.borrow_mut().project_reload().lua()
         }
         fn project_save(_, sh, path => Option<String>) {
             let saved = sh.session.borrow_mut().project_save(path.as_deref().map(AsRef::as_ref)).lua()?;
@@ -1291,6 +1328,38 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         }
         fn project_file_text(lua, _sh, value => LuaValue) {
             crate::session::project_file_text(from_lua(lua, value)?).lua()
+        }
+        // A MIDI 2.0 clip file (`.midi2`): `{ notes, controls, length,
+        // skipped }`, with times in beats; `skipped` says what the file held
+        // that a clip has no place for.
+        fn midi2_read(lua, _sh, path => String) {
+            let bytes = std::fs::read(&path).map_err(|e| mlua::Error::runtime(format!("{path}: {e}")))?;
+            let clip = crate::clipfile::decode(&bytes).lua()?;
+            to_lua(lua, &json!({
+                "notes": clip.notes, "controls": clip.controls, "length": clip.length, "skipped": clip.skipped,
+            }))
+        }
+        // Write notes and controller moves (`{ notes, controls, length }`) as
+        // a MIDI 2.0 clip file, all or nothing.
+        fn midi2_write(lua, _sh, (path, clip) => (String, LuaValue)) {
+            #[derive(Deserialize)]
+            struct Given {
+                #[serde(default)]
+                notes: Vec<Note>,
+                #[serde(default)]
+                controls: Vec<Control>,
+                #[serde(default)]
+                length: f64,
+            }
+            let given: Given = from_lua(lua, clip)?;
+            let bytes = crate::clipfile::encode(&given.notes, &given.controls, given.length);
+            crate::safe::write_file(Path::new(&path), &bytes, false).lua()
+        }
+        // A MIDI 2.0 clip file as text, one note or controller move to a line,
+        // as `paw clip cat` prints it.
+        fn midi2_text(_, _sh, path => String) {
+            let bytes = std::fs::read(&path).map_err(|e| mlua::Error::runtime(format!("{path}: {e}")))?;
+            Ok(crate::clipfile::text(&crate::clipfile::decode(&bytes).lua()?))
         }
         // Give a name to the open step. The first name wins. nil removes a name
         // given while the step changed nothing.

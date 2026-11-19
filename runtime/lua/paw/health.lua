@@ -160,6 +160,19 @@ M.register("ffmpeg", function(h)
   end
 end, { desc = "renders to compressed formats" })
 
+M.register("git", function(h)
+  if not M.executable("git") then return h.info("git not found: project folders work without it") end
+  local pipe = io.popen("git config --get diff.paw-midi2.textconv 2>/dev/null")
+  local driver = pipe and pipe:read("*l")
+  if pipe then pipe:close() end
+  if driver and driver ~= "" then
+    h.ok("git shows MIDI clip files as text with `" .. driver .. "`")
+  else
+    h.warn("git shows the MIDI clip files (.midi2) of a project as binary",
+      { "set it one time: git config --global diff.paw-midi2.textconv \"paw clip cat\"" })
+  end
+end, { desc = "project folders in version control" })
+
 M.register("terminal", function(h)
   if not api.ui_attached() then return h.info("no terminal attached (headless, or a script)") end
   local caps = api.ui_caps()

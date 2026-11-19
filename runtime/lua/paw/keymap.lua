@@ -1081,8 +1081,27 @@ handle = function(key)
   end
 end
 
+local next_key = {}
+
+--- Run `fn` once, before the next key is handled: for what waits until the
+--- person is back at the keyboard (a file changed outside paw).
+function M.on_next_key(fn)
+  for _, f in ipairs(next_key) do
+    if f == fn then return end
+  end
+  next_key[#next_key + 1] = fn
+end
+
 --- Handle one key as if the user typed it. The kernel calls this. Scripts use `feed`.
 function M.dispatch(key)
+  if #next_key > 0 and depth == 0 then
+    local due = next_key
+    next_key = {}
+    local grabber = paw.ui.grabber
+    for _, fn in ipairs(due) do paw.try(fn) end
+    -- What they asked takes the next key; this one only brought it up.
+    if paw.ui.grabber and paw.ui.grabber ~= grabber then return end
+  end
   if macro and depth == 0 then macro.keys[#macro.keys + 1] = key end
   if not track.keys then track.keys, track.edits, track.texts = {}, api.project_get().edits, text_changes end
   track.keys[#track.keys + 1] = key
