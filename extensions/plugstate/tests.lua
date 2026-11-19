@@ -429,3 +429,242 @@ test("plugstate: Soundshed Guitar presets of a pack, scenes and block models", f
   end
 end)
 
+-- --- the JUCE layer ---------------------------------------------------------------
+
+test("plugstate: the JUCE layer reads and writes back each container, byte for byte", function()
+  load()
+  local juce, jx, js = require("plugstate.juce"), require("plugstate.jucexml"), require("plugstate.jucestate")
+  local bytes, zlib = require("plugstate.bytes"), require("plugstate.zlib")
+
+  -- vars of each kind
+  for _, case in ipairs({ { 7, "int" }, { -2, "int64" }, { 0.25 }, { true }, { false }, { "text" },
+    { { binary = "\0\1\2" } }, { { array = { 1.5, "a", true } } } }) do
+    local raw = juce.raw(case[1], case[2])
+    eq(juce.raw(juce.value(raw), case[2]), raw, "a var: " .. juce.show(raw))
+  end
+
+  -- An APVTS state as a binary ValueTree, and as XML.
+  local tree = juce.tree("Plugin", { { "version", 3, "int" }, { "name", "Lead" } }, {
+    juce.tree("PARAMETERS", nil, {
+      juce.tree("PARAM", { { "id", "gain" }, { "value", 0.5 } }),
+      juce.tree("PARAM", { { "id", "mix" }, { "value", 1 } }),
+    }),
+    juce.tree("Slot", { { "file", "/a.wav" } }), juce.tree("Slot", { { "file", "/b.wav" } }),
+  })
+  local binary = juce.write(tree)
+  local pretty = '<?xml version="1.0" encoding="UTF-8"?>\n\n<Plugin version="3" name="Lead &amp; Pad">\n'
+    .. '  <PARAMETERS>\n    <PARAM id="gain" value="0.5"/>\n    <PARAM id="mix" value="1.0"/>\n  </PARAMETERS>\n'
+    .. '  <!-- kept -->\n  <Slot file="/a.wav"/>\n  <Slot file="/b.wav"></Slot>\n</Plugin>\n'
+  local vc2 = "VC2!" .. bytes.le32(#pretty) .. pretty .. "\0"
+  local containers = {
+    { "valuetree", binary }, { "prefix", "ABC1" .. binary .. "rest" }, { "xml", pretty }, { "vc2", vc2 },
+    { "gzip", zlib.gzip(binary) }, { "zlib", zlib.zlib(vc2) }, { "base64", juce.encode64(binary) },
+  }
+  for _, c in ipairs(containers) do
+    for _, format in ipairs({ "clap", "vst3", "lv2" }) do
+      local state = bytes.encode64(js.wrap(c[2], format, nil, { uri = "urn:test" }))
+      local doc = js.open(state, format)
+      eq(doc:write(), state, c[1] .. " in " .. format .. ": nothing changed, the same bytes")
+      eq(doc.root.type, "Plugin", c[1] .. " in " .. format .. ": the tree")
+      eq(tonumber(doc:param("gain")), 0.5, c[1] .. ": APVTS parameter")
+      eq(doc:get("/Plugin/Slot[2]@file"), "/b.wav", c[1] .. ": a path with an index")
+      eq(tonumber(doc:get("/Plugin/PARAMETERS/PARAM[id=mix]@value")), 1, c[1] .. ": a path with a filter")
+      doc:set("/Plugin/Slot[1]@file", "/c.wav")
+      doc:set_param("gain", 0.75)
+      eq(doc:set_param("hidden", 2), true, "a parameter that is not there is added")
+      local again = js.open(doc:write(), format)
+      eq(again:get("/Plugin/Slot[1]@file"), "/c.wav", c[1] .. " in " .. format .. ": the change is written")
+      eq(tonumber(again:param("gain")), 0.75, c[1] .. ": the parameter")
+      eq(tonumber(again:param("hidden")), 2, c[1] .. ": the new parameter")
+      eq(again:get("/Plugin/Slot[2]@file"), "/b.wav", c[1] .. ": the rest stays")
+    end
+  end
+  -- XML: only what changed is written again.
+  local doc = jx.parse(pretty)
+  juce.set_path(doc.root, "/Plugin/Slot[1]@file", "/c.wav")
+  eq(jx.write(doc), (pretty:gsub("/a%.wav", "/c.wav")), "the other bytes of the XML stay as they were")
+  eq(juce.find(doc.root, "/Plugin@name"), "Lead & Pad", "entities are read")
+  juce.insert_path(doc.root, "/Plugin", jx.tree("Slot", { { "file", '/"d".wav' } }))
+  eq(jx.write(doc):find('<Slot file="/&quot;d&quot;.wav"/>', 1, true) ~= nil, true, "a new element is written as JUCE writes it")
+  eq(juce.remove_path(doc.root, "/Plugin/Slot"), 3, "remove takes away each node the path names")
+  eq(juce.find(doc.root, "/Plugin/Slot"), nil, "and they are gone")
+
+  -- The private data of JUCE's VST3 wrapper.
+  local private = juce.tree("JUCEPrivateData", { { "Bypass", false } })
+  local component = binary .. js.private_trailer(private)
+  local vst3 = bytes.encode64(bytes.le32(#component) .. component .. bytes.le32(4) .. "CTRL")
+  local v = js.open(vst3, "vst3")
+  eq(v.outer.data, binary, "the plugin's data without JUCE's private data")
+  eq(juce.get(v.outer.private, "Bypass"), false, "the private tree")
+  eq(v:write(), vst3, "written back the same")
+  eq(js.open(v:write_as("clap"), "clap"):write(), bytes.encode64(binary), "as CLAP: the plugin's data alone")
+  local lv2 = js.open(v:write_as("lv2", nil, { uri = "urn:test" }), "lv2")
+  eq(lv2.outer.data, binary, "as LV2: in a StateString")
+
+  -- Schema learning: the paths that differ.
+  local a = js.open(bytes.encode64(binary), "clap")
+  local b = js.open(bytes.encode64(binary), "clap")
+  b:set("/Plugin@name", "Pad")
+  b:set_param("hidden", 1)
+  b:remove("/Plugin/Slot[2]")
+  local lines = juce.diff_text(a:diff(b))
+  eq(table.concat(lines, "\n"), 'set    /Plugin@name: "Lead" → "Pad"\n'
+    .. "add    /Plugin/PARAMETERS/PARAM[id=hidden] = <PARAM>\n"
+    .. "remove /Plugin/Slot[2] (was <Slot>)", "the changes, by path")
+
+  -- A preset: edits on a base, in a file, for another format.
+  local file = T.scratch .. "/lead.jucepreset"
+  js.write_preset(file, { name = "Lead", base = bytes.encode64(binary), format = "clap",
+    edits = { { path = "/Plugin@name", value = "Big" }, { param = "gain", value = 0.1 },
+      { path = "/Plugin/New[id=x]@data", value = { binary = "\0\255" }, make = true } } })
+  local preset = js.read_preset(file)
+  local made = js.open(js.generate(preset, "vst3", vst3), "vst3")
+  eq(made:get("/Plugin@name"), "Big", "the preset's edit, in VST3")
+  eq(made:param("gain"), 0.1, "its parameter")
+  eq(made:get("/Plugin/New@data").binary, "\0\255", "a node that it makes")
+  eq(made.outer.controller, "CTRL", "with what the device's own state has around the data")
+end)
+
+--- A track with a held A3 and a device of `kind`, with the cursor and the
+--- device panel on it.
+local function instrument(kind, name)
+  local track = paw.add_track({ name = name })
+  track:add_clip({ start = 0, length = 4, notes = { { pitch = "A3", start = 0, length = 4 } } })
+  local d = track:add_device(kind)
+  paw.flush()
+  paw.cursor.set_track(track.id)
+  devices_on(d.id)
+  return d
+end
+
+local function pitch() return T.frequency(T.render({ tail = 0, bits = 16 }), 0.5, 1.5) end
+
+test("plugstate: JUCE states of Surge XT: byte for byte, the changes by path, a preset of one format in the others", function()
+  local clap, vst3, lv2 = kind_of("clap", "^Surge XT$"), kind_of("vst3", "^Surge XT$"), kind_of("lv2", "^Surge XT$")
+  if not clap then return "skipped: Surge XT not found" end
+  load()
+  local js, jp = require("plugstate.jucestate"), require("plugstate.juceplugins")
+  fresh()
+  -- Each format: the real state goes through the layer unchanged.
+  for _, kind in ipairs({ clap, vst3, lv2 }) do
+    if kind then
+      local d = paw.add_track({ name = kind }):add_device(kind)
+      paw.flush()
+      local dev = api.device_get(d.id)
+      local state = api.device_state(d.id)
+      local doc = js.open(state, dev.plugin.format, { desc = js.plugin_of(dev) })
+      eq(doc:write(), state, kind .. ": written back byte for byte")
+      eq(doc:get("name"), "Init Saw", kind .. ": the description's path")
+    end
+  end
+
+  fresh()
+  local synth = instrument(clap, "clap")
+  api.undo_checkpoint()
+  eq(plugstate.adapter_of(synth.id).name, "juce", "the JUCE adapter knows the described plugin")
+  T.near(pitch(), 220, 6, "Init Saw plays A3")
+  -- Schema learning: keep the state, change the plugin, list the paths.
+  keys(":plugstate.mark<CR>")
+  api.device_set_param(synth.id, "a_octave", 4 / 6)
+  paw.flush()
+  local changes = jp.changes(synth.id)
+  local paths = {}
+  for _, c in ipairs(changes) do paths[#paths + 1] = c.path end
+  eq(table.concat(paths, " "):find("/patch/parameters/a_octave@value", 1, true) ~= nil, true,
+    "the octave's path changed: " .. table.concat(paths, " "))
+  T.near(pitch(), 440, 10, "an octave higher")
+  eq(#changes, 1, "only the octave: the description leaves out the window's state")
+  local file = T.scratch .. "/octave.jucepreset"
+  keys(":plugstate.preset_write " .. file .. "<CR>")
+  eq(js.read_preset(file).plugin, "surge-xt", "the preset names the plugin")
+  keys("u")
+
+  --- Wait until the plugin holds an octave (two seconds at most): an undo
+  --- reaches the plugin a moment later.
+  local function holds(d, octave, key)
+    paw.flush()
+    for _ = 1, 100 do
+      if plugstate.slot(d.id, key or "octave").value == octave then return end
+      api.sleep(20)
+    end
+  end
+
+  -- The preset, written from CLAP, in the other formats. (Surge XT's VST3
+  -- takes no state from paw, not even one it saved: not tested there.)
+  for _, kind in ipairs({ clap, lv2 }) do
+    if kind then
+      fresh()
+      local d = instrument(kind, kind)
+      api.undo_checkpoint()
+      T.near(pitch(), 220, 6, kind .. ": A3 before")
+      keys(":plugstate.load " .. file .. "<CR>")
+      holds(d, "1")
+      eq(plugstate.slot(d.id, "octave").value, "1", kind .. ": the slot reads it")
+      T.near(pitch(), 440, 10, kind .. ": the preset made in CLAP plays an octave higher")
+      keys("u")
+      holds(d, "0")
+      T.near(pitch(), 220, 6, kind .. ": u takes it back")
+    end
+  end
+
+  -- A path set with a command, as one undo step.
+  fresh()
+  local d = instrument(lv2 or clap, "path")
+  api.undo_checkpoint()
+  keys(":plugstate.path /patch/meta@name Paw Lead<CR>")
+  holds(d, "Paw Lead", "name")
+  eq(plugstate.slot(d.id, "name").value, "Paw Lead", ":plugstate.path sets the name in the plugin")
+  keys(":plugstate.load slot=octave -1<CR>")
+  holds(d, "-1")
+  T.near(pitch(), 110, 4, "the octave slot: an octave lower")
+  keys("u")
+  holds(d, "0")
+  T.near(pitch(), 220, 6, "u: back")
+end)
+
+test("plugstate: the JUCE layer reads TONE3000's real states byte for byte in each format", function()
+  local pkg, why = package("PAW_TEST_TONE3000")
+  if not pkg then return why end
+  load()
+  local js, t3k = require("plugstate.jucestate"), require("plugstate.tone3000")
+  local seen = 0
+  for _, format in ipairs({ "clap", "vst3", "lv2" }) do
+    local kind = kind_of(format, "^TONE3000$")
+    if kind then
+      fresh()
+      local d = paw.add_track({ name = format }):add_device(kind)
+      paw.flush()
+      local state = api.device_state(d.id)
+      local doc = js.open(state, format, { desc = t3k.desc })
+      eq(doc:write(), state, format .. ": written back byte for byte")
+      eq(#doc:params() > 10, true, format .. ": its APVTS parameters")
+      local _, close = t3k.open(state, format)
+      eq(close((t3k.open(state, format))), state, format .. ": the adapter's open and close too")
+      seen = seen + 1
+    end
+  end
+  eq(seen, 3, "the three formats")
+end)
+
+test("plugstate: Musio's state through the JUCE layer (needs PAW_TEST_MUSIO)", function()
+  local pkg, why = package("PAW_TEST_MUSIO")
+  if not pkg then return why end
+  local kind = kind_of("vst3", "^Musio$")
+  if not kind then return "skipped: Musio not found" end
+  load()
+  local js = require("plugstate.jucestate")
+  fresh()
+  local d = instrument(kind, "musio")
+  api.undo_checkpoint()
+  local state = api.device_state(d.id)
+  local doc = js.open(state, "vst3", { plugin = "musio" })
+  eq(doc:write(), state, "written back byte for byte")
+  eq(table.concat(doc:layer_names(), " "), "vst3 juce-private vc2 xml", "copyXmlToBinary in JUCE's VST3 wrapper")
+  eq(doc:get("file_version") ~= nil, true, "the MusioFile")
+  eq(plugstate.adapter_of(d.id).name, "juce", "the JUCE adapter knows Musio")
+  keys(":plugstate.load slot=room Cathedral<CR>")
+  eq(plugstate.slot(d.id, "room").value, "Cathedral", "the plugin takes the room of its reverb from the state")
+  keys("u")
+  eq(plugstate.slot(d.id, "room").value, "Scoring Stage", "u takes it back")
+end)
+
