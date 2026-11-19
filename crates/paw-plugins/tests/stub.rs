@@ -100,6 +100,24 @@ fn a_plugin_in_an_added_directory_takes_the_attribute_and_names_its_keys() {
     assert!(instance.device.resting(), "the plugin said it sleeps");
     instance.device.set_param(0, 0.5);
     assert!(!instance.device.resting(), "a parameter to deliver wakes it");
+    instance.device.process(&ctx, &mut io);
+    assert!(instance.device.resting(), "asleep again");
+
+    // A state it takes on only in its next block wakes it: asleep, it
+    // would never take it.
+    let state: libloading::Symbol<extern "C" fn() -> u32> =
+        unsafe { lib.get(b"stub_clap_state\0").unwrap() };
+    let controller = instance.controller.as_mut().unwrap();
+    controller.load_state(&7u32.to_le_bytes()).unwrap();
+    assert_eq!(state(), 0, "not taken on yet");
+    assert!(!instance.device.resting(), "a state to take on wakes it");
+    instance.device.process(&ctx, &mut io);
+    assert_eq!(state(), 7, "taken on in the block it was woken for");
+    assert_eq!(
+        instance.controller.as_mut().unwrap().save_state().unwrap(),
+        Some(7u32.to_le_bytes().to_vec())
+    );
+    assert!(instance.device.resting(), "and asleep again");
 
     let names = instance
         .controller

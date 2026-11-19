@@ -589,9 +589,8 @@ test("plugstate: JUCE states of Surge XT: byte for byte, the changes by path, a 
     end
   end
 
-  -- The preset, written from CLAP, in the other formats. (Surge XT's VST3
-  -- takes no state from paw, not even one it saved: not tested there.)
-  for _, kind in ipairs({ clap, lv2 }) do
+  -- The preset, written from CLAP, in the other formats.
+  for _, kind in ipairs({ clap, vst3, lv2 }) do
     if kind then
       fresh()
       local d = instrument(kind, kind)

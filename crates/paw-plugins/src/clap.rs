@@ -229,6 +229,10 @@ struct ClapFactory {
 struct HostFlags {
     callback: AtomicBool,
     restart: AtomicBool,
+    /// The plugin has to be run again, though it said it may sleep: it
+    /// asked to be (`request_process`), or was given a state, which some
+    /// plugins only take on in their next block.
+    wake: AtomicBool,
     /// The plugin says its parameter values changed behind the host's back.
     rescan: AtomicBool,
     /// The plugin closed its editor itself.
@@ -245,6 +249,7 @@ impl HostFlags {
         Self {
             callback: AtomicBool::new(false),
             restart: AtomicBool::new(false),
+            wake: AtomicBool::new(false),
             rescan: AtomicBool::new(false),
             closed: AtomicBool::new(false),
             resize: Mutex::new(None),
@@ -682,13 +687,17 @@ impl Device for ClapDevice {
     /// As the plugin's status after its last block says: asleep, or quiet,
     /// or done with its tail; unless a parameter has moved since.
     fn resting(&self) -> bool {
-        self.resting && self.pending.is_empty()
+        self.resting && self.pending.is_empty() && !self.shared.flags.wake.load(Relaxed)
     }
 
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io) {
         let n = io.left.len();
         let plugin = self.shared.plugin;
         self.resting = false;
+        // Woken: its tail starts again from here.
+        if self.shared.flags.wake.swap(false, Relaxed) {
+            self.quiet = 0;
+        }
         if paw_engine::device::quiet(io) {
             self.quiet = self.quiet.saturating_add(n as u64);
         } else {
@@ -1154,6 +1163,8 @@ impl Controller for ClapController {
             if !load(self.shared.plugin, &stream) {
                 bail!("the plugin rejected the saved state");
             }
+            // Some plugins take a state on only in their next block.
+            self.shared.flags.wake.store(true, Relaxed);
             Ok(())
         }
     }
@@ -1398,7 +1409,9 @@ unsafe extern "C" fn host_request_restart(host: *const clap_host) {
     unsafe { flags(host) }.restart.store(true, Relaxed);
 }
 
-unsafe extern "C" fn host_request_process(_: *const clap_host) {}
+unsafe extern "C" fn host_request_process(host: *const clap_host) {
+    unsafe { flags(host) }.wake.store(true, Relaxed);
+}
 
 unsafe extern "C" fn host_request_callback(host: *const clap_host) {
     unsafe { flags(host) }.callback.store(true, Relaxed);

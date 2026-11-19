@@ -10,7 +10,8 @@ use std::ffi::{c_char, c_void};
 use std::path::{Path, PathBuf};
 use std::ptr;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, bail};
@@ -296,9 +297,19 @@ struct Vst3Factory {
 #[derive(Default)]
 struct Host {
     /// Parameter edits made in the plugin's editor, waiting to be passed on.
-    edits: RefCell<Vec<(ParamID, f64)>>,
+    /// Each with whether it came inside `beginEdit` and `endEdit`: a
+    /// person's move, not the plugin telling of a value it took on itself.
+    edits: RefCell<Vec<(ParamID, f64, bool)>>,
+    /// The parameters between `beginEdit` and `endEdit` now.
+    gestures: RefCell<Vec<ParamID>>,
     /// The plugin says its parameter values changed wholesale.
     rescan: Cell<bool>,
+    /// The processor has to be run again, though its tail has gone by: it
+    /// was given a state, which some plugins (JUCE ones, Surge XT) only
+    /// take on in their next block.
+    wake: AtomicBool,
+    /// Blocks the processor has run, to tell when it has taken on a state.
+    blocks: AtomicU64,
     watches: RunLoop,
 }
 
@@ -328,16 +339,22 @@ impl IHostApplicationTrait for Host {
 }
 
 impl IComponentHandlerTrait for Host {
-    unsafe fn beginEdit(&self, _id: ParamID) -> tresult {
+    unsafe fn beginEdit(&self, id: ParamID) -> tresult {
+        self.gestures.borrow_mut().push(id);
         OK
     }
 
     unsafe fn performEdit(&self, id: ParamID, value: ParamValue) -> tresult {
-        self.edits.borrow_mut().push((id, value));
+        let gesture = self.gestures.borrow().contains(&id);
+        self.edits.borrow_mut().push((id, value, gesture));
         OK
     }
 
-    unsafe fn endEdit(&self, _id: ParamID) -> tresult {
+    unsafe fn endEdit(&self, id: ParamID) -> tresult {
+        let mut gestures = self.gestures.borrow_mut();
+        if let Some(at) = gestures.iter().position(|g| *g == id) {
+            gestures.swap_remove(at);
+        }
         OK
     }
 
@@ -1033,6 +1050,7 @@ impl DeviceFactory for Vst3Factory {
                     ),
                     class: hex(&self.class),
                     known: vec![f64::NAN; shared.param_ids.len()],
+                    loaded: None,
                     shared,
                     edits,
                     editor: None,
@@ -1044,6 +1062,10 @@ impl DeviceFactory for Vst3Factory {
 }
 
 const NO_PARAM: ParamID = ParamID::MAX;
+
+/// How long after a state what the plugin tells of its values is the echo
+/// of that state.
+const ECHO: Duration = Duration::from_millis(750);
 
 struct Vst3Device {
     shared: Arc<Shared>,
@@ -1086,12 +1108,20 @@ impl Device for Vst3Device {
     /// Once its tail has gone by in silence and its output was silent,
     /// unless a parameter has moved since.
     fn resting(&self) -> bool {
-        self.resting && self.pending.is_empty() && self.edited.is_empty()
+        self.resting
+            && self.pending.is_empty()
+            && self.edited.is_empty()
+            && !self.shared.host.wake.load(Ordering::Relaxed)
     }
 
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io) {
         let n = io.left.len();
         self.resting = false;
+        // Woken: its tail starts again from here.
+        if self.shared.host.wake.swap(false, Ordering::Relaxed) {
+            self.quiet = 0;
+        }
+        self.shared.host.blocks.fetch_add(1, Ordering::Relaxed);
         if paw_engine::device::quiet(io) {
             self.quiet = self.quiet.saturating_add(n as u64);
         } else {
@@ -1319,6 +1349,10 @@ struct Vst3Controller {
     edits: rtrb::Producer<(u32, f32)>,
     /// The last value seen for each parameter, to tell what a rescan changed.
     known: Vec<f64>,
+    /// When it was last given a state, and how many blocks the processor
+    /// had run then (`u64::MAX` once the controller has read the state
+    /// again).
+    loaded: Option<(Instant, u64)>,
     editor: Option<Editor>,
     ports: Ports,
 }
@@ -1451,14 +1485,39 @@ impl Controller for Vst3Controller {
     fn idle(&mut self) {
         self.shared.host.watches.run();
         self.run_editor();
+        // A processor that takes a state on in its next block (JUCE queues
+        // it there) has its new values only then: the controller, which
+        // read them from it as it was given the state, reads them again.
+        if let Some((at, blocks)) = self.loaded
+            && blocks != u64::MAX
+            && self.shared.host.blocks.load(Ordering::Relaxed) != blocks
+        {
+            self.loaded = Some((at, u64::MAX));
+            if let Some(controller) = &self.shared.controller {
+                unsafe {
+                    let state = Stream::new(Vec::new());
+                    if self.shared.component.getState(stream_ptr(&state)) == OK {
+                        state.pos.set(0);
+                        controller.setComponentState(stream_ptr(&state));
+                        self.shared.host.rescan.set(true);
+                    }
+                }
+            }
+        }
     }
 
     fn take_changes(&mut self) -> Vec<(usize, f64)> {
         let mut out = Vec::new();
-        for (id, value) in self.shared.host.edits.take() {
+        // Shortly after a state, what the plugin tells of its values is the
+        // echo of the state, which the processor has already: passed on, an
+        // echo of a state given before an undo would play the old value.
+        let echo = self.loaded.is_some_and(|(at, _)| at.elapsed() < ECHO);
+        for (id, value, gesture) in self.shared.host.edits.take() {
             if let Some(index) = self.shared.param_ids.iter().position(|known| *known == id) {
                 // The controller already has the value; the processor does not.
-                let _ = self.edits.push((index as u32, value as f32));
+                if gesture || !echo {
+                    let _ = self.edits.push((index as u32, value as f32));
+                }
                 self.known[index] = value;
                 out.push((index, value));
             }
@@ -1472,7 +1531,9 @@ impl Controller for Vst3Controller {
                     let first = self.known[index].is_nan();
                     self.known[index] = value;
                     if !first {
-                        let _ = self.edits.push((index as u32, value as f32));
+                        if !echo {
+                            let _ = self.edits.push((index as u32, value as f32));
+                        }
                         out.push((index, value));
                     }
                 }
@@ -1655,6 +1716,13 @@ impl Controller for Vst3Controller {
                 }
             }
         }
+        // Some plugins only queue the state here and take it on in their
+        // next block: a processor that sleeps would never take it.
+        self.shared.host.wake.store(true, Ordering::Relaxed);
+        self.loaded = Some((
+            Instant::now(),
+            self.shared.host.blocks.load(Ordering::Relaxed),
+        ));
         Ok(())
     }
 }
