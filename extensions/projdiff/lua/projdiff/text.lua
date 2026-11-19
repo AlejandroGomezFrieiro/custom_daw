@@ -84,13 +84,12 @@ local function lane(out, l, depth)
 end
 
 local function track(out, t, kind)
-  line(out, 0, kind, props(t, { devices = true, clips = true, lanes = true, sends = true, slots = true, cues = true, meta = true }))
+  line(out, 0, kind, props(t, { devices = true, clips = true, lanes = true, sends = true, cues = true, meta = true }))
   for _, s in ipairs(t.sends or {}) do line(out, 1, "send", props(s)) end
   for _, d in ipairs(t.devices or {}) do device(out, d, 1) end
   for _, c in ipairs(t.clips or {}) do clip(out, c, 1) end
   for _, l in ipairs(t.lanes or {}) do lane(out, l, 1) end
   for _, c in ipairs(t.cues or {}) do line(out, 1, "cue", value(c)) end
-  for _, s in ipairs(t.slots or {}) do line(out, 1, "slot", value(s)) end
   if t.meta and next(t.meta) then line(out, 1, "meta", value(t.meta)) end
 end
 

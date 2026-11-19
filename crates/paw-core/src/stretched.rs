@@ -52,23 +52,34 @@ pub struct Key {
     pitch: u64,
     pub mode: Mode,
     pub formants: bool,
+    /// The clip's edit list (`edits.rs`), as text; empty for none.
+    edits: String,
+    /// Not stretched or shifted: the edits alone.
+    plain: bool,
 }
 
 impl Key {
     /// What `clip` plays at `rate` with the song's tempo `map`, if it is an
-    /// audio clip stretched, warped or shifted.
+    /// audio clip stretched, warped or shifted, or with an edit list.
     pub fn of(clip: &Clip, rate: u32, map: &TempoMap) -> Option<Self> {
-        let ClipContent::Audio { file, .. } = &clip.content else {
+        let ClipContent::Audio { file, edits, .. } = &clip.content else {
             return None;
         };
-        let warp = warp::of(clip, map)?;
+        let warp = warp::of(clip, map);
+        if warp.is_none() && edits.is_empty() {
+            return None;
+        }
+        let plain = warp.is_none();
+        let warp = warp.unwrap_or_else(|| Warp::even(1.0));
         Some(Self {
             file: file.clone(),
             rate,
             warp: warp.bits(),
-            pitch: clip.pitch.to_bits(),
+            pitch: if plain { 0 } else { clip.pitch.to_bits() },
             mode: clip.stretch_mode,
-            formants: clip.formants && clip.pitch != 0.0,
+            formants: !plain && clip.formants && clip.pitch != 0.0,
+            edits: if edits.is_empty() { String::new() } else { crate::edits::text(edits) },
+            plain,
         })
     }
 
@@ -87,22 +98,43 @@ impl Key {
 
     /// The name it is kept under in the disk store.
     fn store_name(&self) -> Option<String> {
-        // FNV-1a over the warp.
+        // FNV-1a over the warp and the edits.
         let mut hash = 0xcbf2_9ce4_8422_2325u64;
         for word in &self.warp {
             for b in word.to_le_bytes() {
                 hash = (hash ^ b as u64).wrapping_mul(0x100_0000_01b3);
             }
         }
+        let mut edits = 0xcbf2_9ce4_8422_2325u64;
+        for b in self.edits.bytes() {
+            edits = (edits ^ b as u64).wrapping_mul(0x100_0000_01b3);
+        }
         let what = format!(
-            "x{}-{hash:016x}-{:016x}-{}{}",
+            "x{}-{hash:016x}-{:016x}-{}{}{}",
             self.rate,
             self.pitch,
-            self.mode.name(),
-            if self.formants { "-formants" } else { "" }
+            if self.plain { "plain" } else { self.mode.name() },
+            if self.formants { "-formants" } else { "" },
+            if self.edits.is_empty() { String::new() } else { format!("-edits{edits:016x}") }
         );
         paw_engine::store_name(&self.file, &what)
     }
+}
+
+/// A sound into a sink as it is, a part at a time, until `stop` is set.
+fn copy(data: &AudioData, mut sink: Sink, stop: &AtomicBool) -> Result<AudioData> {
+    const PART: usize = 1 << 15;
+    let frames = data.frames();
+    let mut at = 0;
+    while at < frames {
+        if stop.load(Ordering::Relaxed) {
+            anyhow::bail!("stopped");
+        }
+        let to = (at + PART).min(frames);
+        sink.push(&data.channels[0][at..to], Some(&data.channels[1][at..to]))?;
+        at = to;
+    }
+    sink.finish(data.sample_rate)
 }
 
 /// A version made, with its waveform overview once one was asked for.
@@ -324,11 +356,27 @@ impl Renders {
             let params = key.params();
             let frames = stretch::length(source.frames(), source.sample_rate, &params.warp);
             let stop = cancel.clone();
+            let edits: Vec<crate::edits::AudioEdit> = serde_json::from_str(&key.edits).unwrap_or_default();
+            let plain = key.plain;
             let thread = Sink::growing(frames, source.sample_rate, kept).and_then(|sink| {
                 let made = Arc::new(sink.playing().expect("a growing sink"));
                 let thread = std::thread::Builder::new()
                     .name("stretch".into())
-                    .spawn(move || stretch::render(&source, &params, sink, &stop))?;
+                    .spawn(move || {
+                        // The edits first, then the stretch, if any.
+                        let edited;
+                        let sound = if edits.is_empty() {
+                            &*source
+                        } else {
+                            edited = crate::edits::apply(&source, &edits);
+                            &edited
+                        };
+                        if plain {
+                            copy(sound, sink, &stop)
+                        } else {
+                            stretch::render(sound, &params, sink, &stop)
+                        }
+                    })?;
                 Ok((thread, made))
             });
             match thread {

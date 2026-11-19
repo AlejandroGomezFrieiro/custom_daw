@@ -38,12 +38,14 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.import_audio(path, opts)`: Bring a sound file into the project: on a new track named after the file (or on `opts.track`), at the cursor (or `opts.start`). Returns the clip.
 - `paw.inspect(value, indent, seen)`: Render any value as readable Lua-like text.
 - `paw.is_audio_file(path)`: True if a path names a sound file, from its file ending.
+- `paw.is_chain_file(path)`: True if a path names a chain file of devices: a `devices.json`.
 - `paw.lane(id)`: The automation lane of an id, as a `paw.Lane`.
 - `paw.notify(text, level)`: Show a message. `level` is "info" (default), "warn" or "error".
 - `paw.off(id)`: Stop a listener: `id` is the value that `paw.on` or `paw.once` returned.
 - `paw.on(pattern, fn, opts)`: Listen for an event. Returns a handle for `paw.off`.
 - `paw.once(pattern, fn)`: Listen for an event once: the handler is removed after its first call.
 - `paw.open(path, opts)`: Open what a path names: a sound file as a new track, anything else as a project, with plugins offline as `opts` says (see `paw.loading.open`).
+- `paw.open_chain(path)`: Open a chain file (a `devices.json`) alone, as a new project with no file: one track with its devices, and the device panel on it. `:w` writes the chain back to its file. Returns the track.
 - `paw.redo`: the same as `paw.api.redo`.
 - `paw.render(path, opts)`: Render the project to a file, and render stems. See `paw/render.lua` for the options. `paw.render_status()` and `paw.render_cancel()` control a render that runs in the background. `paw.render_ranges` contains the named ranges that a render can use.
 - `paw.render_cancel()`: Stop the render that runs in the background.
@@ -614,7 +616,8 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 ## Module paw.external
 
-- `paw.external.act()`: Act on the changes as the option says: called at the next key after them.
+- `paw.external.act()`: Act on the changes as the option says: called when paw gets the focus, or at the next key after them.
+- `paw.external.asking()`: True if paw asks now what to do with the changes.
 - `paw.external.keep()`: Keep paw's version of the project.
 - `paw.external.reload()`: Read the changed files again, as one undo step.
 
@@ -629,7 +632,12 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.files.path(name)`: The full path of a name that the user typed: `~` is the home folder, and a relative name is in `paw.files.here()`.
 
   ```lua
-  paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" beside song.json
+  paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" in the folder of the project
+  ```
+- `paw.files.project_path(name)`: The full path of a project's name that the user typed, as `:w` takes it: as `path`, but a relative name goes beside a project folder, not into it.
+
+  ```lua
+  paw.files.project_path("take2")  -- "/home/me/songs/take2" beside songs/song
   ```
 - `paw.files.sound_info(path, stat)`: What a sound file's header says: `{ rate, channels, seconds }`, or nil for a file that is not one that can be read.
 - `paw.files.watch()`: Start to watch the cursor, when a files buffer exists.
@@ -1188,14 +1196,18 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 ## Module paw.media
 
+- `paw.media.clear_edits(clip)`: Take away an audio clip's edit list. Returns how many edits it had.
 - `paw.media.collect()`: Copy every file from outside the project's folder into `media` beside it and point the clips at the copies. One undo step. Returns `{ copied, missing, dir }`.
+- `paw.media.edits(clip)`: An audio clip's edit list: `{ { kind, ... } }`.
+- `paw.media.gain_part(clip, from, to, db)`: A gain of `db` on a part of an audio clip, from `from` to `to` seconds of what it plays, in its edit list. Returns how many edits it has.
 - `paw.media.glue(clips)`: Join audio clips of one track into one clip that plays a new file. With a list, join the given clips. With one clip, join it and each audio clip that touches or overlaps it. Returns { id, file, glued }.
 - `paw.media.list()`: Every file the project plays: `{ path, missing, inside }`.
 - `paw.media.missing()`: Files the project's clips play that are not there, once each.
 - `paw.media.normalize(clip, level)`: Bring the loudest sample an audio clip plays to `level` dB (0) by its gain. Returns the new gain.
+- `paw.media.pencil(clip, at, values, channel)`: Samples drawn over an audio clip's (a pencil fix), from `at` seconds of what it plays, in one channel (0 or 1) or both, in its edit list. Returns how many edits it has.
 - `paw.media.relink(from, to)`: Make the clips that play `from` play the file `to`, and find the other files that paw cannot find in the folder of `to`. One undo step. Returns `{ clips, found, missing }`.
 - `paw.media.relink_pick()`: Select a file for a file that paw cannot find, or a directory where paw finds all of them.
-- `paw.media.reverse(clip)`: Play an audio clip backwards, from a new reversed copy of its part of the file.
+- `paw.media.reverse(clip)`: Play an audio clip backwards: a `reverse` in its edit list, which leaves its file as it is (a second reverse takes it away). Returns `{ edits }`.
 - `paw.media.search(dir)`: Find in a directory tree each file that paw cannot find. One undo step. Returns `{ found, missing }`.
 
 ## Module paw.midifile
@@ -1468,6 +1480,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.remote.closed(client)`: A connection closed: nothing more is sent to it.
 - `paw.remote.listeners()`: The listeners: `{ client = { patterns = {...}, watching = bool }, ... }`.
 - `paw.remote.push(client)`: Send to a connection the changes of the state of the frontend after the last send. Send nothing when nothing changed.
+- `paw.remote.touch()`: A turn had input: a key, the pointer, a call. What the frontends show can be different.
+- `paw.remote.turn()`: After each turn of the kernel: push now what its input or its edits changed, at most once in 8 ms.
+- `paw.remote.wake()`: Something started to move (the song, a note played): push at the pace from now.
 
 ## Module paw.roles
 
@@ -1543,7 +1558,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 - `paw.scene.closed(client)`: A connection closed or stopped to watch. paw keeps no more data for it.
 - `paw.scene.live()`: The values that move the bound nodes of a frontend (see the `bind` of crates/paw-scene). These are the playhead, the clock and the load of the engine. For each track id, they are the meter, the recent peak, the clip light and the input. paw rounds them to what a frontend can show. So a program that does nothing has no new data to send (the load is as `paw.audio.load` gives it, as `frontend.watch` sends it). Each call gives the current values.
+- `paw.scene.set_pace(ms)`: Tick every `ms` while something moves (`frontend.pace`).
 - `paw.scene.turn()`: Call it after a turn of the kernel. paw pushes now, not at the next tick, the windows whose drawing can be different.
+- `paw.scene.wake()`: Something started to move (the song, a note played): tick at the pace from now.
 - `paw.scene.watchers()`: The watchers: `{ client, windows }` each. `windows` is the names of the windows whose size it gave.
 
 ## Module paw.scope
@@ -1767,6 +1784,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
 ## Module paw.ui
 
+- `paw.ui.active()`: True if something moves on its own now: the song plays, or a moment after activity (`poke`), while meters fall.
 - `paw.ui.arrange(width, height)`: The position of each visible view on a screen of the current size: a list of `{ name, win, x, y, w, h }`. The tab line is along the top when there is more than one tab. `.borders` contains the borders between windows, and `.nodes` the position of each node of the tree, to resize them.
 - `paw.ui.ask_value(opts, set)`: Ask for an exact value on the command line: a number is the value, with its sign (`-6` is -6 dB), and `+=2` and `-=3` change the current value by a step.
 
@@ -1789,6 +1807,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.ui.draw_popup(buf)`: The list of candidates, over the bottom of the screen immediately above the command line. It starts below the word that they complete.
 - `paw.ui.focus(name)`: Give a view the keyboard, and show it first if it is hidden. The window that contains it gets the keys, and paw goes to the tab of that window.
 - `paw.ui.focus_next(step)`: Focus the next (or with -1 the previous) window that takes the keyboard.
+- `paw.ui.frame_ms()`: How many milliseconds at least go between two frames while something moves: 1000 / `paw.opt.fps`, as the option is now.
 - `paw.ui.go(location)`: Go to a location in the view that shows it best, and focus that view. The piano roll shows notes, the device panel shows devices and parameters, and the arrange view shows tracks and time.
 - `paw.ui.hide(name)`: Close the window of a view, in each tab. The view keeps its place for the next time. The last window of a tab does not close: it goes on showing the view, as `Ctrl-w c` leaves it.
 - `paw.ui.hl(name, def)`: Define a highlight group: a table of `fg`, `bg`, `bold`, `dim`, `italic`, `underline`, `reverse`, `strike`, or the name of a group to follow. Colors are `#rrggbb`, or a number for one of the 256 colors of the terminal. On a terminal without 24-bit color, each `#rrggbb` shows as the nearest of the 256.
@@ -1800,6 +1819,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
   paw does not call the callback when the user cancels the prompt. The options are those of the command line (`paw.views.cmdline.open`): `complete`, `history`, `on_change` (live preview), `anchor` (draw it next to its subject), `on_key`.
 - `paw.ui.layer(view, part, name, order, paint)`: Draw `paint(ctx)` as a layer of a part of a view (`"arrange", "header"`). It replaces a layer with the same name (nil removes it). The view tells what `ctx` contains where it calls `paw.ui.paint`.
+- `paw.ui.live(buf, draw)`: Draw a live part on `buf`: `draw(buf)` draws it, now and each time it is drawn again by itself. Returns what `draw` returns.
+- `paw.ui.live_drawing()`: True if a live part drawn now is one of the terminal's screen.
+- `paw.ui.live_value(bind, props)`: While a live part is drawn again: set the props of a mark bound to `bind` (`position`, `meter:<id>`, or a value that a view's `live_values()` gives) to the values of now.
 - `paw.ui.location(view, win)`: The location under the cursor of the focused view (or `view`). With `win`, the cursor of that window: each window of a view has its own.
 - `paw.ui.locator(view, spec)`: Say how a view places locations (`{ uri, selector }`):
 
@@ -1824,6 +1846,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.ui.recolour()`: Set each group again. Call it after `paw.opt.termcolors` changes.
 - `paw.ui.redraw`: the same as `paw.api.ui_redraw`.
 - `paw.ui.render(buf)`: Draw the whole screen. Called by the kernel.
+- `paw.ui.render_live(buf)`: Draw the live parts of the screen again, on the frame drawn last. Called by the kernel (`paw.api.ui_redraw_live`). False when the screen must be drawn whole instead.
 - `paw.ui.render_scene(name, w, h, cell, win)`: Draw one view alone as a scene for a graphical frontend (see crates/paw-scene). The scene is `w` by `h` units (fractions are permitted). `cell` is the cell `{ w, h }` of the frontend in pixels, and `win` is the window of the layout that it shows in, if any.
 
   The text that `render_view` writes in whole cells becomes the runs and fills of the scene. The strips that the view keeps under them become its pictures. A view that paints is one picture of the whole area. The kernel keeps the scene, and `paw.api.scene_end` tells what changed in it.
@@ -1832,7 +1855,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.ui.role`: the same as `paw.roles.define`.
 - `paw.ui.show(name)`: Show a view: in its window if it has one in this tab, else where it was docked. A view has one window at a time: one on screen in another tab moves here.
 - `paw.ui.size()`: The size of the screen in cells. This is the size of the terminal. For the seat of a graphical frontend that told the size of its main area, it is the size of that area (`paw.panes`). So paw measures a split there on what it shows.
-- `paw.ui.start_ticker()`: Redraw at `paw.opt.fps` while the song plays or immediately after activity.
+- `paw.ui.start_ticker()`: Draw what moves while the song plays: from when it starts.
 - `paw.ui.strip(buf, x, y, w, h, opts)`: Keep an area of a buffer for pixels: see `Buf:strip`. Where it is kept is in `paw.ui.rects.surfaces`: `{ key, name, win, x, y, w, h, cell = { w, h }, under, draw, paint }` each, in cells of the screen (`name` the view that kept it, `win` the id of its window, `paint` for a view's whole drawing, `buf:surface`).
 - `paw.ui.surface(buf, x, y, w, h, name)`: Keep an area of a buffer for a view's pixels: see `Buf:surface`. A strip, kept for the view's window, whose drawing is the view's `paint`.
 - `paw.ui.theme(groups)`: Define many highlight groups at once.
@@ -1852,6 +1875,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
   `window_state` names the fields of the view's table that are each window's own (the cursor, the scroll, the open clip). Then any number of windows show the view, and the table holds the state of the window that draws or acts (`paw.layout.bind`). `window_fresh` names the fields a new window starts without, such as caches. Without `window_state`, the view shows in one window at a time. `open_target(self, target)` opens a thing by name in the window (`:e roll://7`), and `window_target(self)` gives that name back for a saved layout. `share` says what part of the room the view keeps where windows share it: `{ column, least, most }`.
 - `paw.ui.visible(name)`: True if a view is on the screen now.
+- `paw.ui.wake()`: Start the frames of what moves, unless they run: nothing happens when nothing moves.
 
 ## Module paw.ui.Buf
 
@@ -1928,6 +1952,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.audio_watch(opts)`: With `{ auto = false }`, paw does not open again a device that returns by itself. `period` is the interval between checks, in milliseconds.
 - `paw.api.automation_hold(track, target, device, param, on)`: A control is held (a fader under the pointer) or let go: in touch mode it writes automation for as long as it is held. The control is named as a lane's target is.
 - `paw.api.canvas_export(path, format, pages, scale)`: Write drawings (the operations of `paw.canvas.paint`) to a file: `format` "pdf" (one page for each drawing), "svg" or "png" (the first). Each page is `{ ops, width, height }` in pixels. `scale` is the points for one pixel in a PDF (0.75: 96 pixels to the inch).
+- `paw.api.chain_write(track, file)`: Write a track's devices as a chain file: `file` (a `devices.json`) and the `.state` files of the plugins beside it. Returns the files.
 - `paw.api.checkpoint_delete(file)`
 - `paw.api.checkpoint_dir()`
 - `paw.api.checkpoint_list()`
@@ -1937,6 +1962,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.clip_add_notes(id, notes)`
 - `paw.api.clip_collect()`: Make every clip that refers to a MIDI clip file outside the project the project's own. Returns how many.
 - `paw.api.clip_controls(id)`: Controller, pitch wheel and pressure moves of a MIDI clip: { start, type = "cc" | "bend" | "pressure", number, value }.
+- `paw.api.clip_edit_add(id, edit)`: Add an edit to an audio clip's edit list (`edits.rs`): `{ kind = "gain", from, to, db }` or `{ kind = "pencil", at, channel, values }`, in seconds from where the clip starts in its sound. Returns how many edits it has.
+- `paw.api.clip_edits(id)`: An audio clip's edit list, as `clip_edit_add` takes its edits (with times in seconds of its sound).
+- `paw.api.clip_edits_clear(id)`: Take away an audio clip's edit list. Returns how many edits it had.
 - `paw.api.clip_get(id)`
 - `paw.api.clip_glue(ids)`
 - `paw.api.clip_list(track)`: --- clips ---
@@ -1983,6 +2011,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.engine_hold(track, file)`: Play a track from a sound file for now, as if it is frozen, or live again with nil. The project does not change (see `freeze.rs`).
 - `paw.api.engine_reset_stats()`: Forget the process times that `engine_get().blocks` recorded until now.
 - `paw.api.engine_restart(opts)`
+- `paw.api.engine_set_sleep(sleep)`: With true, devices at rest sleep through silence: a reverb after its tail, a synth with no note that sounds. The sound is the same with false. `engine_get().device_sleeps` counts the blocks that devices slept through.
 - `paw.api.engine_set_threads(threads)`: The number of threads that process tracks, with the audio thread. 0 lets paw select the number. `engine_get().threads` gives the number in use.
 - `paw.api.env()`
 - `paw.api.events_take()`
@@ -1994,6 +2023,10 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.fs_stat(...)`
 - `paw.api.fs_trash(...)`
 - `paw.api.grid_fill(x, y, w, h, fill, style, cx, cy, cw, ch)`: Restyle the area `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`, and overwrite its characters when `fill` is given.
+- `paw.api.grid_live_begin(x, y, w, h, cx, cy, cw, ch)`: A live part of the screen is drawn over the cells `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`: what is under them is kept, to draw it again by itself (`paw.ui.render_live`). Returns its number for `grid_live_end`, or nil when no part of it is on the screen.
+- `paw.api.grid_live_end(index)`
+- `paw.api.grid_live_restore()`: Take the live parts off the frame drawn last, to draw them again. Returns how many there were.
+- `paw.api.grid_live_seal()`: The frame is drawn: what is over the live parts now stays over them.
 - `paw.api.grid_surface(key, x, y, w, h, cx, cy, cw, ch, under)`: Keep the cells `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`, for pixels under the name `key` (`buf:strip`), over the text or `under` it. Returns the number of the surface for `grid_surface_ops`, or nil when no part of it is on the screen.
 - `paw.api.grid_surface_ops(index, ops)`: The drawing a surface shows: the operations of `paw.canvas.paint`.
 - `paw.api.grid_surfaces_seal()`: The view being drawn is done with the surfaces it kept: what is drawn over them from now on covers them.
@@ -2146,7 +2179,10 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.timer_stop(id)`
 - `paw.api.track_add(opts)`
 - `paw.api.track_attr_delay(id, attr)`: The milliseconds that the attribute map of the track moves a note with `attr` (below 0: earlier). 0 when the track has no attribute map.
+- `paw.api.track_chain_file(track, file, refer)`: Give a track the devices of a chain file (a `devices.json`). With `refer`, the track refers to the file until the chain's first edit. Returns how many devices.
+- `paw.api.track_collect()`: Make every track read from a folder outside the project, and every chain of devices read from a file outside it, the project's own. Returns how many tracks and how many chains.
 - `paw.api.track_get(id, key)`: A track as a table. With `key`, only that entry of the table: this is quicker, because the table lists each clip of the track.
+- `paw.api.track_import_folder(folder, index)`: Add the track of a track folder outside the project (a folder with a `track.json`) at `index` (from 1; the end when nil). The project refers to the folder until the track's first edit. Returns its id.
 - `paw.api.track_list()`: --- tracks ---
 - `paw.api.track_meter(id)`
 - `paw.api.track_move(id, index)`
@@ -2167,8 +2203,11 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.ui_client()`
 - `paw.api.ui_cursor(x, y)`
 - `paw.api.ui_detach(client)`
+- `paw.api.ui_frame_snapshot(width, height, live)`: A frame drawn off screen as a terminal is drawn, for tests: whole, or with `live` only its live parts again on the frame this drew last (nil when the runtime says it must be drawn whole). Each row as its text and as its cells with their styles.
+- `paw.api.ui_frames()`: The frames drawn so far: `{ full, live, unchanged }`: whole frames, frames of the live parts only, and of those the ones that changed no cell, which were not sent.
 - `paw.api.ui_mouse(on)`: True if the terminal reports the pointer (`paw.opt.mouse`), for the screen that paw draws now.
 - `paw.api.ui_redraw()`: --- screen ---
+- `paw.api.ui_redraw_live()`: Draw only the live parts of the screen again (the playhead, the meters, the status line), on the frame drawn last; a whole frame when one is asked for too, or the runtime says it is needed.
 - `paw.api.ui_redraws()`
 - `paw.api.ui_seat(seat)`
 - `paw.api.ui_size()`

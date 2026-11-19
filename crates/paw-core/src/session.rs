@@ -211,8 +211,6 @@ pub fn project_file_text(value: Value) -> Result<String> {
         bail!("the file is of a newer version");
     }
     file.project.validate()?;
-    let mut file = file;
-    file.project.upgrade();
     Ok(serde_json::to_string_pretty(&file)?)
 }
 
@@ -328,6 +326,9 @@ pub struct RenderOpts {
     /// Threads to render on, when not as many as the session uses. The file
     /// is the same whatever the number.
     pub threads: Option<usize>,
+    /// Whether devices at rest sleep through silence, when not as the
+    /// session has it. The file is the same either way.
+    pub sleep: Option<bool>,
     /// For MP3, Ogg Vorbis and Opus: "low", "medium", "high" (the default)
     /// or "best"; or a bitrate in kbit/s instead. They need ffmpeg, which is
     /// `ffmpeg` when it is not on the PATH.
@@ -355,6 +356,7 @@ impl Default for RenderOpts {
             channels: 2,
             master: true,
             threads: None,
+            sleep: None,
             quality: None,
             bitrate: None,
             ffmpeg: None,
@@ -439,6 +441,8 @@ pub struct Session {
     midi_out_own: Vec<String>,
     /// Threads to process tracks on, or 0 for as many as the machine has cores.
     threads: usize,
+    /// Devices at rest sleep through silent blocks (`paw.opt.device_sleep`).
+    sleep: bool,
     /// What the engine was last started with, to start it again with a
     /// device changed.
     backend: BackendOptions,
@@ -581,6 +585,7 @@ impl Session {
             midi_out: None,
             midi_out_own: Vec::new(),
             threads: 0,
+            sleep: true,
             backend: opts.clone(),
             device_file: None,
             test_ports: Vec::new(),
@@ -754,6 +759,90 @@ impl Session {
     /// this step changed is now the project's own, in the same step: it
     /// keeps where it came from (`origin`). Said once, as `clip.copied`.
     fn own_edited_references(&mut self) {
+        self.own_edited_clips();
+        self.own_edited_tracks();
+    }
+
+    /// A track read from a folder outside the project, or a chain read from
+    /// a file outside it, that this step changed is now the project's own,
+    /// as a clip is (`own_edited_clips`): `track.copied`, `chain.copied`.
+    /// A track takes its clips from that folder with it.
+    fn own_edited_tracks(&mut self) {
+        let before: HashMap<Id, &Arc<Track>> = self
+            .checkpoint
+            .tracks
+            .iter()
+            .filter(|t| t.source.is_some() || t.chain_source.is_some())
+            .map(|t| (t.id, t))
+            .collect();
+        if before.is_empty() {
+            return;
+        }
+        // A plugin's state is read again at each save: that is not an edit.
+        let stateless = |devices: &[Arc<DeviceInst>]| -> Vec<Value> {
+            devices
+                .iter()
+                .map(|d| {
+                    let mut v = serde_json::to_value(&**d).unwrap_or_default();
+                    v.as_object_mut().map(|o| o.remove("state"));
+                    v
+                })
+                .collect()
+        };
+        let whole = |t: &Track| -> Value {
+            let mut v = serde_json::to_value(t).unwrap_or_default();
+            if let Some(o) = v.as_object_mut() {
+                o.insert("devices".into(), Value::Array(stateless(&t.devices)));
+            }
+            v
+        };
+        let (mut tracks, mut chains) = (Vec::new(), Vec::new());
+        for t in &self.project.tracks {
+            let Some(old) = before.get(&t.id) else {
+                continue;
+            };
+            if Arc::ptr_eq(old, t) {
+                continue;
+            }
+            if t.source.is_some() && t.source == old.source && whole(old) != whole(t) {
+                tracks.push(t.id);
+            } else if t.chain_source.is_some()
+                && t.chain_source == old.chain_source
+                && stateless(&old.devices) != stateless(&t.devices)
+            {
+                chains.push(t.id);
+            }
+        }
+        for id in tracks {
+            let Some(track) = self.project.track_mut(id) else {
+                continue;
+            };
+            track.origin = track.source.take();
+            let folder = track.origin.clone().unwrap_or_default();
+            for clip in track.clips.iter_mut().chain(track.cues.iter_mut()) {
+                if clip.source.as_ref().is_some_and(|s| s.starts_with(&folder)) {
+                    let clip = Arc::make_mut(clip);
+                    clip.origin = clip.source.take();
+                }
+            }
+            self.events.push((
+                "track.copied".into(),
+                json!({ "track": id, "name": track.name, "origin": track.origin }),
+            ));
+        }
+        for id in chains {
+            let Some(track) = self.project.track_mut(id) else {
+                continue;
+            };
+            track.chain_origin = track.chain_source.take();
+            self.events.push((
+                "chain.copied".into(),
+                json!({ "track": id, "name": track.name, "origin": track.chain_origin }),
+            ));
+        }
+    }
+
+    fn own_edited_clips(&mut self) {
         let before: HashMap<Id, &Arc<Clip>> = self
             .checkpoint
             .all_tracks()
@@ -820,6 +909,40 @@ impl Session {
             self.dirty = true;
         }
         ids.len()
+    }
+
+    /// Make every track read from a folder outside the project, and every
+    /// chain read from a file outside it, the project's own (`:collect`):
+    /// the next save writes them into its folder. Returns how many tracks
+    /// and how many chains. Run before `clip_collect`, which then takes
+    /// such a track's clips.
+    pub fn track_collect(&mut self) -> (usize, usize) {
+        let (mut tracks, mut chains) = (0, 0);
+        let ids: Vec<Id> = self.project.tracks.iter().map(|t| t.id).collect();
+        for id in ids {
+            let Some(t) = self.project.track(id) else {
+                continue;
+            };
+            if t.source.is_none() && t.chain_source.is_none() {
+                continue;
+            }
+            let Some(track) = self.project.track_mut(id) else {
+                continue;
+            };
+            if track.source.is_some() {
+                track.origin = track.source.take();
+                tracks += 1;
+            }
+            if track.chain_source.is_some() {
+                track.chain_origin = track.chain_source.take();
+                chains += 1;
+            }
+        }
+        if tracks + chains > 0 {
+            self.touched = true;
+            self.dirty = true;
+        }
+        (tracks, chains)
     }
 
     pub fn undo(&mut self) -> bool {
@@ -963,7 +1086,6 @@ impl Session {
         path: Option<PathBuf>,
         touched: Option<bool>,
     ) {
-        project.upgrade();
         project.refresh_tempo();
         self.apply_open_opts(&mut project);
         // Another project: a trial of this one's is over with it.
@@ -1071,6 +1193,9 @@ impl Session {
     /// With `as_path`, the copy opens under that file name instead (for a
     /// `.bak` or any other copy that has no note).
     pub fn project_recover(&mut self, path: &Path, as_path: Option<&Path>) -> Result<Value> {
+        if path.file_name().and_then(|n| n.to_str()) == Some(&format!("{}.bak", folder::PROJECT_FILE)) {
+            return self.project_recover_folder(path);
+        }
         let text =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let mut value: Value =
@@ -1175,6 +1300,9 @@ impl Session {
             "listens": t.devices.iter().filter_map(|d| d.sidechain).collect::<BTreeSet<_>>(),
             // The tracks that further output pairs of its devices play into.
             "pairs_into": t.devices.iter().flat_map(|d| d.outputs.values()).collect::<BTreeSet<_>>(),
+            // A track or a chain read from outside the project's folder, or copied from there.
+            "source": t.source, "origin": t.origin,
+            "chain_source": t.chain_source, "chain_origin": t.chain_origin,
         }))
     }
 
@@ -2272,6 +2400,7 @@ impl Session {
                     file,
                     offset: opts.offset,
                     gain,
+                    edits: Vec::new(),
                 };
                 (content, natural, name.unwrap_or_else(|| "audio".into()))
             }
@@ -4000,6 +4129,14 @@ impl Session {
             // what was asked for (0 leaves it to the machine).
             "threads": self.handle.shared.threads(),
             "threads_wanted": self.threads,
+            // Whether devices at rest sleep through silence, and the blocks
+            // of devices run and slept through since the engine started.
+            "device_sleep": self.sleep,
+            "device_runs": self.handle.shared.device_blocks().0,
+            "device_sleeps": self.handle.shared.device_blocks().1,
+            // Groups of tracks shared out between threads since the engine
+            // started: one with little work runs on the audio thread alone.
+            "shared_groups": self.handle.shared.shared_groups(),
             // What went wrong while playing, for the status line: blocks
             // plugins did not deliver in time, MIDI events dropped, frames
             // of the take being recorded lost to a slow disk, devices that
@@ -4041,6 +4178,20 @@ impl Session {
     fn send_pool(&mut self) {
         let pool = self.pool(None);
         self.handle.send(Msg::SetPool(pool));
+        self.handle.send(Msg::SetSleep(self.sleep));
+    }
+
+    /// Whether devices at rest (a reverb whose tail has died away, a synth
+    /// with no note sounding) sleep through silent blocks, which saves the
+    /// processor their work. The sound is the same either way.
+    pub fn set_sleep(&mut self, sleep: bool) {
+        self.sleep = sleep;
+        self.handle.send(Msg::SetSleep(sleep));
+    }
+
+    /// Whether devices at rest sleep, for a render that does not say.
+    pub(crate) fn sleep(&self) -> bool {
+        self.sleep
     }
 
     /// The devices the system offers, and which are open.
@@ -4532,7 +4683,10 @@ fn clip_json(c: &Clip, track: Id) -> Value {
             }
             v["control_stamp"] = json!(hash.finish() >> 11);
         }
-        ClipContent::Audio { file, offset, gain } => {
+        ClipContent::Audio { file, offset, gain, edits } => {
+            if !edits.is_empty() {
+                v["edits"] = json!(edits.len());
+            }
             // Its file is not there: the clip is silent until it is relinked.
             if !file.is_file() {
                 v["offline"] = json!(true);

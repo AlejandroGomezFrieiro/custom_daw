@@ -240,9 +240,6 @@ The clips of the slots are clips off the timeline of the core
 | `clip.meta.launcher` | `row` (from 0), and `quantize`, `mode` and `legato` when they are not the default |
 | `project.meta.launcher` | `quantize` (when it is not `bar`) and `scenes`, the names of the scenes by row |
 
-paw opens a project that the launcher of the core saved, before it was an
-extension. The slots become clips off the timeline with this data.
-
 The export to REAPER and to DAWproject does not write the clips of the
 slots: the report of the export counts them.
 

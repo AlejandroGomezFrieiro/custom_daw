@@ -59,6 +59,8 @@ impl Kernel for Client {
     }
     fn set_pace(&mut self, fps: f64) {
         self.pace.store((1e6 / fps.max(1.0)) as u64, std::sync::atomic::Ordering::Relaxed);
+        // The kernel sends what moves at the same pace, and no more often.
+        let _ = self.connection.notify("frontend.pace", json!([1000.0 / fps.max(1.0)]));
     }
 }
 
@@ -427,6 +429,7 @@ impl View {
         self.dialog(ui, full);
         self.canvas_windows(&ctx);
         self.keyboard(ui);
+        self.window_focus(ui);
         self.files_dropped(ui);
         self.close_requested(ui);
         self.scenes_done();
@@ -668,6 +671,23 @@ impl View {
                     }
                 }
             }
+        }
+    }
+
+    /// The window got the focus of the desktop, or lost it: the kernel acts
+    /// then on changes made to the project's files meanwhile.
+    fn window_focus(&mut self, ui: &Ui) {
+        let changes: Vec<bool> = ui.input(|i| {
+            i.events
+                .iter()
+                .filter_map(|e| match e {
+                    egui::Event::WindowFocused(on) => Some(*on),
+                    _ => None,
+                })
+                .collect()
+        });
+        for on in changes {
+            self.eval("paw.frontend.act.focus(...)", json!([on]));
         }
     }
 

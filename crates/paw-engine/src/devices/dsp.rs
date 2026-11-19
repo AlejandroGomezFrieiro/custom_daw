@@ -199,6 +199,55 @@ impl Svf {
     }
 }
 
+/// What an effect still rings at, below which it is silence (-120 dB): it
+/// may then clear what it holds and go to sleep (see [`Rest`]).
+pub const REST_LEVEL: f32 = 1e-6;
+
+/// When an effect may go to sleep (see [`crate::Device::resting`]). It
+/// counts the frames in a row that went in silent and left what the effect
+/// holds below [`REST_LEVEL`]; once that has lasted as long as the effect
+/// remembers, the effect clears what it holds and rests. Resting, it returns
+/// at once from a silent block, so that it is the same whether the host calls
+/// it or not, until a block that is not silent or a new setting wakes it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Rest {
+    calm: u32,
+    pub resting: bool,
+}
+
+impl Rest {
+    /// Count one frame of input and the loudest of what the effect holds
+    /// after it; the frames in a row that were calm.
+    #[inline(always)]
+    pub fn frame(&mut self, l: f32, r: f32, level: f32) -> u32 {
+        let calm = l == 0.0 && r == 0.0 && level < REST_LEVEL;
+        if calm {
+            self.calm = self.calm.saturating_add(1);
+        } else {
+            // Sound later in the block that put it to rest.
+            self.calm = 0;
+            self.resting = false;
+        }
+        self.calm
+    }
+
+    /// Whether a block goes by without the effect: it rests, and the block
+    /// is silent. A block that is not wakes it.
+    #[inline]
+    pub fn sleeps(&mut self, io: &crate::device::Io) -> bool {
+        if self.resting && crate::device::quiet(io) {
+            return true;
+        }
+        self.resting = false;
+        false
+    }
+
+    /// A new setting: the effect works again until it is calm once more.
+    pub fn wake(&mut self) {
+        self.resting = false;
+    }
+}
+
 /// Zero for anything too small to hear (below -400 dB).
 #[inline]
 pub fn flush(x: f32) -> f32 {
@@ -555,10 +604,35 @@ impl Lfo {
     }
 }
 
-/// The sine of a phase in cycles.
+/// The sine of a phase in cycles, to within 1e-7: what an LFO needs, for a
+/// fraction of the cost of the maths library's, which is called for every
+/// sample of every LFO.
 #[inline]
 pub fn sin_cycles(phase: f64) -> f32 {
-    (phase * std::f64::consts::TAU).sin() as f32
+    // Into -0.5..0.5 by whole cycles (truncating through an integer, which
+    // is one instruction), then into -0.25..0.25 by the sine's symmetry
+    // about a quarter cycle.
+    let mut x = phase - (phase as i64) as f64;
+    if x >= 0.5 {
+        x -= 1.0;
+    } else if x < -0.5 {
+        x += 1.0;
+    }
+    if x > 0.25 {
+        x = 0.5 - x;
+    } else if x < -0.25 {
+        x = -0.5 - x;
+    }
+    // The Taylor series to the 13th power: within 6e-8 up to a quarter cycle.
+    let t = x * std::f64::consts::TAU;
+    let t2 = t * t;
+    let p = 1.0 / 6227020800.0;
+    let p = p * t2 - 1.0 / 39916800.0;
+    let p = p * t2 + 1.0 / 362880.0;
+    let p = p * t2 - 1.0 / 5040.0;
+    let p = p * t2 + 1.0 / 120.0;
+    let p = p * t2 - 1.0 / 6.0;
+    (t + t * t2 * p) as f32
 }
 
 /// Recent audio, written by the audio thread and copied by the main thread
@@ -778,5 +852,20 @@ mod tests {
         let mag: Vec<f64> = re.iter().zip(&im).map(|(r, i)| r.hypot(*i)).collect();
         assert!((mag[37] - n as f64 / 2.0).abs() < 1e-6);
         assert!(mag[36] < 1e-6);
+    }
+
+    #[test]
+    fn the_lfo_sine_is_the_sine() {
+        let mut worst = 0.0f64;
+        for i in -200_000..200_000 {
+            let phase = i as f64 * 0.000_137_3;
+            let want = (phase * std::f64::consts::TAU).sin();
+            worst = worst.max((sin_cycles(phase) as f64 - want).abs());
+        }
+        for phase in [0.0, 0.25, 0.5, 0.75, 1.0, -0.25, 1e6 + 0.25] {
+            let want = (phase * std::f64::consts::TAU).sin();
+            worst = worst.max((sin_cycles(phase) as f64 - want).abs());
+        }
+        assert!(worst < 1e-7, "off by {worst}");
     }
 }

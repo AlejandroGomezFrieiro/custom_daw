@@ -74,7 +74,7 @@ test("a file chosen in the desktop's dialog is imported or saved to as it is, sp
   eq(paw.state.pick_dir, T.scratch .. "/some where", "the list picker starts where it was chosen")
   local project = T.scratch .. "/some where/my song"
   act.chosen("saveas", project)
-  eq(#T.read_file(project .. ".json") > 10, true, "saved, with .json added")
+  eq(#T.read_file(project .. "/project.toml") > 10, true, "saved as the folder of that name")
 end)
 
 test("a project chosen in the dialog opens through the leave question", function()

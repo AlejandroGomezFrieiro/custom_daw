@@ -652,7 +652,7 @@ function M.lane(id) return wrap(Lane, id) end
 
 M.master = wrap(Track, 0)
 
--- `paw.project.tempo = 140`, `paw.project.save("song.json")`
+-- `paw.project.tempo = 140`, `paw.project.save("song")`
 M.project = setmetatable({
   new = api.project_new,
   load = api.project_load,
@@ -714,6 +714,23 @@ rawset(M.project, "is_folder", function(path)
   local f = io.open(path .. "/project.toml", "rb")
   if f then f:close() end
   return f ~= nil
+end)
+
+--- Save the project as `:w` does, always as a folder: `path`, or its
+--- file when nil. A path that ends in `.json` names the folder of the
+--- same name without `.json`, because one JSON file is only the form of
+--- paw's safety copies and undo states. Returns the path saved, and a
+--- note that tells where the project went when that is not `path`.
+rawset(M.project, "write", function(path)
+  local target = path or api.project_get("path")
+  local stem = type(target) == "string" and target:match("^(.+)%.[jJ][sS][oO][nN]$")
+  if not stem then return M.project.save(path) end
+  local saved = M.project.save(stem)
+  local name = target:match("([^/]+)$") or target
+  local folder = stem:match("([^/]+)$") or stem
+  local note = path and string.format("a project is a folder: saved it in %s/, not in %s", folder, name)
+    or string.format("a project is a folder: saved it in %s/ (%s stays as it was)", folder, name)
+  return saved, note
 end)
 
 --- Whether the project may be replaced: says why not, naming `what` (the

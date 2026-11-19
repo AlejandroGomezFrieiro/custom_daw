@@ -18,6 +18,9 @@ local view = {
   help = "launcher",
   window_state = { "scroll", "top", "geometry" },
   window_fresh = { "geometry" },
+  -- What plays fills its slot while the song plays: the view is drawn
+  -- again as one live part, not the whole screen.
+  live_part = true,
 }
 
 local GUTTER = 4 -- the row numbers

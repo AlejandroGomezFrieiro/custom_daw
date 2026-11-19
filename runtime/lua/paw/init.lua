@@ -319,6 +319,7 @@ function K.exit()
 end
 
 function K.key(key)
+  if paw.remote and paw.remote.touch then paw.remote.touch() end
   if not paw.hooks.key(key) then return end
   -- The keys of a finished command (`dd`, `3>ic`) label the undo step it makes.
   -- Keys typed into a prompt are text, not commands.
@@ -334,7 +335,14 @@ function K.paste(text)
 end
 
 function K.mouse(event)
+  if paw.remote and paw.remote.touch then paw.remote.touch() end
   paw.limit.guard("the mouse", paw.ui.mouse, event)
+end
+
+--- The terminal or the window got the focus of the desktop, or lost it.
+function K.focus(on)
+  paw.ui.has_focus = on
+  paw.emit("ui.focus", { focused = on })
 end
 
 function K.resize(width, height)
@@ -374,6 +382,7 @@ function K.settle()
   -- sent after it must show what stayed.
   paw.limit.guard("the end of a turn", paw.hooks.turn)
   if paw.scene then paw.limit.guard("sending scenes", paw.scene.turn) end
+  if paw.remote and paw.remote.turn then paw.limit.guard("sending the state", paw.remote.turn) end
 end
 
 function K.timer(fn)
@@ -382,6 +391,13 @@ end
 
 function K.render(width, height)
   paw.limit.guard("drawing the screen", paw.ui.render, paw.ui.Buf.root(width, height))
+end
+
+--- Only the live parts of the screen drawn again (`paw.api.ui_redraw_live`):
+--- false when it must be drawn whole.
+function K.render_live(width, height)
+  local ok, done = paw.limit.guard("drawing what moves", paw.ui.render_live, paw.ui.Buf.root(width, height))
+  return ok ~= false and done == true
 end
 
 --- One view drawn by itself, for a window: see `paw.api.ui_view_snapshot`.
@@ -422,6 +438,7 @@ end
 
 function K.rpc(method, params, client)
   if type(params) ~= "table" then params = { params } end
+  if paw.remote and paw.remote.touch then paw.remote.touch() end
   return paw.limit.call("the request `" .. tostring(method) .. "`", rpc, method, params, client)
 end
 

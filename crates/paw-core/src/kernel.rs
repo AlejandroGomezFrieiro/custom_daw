@@ -56,6 +56,9 @@ pub enum InputEvent {
     /// A cell has another size in pixels (the terminal's font changed).
     CellSize(u16, u16),
     Paste(String),
+    /// The terminal or the window got the focus of the desktop (true) or
+    /// lost it (false): mode 1004, or the window's focus event.
+    Focus(bool),
 }
 
 pub enum KernelMsg {
@@ -106,6 +109,16 @@ pub struct Kernel {
     uploads: crate::upload::Uploads,
     /// What is played, sent to connections that listen (`monitor.*`).
     monitor: crate::monitor::Monitor,
+    /// The frame each terminal was shown last, by connection (0 for the
+    /// program's own), for drawing only its live parts again.
+    kept: HashMap<ClientId, Kept>,
+}
+
+/// A terminal's last frame and where its cursor was.
+#[derive(Default)]
+struct Kept {
+    grid: Grid,
+    cursor: Option<(u16, u16)>,
 }
 
 impl Drop for Kernel {
@@ -144,6 +157,9 @@ impl Kernel {
             seat: Cell::new(0),
             highlights: RefCell::new(Highlights::default()),
             dirty: Cell::new(true),
+            live_dirty: Cell::new(false),
+            frames: Cell::new([0; 3]),
+            snapshot: RefCell::new(None),
             redraws: Cell::new(0),
             attached: Cell::new(false),
             cursor: Cell::new(None),
@@ -183,6 +199,7 @@ impl Kernel {
             frontends: Vec::new(),
             uploads: Default::default(),
             monitor,
+            kept: HashMap::new(),
         })
     }
 
@@ -250,6 +267,7 @@ impl Kernel {
                 }
                 Ok(())
             }
+            InputEvent::Focus(on) => self.call::<()>("focus", on),
         };
         if let Err(err) = result {
             self.report("input", err);
@@ -306,6 +324,7 @@ impl Kernel {
     fn detach(&mut self, client: ClientId) {
         let before = self.frontends.len();
         self.frontends.retain(|(id, _)| *id != client);
+        self.kept.remove(&client);
         if self.frontends.len() != before {
             self.shared.clients.push(client, "ui.detached", &Value::Null);
             self.shared.sizes.borrow_mut().remove(&client);
@@ -465,39 +484,81 @@ impl Kernel {
     }
 
     fn render(&mut self) {
+        // Only the live parts, unless something else asked for a frame.
+        let live_only = !self.shared.dirty.get();
+        self.shared.dirty.set(false);
+        self.shared.live_dirty.set(false);
         if self.frontends.is_empty() {
             return;
         }
-        self.shared.dirty.set(false);
         let mut gone = Vec::new();
         for index in 0..self.frontends.len() {
             let client = self.frontends[index].0;
-            // Each terminal is drawn from its own seat, at its own size.
+            // Each terminal keeps the frame it was shown last, and is drawn
+            // from its own seat, at its own size.
+            let (width, height) = self.shared.sizes.borrow().get(&client).copied().unwrap_or_else(|| {
+                let grid = self.shared.grid.borrow();
+                (grid.width, grid.height)
+            });
+            let mut kept = self.kept.remove(&client).unwrap_or_else(|| Kept { grid: Grid::new(width, height), cursor: None });
+            if (kept.grid.width, kept.grid.height) != (width, height) {
+                kept.grid.resize(width, height);
+            }
+            std::mem::swap(&mut *self.shared.grid.borrow_mut(), &mut kept.grid);
             self.enter(client);
-            self.shared.grid.borrow_mut().clear();
-            self.shared.cursor.set(None);
-            let result = api::render(&self.lua, &self.shared);
-            if let Err(err) = result {
-                // The Lua UI is broken, so the kernel draws the reason itself.
-                let mut grid = self.shared.grid.borrow_mut();
-                let style = Style {
-                    fg: Some(Color::Indexed(9)),
-                    ..Style::default()
-                };
-                let clip = grid.rect();
-                for (row, line) in format!("render failed: {err}").lines().enumerate() {
-                    grid.text(clip, 0, row as i32, line, style);
+            let mut changed = true;
+            let mut drawn_live = false;
+            let can_live = {
+                let grid = self.shared.grid.borrow();
+                live_only && !grid.live.is_empty() && grid.surfaces.is_empty()
+            };
+            if can_live {
+                self.shared.cursor.set(kept.cursor);
+                match api::render_live(&self.lua, &self.shared) {
+                    Ok(done) => drawn_live = done,
+                    Err(err) => self.report("render_live", err),
+                }
+                if drawn_live {
+                    changed = self.shared.grid.borrow().live_changed();
                 }
             }
-            let shared = self.shared.clone();
-            let (grid, cursor) = (shared.grid.borrow(), shared.cursor.get());
-            if let Err(err) = self.frontends[index].1.present(&grid, cursor) {
-                self.shared.log(format!("frontend: {err:#}"));
-                // A terminal at the end of a connection that has closed.
-                if client != 0 {
-                    gone.push(client);
+            let mut frames = self.shared.frames.get();
+            if drawn_live {
+                frames[if changed { 1 } else { 2 }] += 1;
+            } else {
+                frames[0] += 1;
+                self.shared.grid.borrow_mut().clear();
+                self.shared.cursor.set(None);
+                let result = api::render(&self.lua, &self.shared);
+                if let Err(err) = result {
+                    // The Lua UI is broken, so the kernel draws the reason itself.
+                    let mut grid = self.shared.grid.borrow_mut();
+                    grid.live.clear();
+                    let style = Style {
+                        fg: Some(Color::Indexed(9)),
+                        ..Style::default()
+                    };
+                    let clip = grid.rect();
+                    for (row, line) in format!("render failed: {err}").lines().enumerate() {
+                        grid.text(clip, 0, row as i32, line, style);
+                    }
                 }
             }
+            self.shared.frames.set(frames);
+            if changed {
+                let shared = self.shared.clone();
+                let (grid, cursor) = (shared.grid.borrow(), shared.cursor.get());
+                if let Err(err) = self.frontends[index].1.present(&grid, cursor) {
+                    self.shared.log(format!("frontend: {err:#}"));
+                    // A terminal at the end of a connection that has closed.
+                    if client != 0 {
+                        gone.push(client);
+                    }
+                }
+            }
+            kept.cursor = self.shared.cursor.get();
+            std::mem::swap(&mut *self.shared.grid.borrow_mut(), &mut kept.grid);
+            self.kept.insert(client, kept);
         }
         self.enter(0);
         for client in gone {
@@ -560,7 +621,7 @@ impl Kernel {
                 }
                 return Ok(code);
             }
-            if self.shared.dirty.get() {
+            if self.shared.dirty.get() || self.shared.live_dirty.get() {
                 self.render();
             }
         }

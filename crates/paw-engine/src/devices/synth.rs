@@ -308,6 +308,11 @@ fn poly_blep(t: f32, dt: f32) -> f32 {
 }
 
 impl Device for Synth {
+    /// No voice sounds: a block with no events adds nothing.
+    fn resting(&self) -> bool {
+        self.voices.iter().all(|v| v.stage == Stage::Off)
+    }
+
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut Io) {
         let n = io.left.len();
         let mut pos = 0;

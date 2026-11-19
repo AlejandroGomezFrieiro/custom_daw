@@ -990,30 +990,35 @@ function view:render(buf, ctx)
   -- The playhead: a mark on the ruler and a thin line on the beat's left
   -- edge, which is where a clip that starts there begins to be drawn. Over a
   -- clip the line keeps the clip's colour behind it, so the clip is seen to
-  -- start where it does. A window moves it as the song plays.
-  local px = col(t.position)
-  local spans = {}
-  for _, row in ipairs(L.rows) do
-    local on_clip, on_name = false, false
-    for _, s in ipairs(covered[row] or {}) do
-      if px >= s[1] and px < s[2] then on_clip = true end
+  -- start where it does. A window moves it as the song plays, and so does
+  -- a terminal, which asks for the spans at the column it moves it to.
+  local rows = L.rows
+  local function spans_at(px)
+    local spans = {}
+    for _, row in ipairs(rows) do
+      local on_clip, on_name = false, false
+      for _, s in ipairs(covered[row] or {}) do
+        if px >= s[1] and px < s[2] then on_clip = true end
+      end
+      for _, s in ipairs(names_of[row] or {}) do
+        if px >= s[1] and px < s[2] then on_name = true end
+      end
+      if on_name then
+        -- A take's name keeps its letter, in the playhead's colour.
+        spans[#spans + 1] = { row.y, 1, "PlayheadClip", false }
+      elseif on_clip then
+        -- Under the clip's name only, so the name row reads unbroken.
+        local skip = row.h > 1 and 1 or 0
+        spans[#spans + 1] = { row.y + skip, row.h - skip, "PlayheadClip" }
+      else
+        spans[#spans + 1] = { row.y, row.h, "Playhead" }
+      end
     end
-    for _, s in ipairs(names_of[row] or {}) do
-      if px >= s[1] and px < s[2] then on_name = true end
-    end
-    if on_name then
-      -- A take's name keeps its letter, in the playhead's colour.
-      spans[#spans + 1] = { row.y, 1, "PlayheadClip", false }
-    elseif on_clip then
-      -- Under the clip's name only, so the name row reads unbroken.
-      local skip = row.h > 1 and 1 or 0
-      spans[#spans + 1] = { row.y + skip, row.h - skip, "PlayheadClip" }
-    else
-      spans[#spans + 1] = { row.y, row.h, "Playhead" }
-    end
+    return spans
   end
   buf:mark("playhead", hw, 0, tw, mst.y, {
-    at = t.position, from = self.scroll, per = zoom, lo = 0, hi = 1e12, spans = spans, bind = "position",
+    at = t.position, from = self.scroll, per = zoom, lo = 0, hi = 1e12, spans = spans_at(col(t.position)),
+    spans_at = spans_at, bind = "position",
   })
 end
 

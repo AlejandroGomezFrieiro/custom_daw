@@ -363,7 +363,7 @@ local function track_node(a, b)
   if data.equal(a, b) then return nil end
   local head = node("~", track_label(b), { address = address, trail = track.trail })
   if a.name ~= b.name then head.text = string.format('track %d "%s" -> "%s"', b.id, a.name or "", b.name or "") end
-  local skip = { id = true, devices = true, clips = true, lanes = true, sends = true, slots = true, cues = true, meta = true }
+  local skip = { id = true, devices = true, clips = true, lanes = true, sends = true, cues = true, meta = true }
   fields(head, a, b, skip, track)
   fields(head, a.meta, b.meta, nil, { address = address, trail = track.trail .. " › meta" })
 
@@ -387,15 +387,6 @@ local function track_node(a, b)
     if n then
       n.text = n.text .. " (off the timeline)"
       add(head, n)
-    end
-  end
-  -- The clip launcher's slots, as files kept them before cues.
-  if not data.equal(a.slots, b.slots) then
-    for _, p in ipairs((match(a.slots, b.slots, "row"))) do
-      if not data.equal(p.a, p.b) then
-        add(head, node(sign_of(p), "launcher slot " .. p.key .. (p.a and p.b and " changed" or ""),
-          { address = address, trail = track.trail .. " › slot " .. p.key, change = true }))
-      end
     end
   end
   return #head.children > 0 and head or nil

@@ -25,6 +25,11 @@ impl Gain {
 }
 
 impl Device for Gain {
+    /// Silence in is silence out, once a new gain has been ramped to.
+    fn resting(&self) -> bool {
+        self.current == self.target
+    }
+
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut Io) {
         let n = io.left.len().max(1);
         let step = (self.target - self.current) / n as f32;

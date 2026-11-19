@@ -36,6 +36,17 @@ The window moves its widgets with them.
 The full description is in [The control
 protocol](../reference/protocol.md).
 
+The terminal works in the same way. While the song plays, only the
+playhead, the meters and the status line change. The kernel keeps the
+last frame of each terminal, and what was under each of these parts. For
+a new frame, it draws only these parts again, with the values of now, on
+the last frame. Then it sends only the cells that changed.
+
+When no cell changed, the kernel sends nothing. So the cost of a frame is the cost of the parts
+that move, not the cost of the whole view. A key or an edit draws the
+whole screen at once, as before. `paw.opt.fps` is the most frames a
+second, not a fixed rate.
+
 ## What a scene is
 
 A view is written once, in Lua, as the terminal draws it: text in cells.

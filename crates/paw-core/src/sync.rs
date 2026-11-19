@@ -1479,7 +1479,7 @@ fn build_clips(
                 set.midi.extend_from_slice(&events);
                 kept.push((clip.clone(), events));
             }
-            ClipContent::Audio { file, offset, gain } => {
+            ClipContent::Audio { file, offset, gain, .. } => {
                 clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut set.audio)
             }
         }
@@ -1592,7 +1592,7 @@ fn build_cues(
                 clips.midi = compile_clip(clip, notes, controls).to_vec();
                 downgrade(track, &mut clips, tempo);
             }
-            ClipContent::Audio { file, offset, gain } => {
+            ClipContent::Audio { file, offset, gain, .. } => {
                 clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut clips.audio)
             }
         }

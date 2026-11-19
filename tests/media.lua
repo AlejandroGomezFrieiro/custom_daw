@@ -409,6 +409,59 @@ local function ramp(path, seconds, top)
   return T.write_wav(path, s)
 end
 
+test("an audio clip's edit list: a gain on a part and a pencil fix play through, are saved in the clip's file, and come back without the cache", function()
+  fresh()
+  T.after(function() api.media_store(0) end)
+  -- Every version on the disk: the cache is where it is kept.
+  api.media_store(0.0001)
+  local _, store = api.media_store()
+  local t = paw.add_track({ name = "Take" })
+  local src = steady(T.scratch .. "/edit-steady.wav", 2, 0.5)
+  local before = T.read_file(src)
+  local clip = t:add_clip({ file = src, start = 0, length = 4 })
+  paw.flush()
+  api.undo_checkpoint()
+  paw.cursor.set_track(t)
+  paw.cursor.beat = 0
+  T.keys(":clip.gain 0.5 1 -120<CR>")
+  eq(paw.ui.message.text, clip.name .. ": -120 dB from 0.5 s to 1 s (1 edit in its list)", "said")
+  local fix = {}
+  for i = 1, 100 do fix[i] = 0.1 end
+  paw.media.pencil(clip, 1.5, fix, 0)
+  api.undo_checkpoint()
+  paw.flush()
+  local function heard()
+    local s = T.samples(T.render({ tail = 0, bits = 16, ["end"] = 4 }))
+    return s
+  end
+  local s = heard()
+  T.near(s[1000], 0.5, 0.01, "the sound before the part")
+  T.near(s[36000], 0, 0.001, "the part is silent")
+  T.near(s[72010], 0.1, 0.01, "the pencil fix in the left channel")
+  T.near(s[60000], 0.5, 0.01, "and the sound after the part")
+  eq(T.read_file(src) == before, true, "the file is as it was")
+  local made = 0
+  for _, e in ipairs(api.read_dir(store)) do
+    if e.name:find("edits", 1, true) then made = made + 1 end
+  end
+  eq(made >= 1, true, "the version is in the cache")
+  -- Saved: the edit list is in the clip's own file.
+  local dir = T.scratch .. "/edits-song"
+  paw.project.save(dir)
+  local name = clip.name
+  local list = api.json_decode(T.read_file(dir .. "/tracks/Take/clips/" .. name .. ".edits.json"))
+  eq(#list .. " " .. list[1].kind .. " " .. list[2].kind, "2 gain pencil", "the clip's file holds its edit list")
+  -- Without the cache, it is made again.
+  os.execute("rm -rf '" .. store .. "'")
+  paw.project.load(dir)
+  paw.flush()
+  local again = heard()
+  T.near(again[36000], 0, 0.001, "opened again without the cache, the part is silent")
+  T.near(again[72010], 0.1, 0.01, "and the fix is there")
+  T.keys(":clip.edits.clear<CR>")
+  T.near(heard()[36000], 0.5, 0.01, ":clip.edits.clear plays the file again")
+end)
+
 test("an audio clip is reversed, normalized and glued without touching its file", function()
   fresh()
   local t = paw.add_track()
@@ -419,10 +472,12 @@ test("an audio clip is reversed, normalized and glued without touching its file"
   clip.fade_in = 0.5
   paw.flush()
   api.undo_checkpoint()
-  paw.media.reverse(clip)
+  T.keys(":clip.reverse<CR>")
   paw.flush()
-  eq(clip.file ~= src, true, "the clip plays a new file")
-  eq(clip.offset, 0, "from its start")
+  eq(paw.ui.message.text, "reversed " .. clip.name .. " (1 edit in its list; the file stays as it is)", "said")
+  eq(clip.file, src, "the clip plays its file")
+  eq(paw.media.edits(clip)[1].kind, "reverse", "with a reverse in its edit list")
+  eq(clip.offset, 0, "from where the same part is, backwards")
   eq(clip.fade_out, 0.5, "and its fades change ends")
   local s = T.samples(T.render({ tail = 0, bits = 16, ["end"] = 2 }))
   T.near(s[48000 * 0 + 100], 0.5, 0.01, "it starts where it ended")
@@ -431,7 +486,7 @@ test("an audio clip is reversed, normalized and glued without touching its file"
   eq(T.read_file(src) == before, true, "the original file is unchanged")
   api.undo_checkpoint()
   paw.undo()
-  eq(clip.file, src, "one undo step puts it back")
+  eq(#paw.media.edits(clip), 0, "one undo step puts it back")
   eq(clip.offset, 1, "offset and all")
 
   local gain = paw.media.normalize(clip, -6)

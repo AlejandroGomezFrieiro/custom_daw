@@ -71,6 +71,11 @@ old file. A rename is atomic on the file system. So after a crash, each
 file is the complete old file or the complete new file. paw writes
 `project.toml` last, so it never names a file that is not complete.
 
+Before a save changes `project.toml`, paw keeps the old one as
+`project.toml.bak`. If a different program damages `project.toml`, the
+`.bak` and the track folders still hold the project, and `:recover` opens
+them.
+
 ## paw never deletes your files
 
 A save does not delete a file that the project no longer uses. It moves
@@ -93,8 +98,11 @@ one of the two, it gets a file of its own at the next save.
 A clip or a sound file can come from a file outside
 the project folder. An example is a library of loops. The project
 names the file and keeps no copy, so many projects can use one library.
+A whole track can also come from outside: the track folder of a
+different project. A chain of devices can come from a `devices.json`.
+So you can make a sound one time and use it in many songs.
 
-The first edit of such a clip makes a copy that is the project's own.
+The first edit of such a clip, track or chain makes a copy that is the project's own.
 paw tells you this one time on the message line, and the copy remembers
 the file that it came from. An undo of the edit returns to the file
 outside. `:collect` copies every file from outside into the folder, for
@@ -111,12 +119,18 @@ looks for the file before it asks you. It looks in the folder of the
 project, by the last parts of the old path, and next to other files that
 it found.
 
-## A project in one file
+## A project is always a folder
 
-A path that ends in `.json` saves the project in one file. paw uses this
-form for its safety copies and for the states of the undo history.
-`extensions/projdiff` uses it to compare and merge two versions of a
-project.
+A project of yours is always a folder. Two forms of one project make two
+sets of rules: which form a command writes, where the media goes, what
+version control sees. One form gives one set of rules.
+
+paw still writes a project in one JSON file for its own work. These
+files are the safety copies, the states of the undo history, and the
+versions that `extensions/projdiff` compares and merges. These files are fast to write
+in one piece, and no person edits them. So `:w song.json` saves the folder
+`song`, and tells you so. A project that an earlier version of paw saved
+in one file opens, and `:w` saves it as a folder beside the file.
 
 ## Safety copies
 

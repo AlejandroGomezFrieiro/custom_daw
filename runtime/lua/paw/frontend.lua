@@ -429,15 +429,36 @@ function M.vca_words(id)
   return table.concat(names, ", ")
 end
 
+-- What the state's parts that only a turn with input, an edit or a redraw
+-- can change were made for (`still_key`), by seat: the drawn tracks and
+-- the modal state. While the song plays and nobody types, they are kept.
+local kept = {}
+
+--- What those parts depend on: the project's revision, the redraws, the
+--- input that came (`paw.remote.touches`), the seat and the keys typed.
+--- A render in the background changes the modal state on its own.
+local function still_key()
+  if paw.api.render_status() then return nil end
+  local keymap = paw.keymap
+  return table.concat({ M.revision, api.ui_redraws(), paw.remote and paw.remote.touches or 0, paw.seats.current,
+    keymap.mode, keymap.pending() }, ":")
+end
+
 --- The data that paw sends to a graphical frontend: transport, tracks,
 --- clips, devices and the modal state, as plain data. `known` is a list of
 --- the data that the frontend has already.
 function M.state(known)
   M.polled = api.now() -- someone is looking: see `paw.fx.interactive`
   local t, e = api.transport_get(), api.engine_get()
+  local key = still_key()
+  local seat = paw.seats.current
+  local same = key and kept[seat] and kept[seat].key == key and kept[seat]
   -- The tracks that are drawn: those folded away into a group are left out.
-  local ids = paw.groups.rows()
-  ids[#ids + 1] = 0 -- the master track goes last
+  local ids = same and same.ids
+  if not ids then
+    ids = paw.groups.rows()
+    ids[#ids + 1] = 0 -- the master track goes last
+  end
   -- Both sides of every track's meter, one after the other.
   local levels = {}
   for i, id in ipairs(ids) do
@@ -446,7 +467,7 @@ function M.state(known)
   -- What arrives at each track's audio input, armed or not: 0 without one.
   local inputs, device_levels = {}, paw.audio.levels()
   for i, id in ipairs(ids) do
-    inputs[i] = id ~= 0 and paw.audio.level(api.track_get(id), device_levels) or 0
+    inputs[i] = id ~= 0 and paw.audio.level({ input = api.track_get(id, "input") }, device_levels) or 0
   end
   local num, den = paw.tempo.signature_at(t.position)
   local out = {
@@ -456,7 +477,7 @@ function M.state(known)
     time = paw.time.format(t.position), clock = paw.time.clock(t.position),
     -- The tempo and signature where the playhead is.
     tempo = math.floor(paw.tempo.at(t.position) * 100 + 0.5) / 100, signature = num .. "/" .. den,
-    cpu = paw.audio.load(e.cpu), levels = levels, inputs = inputs, modal = modal(), armed = t.recording,
+    cpu = paw.audio.load(e.cpu), levels = levels, inputs = inputs, modal = same and same.modal or modal(), armed = t.recording,
     -- What went wrong while playing (see `:engine.status`).
     xruns = e.xruns, late_blocks = e.late_blocks, midi_dropped = e.midi_dropped,
     record_dropped = e.record_dropped, devices_stopped = e.devices_stopped,
@@ -464,6 +485,7 @@ function M.state(known)
     window_fps = paw.opt.window_fps,
     window_cache = paw.opt.window_cache,
   }
+  if key and not same then kept[seat] = { key = key, ids = ids, modal = out.modal } end
   if known == M.revision then return out end
 
   local p = api.project_get()
@@ -614,11 +636,13 @@ function M.save_as(after)
     directory = true,
     on_choose = function(dir)
       local p = api.project_get()
-      local name = p.path and p.path:match("([^/]+)$") or ((p.name ~= "" and p.name or "song") .. ".json")
-      paw.ui.input({ prompt = "File name: ", text = name }, function(typed)
+      -- A project is a folder: its name is the folder's.
+      local name = p.path and (p.path:gsub("/project%.toml$", ""):gsub("%.json$", ""):match("([^/]+)$"))
+        or (p.name ~= "" and p.name or "song")
+      paw.ui.input({ prompt = "Folder name: ", text = name }, function(typed)
         if typed == "" then return end
-        if not typed:match("%.[%w]+$") then typed = typed .. ".json" end
-        paw.notify("saved " .. paw.project.save(dir .. "/" .. typed))
+        local saved, note = paw.project.write(dir .. "/" .. typed)
+        paw.notify(note and (note .. ": " .. saved) or ("saved " .. saved))
         if after then after() end
       end)
     end,
@@ -1707,6 +1731,12 @@ end
 
 --- Type keys as if at the keyboard: what a menu entry for an operator does
 --- to a selection.
+--- The window got the focus of the desktop (true), or lost it.
+function A.focus(on)
+  paw.ui.has_focus = on
+  paw.emit("ui.focus", { focused = on })
+end
+
 function A.keys(keys)
   -- Keys typed in the main window are not for a view in a window of its
   -- own, which sends its own (`paw.canvas.key`): they go to the window
@@ -1754,7 +1784,7 @@ function A.leave(how, what)
   end
   if how ~= "save" then return go() end
   if api.project_get("path") then
-    paw.project.save()
+    paw.project.write()
     return go()
   end
   M.save_as(go)
@@ -1766,8 +1796,8 @@ end
 function A.chosen(kind, path)
   remember_dir(path)
   if kind == "saveas" then
-    if not path:match("%.[%w]+$") then path = path .. ".json" end
-    paw.notify("saved " .. paw.project.save(path))
+    local saved, note = paw.project.write(path)
+    paw.notify(note and (note .. ": " .. saved) or ("saved " .. saved))
   else
     paw.commands.run("import", { path })
   end
@@ -1790,7 +1820,7 @@ function A.drop(paths, row, beat)
       sounds[#sounds + 1] = path
     elseif paw.midifile.is_midi_file(path) then
       midis[#midis + 1] = path
-    elseif path:lower():match("%.json$") then
+    elseif path:lower():match("%.json$") or paw.project.is_folder(path) then
       out.open = out.open or path
     else
       out.refused = out.refused + 1

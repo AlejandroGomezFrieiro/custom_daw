@@ -85,6 +85,7 @@ not need the reply.
 | `subscribe` | Event names or patterns | Sends the events from now on. Replies the list of patterns. |
 | `unsubscribe` | Patterns, or nothing for all | Stops the events. |
 | `frontend.watch` | `{ "interval": ms, "seat": "own" or "instance" }`. Defaults: 33, `"own"`. | Sends `frontend.state` events from now on. See [`frontend.watch`](#frontendwatch). |
+| `frontend.pace` | `ms` | While the song plays, sends what moves at most once in `ms` milliseconds (8 to 1000). See [`frontend.watch`](#frontendwatch). |
 | `frontend.unwatch` | | Stops them. |
 | `scene.watch` | `{ "cell": { "w", "h" }, "roles": [...], "live": bool }` | Sends `scene.patch` events from now on, and `scene.live` events with `live`. See [Scenes](#scenes). |
 | `scene.area` | A window, a width, a height in cell units | Tells the size of a window. 0 by 0 tells that the window does not show. |
@@ -193,8 +194,16 @@ paw does not send an event whose payload is not valid JSON.
 
 `frontend.watch` is for programs that draw the project. paw sends a
 `frontend.state` event at once. After that, it sends one only when
-something to draw changed, at most once in each `interval` milliseconds
-(16 or more).
+something to draw changed. A key, a call or an edit sends one after its
+turn, at most once in 8 milliseconds. While the song plays, and for a
+moment after it stops, paw sends what moves at most once in each
+`interval` milliseconds (16 or more). At rest, paw looks once a second for
+what changes slowly, such as the load of the engine.
+
+`frontend.pace` changes the interval of a connection that watches. It also
+sets how often `scene.live` comes. The graphical window sends it with the
+time between two of its frames (`paw.opt.window_fps`), so paw does not
+make values that the window does not draw.
 
 ```json
 {"event": "frontend.state", "payload": {

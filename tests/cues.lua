@@ -107,3 +107,23 @@ test("cues: a render plays the timeline, not what is cued", function()
   eq(T.channel_peaks(info), 0, "the track has nothing on its timeline")
   paw.transport.stop()
 end)
+
+test("cues: a track folder from outside brings its clips off the timeline, with notes and ids of their own", function()
+  start()
+  local t = paw.add_track({ name = "Loop" })
+  local id = api.clip_add(t.id, { cue = true, length = 4, notes = { { pitch = 62, start = 0, length = 1 } } })
+  local path = T.scratch .. "/cues-outside"
+  api.project_save(path)
+  local folder
+  for _, e in ipairs(api.read_dir(path .. "/tracks")) do folder = path .. "/tracks/" .. e.name end
+  -- Another project, whose ids are the same as the first one's.
+  paw.project.new()
+  local other = paw.add_track({ name = "Here" })
+  api.clip_add(other.id, { cue = true, length = 2 })
+  local track = api.track_import_folder(folder)
+  local cues = api.cue_list(track)
+  eq(#cues, 1, "the clip off the timeline comes with the track")
+  eq(api.clip_notes(cues[1].id)[1].pitch, 62, "with its notes, read from its file")
+  eq(cues[1].id ~= api.cue_list(other.id)[1].id, true, "and an id of its own")
+  local _ = id
+end)

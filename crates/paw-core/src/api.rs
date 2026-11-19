@@ -22,7 +22,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::grid::{self, Caps, Color, Grid, Highlight, Highlights, Rect, Style};
 use crate::io::Io;
-use crate::model::{Control, Id, Note, NoteAttr};
+use crate::model::{ClipContent, Control, Id, Note, NoteAttr};
 use crate::session::notes::{NoteChange, NoteRange, NotesEdit};
 use crate::session::{RenderOpts, Session};
 use crate::watchdog::{self, Watchdog};
@@ -62,6 +62,14 @@ pub struct Shared {
     pub highlights: RefCell<Highlights>,
     /// The screen needs drawing again.
     pub dirty: Cell<bool>,
+    /// Only the live parts of the screen need drawing again (the playhead,
+    /// the meters, the status line): `paw.api.ui_redraw_live`.
+    pub live_dirty: Cell<bool>,
+    /// Frames drawn: whole, live parts only, and live parts that changed
+    /// nothing and were not sent (`paw.api.ui_frames`).
+    pub frames: Cell<[u64; 3]>,
+    /// The frame `ui_frame_snapshot` drew last, for tests.
+    pub snapshot: RefCell<Option<Grid>>,
     /// How many times a redraw has been asked for: a window showing one
     /// view draws it again only when this has moved.
     pub redraws: Cell<u64>,
@@ -376,6 +384,19 @@ pub fn render(lua: &Lua, shared: &Shared) -> mlua::Result<()> {
     let paw: Table = lua.globals().get("paw")?;
     let kernel: Table = paw.get("_kernel")?;
     kernel.get::<Function>("render")?.call((width, height))
+}
+
+/// Draw only the live parts of the frame drawn last again (see
+/// [`crate::grid::Live`]). False when the runtime finds that the frame needs
+/// drawing whole: something not live moves.
+pub fn render_live(lua: &Lua, shared: &Shared) -> mlua::Result<bool> {
+    let (width, height) = {
+        let grid = shared.grid.borrow();
+        (grid.width, grid.height)
+    };
+    let paw: Table = lua.globals().get("paw")?;
+    let kernel: Table = paw.get("_kernel")?;
+    kernel.get::<Function>("render_live")?.call((width, height))
 }
 
 /// One view drawn by itself, as a window shows it: its grid, where it put
@@ -701,6 +722,30 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn clip_collect(_, sh, () => ()) {
             Ok(sh.session.borrow_mut().clip_collect())
         }
+        // Make every track read from a folder outside the project, and every
+        // chain of devices read from a file outside it, the project's own.
+        // Returns how many tracks and how many chains.
+        fn track_collect(_, sh, () => ()) {
+            Ok(sh.session.borrow_mut().track_collect())
+        }
+        // Add the track of a track folder outside the project (a folder with
+        // a `track.json`) at `index` (from 1; the end when nil). The project
+        // refers to the folder until the track's first edit. Returns its id.
+        fn track_import_folder(_, sh, (folder, index) => (String, Option<usize>)) {
+            sh.session.borrow_mut().track_import_folder(Path::new(&folder), index).lua()
+        }
+        // Give a track the devices of a chain file (a `devices.json`). With
+        // `refer`, the track refers to the file until the chain's first edit.
+        // Returns how many devices.
+        fn track_chain_file(_, sh, (track, file, refer) => (Id, String, Option<bool>)) {
+            sh.session.borrow_mut().track_chain_file(track, Path::new(&file), refer.unwrap_or(true)).lua()
+        }
+        // Write a track's devices as a chain file: `file` (a `devices.json`)
+        // and the `.state` files of the plugins beside it. Returns the files.
+        fn chain_write(lua, sh, (track, file) => (Id, String)) {
+            let written = sh.session.borrow_mut().chain_write(track, Path::new(&file)).lua()?;
+            to_lua(lua, &written)
+        }
         // The files of the open project that changed outside paw and are not
         // acted on yet: paths in its folder, or full paths outside it.
         fn project_changed_files(lua, sh, () => ()) {
@@ -922,6 +967,29 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // Audio clip operations that leave the source file alone (session/clipops.rs).
         fn clip_reverse(lua, sh, id => Id) {
             to_lua(lua, &sh.session.borrow_mut().clip_reverse(id).lua()?)
+        }
+        // Add an edit to an audio clip's edit list (`edits.rs`): `{ kind =
+        // "gain", from, to, db }` or `{ kind = "pencil", at, channel, values }`,
+        // in seconds from where the clip starts in its sound. Returns how many
+        // edits it has.
+        fn clip_edit_add(lua, sh, (id, edit) => (Id, LuaValue)) {
+            let edit: crate::edits::AudioEdit = from_lua(lua, edit)?;
+            sh.session.borrow_mut().clip_edit_add(id, edit).lua()
+        }
+        // Take away an audio clip's edit list. Returns how many edits it had.
+        fn clip_edits_clear(_, sh, id => Id) {
+            sh.session.borrow_mut().clip_edits_clear(id).lua()
+        }
+        // An audio clip's edit list, as `clip_edit_add` takes its edits (with
+        // times in seconds of its sound).
+        fn clip_edits(lua, sh, id => Id) {
+            let session = sh.session.borrow();
+            let clip = session.project.clip(id).ok_or_else(|| mlua::Error::runtime(format!("no clip {id}")))?;
+            let edits = match &clip.content {
+                ClipContent::Audio { edits, .. } => edits.clone(),
+                _ => Vec::new(),
+            };
+            to_lua(lua, &edits)
         }
         fn clip_normalize(_, sh, (id, level) => (Id, Option<f64>)) {
             sh.session.borrow_mut().clip_normalize(id, level.unwrap_or(0.0)).lua()
@@ -1225,6 +1293,14 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn engine_set_threads(_, sh, threads => usize) {
             sh.session.borrow_mut().set_threads(threads).lua()
         }
+        // With true, devices at rest sleep through silence: a reverb after
+        // its tail, a synth with no note that sounds. The sound is the same
+        // with false. `engine_get().device_sleeps` counts the blocks that
+        // devices slept through.
+        fn engine_set_sleep(_, sh, sleep => bool) {
+            sh.session.borrow_mut().set_sleep(sleep);
+            Ok(())
+        }
         fn engine_restart(lua, sh, opts => LuaValue) {
             let opts: EngineOpts = options(lua, opts)?;
             let backend = BackendOptions {
@@ -1416,6 +1492,24 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             Ok(())
         }
         fn ui_redraws(_, sh, () => ()) { Ok(sh.redraws.get()) }
+        // Draw only the live parts of the screen again (the playhead, the
+        // meters, the status line), on the frame drawn last; a whole frame
+        // when one is asked for too, or the runtime says it is needed.
+        fn ui_redraw_live(_, sh, () => ()) {
+            sh.live_dirty.set(true);
+            Ok(())
+        }
+        // The frames drawn so far: `{ full, live, unchanged }`: whole frames,
+        // frames of the live parts only, and of those the ones that changed
+        // no cell, which were not sent.
+        fn ui_frames(lua, sh, () => ()) {
+            let [full, live, unchanged] = sh.frames.get();
+            let t = lua.create_table()?;
+            t.set("full", full)?;
+            t.set("live", live)?;
+            t.set("unchanged", unchanged)?;
+            Ok(t)
+        }
         fn ui_size(_, sh, () => ()) {
             let grid = sh.grid.borrow();
             Ok((grid.width, grid.height))
@@ -1478,6 +1572,29 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                 surface.ops = Arc::new(ops);
             }
             Ok(())
+        }
+        // A live part of the screen is drawn over the cells `(x, y, w, h)`,
+        // clipped to `(cx, cy, cw, ch)`: what is under them is kept, to draw
+        // it again by itself (`paw.ui.render_live`). Returns its number for
+        // `grid_live_end`, or nil when no part of it is on the screen.
+        fn grid_live_begin(_, sh, (x, y, w, h, cx, cy, cw, ch) => (f64, f64, f64, f64, f64, f64, f64, f64)) {
+            let clip = Rect { x: cell(cx), y: cell(cy), w: cell(cw), h: cell(ch) };
+            let area = Rect { x: cell(x), y: cell(y), w: cell(w), h: cell(h) };
+            Ok(sh.grid.borrow_mut().live_begin(area.intersect(&clip)).map(|i| i + 1))
+        }
+        fn grid_live_end(_, sh, index => usize) {
+            sh.grid.borrow_mut().live_end(index.wrapping_sub(1));
+            Ok(())
+        }
+        // The frame is drawn: what is over the live parts now stays over them.
+        fn grid_live_seal(_, sh, () => ()) {
+            sh.grid.borrow_mut().live_seal();
+            Ok(())
+        }
+        // Take the live parts off the frame drawn last, to draw them again.
+        // Returns how many there were.
+        fn grid_live_restore(_, sh, () => ()) {
+            Ok(sh.grid.borrow_mut().live_restore())
         }
         // A music font's SMuFL metadata (`Leland`, the default, `Bravura` or
         // `Petaluma`): `engravingDefaults`, `glyphBBoxes`, `glyphsWithAnchors`
@@ -1552,6 +1669,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             let drawn = render(lua, &sh);
             let grid = sh.grid.replace(screen);
             sh.cursor.set(cursor);
+            // The runtime's list of live parts is of this drawing now: the
+            // screen is drawn whole next.
+            sh.dirty.set(true);
             drawn?;
             let lines: Vec<String> = grid
                 .cells
@@ -1560,6 +1680,43 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
                 .map(|line| line.trim_end().to_string())
                 .collect();
             Ok(lines)
+        }
+        // A frame drawn off screen as a terminal is drawn, for tests: whole,
+        // or with `live` only its live parts again on the frame this drew
+        // last (nil when the runtime says it must be drawn whole). Each
+        // row as its text and as its cells with their styles.
+        fn ui_frame_snapshot(lua, sh, (width, height, live) => (u16, u16, Option<bool>)) {
+            let mut frame = sh.snapshot.take().filter(|g| (g.width, g.height) == (width, height));
+            let live = live.unwrap_or(false);
+            if live && frame.is_none() {
+                return Ok(LuaValue::Nil);
+            }
+            let screen = sh.grid.replace(frame.take().unwrap_or_else(|| Grid::new(width, height)));
+            let (cursor, dirty) = (sh.cursor.get(), sh.dirty.get());
+            let drawn = if live {
+                render_live(lua, &sh)
+            } else {
+                sh.grid.borrow_mut().clear();
+                render(lua, &sh).map(|()| true)
+            };
+            let grid = sh.grid.replace(screen);
+            sh.cursor.set(cursor);
+            // The runtime's list of live parts is of this drawing now: the
+            // screen is drawn whole next.
+            sh.dirty.set(dirty || !live);
+            let drawn = drawn?;
+            if !drawn {
+                return Ok(LuaValue::Nil);
+            }
+            let rows = grid.cells.chunks(width.max(1) as usize);
+            let text: Vec<String> = rows.clone().map(|row| row.iter().filter(|c| c.ch != '\0').map(|c| c.ch).collect()).collect();
+            let cells: Vec<String> = rows.map(|row| row.iter().map(|c| format!("{:?}", c)).collect()).collect();
+            let out = lua.create_table()?;
+            out.set("text", text)?;
+            out.set("cells", cells)?;
+            out.set("live", grid.live.len())?;
+            sh.snapshot.replace(Some(grid));
+            Ok(LuaValue::Table(out))
         }
         fn ui_view_snapshot(lua, sh, (name, width, height) => (String, u16, u16)) {
             // One view drawn by itself at the given size, as rows of runs of

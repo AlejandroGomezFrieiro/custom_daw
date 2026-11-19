@@ -60,6 +60,7 @@ pub struct Utility {
     side_hp: Svf,
     dc: [OnePole; 2],
     started: bool,
+    rest: super::dsp::Rest,
 }
 
 impl Utility {
@@ -74,6 +75,7 @@ impl Utility {
             side_hp: Svf::default(),
             dc: [OnePole::new(5.0, sr); 2],
             started: false,
+            rest: super::dsp::Rest::default(),
         };
         u.apply();
         u
@@ -97,8 +99,19 @@ impl Utility {
     }
 }
 
+/// Frames the utility waits, calm, before it lets go of what its filters
+/// still hold and rests.
+const UTILITY_MEMORY: u32 = 4096;
+
 impl Device for Utility {
+    fn resting(&self) -> bool {
+        self.rest.resting
+    }
+
     fn process(&mut self, _ctx: &ProcessCtx, io: &mut Io) {
+        if self.rest.sleeps(io) {
+            return;
+        }
         self.started = true;
         let swap = self.p[SWAP] >= 0.5;
         let dc = self.p[DC] >= 0.5;
@@ -119,8 +132,17 @@ impl Device for Utility {
                 x = mid + side;
                 y = mid - side;
             }
+            let calm = self.rest.frame(*l, *r, x.abs().max(y.abs()));
             *l = x * self.gain_l.step();
             *r = y * self.gain_r.step();
+            if calm >= UTILITY_MEMORY
+                && !self.rest.resting
+                && !(self.width.moving() || self.gain_l.moving() || self.gain_r.moving())
+            {
+                self.side_hp = Svf::default();
+                self.dc.iter_mut().for_each(OnePole::reset);
+                self.rest.resting = true;
+            }
         }
         self.side_hp.flush();
         self.dc[0].flush();
@@ -132,6 +154,7 @@ impl Device for Utility {
         if index < self.p.len() && value.is_finite() {
             self.p[index] = value;
             self.apply();
+            self.rest.wake();
         }
     }
 }

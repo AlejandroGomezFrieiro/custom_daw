@@ -402,34 +402,6 @@ end)
 
 -- The extension and the core ---------------------------------------------------
 
-test("launcher: a project saved by the launcher in the core opens with its slots, scenes and quantize", function()
-  start()
-  -- A file as the core wrote it before cues: a clip in a track's `slots`,
-  -- the project's `launch_quantize`, and the scenes' names in `meta.scenes`.
-  local t = paw.add_track({ name = "Keys" })
-  t:add_clip({ name = "Stays", start = 8, length = 4 })
-  t:add_clip({ name = "Riff", start = 0, length = 4, notes = { { pitch = 60, start = 0, length = 1 } } })
-  local path = T.scratch .. "/launcher-old.paw"
-  api.project_save(path)
-  local file = paw.json.decode(T.read_file(path))
-  local track = file.project.tracks[1]
-  for i, c in ipairs(track.clips) do
-    if c.name == "Riff" then track.slots = { { row = 2, mode = "gate", legato = true, clip = table.remove(track.clips, i) } } end
-  end
-  file.project.launch_quantize = "1/8"
-  file.project.meta = { scenes = { "", "", "Drop" } }
-  T.write_file(path, paw.json.encode(file))
-  paw.project.new()
-  api.project_load(path)
-  local keys = api.track_list()[1]
-  local c = launcher.clip(keys, 2)
-  eq(c and (c.name .. " " .. c.mode .. " " .. tostring(c.legato)), "Riff gate true", "the slot's clip, with how it launches")
-  eq(api.clip_notes(c.id)[1].pitch, 60, "and its notes")
-  eq(launcher.quantize(), "1/8", "the project's quantize")
-  eq(launcher.scene_name(2), "Drop", "the scenes' names")
-  eq(api.project_get().meta.scenes, nil, "moved into the launcher's meta")
-end)
-
 test("launcher: the launcher unloads and loads again, and the project keeps its slots without it", function()
   start()
   local t = synth("Lead", 1)
@@ -607,4 +579,23 @@ test("launcher: an export to REAPER or DAWproject reports the clips of the slots
     end
     eq(found ~= nil and #found.items, 1, ext .. ": the track with two clips in slots is named")
   end
+end)
+
+test("launcher: while the song plays, the session view is drawn again as a live part, the same as drawn whole", function()
+  start()
+  local t = synth("Lead", 0, 60, 2)
+  paw.ui.show("session")
+  paw.cursor.set_track(t.id)
+  launcher.launch(t.id, 0, { quantize = "off" })
+  until_(function() return (launcher.state()[t.id] or {}).slot == 0 end, 5000, "the clip to start")
+  paw.transport.stop()
+  local W, H = 120, 40
+  local first = api.ui_frame_snapshot(W, H)
+  eq(first.live > 0, true, "live parts")
+  paw.transport.position = 3
+  local moved = api.ui_frame_snapshot(W, H, true)
+  eq(moved ~= nil, true, "drawn by its live parts only, with the session view shown")
+  local whole = api.ui_frame_snapshot(W, H)
+  for row = 1, H do eq(moved.cells[row], whole.cells[row], "row " .. row .. ":\n" .. moved.text[row] .. "\n" .. whole.text[row]) end
+  paw.ui.hide("session")
 end)

@@ -960,10 +960,43 @@ function paw.import_audio(path, opts)
   return clip
 end
 
+--- True if a path names a chain file of devices: a `devices.json`.
+function paw.is_chain_file(path)
+  return tostring(path):match("devices%.json$") ~= nil
+end
+
+-- The chain file open alone, if one is: `{ path, track }` (see `open_chain`).
+paw.chain_document = nil
+
+--- Open a chain file (a `devices.json`) alone, as a new project with no
+--- file: one track with its devices, and the device panel on it. `:w`
+--- writes the chain back to its file. Returns the track.
+function paw.open_chain(path)
+  local name = (path:gsub("/devices%.json$", ""):match("([^/]+)$") or path):gsub("%.json$", "")
+  api.project_new()
+  api.project_set("name", name)
+  local track = paw.add_track({ name = name })
+  api.track_chain_file(track.id, path, false)
+  api.undo_reset()
+  paw.chain_document = { path = path, track = track.id, opening = true }
+  cursor.set_track(track)
+  pcall(paw.ui.show, "devices")
+  return track
+end
+
+paw.on("project.loaded", function()
+  if paw.chain_document and paw.chain_document.opening then
+    paw.chain_document.opening = nil
+  else
+    paw.chain_document = nil
+  end
+end)
+
 --- Open what a path names: a sound file as a new track, anything else as a
 --- project, with plugins offline as `opts` says (see `paw.loading.open`).
 function paw.open(path, opts)
   if paw.is_audio_file(path) then return paw.import_audio(path, { start = 0 }) end
+  if paw.is_chain_file(path) then return paw.open_chain(path) end
   if paw.midifile.is_clip_file(path) then return paw.midifile.open_clip(path) end
   if paw.midifile.is_midi_file(path) then return paw.midifile.open(path) end
   return paw.loading.open(path, opts)
@@ -980,6 +1013,24 @@ end
 command("import", function(ctx)
   local tempo = ctx.args.tempo
   local function bring(path)
+    -- A track folder (one with a track.json): a track that refers to it.
+    local folder = path:gsub("/+$", ""):gsub("/track%.json$", "")
+    if paw.files.is_dir(folder) and io.open(folder .. "/track.json") then
+      local ok, id = pcall(api.track_import_folder, folder, cursor.index() and cursor.index() + 1 or nil)
+      if not ok then return paw.notify("could not import " .. path .. ": " .. tostring(id):gsub("^[^:]*:%d+: ", ""), "error") end
+      local track = paw.track(id)
+      cursor.set_track(track)
+      return paw.notify(string.format("imported the track “%s” from %s; it refers to the folder until you edit it", track.name, folder))
+    end
+    -- A chain file: the devices of the track at the cursor.
+    if paw.is_chain_file(path) then
+      local track = cursor.track_id() and paw.track(cursor.track_id())
+      if not track then return paw.notify("put the cursor on a track first: the chain goes on it", "warn") end
+      local ok, n = pcall(api.track_chain_file, track.id, path, true)
+      if not ok then return paw.notify("could not import " .. path .. ": " .. tostring(n):gsub("^[^:]*:%d+: ", ""), "error") end
+      return paw.notify(string.format("the chain of %s (%d device%s) is on track “%s”; it refers to the file until you edit it",
+        path, n, n == 1 and "" or "s", track.name))
+    end
     if paw.midifile.is_clip_file(path) then
       local track = cursor.track_id() and paw.track(cursor.track_id())
       if not track or track.id == 0 then track = paw.add_track({ name = (path:match("([^/]+)$") or path):gsub("%.[^.]+$", "") }) end
@@ -1018,13 +1069,14 @@ command("open", function(ctx)
     if not ok then return paw.notify("could not open " .. path .. ": " .. tostring(err):gsub("^[^:]*:%d+: ", ""), "error") end
     if paw.midifile.is_midi_file(path) then return paw.notify("opened " .. midi_said(path, err) .. " (`:w` asks where to save it)") end
     if paw.midifile.is_clip_file(path) then return paw.notify("opened " .. (path:match("([^/]+)$") or path) .. " alone: `:w` writes it back, `:w song` saves a project of it") end
+    if paw.is_chain_file(path) then return paw.notify("opened the chain " .. path .. " alone: `:w` writes it back, `:w song` saves a project of it") end
     paw.notify("opened " .. path)
   end
   local path = ctx.args[1]
   if path and path ~= "" and paw.files.is_dir(path) and not paw.project.is_folder(path) then return paw.files.open(path, { here = true }) end
   if path and path ~= "" then return go(paw.files.path(path)) end
   paw.pick.file({ title = "Open", on_choose = go })
-end, { desc = "Open a project, a MIDI file as a new project, or a sound file on a new track: `open song.json`, `open song.mid`, `open take.wav`; alone, choose it from a list", raw = true, complete = "files" })
+end, { desc = "Open a project, a MIDI file as a new project, or a sound file on a new track: `open song`, `open song.mid`, `open take.wav`; alone, choose it from a list", raw = true, complete = "files" })
 
 command("export", function(ctx)
   local path, what = ctx.args[1] and tostring(ctx.args[1]), ctx.args[2] and tostring(ctx.args[2])
@@ -1768,6 +1820,13 @@ command("write", function(ctx)
     if not ok then return paw.notify(tostring(written):gsub("^[^:]*:%d+: ", ""), "error") end
     return paw.notify("wrote " .. written)
   end
+  if not path and not api.project_get("path") and paw.chain_document then
+    local doc = paw.chain_document
+    local ok, err = pcall(api.chain_write, doc.track, doc.path)
+    if not ok then return paw.notify(tostring(err):gsub("^[^:]*:%d+: ", ""), "error") end
+    api.project_mark_saved()
+    return paw.notify("wrote " .. doc.path)
+  end
   local files = not path and buffer_files()
   if files then
     local ok, written = pcall(api.project_save_files, files)
@@ -1776,7 +1835,7 @@ command("write", function(ctx)
     return paw.notify(string.format("wrote %s", file_names(written)))
   end
   -- A relative name goes beside the project, or to the folder `:cd` set.
-  if path then path = paw.files.path(path) end
+  if path then path = paw.files.project_path(path) end
   -- A project that has no file yet is asked where it goes, when there is
   -- somebody to ask.
   if not path and not api.project_get("path") and paw.fx.interactive() then return paw.frontend.save_as() end
@@ -1785,15 +1844,18 @@ command("write", function(ctx)
   end
   -- A project is a folder: one that holds other files and no project is
   -- not taken over.
-  if path and paw.files.is_dir(path) and not paw.project.is_folder(path) and #api.read_dir(path) > 0 then
-    return paw.notify(path .. " has files and is not a project: `:w " .. path:gsub("/+$", "") .. "/song` makes a project folder in it", "warn")
+  local folder = (path or api.project_get("path") or ""):gsub("%.[jJ][sS][oO][nN]$", "")
+  if folder ~= "" and paw.files.is_dir(folder) and not paw.project.is_folder(folder) and #api.read_dir(folder) > 0 then
+    return paw.notify(folder .. " has files and is not a project: `:w " .. folder:gsub("/+$", "") .. "/song` makes a project folder in it", "warn")
   end
-  paw.notify("saved " .. paw.project.save(path))
-end, { desc = "Save the project: `write song.json`", complete = { "projects" } })
+  local saved, note = paw.project.write(path)
+  paw.notify(note and (note .. ": " .. saved) or ("saved " .. saved))
+end, { desc = "Save the project as a folder: `write song`", complete = { "projects" } })
 command("wall", function()
   local path = api.project_get("path")
   if not path and paw.fx.interactive() then return paw.frontend.save_as() end
-  paw.notify("saved " .. paw.project.save())
+  local saved, note = paw.project.write()
+  paw.notify(note and (note .. ": " .. saved) or ("saved " .. saved))
 end, { desc = "Save every file of the project" })
 command.alias("wa", "wall")
 command("saveas", function() paw.frontend.save_as() end, { desc = "Save the project under a name chosen from a list of directories" })
@@ -1802,13 +1864,13 @@ command("edit", function(ctx)
   -- back to the saved project and throws away what changed since.
   if not ctx.args[1] then
     local path = api.project_get("path")
-    if not path then return paw.notify("the project has no file yet: `:e song.json` opens one, `:w song.json` saves this one", "warn") end
+    if not path then return paw.notify("the project has no file yet: `:e song` opens one, `:w song` saves this one", "warn") end
     if not paw.project.guard("edit") then return end
     paw.open(path)
     return paw.notify("opened " .. path .. " again as it was saved")
   end
   local how = ctx.args[2] and tostring(ctx.args[2])
-  if how and how ~= "offline" and how ~= "online" then return paw.notify("usage: edit <project.json> [offline|online]", "warn") end
+  if how and how ~= "offline" and how ~= "online" then return paw.notify("usage: edit <project> [offline|online]", "warn") end
   local path = tostring(ctx.args[1])
   -- A folder is listed as a buffer to edit (`paw.files`), unless it is a project.
   if paw.files.is_dir(path) and not paw.project.is_folder(path) then return paw.files.open(path, { here = true }) end
@@ -1818,10 +1880,10 @@ command("edit", function(ctx)
   local win = view and not how and paw.layout.current()
   if win then return paw.layout.show_in(win, view, buf and not buf.single and buf.id or nil, target) end
   path = paw.files.path(path)
-  if paw.midifile.is_midi_file(path) or paw.midifile.is_clip_file(path) or paw.is_audio_file(path) then return paw.commands.run("open", { path }) end
+  if paw.midifile.is_midi_file(path) or paw.midifile.is_clip_file(path) or paw.is_audio_file(path) or paw.is_chain_file(path) then return paw.commands.run("open", { path }) end
   if not paw.project.guard("edit") then return end
   paw.open(path, { plugins_offline = how == "offline", all_online = how == "online" })
-end, { desc = "Open a project: `edit song.json`; alone, the project's file again (`edit!` goes back to it as saved); `edit song.json offline` with every plugin offline, `online` with none held back; a MIDI or sound file as `open` does", complete = { "openable", function() return { "offline", "online" } end } })
+end, { desc = "Open a project: `edit song`; alone, the project's file again (`edit!` goes back to it as saved); `edit song offline` with every plugin offline, `online` with none held back; a MIDI or sound file as `open` does", complete = { "openable", function() return { "offline", "online" } end } })
 command("new", function()
   if paw.project.guard("new") then paw.project.new() end
 end, { desc = "Start an empty project, unless there is unsaved work" })
@@ -1878,7 +1940,7 @@ command("example", function(ctx)
   dofile(found.path)
   -- The example is where its history starts: `u` does not take it apart.
   api.undo_reset()
-  paw.notify("opened the example " .. found.name .. ": `:w song.json` saves it as your own")
+  paw.notify("opened the example " .. found.name .. ": `:w song` saves it as your own")
 end, {
   desc = "Open an example or a practice project that comes with paw: `example demo-song`, `example make-music/2-midi-keyboard`",
   complete = function()
@@ -1998,6 +2060,7 @@ end, { desc = "The sound system, as `:audio` lists them: `audio.system pipewire`
 -- Tracks that do not feed each other are processed side by side.
 paw.on("option.changed", function(e)
   if e.name == "threads" then api.engine_set_threads(e.value) end
+  if e.name == "device_sleep" then api.engine_set_sleep(e.value) end
 end)
 command("quit", function()
   if paw.project.unsaved() then
@@ -2250,6 +2313,11 @@ command("info", function()
     lines[#lines + 1] = ""
   end
   lines[#lines + 1] = { text = "Track  " .. t.name, style = "Title" }
+  -- A track or a chain from outside the project, or a copy of one.
+  if t.source then lines[#lines + 1] = "  refers to " .. t.source end
+  if t.origin then lines[#lines + 1] = "  copied from " .. t.origin end
+  if t.chain_source then lines[#lines + 1] = "  devices from " .. t.chain_source end
+  if t.chain_origin then lines[#lines + 1] = "  devices copied from " .. t.chain_origin end
   local kind = paw.track_kinds.describe(track.id)
   if kind then lines[#lines + 1] = "  kind    " .. kind end
   lines[#lines + 1] = string.format("  volume %+.1f dB, pan %+.2f%s%s%s", t.volume, t.pan, t.mute and ", muted" or "", t.solo and ", solo" or "", t.armed and ", armed" or "")

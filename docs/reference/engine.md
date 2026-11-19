@@ -1,6 +1,6 @@
 # The audio engine
 
-<!-- tags: engine threads latency xruns -->
+<!-- tags: engine threads latency xruns sleep -->
 
 The engine plays the project on the audio thread and on a pool of worker
 threads. For the design, see
@@ -31,6 +31,34 @@ Playback and renders use one thread for each core.
   same priority. If the system refuses this priority, the engine uses only
   the audio thread.
 - A render is the same to the bit with any number of threads.
+- Live, the engine uses the worker threads only when one thread needs a
+  quarter or more of the time of a block. A small project then plays on
+  the audio thread only, and the worker threads sleep. After a stop, the
+  engine remembers how much work the song needed.
+- A render shares a group of tracks between the threads when that group
+  has enough work. Less work finishes sooner on one thread.
+- Between blocks, the worker threads sleep.
+
+## Devices at rest
+
+A device at rest sleeps through silence: the engine does not run it. This
+saves processor time while the song stops, and in the silent parts of a
+song.
+
+| Device | At rest |
+| --- | --- |
+| `synth`, `drums`, `sampler` | No note sounds. |
+| `reverb`, `delay`, `chorus`, `flanger`, `phaser` | The input is silent and the tail is below -120 dB. The device then clears its tail. |
+| `eq`, `utility`, `tremolo`, `gain` | The input is silent and the settings do not change. |
+| A CLAP plugin | The plugin says that it can sleep, or that its tail is complete. |
+| A VST3 plugin | Its tail is complete, and its output is silent. |
+| `compressor`, `gate`, `limiter`, `meter`, `tuner`, `saturation`, LV2 plugins | Never. |
+
+- A note, a sound at the input, or a change of a parameter wakes the
+  device.
+- The sound is the same to the bit when devices sleep and when they do not.
+- `paw.opt.device_sleep = false` makes each device run on each block. The
+  `sleep` option of a render does the same for one render.
 
 ## State of the engine
 
@@ -44,6 +72,9 @@ same values to the graphical window and the status line.
 | `input_latency`, `output_latency` | The latencies, in ms (see [Audio devices](audio-devices.md#latency)). |
 | `latency` | How far the output is behind the transport, in ms, with delay compensation. |
 | `threads` | The number of threads in use. |
+| `shared_groups` | The groups of tracks that the engine shared between threads, since it started. |
+| `device_sleep` | True when devices at rest sleep (`paw.opt.device_sleep`). |
+| `device_runs`, `device_sleeps` | The blocks that devices ran, and the blocks that devices at rest slept through, since the engine started. |
 | `lost` | The name of a lost device, or nil. |
 | `xruns` | The number of xruns. |
 | `late_blocks` | The number of blocks that plugins did not give in time. |

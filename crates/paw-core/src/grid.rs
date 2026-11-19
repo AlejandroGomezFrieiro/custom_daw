@@ -125,6 +125,22 @@ impl Surface {
     }
 }
 
+/// A part of the screen that moves on its own while the song plays (the
+/// playhead, a meter, the status line), drawn again by itself between whole
+/// frames ([`Grid::live_restore`]). It keeps what its cells held before it
+/// was drawn, what it drew, and what was drawn over it after, which stays.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Live {
+    pub rect: Rect,
+    /// The cells before it was drawn, row by row.
+    under: Vec<Cell>,
+    /// The cells as it drew them.
+    drawn: Vec<Cell>,
+    /// The cells that something not live drew over it after (a menu, a
+    /// float): their index in the grid and what they show.
+    over: Vec<(usize, Cell)>,
+}
+
 #[derive(Clone, Default, PartialEq)]
 pub struct Grid {
     pub width: u16,
@@ -134,6 +150,13 @@ pub struct Grid {
     /// reporting it (`paw.opt.mouse` off); set by the runtime as it draws.
     pub mouse_off: bool,
     pub surfaces: Vec<Surface>,
+    /// The live parts of the frame, in the order they were drawn.
+    pub live: Vec<Live>,
+    /// While the live parts are drawn again: the ones of the frame before,
+    /// whose cells drawn over them go back over the new ones.
+    live_before: Vec<Live>,
+    /// A live part drawn again drew other cells than before.
+    live_changed: bool,
 }
 
 impl Grid {
@@ -144,6 +167,9 @@ impl Grid {
             cells: vec![Cell::default(); width as usize * height as usize],
             mouse_off: false,
             surfaces: Vec::new(),
+            live: Vec::new(),
+            live_before: Vec::new(),
+            live_changed: false,
         }
     }
 
@@ -154,6 +180,125 @@ impl Grid {
     pub fn clear(&mut self) {
         self.cells.fill(Cell::default());
         self.surfaces.clear();
+        self.live.clear();
+        self.live_before.clear();
+    }
+
+    /// Keep what the screen shows in `into` (what a frontend was shown
+    /// last): the cells, the surfaces and the pointer, not the live parts,
+    /// and in the memory it has when it is as big.
+    pub fn copy_shown(&self, into: &mut Option<Grid>) {
+        match into {
+            Some(shown) if shown.cells.len() == self.cells.len() => {
+                shown.width = self.width;
+                shown.height = self.height;
+                shown.cells.copy_from_slice(&self.cells);
+                shown.mouse_off = self.mouse_off;
+                shown.surfaces.clone_from(&self.surfaces);
+            }
+            _ => {
+                *into = Some(Grid {
+                    width: self.width,
+                    height: self.height,
+                    cells: self.cells.clone(),
+                    mouse_off: self.mouse_off,
+                    surfaces: self.surfaces.clone(),
+                    ..Grid::default()
+                });
+            }
+        }
+    }
+
+    /// The cells of `rect`, which is inside the grid, row by row.
+    fn cells_of(&self, rect: Rect) -> Vec<Cell> {
+        let mut out = Vec::with_capacity((rect.w * rect.h).max(0) as usize);
+        let width = self.width as usize;
+        for y in rect.y..rect.y + rect.h {
+            let at = y as usize * width + rect.x as usize;
+            out.extend_from_slice(&self.cells[at..at + rect.w as usize]);
+        }
+        out
+    }
+
+    /// A live part is about to be drawn over `area`: keep what is under it.
+    /// Returns its number for [`Grid::live_end`], or nothing when it is off
+    /// the screen.
+    pub fn live_begin(&mut self, area: Rect) -> Option<usize> {
+        let rect = area.intersect(&self.rect());
+        if rect.w <= 0 || rect.h <= 0 {
+            return None;
+        }
+        let under = self.cells_of(rect);
+        self.live.push(Live { rect, under, drawn: Vec::new(), over: Vec::new() });
+        Some(self.live.len() - 1)
+    }
+
+    /// The live part `index` is drawn. When it is drawn again by itself, what
+    /// the frame before drew over it goes back on top.
+    pub fn live_end(&mut self, index: usize) {
+        let Some(rect) = self.live.get(index).map(|l| l.rect) else { return };
+        let drawn = self.cells_of(rect);
+        match self.live_before.get(index) {
+            Some(before) if before.rect == rect => {
+                if before.drawn != drawn {
+                    self.live_changed = true;
+                }
+                for &(at, cell) in &before.over {
+                    self.cells[at] = cell;
+                }
+            }
+            _ => self.live_changed = true,
+        }
+        self.live[index].drawn = drawn;
+    }
+
+    /// The frame is done: find, for each live part, the cells that
+    /// something not live drew over it after it. A cell of a later live
+    /// part is that part's own.
+    pub fn live_seal(&mut self) {
+        let width = self.width as usize;
+        for index in 0..self.live.len() {
+            let rect = self.live[index].rect;
+            let mut over = Vec::new();
+            for (i, drawn) in self.live[index].drawn.iter().enumerate() {
+                let (x, y) = (rect.x + (i as i32 % rect.w), rect.y + (i as i32 / rect.w));
+                let at = y as usize * width + x as usize;
+                if self.cells[at] != *drawn && !self.live[index + 1..].iter().any(|l| l.rect.contains(x, y)) {
+                    over.push((at, self.cells[at]));
+                }
+            }
+            self.live[index].over = over;
+        }
+        if self.live.len() != self.live_before.len() {
+            self.live_changed = true;
+        }
+        self.live_before.clear();
+    }
+
+    /// Take the live parts off the frame, the last drawn first, to draw
+    /// them again ([`Grid::live_begin`] in the same order). Returns how
+    /// many there were.
+    pub fn live_restore(&mut self) -> usize {
+        let live = std::mem::take(&mut self.live);
+        let width = self.width as usize;
+        for part in live.iter().rev() {
+            let r = part.rect;
+            for row in 0..r.h {
+                let at = (r.y + row) as usize * width + r.x as usize;
+                let from = (row * r.w) as usize;
+                self.cells[at..at + r.w as usize].copy_from_slice(&part.under[from..from + r.w as usize]);
+            }
+        }
+        let count = live.len();
+        self.live_before = live;
+        self.live_changed = false;
+        count
+    }
+
+    /// Whether the live parts drawn again since [`Grid::live_restore`]
+    /// changed a cell. The cells of the frame are all as before when not.
+    pub fn live_changed(&self) -> bool {
+        self.live_changed
     }
 
     /// Keep a rectangle of cells for pixels, under the name `key`. Over
@@ -318,6 +463,44 @@ mod tests {
         assert_eq!((runs[0][2].x, runs[0][2].w, runs[0][2].fg.as_str()), (5, 3, "#c8c8c8"));
         // Indexed 196 is xterm's red, dimmed halfway to the background.
         assert_eq!((runs[1][0].fg.as_str(), runs[1][0].attrs), ("#7f0000", BOLD));
+    }
+
+    #[test]
+    fn a_live_part_drawn_again_moves_over_what_was_under_it_and_under_what_was_over_it() {
+        let mut grid = Grid::new(10, 3);
+        let clip = grid.rect();
+        let plain = Style::default();
+        grid.text(clip, 0, 1, "abcdefghij", plain);
+        // A playhead over the row, at column 2, and a float over columns 6
+        // to 7 drawn after it.
+        let line = Rect { x: 0, y: 1, w: 10, h: 1 };
+        let part = grid.live_begin(line).unwrap();
+        grid.text(clip, 2, 1, "|", plain);
+        grid.live_end(part);
+        grid.text(clip, 6, 1, "##", plain);
+        grid.live_seal();
+        let row = |g: &Grid| g.cells[10..20].iter().map(|c| c.ch).collect::<String>();
+        assert_eq!(row(&grid), "ab|def##ij");
+        // Drawn again at column 6, under the float, then at column 8.
+        for (at, want) in [(6, "abcdef##ij"), (8, "abcdef##|j")] {
+            assert_eq!(grid.live_restore(), 1);
+            let part = grid.live_begin(line).unwrap();
+            grid.text(clip, at, 1, "|", plain);
+            grid.live_end(part);
+            grid.live_seal();
+            assert_eq!(row(&grid), want, "the playhead at {at}");
+            assert!(grid.live_changed());
+        }
+        // The same again: no cell changed.
+        grid.live_restore();
+        let part = grid.live_begin(line).unwrap();
+        grid.text(clip, 8, 1, "|", plain);
+        grid.live_end(part);
+        grid.live_seal();
+        assert!(!grid.live_changed(), "nothing to send");
+        // A whole frame starts afresh.
+        grid.clear();
+        assert!(grid.live.is_empty());
     }
 
     #[test]

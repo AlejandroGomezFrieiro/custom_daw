@@ -28,7 +28,7 @@ bass.output = bus              -- the output goes into another track
 bass:send(echo, -12)           -- a send to a third track, 12 dB down
 
 paw.tracks()   bass:devices()   bass:clips()   clip:notes()   bass:clip_at(2)
-paw.project.save("song.json")   paw.project.load("song.json")
+paw.project.save("song")   paw.project.load("song")
 paw.render("mix.wav", { tail = 2 })
 ```
 
