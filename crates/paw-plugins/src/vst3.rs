@@ -49,7 +49,9 @@ const NOTE_EXPRESSION: u16 = 4;
 fn note_id(key: u8, ch: u8) -> i32 {
     ch as i32 * 128 + key as i32
 }
+const PARAM_CAN_AUTOMATE: i32 = 1 << 0;
 const PARAM_READ_ONLY: i32 = 1 << 1;
+const PARAM_IS_LIST: i32 = 1 << 3;
 const PARAM_HIDDEN: i32 = 1 << 4;
 const PLAYING: u32 = 1 << 1;
 const MUSIC_TIME_VALID: u32 = 1 << 9;
@@ -139,6 +141,39 @@ fn hex(id: &TUID) -> String {
     id.iter().map(|b| format!("{:02X}", *b as u8)).collect()
 }
 
+/// The name of each of the controller's units (its groups of
+/// parameters), with those it is in before it: "Osc 1/Pitch". The root
+/// unit has no name.
+unsafe fn unit_paths(controller: &ComPtr<IEditController>) -> std::collections::HashMap<i32, String> {
+    let mut parents = std::collections::HashMap::new();
+    if let Some(units) = controller.cast::<IUnitInfo>() {
+        unsafe {
+            for index in 0..units.getUnitCount() {
+                let mut info: UnitInfo = std::mem::zeroed();
+                if units.getUnitInfo(index, &mut info) == OK && info.id != 0 {
+                    parents.insert(info.id, (info.parentUnitId, wide(&info.name)));
+                }
+            }
+        }
+    }
+    let mut paths = std::collections::HashMap::new();
+    for &id in parents.keys() {
+        let mut names = Vec::new();
+        let mut at = id;
+        // A unit list that loops is cut at its length.
+        while let Some((parent, name)) = parents.get(&at) {
+            names.push(name.clone());
+            if names.len() > parents.len() {
+                break;
+            }
+            at = *parent;
+        }
+        names.reverse();
+        paths.insert(id, names.join("/"));
+    }
+    paths
+}
+
 fn unhex(text: &str) -> Option<TUID> {
     let mut id = [0 as c_char; 16];
     for (i, byte) in id.iter_mut().enumerate() {
@@ -165,11 +200,12 @@ fn list(bundle: &Path) -> Result<Vec<Found>> {
             {
                 continue;
             }
-            let (mut vendor, mut instrument) = (String::new(), false);
+            let (mut vendor, mut instrument, mut version) = (String::new(), false, String::new());
             if let Some(factory2) = &factory2 {
                 let mut info2: PClassInfo2 = std::mem::zeroed();
                 if factory2.getClassInfo2(index, &mut info2) == OK {
                     vendor = chars(&info2.vendor);
+                    version = chars(&info2.version);
                     instrument = chars(&info2.subCategories).contains("Instrument");
                 }
             }
@@ -178,6 +214,7 @@ fn list(bundle: &Path) -> Result<Vec<Found>> {
                 name: chars(&info.name),
                 vendor,
                 instrument,
+                version,
             });
         }
     }
@@ -231,6 +268,8 @@ pub(crate) fn scan_in(
                         .into(),
                         format: "vst3".into(),
                         vendor: plugin.vendor,
+                        id: plugin.id.clone(),
+                        version: plugin.version,
                         params: Vec::new(),
                     };
                     registry.register(std::rc::Rc::new(Vst3Factory {
@@ -877,6 +916,7 @@ impl DeviceFactory for Vst3Factory {
                     state.pos.set(0);
                     controller.setComponentState(stream_ptr(&state));
                 }
+                let units = unit_paths(controller);
                 for index in 0..controller.getParameterCount() {
                     let mut info: ParameterInfo = std::mem::zeroed();
                     if controller.getParameterInfo(index, &mut info) != OK
@@ -894,6 +934,12 @@ impl DeviceFactory for Vst3Factory {
                     let mut param =
                         ParamInfo::new(&title, 0.0, 1.0, info.defaultNormalizedValue as f32, "");
                     param.unit = wide(&info.units);
+                    param.id = info.id.to_string();
+                    param.group = units.get(&info.unitId).cloned().unwrap_or_default();
+                    param.automatable = info.flags & PARAM_CAN_AUTOMATE != 0;
+                    param.steps = info.stepCount.max(0) as u32;
+                    param.enumeration = info.flags & PARAM_IS_LIST != 0 && param.steps > 0;
+                    param.boolean = param.steps == 1 && !param.enumeration;
                     shared.params.push(param);
                 }
                 assign_keys(&mut shared.params);
@@ -1363,6 +1409,30 @@ impl Controller for Vst3Controller {
 
     fn params(&self) -> Vec<ParamInfo> {
         self.shared.params.clone()
+    }
+
+    fn value_text(&mut self, index: usize, value: f64) -> Option<String> {
+        let id = *self.shared.param_ids.get(index)?;
+        let controller = self.shared.controller.as_ref()?;
+        let mut text: String128 = [0; 128];
+        unsafe {
+            (controller.getParamStringByValue(id, value, &mut text) == OK)
+                .then(|| wide(&text))
+                .filter(|t| !t.is_empty())
+        }
+    }
+
+    fn text_value(&mut self, index: usize, text: &str) -> Option<f64> {
+        let id = *self.shared.param_ids.get(index)?;
+        let controller = self.shared.controller.as_ref()?;
+        let mut units: Vec<TChar> = text.encode_utf16().map(|u| u as TChar).collect();
+        units.push(0);
+        let mut value = 0.0;
+        unsafe {
+            (controller.getParamValueByString(id, units.as_mut_ptr(), &mut value) == OK)
+                .then_some(value)
+                .filter(|v| v.is_finite())
+        }
     }
 
     fn value(&self, index: usize) -> Option<f64> {

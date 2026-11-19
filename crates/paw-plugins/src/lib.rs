@@ -175,6 +175,9 @@ pub(crate) struct Found {
     pub name: String,
     pub vendor: String,
     pub instrument: bool,
+    /// The version the plugin gives; empty in a cache from before it was kept.
+    #[serde(default)]
+    pub version: String,
 }
 
 #[derive(Serialize, Deserialize)]

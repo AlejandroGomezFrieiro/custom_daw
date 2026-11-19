@@ -57,7 +57,12 @@ local FORMAT = {
 --- The value as text, in the parameter's unit.
 function M.format(p, value)
   if value == nil then return "" end
-  if #p.choices > 0 then return p.choices[math.floor(value + 0.5) + 1] or tostring(value) end
+  if #p.choices > 0 then
+    -- Steps from `min` to `max`: one for each choice.
+    local span = p.max - p.min
+    local at = span > 0 and math.floor((value - p.min) / span * (#p.choices - 1) + 0.5) or 0
+    return p.choices[at + 1] or tostring(value)
+  end
   local f = FORMAT[p.unit]
   return f and f(value, p) or generic(p, value)
 end

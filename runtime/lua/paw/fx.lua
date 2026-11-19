@@ -76,11 +76,11 @@ function M.set_gain(device, db) api.device_set_param(id_of(device), "fx_gain", d
 -- rest in the plugin's order.
 
 --- The parameter last moved, in a plugin's own window or here:
---- `{ device = id, param = key, from = "editor" | "host" }`.
+--- `{ device = id, param = key, id = the device's own id, from = "editor" | "host" }`.
 M.last_touched = nil
 
 paw.on("param.touched", function(e)
-  M.last_touched = { device = e.device, param = e.param, from = e.from }
+  M.last_touched = { device = e.device, param = e.param, id = e.id, from = e.from }
   -- One moved in the plugin's own window shows itself in the device panel.
   if e.from == "editor" then
     local panel = paw.ui.views.devices

@@ -410,13 +410,13 @@ fn share_with(new: &mut Project, old: &Project) {
         };
         {
             let t = Arc::make_mut(track);
-            fn share<T: Serialize + Clone>(
-                list: &mut [Arc<T>],
-                prev: &[Arc<T>],
+            fn share<'a, T: Serialize + Clone + 'a>(
+                list: impl IntoIterator<Item = &'a mut Arc<T>>,
+                prev: impl IntoIterator<Item = &'a Arc<T>> + Copy,
                 id: impl Fn(&T) -> Id,
             ) {
                 for item in list {
-                    if let Some(p) = prev.iter().find(|p| id(p) == id(item))
+                    if let Some(p) = prev.into_iter().find(|p| id(p) == id(item))
                         && same(p.as_ref(), item.as_ref())
                     {
                         *item = p.clone();
@@ -529,13 +529,13 @@ pub fn diff(a: &Project, b: &Project) -> Value {
     let tracks_b: HashMap<Id, &Arc<Track>> = b.all_tracks().map(|t| (t.id, t)).collect();
     // Where every device, clip and lane is in `a`: the track holding it, and it.
     type Index<'p, T> = HashMap<Id, (&'p Track, &'p Arc<T>)>;
-    fn index<'p, T>(
+    fn index<'p, T: 'p, I: IntoIterator<Item = &'p Arc<T>>>(
         p: &'p Project,
-        list: impl Fn(&'p Track) -> &'p [Arc<T>],
+        list: impl Fn(&'p Track) -> I,
         id: impl Fn(&T) -> Id,
     ) -> Index<'p, T> {
         p.all_tracks()
-            .flat_map(|t| list(t).iter().map(move |x| (t.as_ref(), x)))
+            .flat_map(|t| list(t).into_iter().map(move |x| (t.as_ref(), x)))
             .map(|(t, x)| (id(x), (t, x)))
             .collect()
     }
@@ -872,6 +872,7 @@ mod tests {
             sidechain: None,
             sidechain_pre: false,
             outputs: Default::default(),
+            param_ids: Default::default(),
         }));
         let note = |start: f64, pitch: u8| Note {
             start,

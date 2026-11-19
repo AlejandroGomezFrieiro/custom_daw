@@ -136,15 +136,21 @@ tempo map of the project, and back.
 | MIDI items | Notes from inline events and from `.mid` files, with velocity and channel (in `meta.channel` of the note), through the ticks per quarter note of the source. Controllers, pitch bend, channel and key pressure, and program changes (with the bank before them) become the controller moves of the clip. A source that ignores the project tempo runs at its own. A looped item becomes a looped clip. Notes held over the item start begin at it, as REAPER plays them. Muted items stay muted | Inline events at 960 ticks per quarter note, channels from `meta.channel`, and the controller moves. A looped clip becomes a looped item |
 | Automation | Volume and pan envelopes of tracks and the master, and the parameter envelopes (`PARMENV`) of plugins that came across, as lanes, on or off as in REAPER. Square points hold. Slow start and end points become smooth | The same |
 | CLAP plugins | When installed here: the same plugin with the state that REAPER saved, which is the own state of the plugin | With their state |
-| VST3 plugins | When installed here (found by name and vendor): the same plugin with its state, from the chunk of REAPER (paw checks the sizes first) | Only plugins that came from a REAPER project: paw keeps the header of REAPER for them, and puts the current state into it |
+| VST3 plugins | When installed here (found by the class id in the line of REAPER, else by name and vendor): the same plugin with its state, from the chunk of REAPER (paw checks the sizes first) | Only plugins that came from a REAPER project: paw keeps the header of REAPER for them, and puts the current state into it |
 | LV2 plugins | When installed here: the same plugin with its control ports (`P` lines. The symbols of the ports are the parameter keys of paw) | With their control ports |
 | Bypass | For each plugin, and a bypassed FX chain | For each plugin |
 | Other plugins | VST2, JSFX, AU, DX, containers, and plugins that are not installed: a placeholder in `meta.rpp_placeholders` of the track (`name`, `format`, `position`, `reason`, and the text of REAPER for it), reported | Placeholders return into the chain at their places, as paw read them |
 
 REAPER counts the parameters of a plugin from 0, in the order of the
-plugin. paw lists them in the same order. A parameter envelope gives values
-from its minimum to its maximum, and paw scales them to the range of the
-parameter.
+plugin. paw lists them in the same order. For a CLAP or VST3 plugin, REAPER
+writes the id of the plugin for the parameter after the place, as a signed
+32-bit number: `<PARMENV 5:-1611133501`. paw writes and reads the same
+form. It finds the parameter by the id first. An envelope then stays on
+its parameter in a version of the plugin with a different order.
+
+A parameter envelope gives values from its minimum to its maximum, and
+paw scales them to the range of the parameter. See
+[Device parameters](../../docs/reference/device-parameters.md).
 
 ### What does not come across
 

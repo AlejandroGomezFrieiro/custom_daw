@@ -13,7 +13,9 @@ use paw_engine::{Ctl, EventKind, NoteCtl, SigPoint, TempoMap, TempoPoint};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+mod clips;
 mod notes;
+pub use clips::Clips;
 pub use notes::Notes;
 
 pub type Id = u64;
@@ -50,6 +52,22 @@ pub struct Project {
     /// Free-form data for extensions, saved with the project.
     #[serde(default)]
     pub meta: Map<String, Value>,
+    /// Where clips were last found: see [`Project::find_clip`].
+    #[serde(skip)]
+    places: Places,
+}
+
+/// Where each clip was last seen, by id: its track and its place there.
+/// Only a hint, checked before it is used, and shared by every copy of a
+/// project (which mostly keep their clips where they were), so that finding
+/// a clip does not cost a look through every clip of the project.
+#[derive(Clone, Default)]
+struct Places(Arc<std::sync::Mutex<std::collections::HashMap<Id, (Id, usize)>>>);
+
+impl std::fmt::Debug for Places {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Places")
+    }
 }
 
 impl Default for Project {
@@ -69,6 +87,7 @@ impl Default for Project {
             }),
             tracks: Vec::new(),
             meta: Map::new(),
+            places: Places::default(),
         }
     }
 }
@@ -88,7 +107,7 @@ pub struct Track {
     pub output: Option<Id>,
     pub sends: Vec<Send>,
     pub devices: Vec<Arc<DeviceInst>>,
-    pub clips: Vec<Arc<Clip>>,
+    pub clips: Clips,
     /// At most one lane per target.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lanes: Vec<Arc<Lane>>,
@@ -122,8 +141,8 @@ pub struct Track {
     /// Clips kept off the timeline, which play only when cued (see
     /// `session/cues.rs`). Each starts at 0 and repeats every `length`
     /// beats while it plays.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub cues: Vec<Arc<Clip>>,
+    #[serde(default, skip_serializing_if = "Clips::is_empty")]
+    pub cues: Clips,
     /// How its notes' MIDI 2.0 attributes reach an instrument that does
     /// not take them: see `attr_map.rs`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -300,7 +319,7 @@ impl Track {
             output: None,
             sends: Vec::new(),
             devices: Vec::new(),
-            clips: Vec::new(),
+            clips: Clips::new(),
             lanes: Vec::new(),
             color: None,
             meta: Map::new(),
@@ -310,7 +329,7 @@ impl Track {
             midi_output: None,
             height: None,
             automation: AutoMode::Read,
-            cues: Vec::new(),
+            cues: Clips::new(),
             attr_map: None,
             source: None,
             origin: None,
@@ -413,6 +432,12 @@ pub struct DeviceInst {
     /// its second) and track. Pairs not named here are not heard.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub outputs: BTreeMap<u32, Id>,
+    /// The device's own id (`ParamInfo::id`) of each parameter key that the
+    /// project uses, where the two differ: a new version of a plugin that
+    /// puts its parameters in another order or names them otherwise still
+    /// gets its values and lanes. Written when the project is saved.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub param_ids: BTreeMap<String, String>,
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -897,6 +922,23 @@ impl<'a, T, K: Eq + std::hash::Hash + Copy, F: Fn(&T) -> K> ByKey<'a, T, K, F> {
 /// [`ByKey`] for lists of items with ids.
 pub type ById<'a, T> = ByKey<'a, Arc<T>, Id>;
 
+/// Where a track's clips may differ from `before` (the same track in another
+/// state, or `None` for a new track): `before`'s clips in that stretch, and
+/// the places of `clips` in it. Every clip outside it is the very same in
+/// both, found by the runs they share (see [`Clips::changed`]).
+pub fn changed_clips<'a>(
+    before: Option<&'a Clips>,
+    clips: &Clips,
+) -> (Vec<&'a Arc<Clip>>, std::ops::Range<usize>) {
+    match before {
+        Some(before) => {
+            let (old, new) = clips.changed(before);
+            (before.range(old).collect(), new)
+        }
+        None => (Vec::new(), 0..clips.len()),
+    }
+}
+
 /// Give every note of a list that has no id, or the id of a note before it,
 /// the next free one. Returns whether any changed. The same notes are always
 /// given the same ids, so a state written without them (an older file, a
@@ -1034,15 +1076,17 @@ impl Project {
             if old.is_some_and(|o| Arc::ptr_eq(o, track)) {
                 continue;
             }
-            let mut old_clips = ById::new(old.map_or(&[][..], |o| &o.clips[..]), |c: &Arc<Clip>| c.id);
+            let (old_clips, places) = changed_clips(old.map(|o| &o.clips), &track.clips);
+            let mut old_clips = ByKey::new(&old_clips[..], |c: &&Arc<Clip>| c.id);
             // The places of the clips that this state changed and that have
             // notes to name.
             let needs: Vec<usize> = track
                 .clips
-                .iter()
-                .enumerate()
+                .range(places.clone())
+                .zip(places)
+                .map(|(c, i)| (i, c))
                 .filter(|(_, c)| match &c.content {
-                    _ if old_clips.find(c.id).is_some_and(|o| Arc::ptr_eq(o, c)) => false,
+                    _ if old_clips.find(c.id).is_some_and(|o| Arc::ptr_eq(o, *c)) => false,
                     ClipContent::Midi { notes, .. } => !notes.unnamed().is_empty(),
                     _ => false,
                 })
@@ -1077,11 +1121,13 @@ impl Project {
                 continue;
             }
             bytes += size_of::<Track>();
-            let mut clips = ById::new(was.map_or(&[][..], |w| &w.clips[..]), |c: &Arc<Clip>| c.id);
-            for clip in &track.clips {
+            bytes += track.clips.weight_over(was.map(|w| &w.clips));
+            let (old_clips, places) = changed_clips(was.map(|w| &w.clips), &track.clips);
+            let mut clips = ByKey::new(&old_clips[..], |c: &&Arc<Clip>| c.id);
+            for clip in track.clips.range(places) {
                 let was = clips.find(clip.id);
                 if !was.is_some_and(|c| Arc::ptr_eq(c, clip)) {
-                    bytes += clip.weight_over(was.map(|c| &**c));
+                    bytes += clip.weight_over(was.map(|c| &***c));
                 }
             }
             let mut devices = ById::new(was.map_or(&[][..], |w| &w.devices[..]), |d: &Arc<DeviceInst>| d.id);
@@ -1138,9 +1184,39 @@ impl Project {
     }
 
     /// The track that holds a clip, and the clip's index on it.
+    ///
+    /// Where the clip was last found is looked at first, and the places
+    /// beside it (a clip taken out or put in before it moves it by one).
+    /// Only when it is not there are all the clips looked through, and the
+    /// place of each is remembered.
     pub fn find_clip(&self, id: Id) -> Option<(Id, usize)> {
-        self.all_tracks()
-            .find_map(|t| t.clips.iter().position(|c| c.id == id).map(|i| (t.id, i)))
+        let mut places = self.places.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(&(track, index)) = places.get(&id)
+            && let Some(t) = self.track(track)
+        {
+            let near = [index, index.wrapping_sub(1), index + 1];
+            if let Some(&at) = near.iter().find(|&&i| t.clips.get(i).is_some_and(|c| c.id == id)) {
+                places.insert(id, (track, at));
+                return Some((track, at));
+            }
+        }
+        places.clear();
+        let mut found = None;
+        for t in self.all_tracks() {
+            for (i, c) in t.clips.iter().enumerate() {
+                places.insert(c.id, (t.id, i));
+                if c.id == id && found.is_none() {
+                    found = Some((t.id, i));
+                }
+            }
+        }
+        found
+    }
+
+    /// Remember where a clip is, having just put it there.
+    pub fn found_clip(&self, id: Id, track: Id, index: usize) {
+        let mut places = self.places.0.lock().unwrap_or_else(|e| e.into_inner());
+        places.insert(id, (track, index));
     }
 
     pub fn device(&self, id: Id) -> Option<&Arc<DeviceInst>> {

@@ -186,6 +186,81 @@ The undo step copies the list of clips of the track, and the engine gets all
 the clips of the track again. A list that shares its parts (a persistent
 vector) can make that cost independent of the size.
 
+## 2026-11-19: an edit costs what it changes
+
+These changes make the cost of a clip edit or a note edit independent of
+the size of the track and of the clip:
+
+- **Clips in runs.** A track keeps its clips (and its cue clips) in runs of
+  about 32. The states of the undo history share the runs. An edit
+  copies one run, not the list of all the clips. Two states of a track
+  compare run by run, so the undo step, the change events and the sync
+  look only at the runs that changed.
+- **A clip found by its last place.** Before, the search for a clip by its
+  id looked at every clip of the project.
+- **Parts in the engine.** The engine keeps one part for each clip. For a
+  long MIDI clip, it keeps one part for the controllers and one part for
+  each group of at least 256 notes. An edit sends only the parts that
+  changed, and the main thread compiles only those parts. The audio thread
+  puts the parts in and takes them out without an allocation. It plays the
+  parts in the same order as the one sorted list of before, so a render is
+  the same to the bit as a render of `main` (the demo song, the demo song
+  after edits, and the bench projects).
+- **The undo history.** When the history drops a state, the next state
+  gets the sum of the two weights. The history weighs a heavy state again
+  only after 32 such steps. Before, it weighed the next state against the
+  first state at each step past the limit of 1000 steps, and this cost as
+  much as the whole project.
+
+The table compares `main` at 13186c0 with the branch. The runs are
+interleaved, on cores 16 to 23, under load from other jobs (load average 3
+to 21, median 6). Each value is the median of five runs, with the smallest and the
+largest in brackets. The values of Tracktion are from the section before.
+Its edit calls do not sync an engine. Compare them with the values without
+the sync (`nosync`).
+
+| | `main` | Branch | Tracktion |
+| --- | ---: | ---: | ---: |
+| 1000 clip adds, each an undo step and a sync | 116 ms (89 to 119) | 92 ms (49 to 93) | 16 ms |
+| 1000 clip moves | 151 ms (135 to 158) | 87 ms (49 to 89) | 2.3 ms |
+| 1000 clip moves without the sync | 28.4 ms (28.3 to 28.9) | 4.5 ms (4.4 to 4.8) | 2.3 ms |
+| 1000 clip deletes without the sync | 22.5 ms (22.4 to 22.7) | 6.9 ms (6.8 to 7.2) | 2.1 ms |
+| 998 undo steps without the sync | 26.5 ms (26.4 to 26.6) | 8.3 ms (8.1 to 8.4) | 25 ms |
+| 5000 clip adds | 1.68 s (1.47 to 1.70) | 0.70 s (0.32 to 0.75) | 0.10 s |
+| 5000 clip moves | 2.64 s (2.48 to 2.71) | 0.60 s (0.48 to 0.88) | 0.02 s |
+| 5000 clip moves without the sync | 824 ms (815 to 831) | 44 ms (42 to 46) | 20 ms |
+| 5000 note moves in a clip of 5000 notes | 3.43 s (3.03 to 11.3) | 0.71 s (0.52 to 0.72) | |
+| 5000 note moves without the sync | 1.86 s (1.85 to 1.87) | 0.10 s (0.10 to 0.10) | |
+| 1000 note moves in a clip of 1000 notes | 147 ms (123 to 189) | 102 ms (51 to 179) | 1.8 ms |
+
+Without the sync, a clip move costs 4.5 µs on a track of 1000 clips. On a
+track of 5000 clips, it costs 8.7 µs. Before, it cost 28 µs and 165 µs.
+With the sync, most of the time of a move is in the Lua handlers of the
+change events and in the collection of Lua garbage. The sync and the engine
+message take about 12 µs for each move, on tracks of 1000 and of 5000
+clips (runs without the lock, so only a rough value).
+
+Memory, in one run each:
+
+- A one-note edit in a clip of 200,000 notes (`memory.lua bigclip`) added
+  217 kB of resident memory for each undo step before, and 0.4 kB now. The
+  undo history counts about 28 kB for each step in both builds.
+- 5000 clip edits and their undo steps: 113 MB before, 59 MB now.
+- 100 and 500 tracks of 8 clips after 1000 undo steps: 45 and 96 MB before,
+  45 and 97 MB now. That is no measurable difference.
+
+What is worse: on a track of 100 clips, 300 undo steps without the sync
+take 3.2 ms in place of 2.0 ms. And 100 clip deletes take 5.9 ms in place
+of 2.3 ms. The runs and the parts cost a little more than the plain list
+when a track has few clips. With 1000 notes in one clip, the resident
+memory after the run is 74 MB in place of 57 MB.
+
+What is left:
+
+- The Lua handlers of the change events take 15 to 50 µs for each edit.
+- Each edit of a clip looks at all its notes for notes without an id.
+- `clip_add_notes` sends the whole list of notes again.
+
 ## Machine and method
 
 - AMD Ryzen AI 9 HX 370 (12 cores, 24 threads), 32 GB, NixOS, Linux 7.3.1

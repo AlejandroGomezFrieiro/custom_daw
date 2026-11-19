@@ -210,7 +210,7 @@ impl Session {
             .track(track)
             .context("no such track")?
             .clips
-            .clone();
+            .to_vec();
         let audio = |c: &Clip| matches!(c.content, ClipContent::Audio { .. });
         let mut chosen: Vec<Id> = ids.to_vec();
         if ids.len() == 1 {

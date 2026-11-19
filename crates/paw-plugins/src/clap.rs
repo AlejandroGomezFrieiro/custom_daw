@@ -31,7 +31,11 @@ use clap_sys::ext::note_ports::{
     clap_note_port_info, clap_plugin_note_ports,
 };
 use clap_sys::ext::params::{
-    CLAP_EXT_PARAMS, CLAP_PARAM_IS_HIDDEN, clap_host_params, clap_param_info, clap_plugin_params,
+    CLAP_EXT_PARAMS, CLAP_PARAM_IS_AUTOMATABLE, CLAP_PARAM_IS_AUTOMATABLE_PER_CHANNEL,
+    CLAP_PARAM_IS_AUTOMATABLE_PER_KEY, CLAP_PARAM_IS_AUTOMATABLE_PER_NOTE_ID, CLAP_PARAM_IS_ENUM,
+    CLAP_PARAM_IS_HIDDEN, CLAP_PARAM_IS_MODULATABLE_PER_CHANNEL, CLAP_PARAM_IS_MODULATABLE_PER_KEY,
+    CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID, CLAP_PARAM_IS_READONLY, CLAP_PARAM_IS_STEPPED,
+    clap_host_params, clap_param_info, clap_plugin_params,
 };
 use clap_sys::ext::posix_fd_support::{
     CLAP_EXT_POSIX_FD_SUPPORT, CLAP_POSIX_FD_READ, clap_host_posix_fd_support,
@@ -159,6 +163,7 @@ fn list(path: &Path) -> Result<Vec<Found>> {
                 name: text(desc.name),
                 vendor: text(desc.vendor),
                 instrument,
+                version: text(desc.version),
             });
         }
     }
@@ -198,6 +203,8 @@ pub(crate) fn scan_in(
                         .into(),
                         format: "clap".into(),
                         vendor: plugin.vendor,
+                        id: plugin.id.clone(),
+                        version: plugin.version,
                         params: Vec::new(),
                     };
                     registry.register(std::rc::Rc::new(ClapFactory {
@@ -429,15 +436,61 @@ unsafe fn read_params(shared: &mut Shared) {
                 continue;
             }
             shared.param_ids.push((info.id, info.cookie));
-            shared.param_infos.push(ParamInfo::new(
+            let mut param = ParamInfo::new(
                 &text(info.name.as_ptr()),
                 info.min_value as f32,
                 info.max_value as f32,
                 info.default_value as f32,
                 "",
-            ));
+            );
+            param.id = info.id.to_string();
+            param.group = text(info.module.as_ptr()).trim_matches('/').to_string();
+            let flags = info.flags;
+            param.automatable = flags & CLAP_PARAM_IS_AUTOMATABLE != 0;
+            param.read_only = flags & CLAP_PARAM_IS_READONLY != 0;
+            param.per_note = flags
+                & (CLAP_PARAM_IS_AUTOMATABLE_PER_NOTE_ID
+                    | CLAP_PARAM_IS_AUTOMATABLE_PER_KEY
+                    | CLAP_PARAM_IS_AUTOMATABLE_PER_CHANNEL
+                    | CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID
+                    | CLAP_PARAM_IS_MODULATABLE_PER_KEY
+                    | CLAP_PARAM_IS_MODULATABLE_PER_CHANNEL)
+                != 0;
+            if flags & CLAP_PARAM_IS_STEPPED != 0 {
+                let span = (info.max_value - info.min_value).round();
+                param.steps = if span > 0.0 && span < u32::MAX as f64 { span as u32 } else { 0 };
+                // An enumeration names its steps: the plugin's own names.
+                param.enumeration = flags & CLAP_PARAM_IS_ENUM != 0;
+                if param.enumeration && (1..=256).contains(&param.steps) {
+                    param.choices = (0..=param.steps)
+                        .map(|step| {
+                            value_text(shared.plugin, params, info.id, info.min_value + step as f64)
+                                .unwrap_or_else(|| step.to_string())
+                        })
+                        .collect();
+                } else {
+                    param.boolean = param.steps == 1;
+                }
+            }
+            shared.param_infos.push(param);
         }
         assign_keys(&mut shared.param_infos);
+    }
+}
+
+/// A parameter's value as the plugin writes it.
+unsafe fn value_text(
+    plugin: *const clap_plugin,
+    params: &clap_plugin_params,
+    id: clap_id,
+    value: f64,
+) -> Option<String> {
+    let to_text = params.value_to_text?;
+    let mut buffer = [0 as c_char; 256];
+    unsafe {
+        to_text(plugin, id, value, buffer.as_mut_ptr(), buffer.len() as u32)
+            .then(|| text(buffer.as_ptr()))
+            .filter(|t| !t.is_empty())
     }
 }
 
@@ -1016,6 +1069,23 @@ impl Controller for ClapController {
 
     fn ports(&self) -> Ports {
         self.ports.clone()
+    }
+
+    fn value_text(&mut self, index: usize, value: f64) -> Option<String> {
+        let (id, _) = *self.shared.param_ids.get(index)?;
+        unsafe { value_text(self.shared.plugin, self.shared.params.as_ref()?, id, value) }
+    }
+
+    fn text_value(&mut self, index: usize, text: &str) -> Option<f64> {
+        let (id, _) = *self.shared.param_ids.get(index)?;
+        let text = CString::new(text).ok()?;
+        let mut value = 0.0;
+        unsafe {
+            let to_value = self.shared.params.as_ref()?.text_to_value?;
+            to_value(self.shared.plugin, id, text.as_ptr(), &mut value)
+                .then_some(value)
+                .filter(|v| v.is_finite())
+        }
     }
 
     fn value(&self, index: usize) -> Option<f64> {

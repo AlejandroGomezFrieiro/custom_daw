@@ -297,7 +297,13 @@ impl Hold {
 }
 
 /// Everything one track plays. Built on the main thread and handed to the
-/// engine whole, so the audio thread only reads it.
+/// engine whole; the audio thread changes it only by the [`PartEdit`]s it
+/// is sent, without allocating.
+///
+/// What it plays is in one list ([`ClipSet::midi`] and [`ClipSet::audio`]),
+/// or in [`Part`]s, one for each clip, or both: the list plays first on a
+/// beat, then the parts in their order. An edit of one clip then sends and
+/// changes only that clip's part.
 #[derive(Default)]
 pub struct ClipSet {
     /// Sorted by beat, with note-offs before note-ons on the same beat.
@@ -309,6 +315,96 @@ pub struct ClipSet {
     pub switches: Vec<Switch>,
     /// The events of each switch, `Switch::events` into this.
     pub switch_events: Vec<EventKind>,
+    /// Sorted by where they start, then by their order: see [`ClipSet::with_parts`].
+    parts: Vec<Part>,
+    /// The longest stretch a part has been seen to span, in beats: the
+    /// parts that can sound from a beat start at most this far before it.
+    reach: f64,
+    /// The parts that sound in the block being played, with how far into
+    /// each the block's events start: as long as `parts` can grow, so that
+    /// it never has to grow on the audio thread.
+    sounding: Vec<(u32, u32)>,
+}
+
+/// One clip's share of what a track plays.
+pub struct Part {
+    /// The clip's id: what an edit names the part by.
+    pub id: u64,
+    /// Where its clip is among the track's clips, from 1: on the same beat,
+    /// what a part with a lower order plays comes first.
+    pub order: u64,
+    /// Sorted as [`ClipSet::midi`] is.
+    pub midi: Arc<[MidiEv]>,
+    pub audio: Vec<AudioRegion>,
+    /// The first and last beat it has anything on.
+    from: f64,
+    to: f64,
+}
+
+impl Part {
+    pub fn new(id: u64, order: u64, midi: Arc<[MidiEv]>, audio: Vec<AudioRegion>) -> Self {
+        let mut from = f64::INFINITY;
+        let mut to = f64::NEG_INFINITY;
+        if let (Some(first), Some(last)) = (midi.first(), midi.last()) {
+            from = first.beat;
+            to = last.beat;
+        }
+        for region in &audio {
+            from = from.min(region.start);
+            to = to.max(region.end);
+        }
+        Self { id, order, midi, audio, from, to }
+    }
+
+    /// Whether it plays nothing: no part is kept for it.
+    pub fn is_empty(&self) -> bool {
+        self.midi.is_empty() && self.audio.is_empty()
+    }
+}
+
+/// Parts to take out of a [`ClipSet`] by id and order, and parts to put
+/// in, applied on the audio thread by [`ClipSet::edit`]. The parts taken
+/// out are kept in it, to be freed on another thread.
+#[derive(Default)]
+pub struct PartEdit {
+    pub remove: Vec<(u64, u64)>,
+    pub add: Vec<Part>,
+    pub removed: Vec<Part>,
+}
+
+/// On the same beat a note ends before a channel's controllers move, they
+/// move before a note starts, and a note's own controllers come after it
+/// has started.
+fn rank(e: &MidiEv) -> u8 {
+    match e.kind {
+        EventKind::NoteOff { .. } | EventKind::AllNotesOff => 0,
+        EventKind::Control { .. } | EventKind::Program { .. } => 1,
+        EventKind::NoteOn { .. } => 2,
+        EventKind::NoteControl { .. } => 3,
+    }
+}
+
+/// Where an event is in the order a track plays its events in: by beat,
+/// rank, the order of its part (0 for the list) and its place there.
+#[derive(Clone, Copy)]
+pub(crate) struct Stamp(f64, u8, u64, usize);
+
+impl Stamp {
+    pub(crate) const FIRST: Stamp = Stamp(f64::NEG_INFINITY, 0, 0, 0);
+
+    fn of(ev: &MidiEv, order: u64, at: usize) -> Self {
+        Stamp(ev.beat, rank(ev), order, at)
+    }
+
+    /// Whether it comes after `other`.
+    pub(crate) fn after(&self, other: &Stamp) -> bool {
+        self.0
+            .total_cmp(&other.0)
+            .then(self.1.cmp(&other.1))
+            .then(self.2.cmp(&other.2))
+            .then(self.3.cmp(&other.3))
+            .is_gt()
+    }
 }
 
 /// One change of what the instrument is told to play: from `beat` on, the
@@ -350,14 +446,145 @@ impl ClipSet {
     /// note ends before a channel's controllers move, they move before a
     /// note starts, and a note's own controllers come after it has started.
     pub fn finish(&mut self) {
-        let rank = |e: &MidiEv| match e.kind {
-            EventKind::NoteOff { .. } | EventKind::AllNotesOff => 0u8,
-            EventKind::Control { .. } | EventKind::Program { .. } => 1,
-            EventKind::NoteOn { .. } => 2,
-            EventKind::NoteControl { .. } => 3,
-        };
         self.midi
             .sort_by(|a, b| a.beat.total_cmp(&b.beat).then(rank(a).cmp(&rank(b))));
+    }
+
+    /// The parts of a track's clips, in any order, with room for `room`
+    /// parts in all before an edit has to send the set whole again.
+    pub fn with_parts(mut self, parts: Vec<Part>, room: usize) -> Self {
+        let room = room.max(parts.len());
+        self.parts = Vec::with_capacity(room);
+        self.sounding = Vec::with_capacity(room + 1);
+        self.reach = 0.0;
+        for part in parts.into_iter().filter(|p| !p.is_empty()) {
+            self.reach = self.reach.max(part.to - part.from);
+            self.parts.push(part);
+        }
+        self.parts
+            .sort_by(|a, b| a.from.total_cmp(&b.from).then(a.order.cmp(&b.order)));
+        self
+    }
+
+    /// How many parts there are, and how many there is room for.
+    pub fn parts(&self) -> (usize, usize) {
+        (self.parts.len(), self.parts.capacity())
+    }
+
+    /// Take out and put in the parts `edit` names. Allocates nothing as long
+    /// as there is room for the parts put in and for those taken out, which
+    /// whoever sends the edit sees to: an edit for which there is no room
+    /// is not applied, and false returned.
+    pub fn edit(&mut self, edit: &mut PartEdit) -> bool {
+        let adding = edit.add.iter().filter(|p| !p.is_empty()).count();
+        if edit.removed.capacity() - edit.removed.len() < edit.remove.len()
+            || self.parts.len() + adding > self.parts.capacity()
+        {
+            return false;
+        }
+        for &(id, order) in &edit.remove {
+            if let Some(at) = self.parts.iter().position(|p| p.id == id && p.order == order) {
+                edit.removed.push(self.parts.remove(at));
+            }
+        }
+        for part in edit.add.drain(..).filter(|p| !p.is_empty()) {
+            let at = self.parts.partition_point(|p| {
+                p.from.total_cmp(&part.from).then(p.order.cmp(&part.order)).is_lt()
+            });
+            self.reach = self.reach.max(part.to - part.from);
+            self.parts.insert(at, part);
+        }
+        true
+    }
+
+    /// Find the parts that may sound from `start` to `end`, in their order,
+    /// for [`regions`](Self::regions) and [`events`](Self::events).
+    pub fn find_sounding(&mut self, start: f64, end: f64) {
+        self.sounding.clear();
+        if self.parts.is_empty() {
+            return;
+        }
+        let first = self.parts.partition_point(|p| p.from < start - self.reach);
+        for (i, part) in self.parts.iter().enumerate().skip(first) {
+            if part.from >= end {
+                break;
+            }
+            if part.to >= start && self.sounding.len() < self.sounding.capacity() {
+                let at = part.midi.partition_point(|e| e.beat < start);
+                self.sounding.push((i as u32, at as u32));
+            }
+        }
+        let parts = &self.parts;
+        self.sounding.sort_unstable_by_key(|&(i, _)| parts[i as usize].order);
+    }
+
+    /// The sound of the list, then of each part found by
+    /// [`find_sounding`](Self::find_sounding), in their order.
+    pub fn regions(&self) -> impl Iterator<Item = &AudioRegion> {
+        self.audio.iter().chain(
+            self.sounding
+                .iter()
+                .flat_map(|&(i, _)| self.parts[i as usize].audio.iter()),
+        )
+    }
+
+    /// The events from `start` to before `end` of the list and of the parts
+    /// found by [`find_sounding`](Self::find_sounding) for the same stretch,
+    /// in the order they play: as if all were in one list sorted by
+    /// [`finish`](Self::finish), the list first and each part after it in
+    /// their order.
+    pub fn events(&mut self, start: f64, end: f64, mut each: impl FnMut(&MidiEv)) {
+        let first = self.midi.partition_point(|e| e.beat < start);
+        if self.sounding.is_empty() {
+            for ev in self.midi[first..].iter().take_while(|e| e.beat < end) {
+                each(ev);
+            }
+            return;
+        }
+        let mut list = first;
+        loop {
+            // The next event of the list and of each part, the first of them played.
+            let mut best: Option<(Stamp, Option<usize>)> = self
+                .midi
+                .get(list)
+                .filter(|e| e.beat < end)
+                .map(|e| (Stamp::of(e, 0, list), None));
+            for (k, &(i, at)) in self.sounding.iter().enumerate() {
+                let part = &self.parts[i as usize];
+                if let Some(e) = part.midi.get(at as usize).filter(|e| e.beat < end) {
+                    let stamp = Stamp::of(e, part.order, at as usize);
+                    if best.as_ref().is_none_or(|(b, _)| b.after(&stamp)) {
+                        best = Some((stamp, Some(k)));
+                    }
+                }
+            }
+            match best {
+                None => return,
+                Some((_, None)) => {
+                    each(&self.midi[list]);
+                    list += 1;
+                }
+                Some((_, Some(k))) => {
+                    let (i, at) = self.sounding[k];
+                    each(&self.parts[i as usize].midi[at as usize]);
+                    self.sounding[k].1 += 1;
+                }
+            }
+        }
+    }
+
+    /// Every event before `before`, of the list and of every part, each
+    /// with where it is in the order the track plays them: for what a
+    /// chase looks at, which is the last of them for each key and controller.
+    pub(crate) fn each_before(&self, before: f64, mut each: impl FnMut(&MidiEv, Stamp)) {
+        for (at, ev) in self.midi.iter().enumerate().take_while(|(_, e)| e.beat < before) {
+            each(ev, Stamp::of(ev, 0, at));
+        }
+        for part in self.parts.iter().take_while(|p| p.from < before) {
+            for (at, ev) in part.midi.iter().enumerate().take_while(|(_, e)| e.beat < before) {
+                each(ev, Stamp::of(ev, part.order, at));
+            }
+        }
     }
 
     /// The events of the last switch before `beat`, if any.

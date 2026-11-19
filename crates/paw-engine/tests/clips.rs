@@ -274,3 +274,220 @@ fn a_sound_being_made_plays_as_far_as_it_is_there_without_clicks() {
     let done = run(&mut engine, second / 256);
     assert!(done.iter().fold(0.0f32, |m, x| m.max(x.abs())) > 0.45);
 }
+
+/// Clips that overlap, with notes and controllers on the same beats in
+/// different clips and sound of their own: each clip's events (sorted as a
+/// clip's are) and sound.
+fn overlapping_clips(data: &std::sync::Arc<paw_engine::AudioData>, count: usize) -> Vec<ClipSet> {
+    use paw_engine::{AudioRegion, Ctl};
+    (0..count)
+        .map(|c| {
+            let mut set = ClipSet::default();
+            let start = (c % 7) as f64 * 1.5;
+            for i in 0..12 {
+                let at = start + i as f64 * 0.5;
+                // The same keys from clip to clip, so that which ends a
+                // note and which starts it depends on their order.
+                let length = 0.5 + (c % 3) as f64 * 0.25;
+                set.push_note(at, at + length, 48 + (i % 5) as u8, 0.3 + 0.02 * c as f32);
+                set.push_event(
+                    at,
+                    EventKind::Control {
+                        ctl: Ctl::Cc(1 + (i % 2) as u8),
+                        value: c as f64 / count as f64,
+                        ch: 0,
+                    },
+                );
+            }
+            if c % 4 == 0 {
+                let kind = EventKind::Program { program: c as u8, bank: None, ch: 0 };
+                set.push_event(start + 0.25, kind);
+            }
+            set.finish();
+            if c % 3 == 0 {
+                set.audio.push(AudioRegion {
+                    start,
+                    end: start + 3.0 + c as f64 * 0.1,
+                    data: data.clone(),
+                    offset: 0.05 * c as f64,
+                    gain: 0.25,
+                    fade_in: 0.1,
+                    fade_out: 0.2,
+                    declick_in: true,
+                    declick_out: false,
+                    hold: Default::default(),
+                });
+            }
+            set
+        })
+        .collect()
+}
+
+fn region_copy(r: &paw_engine::AudioRegion) -> paw_engine::AudioRegion {
+    paw_engine::AudioRegion {
+        start: r.start,
+        end: r.end,
+        data: r.data.clone(),
+        offset: r.offset,
+        gain: r.gain,
+        fade_in: r.fade_in,
+        fade_out: r.fade_out,
+        declick_in: r.declick_in,
+        declick_out: r.declick_out,
+        hold: Default::default(),
+    }
+}
+
+/// All of the clips in one list, as a track was sent them before there were parts.
+fn as_list(clips: &[ClipSet]) -> ClipSet {
+    let mut set = ClipSet::default();
+    for clip in clips {
+        set.midi.extend_from_slice(&clip.midi);
+        set.audio.extend(clip.audio.iter().map(region_copy));
+    }
+    set.finish();
+    set
+}
+
+/// Clip `index` of `clips` as a part, `order` among them.
+fn part(clips: &[ClipSet], index: usize, order: u64) -> paw_engine::Part {
+    let clip = &clips[index];
+    paw_engine::Part::new(
+        index as u64 + 100,
+        order,
+        clip.midi.clone().into(),
+        clip.audio.iter().map(region_copy).collect(),
+    )
+}
+
+type Seen = std::sync::Arc<std::sync::Mutex<Vec<String>>>;
+
+/// One track whose first device writes down every event it is given, with
+/// its frame, and whose second is a synth.
+fn recording_engine(clips: ClipSet) -> (Engine, EngineHandle, Seen) {
+    use paw_engine::{Device, Io, ProcessCtx};
+    struct Recorder(Seen);
+    impl Device for Recorder {
+        fn process(&mut self, _ctx: &ProcessCtx, io: &mut Io) {
+            let mut seen = self.0.lock().unwrap();
+            for event in io.events.as_slice() {
+                seen.push(format!("{} {:?}", event.frame, event.kind));
+            }
+        }
+        fn set_param(&mut self, _index: u32, _value: f32) {}
+    }
+    let (engine, mut handle) = Engine::new(SR);
+    let seen = Seen::default();
+    let synth = Registry::with_builtins()
+        .get("synth")
+        .unwrap()
+        .create(SR as f32, MAX_BLOCK)
+        .unwrap()
+        .device;
+    for msg in [
+        Msg::InsertTrack { slot: 1, track: TrackRt::new() },
+        Msg::InsertDevice { slot: 0, device: Box::new(Recorder(seen.clone())) },
+        Msg::InsertDevice { slot: 1, device: synth },
+        Msg::SetChain { track: 1, chain: Box::new([0, 1]) },
+        Msg::SetClips { track: 1, clips: Box::new(clips) },
+        Msg::SetSchedule(Box::new(Schedule::new(
+            vec![SchedEntry::new(1, MASTER), SchedEntry::new(MASTER, NO_SLOT)],
+            0,
+        ))),
+    ] {
+        send(&mut handle, msg);
+    }
+    (engine, handle, seen)
+}
+
+fn tone() -> std::sync::Arc<paw_engine::AudioData> {
+    let wave = |f: f32| (0..44100 * 4).map(|i| (i as f32 * f).sin()).collect::<Vec<f32>>().into();
+    std::sync::Arc::new(paw_engine::AudioData { sample_rate: 44100, channels: [wave(0.03), wave(0.05)] })
+}
+
+/// Play from `from` for `blocks` blocks of 256 frames: both channels.
+fn play_from(engine: &mut Engine, handle: &mut EngineHandle, from: f64, blocks: usize) -> Vec<f32> {
+    send(handle, Msg::Seek(from));
+    send(handle, Msg::Play);
+    let mut out = Vec::new();
+    let (mut l, mut r) = (vec![0.0; 256], vec![0.0; 256]);
+    for _ in 0..blocks {
+        engine.process(&mut l, &mut r);
+        out.extend_from_slice(&l);
+        out.extend_from_slice(&r);
+    }
+    out
+}
+
+fn clone_part(p: &paw_engine::Part) -> paw_engine::Part {
+    paw_engine::Part::new(p.id, p.order, p.midi.clone(), p.audio.iter().map(region_copy).collect())
+}
+
+#[test]
+fn clips_sent_as_parts_play_as_the_same_clips_in_one_list() {
+    let data = tone();
+    let clips = overlapping_clips(&data, 24);
+    // The parts given in another order than the clips', which their orders put right.
+    let parts: Vec<_> = (0..clips.len())
+        .rev()
+        .map(|i| part(&clips, i, (i as u64 + 1) * 10))
+        .collect();
+    for from in [0.0, 3.3, 7.75] {
+        let (mut a, mut ha, seen_a) = recording_engine(as_list(&clips));
+        let set = ClipSet::default().with_parts(parts.iter().map(clone_part).collect(), 64);
+        let (mut b, mut hb, seen_b) = recording_engine(set);
+        let out_a = play_from(&mut a, &mut ha, from, 300);
+        let out_b = play_from(&mut b, &mut hb, from, 300);
+        let (seen_a, seen_b) = (seen_a.lock().unwrap(), seen_b.lock().unwrap());
+        assert!(seen_a.len() > 100, "{} events", seen_a.len());
+        assert_eq!(*seen_a, *seen_b, "the same events from {from}");
+        assert!(out_a.iter().any(|x| *x != 0.0));
+        assert!(out_a == out_b, "the same sound to the bit from {from}");
+    }
+}
+
+#[test]
+fn an_edit_of_some_parts_plays_as_the_clips_sent_whole() {
+    use paw_engine::PartEdit;
+    let data = tone();
+    let clips = overlapping_clips(&data, 24);
+    // Before: clips 0 to 19. After: 3 and 11 gone, 20 to 23 put in among them.
+    let order = |i: usize| match i {
+        20 => 450,
+        21 => 451,
+        22 => 50,
+        23 => 5000,
+        _ => (i as u64 + 1) * 100,
+    };
+    let before = || (0..20).map(|i| part(&clips, i, order(i))).collect::<Vec<_>>();
+    let after: Vec<_> = (0..24)
+        .filter(|i| ![3, 11].contains(i))
+        .map(|i| part(&clips, i, order(i)))
+        .collect();
+    // Two engines play the same for a while; then one is sent the clips
+    // whole, the other only the parts that changed.
+    let (mut a, mut ha, seen_a) = recording_engine(ClipSet::default().with_parts(before(), 64));
+    let (mut b, mut hb, seen_b) = recording_engine(ClipSet::default().with_parts(before(), 64));
+    let warm_a = play_from(&mut a, &mut ha, 0.0, 10);
+    let warm_b = play_from(&mut b, &mut hb, 0.0, 10);
+    assert!(warm_a == warm_b);
+    let whole = ClipSet::default().with_parts(after, 64);
+    send(&mut ha, Msg::SetClips { track: 1, clips: Box::new(whole) });
+    let edit = PartEdit {
+        remove: vec![(103, 400), (111, 1200), (999, 1)],
+        add: (20..24).map(|i| part(&clips, i, order(i))).collect(),
+        removed: Vec::with_capacity(3),
+    };
+    send(&mut hb, Msg::EditClips { track: 1, edit: Box::new(edit) });
+    // On, and from another place, with the held notes chased.
+    let mut out_a = play_from(&mut a, &mut ha, 2.25, 100);
+    let mut out_b = play_from(&mut b, &mut hb, 2.25, 100);
+    out_a.extend(play_from(&mut a, &mut ha, 6.5, 200));
+    out_b.extend(play_from(&mut b, &mut hb, 6.5, 200));
+    ha.collect_garbage();
+    hb.collect_garbage();
+    let (seen_a, seen_b) = (seen_a.lock().unwrap(), seen_b.lock().unwrap());
+    assert!(seen_a.len() > 200, "{} events", seen_a.len());
+    assert_eq!(*seen_a, *seen_b, "the same events after the edit");
+    assert!(out_a == out_b, "the same sound to the bit");
+}
