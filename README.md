@@ -207,6 +207,7 @@ instructions.
 | [undotree](extensions/undotree) | the undo tree, to move through |
 | [projdiff](extensions/projdiff) | the changes in a project, and a merge of two versions of it, also in git |
 | [mixdiag](extensions/mixdiag) | measurements of the mix, and the problems in it |
+| [plugstate](extensions/plugstate) | amp models, impulse responses and instrument files of plugins, chosen without their windows, and snapshots |
 | [rpp](extensions/rpp) | open and write REAPER projects |
 | [dawproject](extensions/dawproject) | open and write DAWproject files of Bitwig Studio, Studio One and Cubase |
 | [vinput](extensions/vinput) | virtual inputs, for example a guitar converted to MIDI |

@@ -43,6 +43,7 @@ winbar
 keymap
 keymaps
 mixdiag
+plugstate
 musicops
 undotree
 midilsp

@@ -2024,13 +2024,14 @@ impl Session {
             }
             let request = match (&load.factory, &load.call) {
                 (Some(_), Some(_)) => bail!("give a preset load `factory` or `call`, not both"),
-                (Some(preset), None) => Some(("preset.load", preset.as_bytes(), 10)),
+                (Some(preset), None) => Some(("preset.load", preset.as_bytes(), 10, 30)),
                 // A file the plugin loads in the background (a model) can
-                // take longer than one of its own presets.
-                (None, Some(call)) => Some((call.method.as_str(), call.data.as_bytes(), 50)),
+                // take longer than one of its own presets, or much less:
+                // look more often, for up to a second.
+                (None, Some(call)) => Some((call.method.as_str(), call.data.as_bytes(), 200, 5)),
                 (None, None) => None,
             };
-            if let Some((method, data, tries)) = request {
+            if let Some((method, data, tries, wait)) = request {
                 let before = controller.save_state().ok().flatten();
                 controller.call(method, data)?;
                 // Some plugins finish loading on their audio thread: give
@@ -2040,7 +2041,7 @@ impl Session {
                     if after != before {
                         break;
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(30));
+                    std::thread::sleep(std::time::Duration::from_millis(wait));
                     controller.idle();
                     after = controller.save_state()?;
                 }

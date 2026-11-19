@@ -7786,7 +7786,9 @@ function paw.api.device_editor(id, open) end
 function paw.api.device_get(id) end
 
 --- Load a preset into a device, as one undo step:
---- `{ name =, state =, params =, factory = }`.
+--- `{ name =, state =, params =, factory =, call = }`. `call = { method =,
+--- data = }` is a `device_call` that changes the state of the plugin
+--- (`property.set` of an LV2 plugin). The state after it is kept.
 ---@param id integer
 ---@param load any
 function paw.api.device_load(id, load) end

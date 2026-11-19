@@ -1994,7 +1994,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.device_call(id, method, data)`: A request to a device that accepts data from scripts. Bytes in, bytes out.
 - `paw.api.device_editor(id, open)`: Show or hide the window of a plugin. With no second argument, toggle it.
 - `paw.api.device_get(id)`
-- `paw.api.device_load(id, load)`: Load a preset into a device, as one undo step: `{ name =, state =, params =, factory = }`.
+- `paw.api.device_load(id, load)`: Load a preset into a device, as one undo step: `{ name =, state =, params =, factory =, call = }`. `call = { method =, data = }` is a `device_call` that changes the state of the plugin (`property.set` of an LV2 plugin). The state after it is kept.
 - `paw.api.device_move(id, track, index)`
 - `paw.api.device_note_names(id)`: What a plugin calls its keys, `{ [pitch] = name }` (CLAP `note-name`).
 - `paw.api.device_param(id, name)`: One parameter of a device, named by its key, the device's own id for it or its name: its entry of `param_info`, with `value` (now) and `text` (that value as the device writes it).
