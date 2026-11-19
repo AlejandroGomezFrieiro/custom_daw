@@ -495,11 +495,11 @@ test("rpp: commands, and edit and write on .rpp files", function()
   paw.commands.exec("w " .. dir .. "/out2.rpp")
   eq(T.read_file(dir .. "/out2.rpp"):sub(1, 15), "<REAPER_PROJECT", "w out.rpp")
   -- Other files still go to the original commands.
-  paw.commands.exec("w " .. dir .. "/song.json")
-  eq(T.read_file(dir .. "/song.json"):sub(1, 1), "{", "w song.json saves as before")
+  paw.commands.exec("w " .. dir .. "/song")
+  eq(#T.read_file(dir .. "/song/project.toml") > 0, true, "w song saves as before")
   paw.project.new()
-  paw.commands.exec("e " .. dir .. "/song.json")
-  eq(#paw.tracks(), 4, "e song.json loads as before")
+  paw.commands.exec("e " .. dir .. "/song")
+  eq(#paw.tracks(), 4, "e song loads as before")
 end)
 
 -- Export ------------------------------------------------------------------------------

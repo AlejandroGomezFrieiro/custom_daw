@@ -298,6 +298,18 @@ impl super::Session {
         }
         // Clip files and sound files outside the folder.
         let mut outside = BTreeSet::new();
+        // Track folders and chain files outside the folder.
+        for track in self.project.all_tracks() {
+            if let Some(folder) = &track.source {
+                dirs.insert(folder.clone());
+                outside.insert(folder.join("track.json"));
+                outside.insert(folder.join("devices.json"));
+            }
+            if let Some(chain) = &track.chain_source {
+                dirs.extend(chain.parent().map(Path::to_path_buf));
+                outside.insert(chain.clone());
+            }
+        }
         for track in self.project.all_tracks() {
             for clip in track
                 .clips

@@ -116,7 +116,7 @@ test("guide: arrange your screen: windows, tabs and layouts", function()
   L.start()
   eq(#paw.ui.tabs .. " " .. L.tab_title(paw.ui.tabs[2]), "2 Mix", "a start layout with tabs")
   -- The layout with the project.
-  local path = T.scratch .. "/guide-screen.json"
+  local path = T.scratch .. "/guide-screen"
   keys(":w " .. path .. "<CR>")
   L.restore(initial)
   keys(":e " .. path .. "<CR>")

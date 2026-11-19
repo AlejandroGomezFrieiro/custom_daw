@@ -102,8 +102,7 @@ of the option `tutor_dir`.
 | File | Contents |
 | --- | --- |
 | `progress.lua` | the lesson and the step where you are, and the steps that you did |
-| `practice/<lesson>.json` | the practice projects |
-| `practice/media` | their recordings |
+| `practice/<lesson>/` | the practice projects, each a project folder with its recordings in `media` |
 
 When you quit paw in a lesson (`:q`, `ZZ`, `ZQ`), the tutor saves the
 practice project and your place. `:tutor` continues from there next time.
@@ -271,7 +270,7 @@ row gives the lesson and a change that would help a new user.
 | 5, 7 | Mute has four keys with two meanings: `M` the track, `~` the clip, `gc` clips and `gcc` the track. `~` on a `V` selection mutes the tracks, but on a `v` selection the clips | One rule: `gc` for clips, `M` for tracks, everywhere |
 | 6 | `dw` from a gap deletes nothing (a note belongs to its start). So `.` after a move into a gap does nothing, with no message | A message when the region of an operator is empty |
 | 2 | Many terminals and tmux cannot tell `<S-CR>` (play from the cursor) from Enter | A second key, such as `g<Space>` |
-| 13 | `:w name.json` is the `:saveas` of Vim: the project moves to the new file. A user of Vim expects a copy. No command writes a copy | `:w name` for a copy, as in Vim |
+| 13 | `:w name` is the `:saveas` of Vim: the project moves to the new file. A user of Vim expects a copy. No command writes a copy | `:w name` for a copy, as in Vim |
 | 13 | `:render name.wav` writes relative to the folder where paw started. It does not expand `~`, and the message gives only the name | Expand `~`, and give the full path |
 | 14 | Key hints group `grn` and `grc` as `r +2 more` under `g`, and hide the rename keys | List the keys of the group when there are few |
 | none | `command.pre` and `command.post` carry the alias typed (`q`, `w`), not the command (`quit`, `write`). An extension that listens for `quit` does not see `:q` | Add the name of the command to the event |

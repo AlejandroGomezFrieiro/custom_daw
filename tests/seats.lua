@@ -178,7 +178,7 @@ test("the project keeps a layout for each kind of seat, and a default", function
   eq(paw.seats.kind(seat), other, "a seat of the other kind")
   keys(0, ":e mixer<CR>:only<CR>")
   keys(seat, ":e session<CR>:only<CR>")
-  local path = T.scratch .. "/seats-screen.json"
+  local path = T.scratch .. "/seats-screen"
   keys(0, ":w " .. path .. "<CR>")
   local screen = L.project_screen()
   eq(screen.seats[mine] ~= nil and screen.seats[other] ~= nil and screen.default ~= nil, true,

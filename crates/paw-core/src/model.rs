@@ -131,6 +131,21 @@ pub struct Track {
     /// not take them: see `attr_map.rs`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attr_map: Option<crate::attr_map::AttrMap>,
+    /// The track folder outside the project's folder that the track is
+    /// read from: the project refers to it and keeps no copy. The first
+    /// edit of the track makes it the project's own (`origin`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<PathBuf>,
+    /// The track folder outside the project that the track was copied from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<PathBuf>,
+    /// The chain file (a `devices.json`) outside the project's folder that
+    /// the devices are read from, kept as `source` is for the track.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_source: Option<PathBuf>,
+    /// The chain file outside the project that the devices were copied from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_origin: Option<PathBuf>,
 }
 
 /// A clip in one of a track's slots. It starts at 0 and repeats every
@@ -341,6 +356,10 @@ impl Track {
             automation: AutoMode::Read,
             slots: Vec::new(),
             attr_map: None,
+            source: None,
+            origin: None,
+            chain_source: None,
+            chain_origin: None,
         }
     }
 
@@ -582,6 +601,10 @@ pub enum ClipContent {
         offset: f64,
         /// Clip gain in dB.
         gain: f64,
+        /// Changes to the sound that its file keeps out of, made in order
+        /// (`edits.rs`).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        edits: Vec<crate::edits::AudioEdit>,
     },
 }
 

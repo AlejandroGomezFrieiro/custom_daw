@@ -96,13 +96,17 @@ end, { desc = "Copy every sound file from outside the project's folder into its 
 
 command("collect", function()
   if not api.project_get("path") then return paw.notify("the project has no folder yet: `:w song` saves it first", "warn") end
+  local tracks, chains = api.track_collect()
   local clips = api.clip_collect()
   local result = api.media_collect()
   local n = #result.missing
-  paw.notify(string.format("%d clip%s and %d sound file%s are now the project's own%s; `:w` writes them into its folder",
-    clips, clips == 1 and "" or "s", result.copied, result.copied == 1 and "" or "s",
+  local parts = {}
+  if tracks > 0 then parts[#parts + 1] = string.format("%d track%s, ", tracks, tracks == 1 and "" or "s") end
+  if chains > 0 then parts[#parts + 1] = string.format("%d chain%s, ", chains, chains == 1 and "" or "s") end
+  paw.notify(string.format("%s%d clip%s and %d sound file%s are now the project's own%s; `:w` writes them into its folder",
+    table.concat(parts), clips, clips == 1 and "" or "s", result.copied, result.copied == 1 and "" or "s",
     n > 0 and string.format(" (%d missing, not copied)", n) or ""))
-end, { desc = "Copy every file from outside the project's folder into it: MIDI clip files and sound files" })
+end, { desc = "Copy every file from outside the project's folder into it: tracks, chains of devices, MIDI clip files and sound files" })
 
 --- A path with the home folder as `~`.
 local function tilde(path)
@@ -114,6 +118,13 @@ end
 -- The first edit of a clip that refers to a file outside the project.
 paw.on("clip.copied", function(e)
   paw.notify(string.format("%s is now this project's own copy (was %s)", e.name, tilde(tostring(e.origin))))
+end)
+-- The first edit of a track or a chain from outside the project.
+paw.on("track.copied", function(e)
+  paw.notify(string.format("the track %s is now this project's own copy (was %s)", e.name, tilde(tostring(e.origin))))
+end)
+paw.on("chain.copied", function(e)
+  paw.notify(string.format("the devices of %s are now this project's own copy (was %s)", e.name, tilde(tostring(e.origin))))
 end)
 
 command("media.missing", function()
@@ -133,8 +144,30 @@ local function need_audio_clip()
   return clip
 end
 
---- Play an audio clip backwards, from a new reversed copy of its part of the file.
-function M.reverse(clip) return api.clip_reverse(type(clip) == "table" and clip.id or clip) end
+local function id_of(clip) return type(clip) == "table" and clip.id or clip end
+
+--- Play an audio clip backwards: a `reverse` in its edit list, which leaves
+--- its file as it is (a second reverse takes it away). Returns `{ edits }`.
+function M.reverse(clip) return api.clip_reverse(id_of(clip)) end
+
+--- A gain of `db` on a part of an audio clip, from `from` to `to` seconds
+--- of what it plays, in its edit list. Returns how many edits it has.
+function M.gain_part(clip, from, to, db)
+  return api.clip_edit_add(id_of(clip), { kind = "gain", from = from, to = to, db = db })
+end
+
+--- Samples drawn over an audio clip's (a pencil fix), from `at` seconds of
+--- what it plays, in one channel (0 or 1) or both, in its edit list.
+--- Returns how many edits it has.
+function M.pencil(clip, at, values, channel)
+  return api.clip_edit_add(id_of(clip), { kind = "pencil", at = at, values = values, channel = channel })
+end
+
+--- An audio clip's edit list: `{ { kind, ... } }`.
+function M.edits(clip) return api.clip_edits(id_of(clip)) end
+
+--- Take away an audio clip's edit list. Returns how many edits it had.
+function M.clear_edits(clip) return api.clip_edits_clear(id_of(clip)) end
 
 --- Bring the loudest sample an audio clip plays to `level` dB (0) by its gain.
 --- Returns the new gain.
@@ -154,9 +187,44 @@ end
 command("clip.reverse", function()
   local clip = need_audio_clip()
   if not clip then return end
-  M.reverse(clip)
-  paw.notify("reversed " .. clip.name)
-end, { desc = "Play the audio clip under the cursor backwards (a new file; the original stays)" })
+  local done = M.reverse(clip)
+  paw.notify(string.format("reversed %s (%d edit%s in its list; the file stays as it is)", clip.name, done.edits, done.edits == 1 and "" or "s"))
+end, { desc = "Play the audio clip under the cursor backwards: an edit in its list; the file stays as it is" })
+
+command("clip.gain", function(ctx)
+  local clip = need_audio_clip()
+  if not clip then return end
+  local from, to, db = tonumber(ctx.args[1]), tonumber(ctx.args[2]), tonumber(ctx.args[3])
+  if not (from and to and db) then return paw.notify("usage: clip.gain <from> <to> <dB>, in seconds of the clip: `clip.gain 1.2 1.3 -12`", "warn") end
+  local ok, n = pcall(M.gain_part, clip, from, to, db)
+  if not ok then return paw.notify(tostring(n):gsub("^[^:]*:%d+: ", ""), "error") end
+  paw.notify(string.format("%s: %+g dB from %g s to %g s (%d edit%s in its list)", clip.name, db, from, to, n, n == 1 and "" or "s"))
+end, { desc = "A gain on a part of the audio clip under the cursor, in seconds of the clip: `clip.gain 1.2 1.3 -12`" })
+
+command("clip.edits", function()
+  local clip = need_audio_clip()
+  if not clip then return end
+  local list = M.edits(clip)
+  if #list == 0 then return paw.notify(clip.name .. " has no edits: it plays its file") end
+  local lines = {}
+  for i, e in ipairs(list) do
+    if e.kind == "reverse" then
+      lines[i] = string.format("%d. backwards", i)
+    elseif e.kind == "gain" then
+      lines[i] = string.format("%d. %+g dB from %.3f s to %.3f s of the sound", i, e.db, e.from, e.to)
+    else
+      lines[i] = string.format("%d. %d samples drawn at %.3f s%s", i, #e.values, e.at, e.channel and (" in channel " .. e.channel) or "")
+    end
+  end
+  paw.ui.page("Edits of " .. clip.name, lines)
+end, { desc = "List the edit list of the audio clip under the cursor" })
+
+command("clip.edits.clear", function()
+  local clip = need_audio_clip()
+  if not clip then return end
+  local n = M.clear_edits(clip)
+  paw.notify(n == 0 and (clip.name .. " has no edits") or string.format("%s plays its file again (%d edit%s taken away)", clip.name, n, n == 1 and "" or "s"))
+end, { desc = "Take away the edit list of the audio clip under the cursor: it plays its file again" })
 
 command("clip.normalize", function(ctx)
   local clip = need_audio_clip()

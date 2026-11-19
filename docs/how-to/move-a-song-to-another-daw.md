@@ -22,7 +22,7 @@ Type `:ext.load dawproject`. To load it at each start, see
    files in a folder beside the file, `song media`.
 3. If a page opens, read it. It lists what paw could not bring across,
    for example plugins that paw does not have. Press `q` to close it.
-4. To keep the song, save it as a project of paw: `:w song.json`.
+4. To keep the song, save it as a project of paw: `:w song`.
 
 To add the tracks of the file to the open project, type
 `:dawproject.import song.dawproject merge=true`.
@@ -40,4 +40,4 @@ files where they are, type `:dawproject.export song.dawproject embed=false`.
 Then keep the file and the audio files on the same computer.
 
 `:w song.dawproject` does not change the project file of paw. The project
-stays `song.json`.
+stays the folder `song`.

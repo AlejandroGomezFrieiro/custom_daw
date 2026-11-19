@@ -938,7 +938,7 @@ test("the window's render dialog renders a region, and leaving saves first when 
   eq(#T.read_file(out .. ".flac") > 1000, true, "the region was rendered, as the format chosen and not as the path was typed")
   fails(function() paw.frontend.act.render({ path = "", range = "song" }) end, "name a file", "no file named")
   -- Leaving: a project with a file is saved, and then left.
-  local path = T.scratch .. "/leave.json"
+  local path = T.scratch .. "/leave"
   paw.project.save(path)
   paw.add_track({ name = "more" })
   paw.flush()

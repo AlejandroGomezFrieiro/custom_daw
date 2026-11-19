@@ -28,7 +28,7 @@ local SPARED = {
   "^project_shelve$", "^project_unshelve$", "^checkpoint_", "^media_collect$", "^media_store$", "^media_adopt$",
   "^media_relink$", "^fs_", "^test_", "^device_add$", "^device_editor$", "^device_restart$", "^device_load$",
   "^plugins_", "^lua_devices_", "^canvas_export$", "^state_set$", "^ui_detach$", "^transport_record$",
-  "^measure", "^timer_start$", "^trial_begin$", "^preview_play$", "^log$", "^undo_reset$",
+  "^measure", "^midi2_write$", "^chain_write$", "^timer_start$", "^trial_begin$", "^preview_play$", "^log$", "^undo_reset$",
 }
 
 local function spared(name)

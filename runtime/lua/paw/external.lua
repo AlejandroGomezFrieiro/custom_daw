@@ -1,7 +1,8 @@
 -- Changes made outside paw to the files of the open project: a `git
 -- checkout`, another editor, a second program. The kernel watches the
 -- folders and reports a burst of changes as one `files.changed`. paw acts
--- on them when you come back to it (at the next key), as
+-- on them when you come back to it (the focus of the terminal or the
+-- window, or the next key where the terminal does not report it), as
 -- `paw.opt.on_external_change` says:
 --
 --   "ask"     (the default) ask on the command line: reload them, or keep
@@ -50,7 +51,11 @@ end
 
 local asking = false
 
---- Act on the changes as the option says: called at the next key after them.
+--- Whether paw asks now what to do with the changes.
+function M.asking() return asking end
+
+--- Act on the changes as the option says: called when paw gets the focus,
+--- or at the next key after them.
 function M.act()
   local paths = api.project_changed_files()
   if #paths == 0 or asking then return end
@@ -66,8 +71,13 @@ function M.act()
     end)
 end
 
+-- Coming back to paw is the focus that the terminal (mode 1004) or the
+-- window reports. A terminal that does not report it has the next key.
 paw.on("files.changed", function()
   paw.keymap.on_next_key(M.act)
+end)
+paw.on("ui.focus", function(event)
+  if event.focused then M.act() end
 end)
 
 return M

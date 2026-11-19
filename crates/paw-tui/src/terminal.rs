@@ -44,11 +44,11 @@ pub struct Terminal {
 }
 
 /// What [`restore`] sends, as plain bytes for a signal handler to write:
-/// the pointer and pasting reported no more (crossterm's
+/// the pointer, pasting and focus reported no more (crossterm's
 /// `DisableMouseCapture` turns off 1006, 1015, 1003, 1002 and 1000; and
 /// pixels, 1016), the normal screen back, the cursor shown.
 const RESTORE: &[u8] =
-    b"\x1b[?2004l\x1b[?1016l\x1b[?1006l\x1b[?1015l\x1b[?1003l\x1b[?1002l\x1b[?1000l\x1b[?1049l\x1b[?25h";
+    b"\x1b[?1004l\x1b[?2004l\x1b[?1016l\x1b[?1006l\x1b[?1015l\x1b[?1003l\x1b[?1002l\x1b[?1000l\x1b[?1049l\x1b[?25h";
 
 /// Images were shown: leaving deletes them, or they stay in the pane.
 static IMAGES: AtomicBool = AtomicBool::new(false);
@@ -105,6 +105,9 @@ impl Terminal {
             terminal::EnterAlternateScreen,
             event::EnableMouseCapture,
             event::EnableBracketedPaste,
+            // Coming back to the terminal is known (mode 1004): changes to
+            // the project's files made meanwhile are acted on then.
+            event::EnableFocusChange,
             cursor::Hide
         )?;
         if probe.pixel_mouse {
@@ -138,6 +141,8 @@ impl Terminal {
                         Some(InputEvent::Resize(width, height))
                     }
                     Event::Paste(text) => Some(InputEvent::Paste(text)),
+                    Event::FocusGained => Some(InputEvent::Focus(true)),
+                    Event::FocusLost => Some(InputEvent::Focus(false)),
                     _ => None,
                 };
                 if let Some(input) = input
@@ -245,6 +250,7 @@ pub fn restore() {
     let _ = execute!(
         stdout(),
         event::DisableBracketedPaste,
+        event::DisableFocusChange,
         event::DisableMouseCapture,
         terminal::LeaveAlternateScreen,
         cursor::Show

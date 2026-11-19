@@ -80,7 +80,7 @@ take. Lesson 3 shows the takes.
 2. Press `gs` and `<Space>`.
    - The lead plays your melody with the drums, the bass and the chords.
 3. Press `<Space>` to stop.
-4. Type `:w with-lead.json` and press Enter.
+4. Type `:w with-lead` and press Enter.
 
 ## What we made
 

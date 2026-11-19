@@ -230,8 +230,8 @@ To open a project with its plugins offline:
 
 | Way | Example |
 | --- | --- |
-| command line | `paw --plugins-offline song.json` |
-| Ex | `:edit song.json offline` |
+| command line | `paw --plugins-offline song` |
+| Ex | `:edit song offline` |
 | Lua | `paw.open(path, { plugins_offline = true })` |
 | recovery | the "(plugins offline)" entries of `:recover`, or `:recover 1 offline` |
 
@@ -246,7 +246,7 @@ The offline flags that these set are saved with the project.
 If a plugin fails or hangs while a project opens, paw records it. The
 record is next to the other state of the project
 (`$XDG_STATE_HOME/paw/projects/`), not in the project file. The next time that the project opens, that plugin is
-offline, and a message says so. `:edit song.json online` opens the
+offline, and a message says so. `:edit song online` opens the
 project with all its plugins. When the plugin loads, paw forgets the
 failure.
 

@@ -388,6 +388,10 @@ function paw.inspect(value, indent, seen) end
 ---@param path any
 function paw.is_audio_file(path) end
 
+--- True if a path names a chain file of devices: a `devices.json`.
+---@param path any
+function paw.is_chain_file(path) end
+
 --- The automation lane of an id, as a `paw.Lane`.
 ---@param id any
 function paw.lane(id) end
@@ -417,6 +421,12 @@ function paw.once(pattern, fn) end
 ---@param path any
 ---@param opts any
 function paw.open(path, opts) end
+
+--- Open a chain file (a `devices.json`) alone, as a new project with no
+--- file: one track with its devices, and the device panel on it. `:w`
+--- writes the chain back to its file. Returns the track.
+---@param path any
+function paw.open_chain(path) end
 
 paw.redo = paw.api.redo
 
@@ -2520,8 +2530,12 @@ function paw.ext.satisfies(version, want) end
 ---@param opts any
 function paw.ext.unload(name, opts) end
 
---- Act on the changes as the option says: called at the next key after them.
+--- Act on the changes as the option says: called when paw gets the focus,
+--- or at the next key after them.
 function paw.external.act() end
+
+--- Whether paw asks now what to do with the changes.
+function paw.external.asking() end
 
 --- Keep paw's version of the project.
 function paw.external.keep() end
@@ -2561,9 +2575,16 @@ function paw.files.open(dir, opts) end
 
 --- The full path of a name that the user typed: `~` is the home folder, and
 --- a relative name is in `paw.files.here()`.
----   paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" beside song.json
+---   paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" in the folder of the project
 ---@param name any
 function paw.files.path(name) end
+
+--- The full path of a project's name that the user typed, as `:w` takes
+--- it: as `path`, but a relative name goes beside a project folder, not
+--- into it.
+---   paw.files.project_path("take2")  -- "/home/me/songs/take2" beside songs/song
+---@param name any
+function paw.files.project_path(name) end
 
 --- What a sound file's header says: `{ rate, channels, seconds }`, or nil
 --- for a file that is not one that can be read.
@@ -4914,9 +4935,25 @@ function paw.markers.render_regions(dir, opts) end
 ---@param fields any
 function paw.markers.set(id, fields) end
 
+--- Take away an audio clip's edit list. Returns how many edits it had.
+---@param clip any
+function paw.media.clear_edits(clip) end
+
 --- Copy every file from outside the project's folder into `media` beside
 --- it and point the clips at the copies. One undo step. Returns `{ copied, missing, dir }`.
 function paw.media.collect() end
+
+--- An audio clip's edit list: `{ { kind, ... } }`.
+---@param clip any
+function paw.media.edits(clip) end
+
+--- A gain of `db` on a part of an audio clip, from `from` to `to` seconds
+--- of what it plays, in its edit list. Returns how many edits it has.
+---@param clip any
+---@param from any
+---@param to any
+---@param db any
+function paw.media.gain_part(clip, from, to, db) end
 
 --- Join audio clips of one track into one clip that plays a new file. With
 --- a list, join the given clips. With one clip, join it and each audio clip
@@ -4936,6 +4973,15 @@ function paw.media.missing() end
 ---@param level any
 function paw.media.normalize(clip, level) end
 
+--- Samples drawn over an audio clip's (a pencil fix), from `at` seconds of
+--- what it plays, in one channel (0 or 1) or both, in its edit list.
+--- Returns how many edits it has.
+---@param clip any
+---@param at any
+---@param values any
+---@param channel any
+function paw.media.pencil(clip, at, values, channel) end
+
 --- Make the clips that play `from` play the file `to`, and find the other
 --- files that paw cannot find in the folder of `to`. One undo step. Returns
 --- `{ clips, found, missing }`.
@@ -4946,7 +4992,8 @@ function paw.media.relink(from, to) end
 --- Select a file for a file that paw cannot find, or a directory where paw finds all of them.
 function paw.media.relink_pick() end
 
---- Play an audio clip backwards, from a new reversed copy of its part of the file.
+--- Play an audio clip backwards: a `reverse` in its edit list, which leaves
+--- its file as it is (a second reverse takes it away). Returns `{ edits }`.
 ---@param clip any
 function paw.media.reverse(clip) end
 
@@ -7661,6 +7708,12 @@ function paw.api.automation_hold(track, target, device, param, on) end
 ---@param scale number?
 function paw.api.canvas_export(path, format, pages, scale) end
 
+--- Write a track's devices as a chain file: `file` (a `devices.json`)
+--- and the `.state` files of the plugins beside it. Returns the files.
+---@param track integer
+---@param file string
+function paw.api.chain_write(track, file) end
+
 ---@param file string
 function paw.api.checkpoint_delete(file) end
 
@@ -7691,6 +7744,23 @@ function paw.api.clip_collect() end
 --- { start, type = "cc" | "bend" | "pressure", number, value }.
 ---@param id integer
 function paw.api.clip_controls(id) end
+
+--- Add an edit to an audio clip's edit list (`edits.rs`): `{ kind =
+--- "gain", from, to, db }` or `{ kind = "pencil", at, channel, values }`,
+--- in seconds from where the clip starts in its sound. Returns how many
+--- edits it has.
+---@param id integer
+---@param edit any
+function paw.api.clip_edit_add(id, edit) end
+
+--- An audio clip's edit list, as `clip_edit_add` takes its edits (with
+--- times in seconds of its sound).
+---@param id integer
+function paw.api.clip_edits(id) end
+
+--- Take away an audio clip's edit list. Returns how many edits it had.
+---@param id integer
+function paw.api.clip_edits_clear(id) end
 
 ---@param id integer
 function paw.api.clip_get(id) end
@@ -8613,11 +8683,31 @@ function paw.api.track_add(opts) end
 ---@param attr any
 function paw.api.track_attr_delay(id, attr) end
 
+--- Give a track the devices of a chain file (a `devices.json`). With
+--- `refer`, the track refers to the file until the chain's first edit.
+--- Returns how many devices.
+---@param track integer
+---@param file string
+---@param refer boolean?
+function paw.api.track_chain_file(track, file, refer) end
+
+--- Make every track read from a folder outside the project, and every
+--- chain of devices read from a file outside it, the project's own.
+--- Returns how many tracks and how many chains.
+function paw.api.track_collect() end
+
 --- A track as a table. With `key`, only that entry of the table: this
 --- is quicker, because the table lists each clip of the track.
 ---@param id integer
 ---@param key string?
 function paw.api.track_get(id, key) end
+
+--- Add the track of a track folder outside the project (a folder with
+--- a `track.json`) at `index` (from 1; the end when nil). The project
+--- refers to the folder until the track's first edit. Returns its id.
+---@param folder string
+---@param index integer?
+function paw.api.track_import_folder(folder, index) end
 
 --- --- tracks ---
 function paw.api.track_list() end

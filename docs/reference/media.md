@@ -103,7 +103,10 @@ milliseconds. Then splits and cuts of audio do not click.
 
 | Command | Effect |
 | --- | --- |
-| `:clip.reverse` | Play the audio clip at the cursor backwards, from a reversed copy of its part of the file in the `media` folder of the project. Its fades change ends. |
+| `:clip.reverse` | Play the audio clip at the cursor backwards. A `reverse` goes into the edit list of the clip, and a second `:clip.reverse` takes it away. Its fades change ends. |
+| `:clip.gain 1.2 1.3 -12` | A gain of -12 dB on a part of the clip, from 1.2 to 1.3 seconds of the clip, in its edit list. |
+| `:clip.edits` | List the edit list of the clip. |
+| `:clip.edits.clear` | Take away the edit list of the clip. It plays its file again. |
 | `:clip.normalize -1` | Set the gain of the clip so that its loudest sample is at -1 dB. |
 | `:clip.glue` | Join the clip and the audio clips that touch or overlap it on its track into one clip. The new clip plays a new file of what they played together (gains, fades and overlaps, without the devices of the track). |
 
@@ -112,8 +115,30 @@ No operation changes the original file. Each is one undo step.
 | Function | Effect |
 | --- | --- |
 | `paw.media.reverse(clip)` | `:clip.reverse` |
+| `paw.media.gain_part(clip, from, to, db)` | `:clip.gain` |
+| `paw.media.pencil(clip, at, values, channel)` | Draw samples over the samples of the clip from `at` seconds of the clip (a pencil fix), in channel 0 or 1, or in both. |
+| `paw.media.edits(clip)` | The edit list: `{ { kind = "reverse" }, { kind = "gain", from, to, db }, { kind = "pencil", at, channel, values } }`, in seconds of the sound. |
+| `paw.media.clear_edits(clip)` | `:clip.edits.clear` |
 | `paw.media.normalize(clip, level)` | `:clip.normalize` |
 | `paw.media.glue(clip)`, `paw.media.glue({ a, b, c })` | `:clip.glue` |
+
+### The edit list of an audio clip
+
+An audio clip has two kinds of change that keep its file as it is:
+
+- The settings of the clip: where it starts in the file and its length
+  (a cut), its gain, its fades, and its stretch and pitch. The engine
+  applies these as it plays.
+- The edit list: play backwards, a gain on a part, and pencil fixes, in
+  order. The clip plays a version of its file that paw makes with them,
+  on a different thread, as it makes a stretched clip.
+
+- paw keeps a large version in the cache (`paw.api.media_store`). The
+  version comes again from the file and the list, so to delete the
+  cache loses nothing.
+- In a project folder, the edit list is the file of the clip:
+  `tracks/<track>/clips/<clip>.edits.json`. `track.json` names it as
+  `edits_file`.
 
 For stretch, pitch and loops of clips, see
 [Stretched and looped clips](stretch.md). For import, see

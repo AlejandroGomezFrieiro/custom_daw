@@ -81,7 +81,7 @@ In the graphical window, you can also drag a clip to move it.
    - The cursor goes to the Bass track, at the same bar.
 6. Press `gp` to move the playhead to the cursor. Press `<Space>`.
    - The song plays from the second verse. Press `<Space>` to stop.
-7. Type `:w arranged.json` and press Enter.
+7. Type `:w arranged` and press Enter.
 
 ## What we made
 
