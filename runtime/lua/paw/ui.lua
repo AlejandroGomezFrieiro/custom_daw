@@ -629,11 +629,146 @@ local function paint_surfaces()
   end
 end
 
+-- Live parts: what moves on its own as the song plays (the playhead, the
+-- meters, the status line's clock), on the terminal's screen. The kernel
+-- keeps the frame drawn last and what was under each live part. Between
+-- whole frames, `render_live` draws only these parts again, with the
+-- values of now, and the kernel sends the cells that changed. A view says
+-- that it draws all that moves in it as live parts with `view.live_roles`
+-- (the roles of its marks bound to live values, as for a window), or that
+-- nothing in it moves on its own with `view.still`.
+local live           -- the live parts of the seat's screen: `{ buf, draw }` each
+local recording      -- the list that the screen being drawn fills, or nil
+local refreshing     -- the live values of now, while the parts are drawn again
+paw.seats.keep("ui.live", function() return live end, function(l) live = l end, function() return nil end)
+
+--- Whether a live part drawn now is one of the terminal's screen.
+function M.live_drawing()
+  return recording ~= nil
+end
+
+--- Draw a live part on `buf`: `draw(buf)` draws it, now and each time it
+--- is drawn again by itself. Returns what `draw` returns.
+function M.live(buf, draw)
+  if not recording then return draw(buf) end
+  local index = api.grid_live_begin(buf.x, buf.y, buf.width, buf.height, buf.cx, buf.cy, buf.cw, buf.ch)
+  local was = recording
+  recording = nil  -- what it draws inside is part of it
+  local ok, result = pcall(draw, buf)
+  recording = was
+  if index then
+    api.grid_live_end(index)
+    recording[#recording + 1] = { buf = buf, draw = draw }
+  end
+  if not ok then error(result, 0) end
+  return result
+end
+
+local function meter_of(values, id)
+  local m = values.meters[id]
+  if not m then
+    local l, r, hold, clipped = paw.draw.track_peak(id)
+    m = { { l, r }, hold, clipped }
+    values.meters[id] = m
+  end
+  return m
+end
+
+--- While a live part is drawn again: set the props of a mark bound to
+--- `bind` (`position`, `meter:<id>`, or a value that a view's
+--- `live_values()` gives) to the values of now.
+function M.live_value(bind, props)
+  local values = refreshing
+  if not values then return end
+  if bind == "position" then
+    values.position = values.position or api.transport_get().position
+    props.at = values.position
+  elseif bind:sub(1, 6) == "meter:" then
+    local m = meter_of(values, tonumber(bind:sub(7)) or 0)
+    props.levels, props.hold, props.clipped = m[1], m[2], m[3]
+  else
+    if not values.views then
+      values.views = {}
+      for _, view in pairs(M.views) do
+        if type(view.live_values) == "function" then
+          local ok, got = pcall(view.live_values)
+          if ok and type(got) == "table" then values.views[#values.views + 1] = got end
+        end
+      end
+    end
+    for _, got in ipairs(values.views) do
+      for _, group in pairs(got) do
+        local v = type(group) == "table" and group[bind]
+        if type(v) == "table" then
+          for k, x in pairs(v) do props[k] = x end
+          return
+        end
+      end
+    end
+  end
+end
+
+--- Whether the screen can be drawn by its live parts only: each view on
+--- it says what moves in it (`view.live_roles`) or that nothing does
+--- (`view.still`), and none must be drawn whole now (`view:moving()`).
+local function only_live()
+  local function fits(name, win)
+    local view = M.views[name]
+    if not view then return true end
+    if not (view.live_roles or view.still or view.live_part) then return false end
+    if view.moving then
+      if win then L.bind(win) end
+      local moving = view:moving()
+      if moving then return false end
+    end
+    return true
+  end
+  for _, r in ipairs(M.rects) do
+    if not fits(r.name, r.win and L.find_id(M.layout, r.win)) then
+      L.settle()
+      return false
+    end
+  end
+  L.settle()
+  return not (M.float and not fits(M.float.name))
+end
+
+--- Draw the live parts of the screen again, on the frame drawn last.
+--- Called by the kernel (`paw.api.ui_redraw_live`). False when the screen
+--- must be drawn whole instead.
+function M.render_live(buf)
+  if not (live and live.width == buf.width and live.height == buf.height) then return false end
+  if not only_live() then return false end
+  M.screen = true
+  refreshing = { meters = {} }
+  local ok, err = pcall(function()
+    api.grid_live_restore()
+    recording = {}
+    for _, part in ipairs(live) do M.live(part.buf, part.draw) end
+  end)
+  recording, refreshing, M.screen = nil, nil, false
+  api.grid_live_seal()
+  if not ok then
+    live = nil
+    error(err, 0)
+  end
+  return true
+end
+
 --- Draw the whole screen. Called by the kernel.
 function M.render(buf)
   M.screen = true
-  M.render_screen(buf)
+  recording = {}
+  local ok, err = pcall(M.render_screen, buf)
+  live, recording = recording, nil
+  live.width, live.height = buf.width, buf.height
+  api.grid_live_seal()
   M.screen = false
+  if not ok then
+    live = nil
+    error(err, 0)
+  end
+  M.wake()
 end
 
 --- Draw the whole screen into `buf`: the tab's windows, floats, the status
@@ -673,13 +808,22 @@ function M.render_screen(buf)
         area = M.box(area, nil, focused and "BorderFocus" or "Border")
         r.x, r.y, r.w, r.h = r.x + 1, r.y + 1, r.w - 2, r.h - 2
       end
-      if backgrounds[r.name] then area:fill(0, 0, r.w, r.h, " ", backgrounds[r.name]) end
       local follower = win and followers and followers[win.id]
       if follower then L.time_follow(lead, win) end
+      local ctx = { focused = focused, x = r.x, y = r.y, win = win, follower = follower or nil }
+      local background = backgrounds[r.name]
       if win and (r.w < L.min_width or r.h < (focusable(r.name) and 2 or 1)) then
+        if background then area:fill(0, 0, r.w, r.h, " ", background) end
         area:text(0, 0, paw.util.fit("too small", r.w), "TooSmall")
+      elseif view.live_part then
+        -- All of it moves (the status line's clock): a live part.
+        M.live(area, function(b)
+          if background then b:fill(0, 0, b.width, b.height, " ", background) end
+          draw(view, b, ctx)
+        end)
       else
-        draw(view, area, { focused = focused, x = r.x, y = r.y, win = win, follower = follower or nil })
+        if background then area:fill(0, 0, r.w, r.h, " ", background) end
+        draw(view, area, ctx)
       end
       if win then
         sizes[win.id] = r.w .. "x" .. r.h
@@ -695,25 +839,28 @@ function M.render_screen(buf)
     end)
   end
   if M.rects.tabline then
-    -- The tabs along the top, the current one bright.
-    local line = buf:sub(0, 0, buf.width, 1)
-    line:fill(0, 0, buf.width, 1, " ", "TitleBar")
-    local x, spans = 0, {}
-    for i, t in ipairs(M.tabs) do
-      local mine = i == M.tab
-      local used = line:text(x, 0, (mine and g.mark or " ") .. i .. " " .. L.tab_title(t) .. " ", mine and "TitleBarNameFocus" or "TitleBarName")
-      spans[i] = { x = x, w = used }
-      x = x + used + 1
-    end
-    M.rects.tabline.spans = spans
-    -- What the tab line's own sections hold goes at the right end.
-    local right = paw.statusline.tabline(buf.width)
-    local used = 0
-    for _, piece in ipairs(right) do used = used + api.str_width(piece[1]) end
-    local at = buf.width - used - 1
-    if used > 0 and at > x then
-      for _, piece in ipairs(right) do at = at + line:text(at, 0, piece[1], piece[2]) end
-    end
+    -- The tabs along the top, the current one bright. Its sections may
+    -- show what moves, as the status line's do: a live part.
+    local tabline = M.rects.tabline
+    M.live(buf:sub(0, 0, buf.width, 1), function(line)
+      line:fill(0, 0, line.width, 1, " ", "TitleBar")
+      local x, spans = 0, {}
+      for i, t in ipairs(M.tabs) do
+        local mine = i == M.tab
+        local used = line:text(x, 0, (mine and g.mark or " ") .. i .. " " .. L.tab_title(t) .. " ", mine and "TitleBarNameFocus" or "TitleBarName")
+        spans[i] = { x = x, w = used }
+        x = x + used + 1
+      end
+      tabline.spans = spans
+      -- What the tab line's own sections hold goes at the right end.
+      local right = paw.statusline.tabline(line.width)
+      local used = 0
+      for _, piece in ipairs(right) do used = used + api.str_width(piece[1]) end
+      local at = line.width - used - 1
+      if used > 0 and at > x then
+        for _, piece in ipairs(right) do at = at + line:text(at, 0, piece[1], piece[2]) end
+      end
+    end)
   end
   if M.float and M.views[M.float.name] then
     local r = float_rect(buf.width, buf.height)
@@ -1079,36 +1226,61 @@ function M.go(location)
   end
 end
 
--- Meters and the playhead move without anything changing in the project, so
--- redraw on a timer while playing and for a moment after any activity.
+-- Meters and the playhead move without anything changing in the project.
+-- While the song plays, and for a moment after any activity, the live
+-- parts of the screen are drawn again at most `paw.opt.fps` times a second,
+-- and the kernel sends only the cells that changed: no frame when nothing
+-- did. No timer runs while nothing moves: the song starting, a note played
+-- (`poke`) or any frame wakes it again.
 local active_until = 0
-
---- Keep the screen animated for some time, for example after paw plays a note.
-function M.poke(ms)
-  active_until = math.max(active_until, api.now() + (ms or 1500))
-end
-
-local ticker, ticker_ms
+-- The timer of the next frame, while one waits.
+local ticker
 
 --- How many milliseconds at least go between two frames while something
 --- moves: 1000 / `paw.opt.fps`, as the option is now.
 function M.frame_ms()
-  return ticker_ms or 1000 / paw.opt.fps
+  return 1000 / paw.opt.fps
 end
 
---- Redraw at `paw.opt.fps` while the song plays or immediately after
---- activity. A change of the option, also in the user's init.lua (which
---- runs after this starts), takes effect at once.
+--- Whether something moves on its own now: the song plays, or a moment
+--- after activity (`poke`), while meters fall.
+function M.active()
+  return api.transport_get().playing or api.now() < active_until
+end
+
+local function moving()
+  return api.ui_attached() and M.active()
+end
+
+local function tick()
+  ticker = nil
+  if not moving() then return end
+  api.ui_redraw_live()
+  ticker = paw.defer(tick, M.frame_ms())
+end
+
+--- Start the frames of what moves, unless they run: nothing happens when
+--- nothing moves.
+function M.wake()
+  if ticker or not moving() then return end
+  ticker = paw.defer(tick, M.frame_ms())
+end
+
+--- Keep the screen animated for some time, for example after paw plays a note.
+function M.poke(ms)
+  active_until = math.max(active_until, api.now() + (ms or 1500))
+  M.wake()
+  -- And what graphical frontends are sent.
+  if paw.scene and paw.scene.wake then paw.scene.wake() end
+  if paw.remote and paw.remote.wake then paw.remote.wake() end
+end
+
+--- Draw what moves while the song plays: from when it starts.
 function M.start_ticker()
-  if ticker then paw.cancel(ticker) end
-  ticker_ms = 1000 / paw.opt.fps
-  ticker = paw.every(ticker_ms, function()
-    if api.ui_attached() and (api.transport_get().playing or api.now() < active_until) then api.ui_redraw() end
-  end)
+  paw.on("transport.play", M.wake)
+  -- The meters fall for a moment after the song stops.
+  paw.on("transport.stop", function() M.poke(1500) end)
+  M.wake()
 end
-
-paw.on("option.changed", function(e)
-  if e.name == "fps" and ticker then M.start_ticker() end
-end)
 
 return M

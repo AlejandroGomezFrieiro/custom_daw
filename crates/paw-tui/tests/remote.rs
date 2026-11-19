@@ -580,6 +580,37 @@ fn two_terminals_attached_have_a_seat_each_in_one_project() {
     assert_eq!(seats(&mut ctl), json!(2));
 }
 
+#[test]
+fn while_the_song_plays_terminals_are_sent_only_what_moves() {
+    let instance = start("live");
+    let mut a = instance.tcp().unwrap();
+    let mut b = Connection::unix(&instance.socket).unwrap();
+    a.call("eval", json!(["local t = paw.add_track({ name = 'Lead' }) t:add_clip({ start = 0, length = 64 })"])).unwrap();
+    // Two terminals of two sizes: each keeps its own last frame.
+    a.call("ui.attach", json!([100, 30])).unwrap();
+    b.call("ui.attach", json!([90, 24])).unwrap();
+    let (mut ga, mut gb) = (Grid::new(1, 1), Grid::new(1, 1));
+    screen(&a, &mut ga, |t| t.contains("Lead") && t.contains("NORMAL"));
+    screen(&b, &mut gb, |t| t.contains("Lead") && t.contains("NORMAL"));
+    let frames = |c: &mut Connection| c.call("eval", json!(["return paw.api.ui_frames()"])).unwrap();
+    let count = |v: &Value, k: &str| v[k].as_u64().unwrap();
+    // The playhead and the position in the status line move on both.
+    a.call("cmd", json!(["transport.play"])).unwrap();
+    let before = frames(&mut a);
+    screen(&a, &mut ga, |t| t.contains(" 1.3."));
+    screen(&b, &mut gb, |t| t.contains(" 1.3."));
+    screen(&a, &mut ga, |t| t.contains(" 2.1."));
+    screen(&b, &mut gb, |t| t.contains(" 2.1."));
+    let after = frames(&mut a);
+    assert!(count(&after, "live") >= count(&before, "live") + 10, "frames of the live parts: {before} {after}");
+    assert!(count(&after, "full") <= count(&before, "full") + 4, "few whole frames: {before} {after}");
+    // A key still draws the whole screen at once.
+    type_keys(&mut a, &[":", "t", "r", "a", "c", "k", ".", "a", "d", "d", "<CR>"]);
+    screen(&a, &mut ga, |t| t.contains("Track 2"));
+    screen(&b, &mut gb, |t| t.contains("Track 2"));
+    a.call("cmd", json!(["transport.stop"])).unwrap();
+}
+
 /// A WAV file of `seconds` of a 440 Hz tone, 16-bit stereo at 48 kHz.
 fn tone_file(path: &std::path::Path, seconds: f64) {
     let frames = (48000.0 * seconds) as u32;

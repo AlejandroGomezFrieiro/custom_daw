@@ -7086,6 +7086,10 @@ function paw.ui.focus(name) end
 ---@param step any
 function paw.ui.focus_next(step) end
 
+--- How many milliseconds at least go between two frames while something
+--- moves: 1000 / `paw.opt.fps`, as the option is now.
+function paw.ui.frame_ms() end
+
 --- Go to a location in the view that shows it best, and focus that view.
 --- The piano roll shows notes, the device panel shows devices and
 --- parameters, and the arrange view shows tracks and time.
@@ -7126,6 +7130,22 @@ function paw.ui.input(opts, on_submit) end
 ---@param order any
 ---@param paint any
 function paw.ui.layer(view, part, name, order, paint) end
+
+--- Draw a live part on `buf`: `draw(buf)` draws it, now and each time it
+--- is drawn again by itself. Returns what `draw` returns.
+---@param buf any
+---@param draw any
+function paw.ui.live(buf, draw) end
+
+--- Whether a live part drawn now is one of the terminal's screen.
+function paw.ui.live_drawing() end
+
+--- While a live part is drawn again: set the props of a mark bound to
+--- `bind` (`position`, `meter:<id>`, or a value that a view's
+--- `live_values()` gives) to the values of now.
+---@param bind any
+---@param props any
+function paw.ui.live_value(bind, props) end
 
 --- The location under the cursor of the focused view (or `view`). With
 --- `win`, the cursor of that window: each window of a view has its own.
@@ -7200,6 +7220,12 @@ paw.ui.redraw = paw.api.ui_redraw
 ---@param buf any
 function paw.ui.render(buf) end
 
+--- Draw the live parts of the screen again, on the frame drawn last.
+--- Called by the kernel (`paw.api.ui_redraw_live`). False when the screen
+--- must be drawn whole instead.
+---@param buf any
+function paw.ui.render_live(buf) end
+
 --- Draw one view alone as a scene for a graphical frontend (see
 --- crates/paw-scene). The scene is `w` by `h` units (fractions are
 --- permitted). `cell` is the cell `{ w, h }` of the frontend in pixels, and
@@ -7244,7 +7270,7 @@ function paw.ui.show(name) end
 --- on what it shows.
 function paw.ui.size() end
 
---- Redraw at `paw.opt.fps` while the song plays or immediately after activity.
+--- Draw what moves while the song plays: from when it starts.
 function paw.ui.start_ticker() end
 
 --- Keep an area of a buffer for pixels: see `Buf:strip`. Where it is kept
@@ -7312,6 +7338,10 @@ function paw.ui.view(name, def) end
 --- True if a view is on the screen now.
 ---@param name any
 function paw.ui.visible(name) end
+
+--- Start the frames of what moves, unless they run: nothing happens when
+--- nothing moves.
+function paw.ui.wake() end
 
 --- Buffers side by side across this buffer, each with a width from the
 --- left, with `gap` columns between them (0 by default). A width of "*"
@@ -7833,6 +7863,30 @@ paw.api.fs_trash = nil
 ---@param cw number
 ---@param ch number
 function paw.api.grid_fill(x, y, w, h, fill, style, cx, cy, cw, ch) end
+
+--- A live part of the screen is drawn over the cells `(x, y, w, h)`,
+--- clipped to `(cx, cy, cw, ch)`: what is under them is kept, to draw
+--- it again by itself (`paw.ui.render_live`). Returns its number for
+--- `grid_live_end`, or nil when no part of it is on the screen.
+---@param x number
+---@param y number
+---@param w number
+---@param h number
+---@param cx number
+---@param cy number
+---@param cw number
+---@param ch number
+function paw.api.grid_live_begin(x, y, w, h, cx, cy, cw, ch) end
+
+---@param index integer
+function paw.api.grid_live_end(index) end
+
+--- Take the live parts off the frame drawn last, to draw them again.
+--- Returns how many there were.
+function paw.api.grid_live_restore() end
+
+--- The frame is drawn: what is over the live parts now stays over them.
+function paw.api.grid_live_seal() end
 
 --- Keep the cells `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`, for pixels
 --- under the name `key` (`buf:strip`), over the text or `under` it.
@@ -8482,6 +8536,20 @@ function paw.api.ui_cursor(x, y) end
 ---@param client integer
 function paw.api.ui_detach(client) end
 
+--- A frame drawn off screen as a terminal is drawn, for tests: whole,
+--- or with `live` only its live parts again on the frame this drew
+--- last (nil when the runtime says it must be drawn whole). Each
+--- row as its text and as its cells with their styles.
+---@param width integer
+---@param height integer
+---@param live boolean?
+function paw.api.ui_frame_snapshot(width, height, live) end
+
+--- The frames drawn so far: `{ full, live, unchanged }`: whole frames,
+--- frames of the live parts only, and of those the ones that changed
+--- no cell, which were not sent.
+function paw.api.ui_frames() end
+
 --- True if the terminal reports the pointer (`paw.opt.mouse`), for the
 --- screen that paw draws now.
 ---@param on boolean
@@ -8489,6 +8557,11 @@ function paw.api.ui_mouse(on) end
 
 --- --- screen ---
 function paw.api.ui_redraw() end
+
+--- Draw only the live parts of the screen again (the playhead, the
+--- meters, the status line), on the frame drawn last; a whole frame
+--- when one is asked for too, or the runtime says it is needed.
+function paw.api.ui_redraw_live() end
 
 function paw.api.ui_redraws() end
 

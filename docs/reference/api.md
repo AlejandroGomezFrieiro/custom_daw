@@ -1803,6 +1803,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.ui.draw_popup(buf)`: The list of candidates, over the bottom of the screen immediately above the command line. It starts below the word that they complete.
 - `paw.ui.focus(name)`: Give a view the keyboard, and show it first if it is hidden. The window that contains it gets the keys, and paw goes to the tab of that window.
 - `paw.ui.focus_next(step)`: Focus the next (or with -1 the previous) window that takes the keyboard.
+- `paw.ui.frame_ms()`: How many milliseconds at least go between two frames while something moves: 1000 / `paw.opt.fps`, as the option is now.
 - `paw.ui.go(location)`: Go to a location in the view that shows it best, and focus that view. The piano roll shows notes, the device panel shows devices and parameters, and the arrange view shows tracks and time.
 - `paw.ui.hide(name)`: Close the window of a view, in each tab. The view keeps its place for the next time. The last window of a tab does not close: it goes on showing the view, as `Ctrl-w c` leaves it.
 - `paw.ui.hl(name, def)`: Define a highlight group: a table of `fg`, `bg`, `bold`, `dim`, `italic`, `underline`, `reverse`, `strike`, or the name of a group to follow. Colors are `#rrggbb`, or a number for one of the 256 colors of the terminal. On a terminal without 24-bit color, each `#rrggbb` shows as the nearest of the 256.
@@ -1814,6 +1815,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
   paw does not call the callback when the user cancels the prompt. The options are those of the command line (`paw.views.cmdline.open`): `complete`, `history`, `on_change` (live preview), `anchor` (draw it next to its subject), `on_key`.
 - `paw.ui.layer(view, part, name, order, paint)`: Draw `paint(ctx)` as a layer of a part of a view (`"arrange", "header"`). It replaces a layer with the same name (nil removes it). The view tells what `ctx` contains where it calls `paw.ui.paint`.
+- `paw.ui.live(buf, draw)`: Draw a live part on `buf`: `draw(buf)` draws it, now and each time it is drawn again by itself. Returns what `draw` returns.
+- `paw.ui.live_drawing()`: Whether a live part drawn now is one of the terminal's screen.
+- `paw.ui.live_value(bind, props)`: While a live part is drawn again: set the props of a mark bound to `bind` (`position`, `meter:<id>`, or a value that a view's `live_values()` gives) to the values of now.
 - `paw.ui.location(view, win)`: The location under the cursor of the focused view (or `view`). With `win`, the cursor of that window: each window of a view has its own.
 - `paw.ui.locator(view, spec)`: Say how a view places locations (`{ uri, selector }`):
 
@@ -1838,6 +1842,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.ui.recolour()`: Set each group again. Call it after `paw.opt.termcolors` changes.
 - `paw.ui.redraw`: the same as `paw.api.ui_redraw`.
 - `paw.ui.render(buf)`: Draw the whole screen. Called by the kernel.
+- `paw.ui.render_live(buf)`: Draw the live parts of the screen again, on the frame drawn last. Called by the kernel (`paw.api.ui_redraw_live`). False when the screen must be drawn whole instead.
 - `paw.ui.render_scene(name, w, h, cell, win)`: Draw one view alone as a scene for a graphical frontend (see crates/paw-scene). The scene is `w` by `h` units (fractions are permitted). `cell` is the cell `{ w, h }` of the frontend in pixels, and `win` is the window of the layout that it shows in, if any.
 
   The text that `render_view` writes in whole cells becomes the runs and fills of the scene. The strips that the view keeps under them become its pictures. A view that paints is one picture of the whole area. The kernel keeps the scene, and `paw.api.scene_end` tells what changed in it.
@@ -1846,7 +1851,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.ui.role`: the same as `paw.roles.define`.
 - `paw.ui.show(name)`: Show a view: in its window if it has one in this tab, else where it was docked. A view has one window at a time: one on screen in another tab moves here.
 - `paw.ui.size()`: The size of the screen in cells. This is the size of the terminal. For the seat of a graphical frontend that told the size of its main area, it is the size of that area (`paw.panes`). So paw measures a split there on what it shows.
-- `paw.ui.start_ticker()`: Redraw at `paw.opt.fps` while the song plays or immediately after activity.
+- `paw.ui.start_ticker()`: Draw what moves while the song plays: from when it starts.
 - `paw.ui.strip(buf, x, y, w, h, opts)`: Keep an area of a buffer for pixels: see `Buf:strip`. Where it is kept is in `paw.ui.rects.surfaces`: `{ key, name, win, x, y, w, h, cell = { w, h }, under, draw, paint }` each, in cells of the screen (`name` the view that kept it, `win` the id of its window, `paint` for a view's whole drawing, `buf:surface`).
 - `paw.ui.surface(buf, x, y, w, h, name)`: Keep an area of a buffer for a view's pixels: see `Buf:surface`. A strip, kept for the view's window, whose drawing is the view's `paint`.
 - `paw.ui.theme(groups)`: Define many highlight groups at once.
@@ -1866,6 +1871,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 
   `window_state` names the fields of the view's table that are each window's own (the cursor, the scroll, the open clip). Then any number of windows show the view, and the table holds the state of the window that draws or acts (`paw.layout.bind`). `window_fresh` names the fields a new window starts without, such as caches. Without `window_state`, the view shows in one window at a time. `open_target(self, target)` opens a thing by name in the window (`:e roll://7`), and `window_target(self)` gives that name back for a saved layout. `share` says what part of the room the view keeps where windows share it: `{ column, least, most }`.
 - `paw.ui.visible(name)`: True if a view is on the screen now.
+- `paw.ui.wake()`: Start the frames of what moves, unless they run: nothing happens when nothing moves.
 
 ## Module paw.ui.Buf
 
@@ -2004,6 +2010,10 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.fs_stat(...)`
 - `paw.api.fs_trash(...)`
 - `paw.api.grid_fill(x, y, w, h, fill, style, cx, cy, cw, ch)`: Restyle the area `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`, and overwrite its characters when `fill` is given.
+- `paw.api.grid_live_begin(x, y, w, h, cx, cy, cw, ch)`: A live part of the screen is drawn over the cells `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`: what is under them is kept, to draw it again by itself (`paw.ui.render_live`). Returns its number for `grid_live_end`, or nil when no part of it is on the screen.
+- `paw.api.grid_live_end(index)`
+- `paw.api.grid_live_restore()`: Take the live parts off the frame drawn last, to draw them again. Returns how many there were.
+- `paw.api.grid_live_seal()`: The frame is drawn: what is over the live parts now stays over them.
 - `paw.api.grid_surface(key, x, y, w, h, cx, cy, cw, ch, under)`: Keep the cells `(x, y, w, h)`, clipped to `(cx, cy, cw, ch)`, for pixels under the name `key` (`buf:strip`), over the text or `under` it. Returns the number of the surface for `grid_surface_ops`, or nil when no part of it is on the screen.
 - `paw.api.grid_surface_ops(index, ops)`: The drawing a surface shows: the operations of `paw.canvas.paint`.
 - `paw.api.grid_surfaces_seal()`: The view being drawn is done with the surfaces it kept: what is drawn over them from now on covers them.
@@ -2171,8 +2181,11 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.ui_client()`
 - `paw.api.ui_cursor(x, y)`
 - `paw.api.ui_detach(client)`
+- `paw.api.ui_frame_snapshot(width, height, live)`: A frame drawn off screen as a terminal is drawn, for tests: whole, or with `live` only its live parts again on the frame this drew last (nil when the runtime says it must be drawn whole). Each row as its text and as its cells with their styles.
+- `paw.api.ui_frames()`: The frames drawn so far: `{ full, live, unchanged }`: whole frames, frames of the live parts only, and of those the ones that changed no cell, which were not sent.
 - `paw.api.ui_mouse(on)`: True if the terminal reports the pointer (`paw.opt.mouse`), for the screen that paw draws now.
 - `paw.api.ui_redraw()`: --- screen ---
+- `paw.api.ui_redraw_live()`: Draw only the live parts of the screen again (the playhead, the meters, the status line), on the frame drawn last; a whole frame when one is asked for too, or the runtime says it is needed.
 - `paw.api.ui_redraws()`
 - `paw.api.ui_seat(seat)`
 - `paw.api.ui_size()`
