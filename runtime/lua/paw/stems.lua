@@ -15,7 +15,7 @@ local M = {}
 
 local groups = paw.groups
 
-local function name_of(id) return api.track_get(id).name end
+local function name_of(id) return api.track_get(id, "name") end
 
 --- Whether a track or anything inside it has clips.
 local function sounds(id)

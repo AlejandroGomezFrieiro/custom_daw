@@ -73,7 +73,7 @@ function M.find(which)
   local partial
   for _, other in ipairs(api.track_list()) do
     if groups.is_group(other) then
-      local name = api.track_get(other).name:lower()
+      local name = api.track_get(other, "name"):lower()
       if name == wanted then return other end
       partial = partial or (name:find(wanted, 1, true) and other)
     end
@@ -90,7 +90,7 @@ function M.group_at(track)
   return groups.of(track)
 end
 
-local function name_of(id) return api.track_get(id).name end
+local function name_of(id) return api.track_get(id, "name") end
 
 --- Put the cursor inside the current scope, on the group, when it is not.
 local function cursor_inside()

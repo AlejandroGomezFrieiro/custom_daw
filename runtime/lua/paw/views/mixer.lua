@@ -101,7 +101,7 @@ local function strip(buf, x, t, index, selected, height, sw, here)
   if vca and height >= 12 then
     local members = paw.vca.members(t.id)
     for i = 1, 3 do
-      local name = members[i] and api.track_get(members[i]).name
+      local name = members[i] and api.track_get(members[i], "name")
       if i == 3 and #members > 3 then name = "+" .. (#members - 2) .. " more" end
       buf:text(x + 1, y, util.fit(name or (i == 1 and "no tracks" or ""), w - 1), name and "TrackInfo" or "TrackIndex")
       y = y + 1

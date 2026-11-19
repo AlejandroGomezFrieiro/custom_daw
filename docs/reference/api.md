@@ -2150,7 +2150,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.timer_stop(id)`
 - `paw.api.track_add(opts)`
 - `paw.api.track_attr_delay(id, attr)`: The milliseconds that the attribute map of the track moves a note with `attr` (below 0: earlier). 0 when the track has no attribute map.
-- `paw.api.track_get(id)`
+- `paw.api.track_get(id, key)`: A track as a table. With `key`, only that entry of the table: this is quicker, because the table lists each clip of the track.
 - `paw.api.track_list()`: --- tracks ---
 - `paw.api.track_meter(id)`
 - `paw.api.track_move(id, index)`

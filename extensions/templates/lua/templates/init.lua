@@ -162,7 +162,7 @@ function M.load(name, opts)
   local function unpack_node(node, index, into)
     local track = paw.restore_track(node.track, index)
     if node.members then
-      local m = api.track_get(track.id).meta or {}
+      local m = api.track_get(track.id, "meta") or {}
       m.group_head = true
       api.track_set(track.id, "meta", m)
     end

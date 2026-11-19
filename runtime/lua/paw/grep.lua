@@ -47,7 +47,7 @@ end)
 
 M.source("clips", function(add)
   for _, id in ipairs(api.track_list()) do
-    local track = api.track_get(id).name
+    local track = api.track_get(id, "name")
     for _, c in ipairs(api.clip_list(id)) do
       local loc = { uri = A.clip(c.id) }
       local where = track .. " " .. paw.time.format(c.start)

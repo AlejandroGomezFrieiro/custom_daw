@@ -275,7 +275,7 @@ end })
 spec("scope", { rank = 2, fn = function(ctx)
   local scope = paw.scope and paw.scope.current()
   if not scope then return end
-  local out = { { "narrowed " .. paw.api.track_get(scope).name, "StatusOn" } }
+  local out = { { "narrowed " .. paw.api.track_get(scope, "name"), "StatusOn" } }
   local rest = paw.opt.scope_rest
   if rest ~= "play" and ctx.width >= 100 then out[2] = { " rest " .. rest, "StatusDim" } end
   return out

@@ -188,7 +188,7 @@ function M.stems(dir, opts)
   end
   for _, id in ipairs(tracks) do
     id = type(id) == "table" and id.id or id
-    local name = api.track_get(id).name:gsub("[^%w%-_ ]", "_")
+    local name = api.track_get(id, "name"):gsub("[^%w%-_ ]", "_")
     -- Two tracks of one name get a number each.
     used[name] = (used[name] or 0) + 1
     if used[name] > 1 then name = name .. " " .. used[name] end
@@ -340,7 +340,7 @@ end, {
     if before == "" and not key then
       out[1] = "stems"
       for _, id in ipairs(api.track_list()) do
-        if paw.groups.is_group(id) then out[#out + 1] = api.track_get(id).name end
+        if paw.groups.is_group(id) then out[#out + 1] = api.track_get(id, "name") end
       end
     end
     for _, o in ipairs(M.options) do

@@ -8413,8 +8413,11 @@ function paw.api.track_add(opts) end
 ---@param attr any
 function paw.api.track_attr_delay(id, attr) end
 
+--- A track as a table. With `key`, only that entry of the table: this
+--- is quicker, because the table lists each clip of the track.
 ---@param id integer
-function paw.api.track_get(id) end
+---@param key string?
+function paw.api.track_get(id, key) end
 
 --- --- tracks ---
 function paw.api.track_list() end

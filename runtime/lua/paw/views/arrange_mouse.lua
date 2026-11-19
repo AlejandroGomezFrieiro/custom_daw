@@ -509,12 +509,12 @@ local function press_header(self, e, h)
   if row.h >= 2 and cy == row.y + 1 and cx >= name_at then
     if e.double then return A.set_volume(id, 0) end
     A.select(id)
-    return drag_value(e, function() return api.track_get(id).volume end, function(v) A.set_volume(id, v) end, 1, 0.1, "volume", id)
+    return drag_value(e, function() return api.track_get(id, "volume") end, function(v) A.set_volume(id, v) end, 1, 0.1, "volume", id)
   end
   if row.h >= 3 and cy == row.y + 2 and cx >= name_at and cx < name_at + 4 then
     if e.double then return A.set_pan(id, 0) end
     A.select(id)
-    return drag_value(e, function() return api.track_get(id).pan or 0 end, function(v) A.set_pan(id, v) end, 0.05, 0.01, "pan", id)
+    return drag_value(e, function() return api.track_get(id, "pan") or 0 end, function(v) A.set_pan(id, v) end, 0.05, 0.01, "pan", id)
   end
   if e.double then return A.track_command(id, "track.rename") end
   A.select(id)
@@ -826,7 +826,7 @@ local function hover(self, h)
     if on_edge(h.row, h.y, h.fine) then
       return mouse.hint("track height: drag the bottom edge · double click for the others' height", "resize_v")
     end
-    text = api.track_get(h.row.id).name .. " · " .. hints.header
+    text = api.track_get(h.row.id, "name") .. " · " .. hints.header
   end
   local edge = h.area == "track" and h.clip and (h.part == "start" or h.part == "end")
   mouse.hint(text, edge and "resize_h" or nil)

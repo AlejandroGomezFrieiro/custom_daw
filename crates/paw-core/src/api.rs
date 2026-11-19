@@ -689,7 +689,15 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn track_list(_, sh, () => ()) {
             Ok(sh.session.borrow().project.tracks.iter().map(|t| t.id).collect::<Vec<Id>>())
         }
-        fn track_get(lua, sh, id => Id) { to_lua(lua, &sh.session.borrow().track_view(id).lua()?) }
+        // A track as a table. With `key`, only that entry of the table: this
+        // is quicker, because the table lists each clip of the track.
+        fn track_get(lua, sh, (id, key) => (Id, Option<String>)) {
+            let session = sh.session.borrow();
+            match key {
+                Some(key) => to_lua(lua, &session.track_field(id, &key).lua()?),
+                None => to_lua(lua, &session.track_view(id).lua()?),
+            }
+        }
         fn track_add(lua, sh, opts => LuaValue) { sh.session.borrow_mut().track_add(options(lua, opts)?).lua() }
         fn track_remove(_, sh, id => Id) { sh.session.borrow_mut().track_remove(id).lua() }
         fn track_move(_, sh, (id, index) => (Id, usize)) {

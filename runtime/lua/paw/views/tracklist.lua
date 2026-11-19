@@ -141,7 +141,7 @@ local function resolver(lines, what)
     -- A narrowed tab lists its group's tracks: the others are named as they are.
     if not list and paw.scope.current() then
       for _, id in ipairs(api.track_list()) do
-        if api.track_get(id).name == name and not paw.scope.contains(id) then
+        if api.track_get(id, "name") == name and not paw.scope.contains(id) then
           list = list or {}
           list[#list + 1] = { id = id, fields = { name = name, head = paw.groups.is_group(id) or nil } }
         end
@@ -256,7 +256,7 @@ tb.kind("tracks", {
         elseif key == "head" then
           texts[#texts + 1] = { string.format("%s: %s", quote(f.name), f.head and "becomes a group" or "is a group no more"), function(st)
             local id = id_of(e, st)
-            local meta = api.track_get(id).meta or {}
+            local meta = api.track_get(id, "meta") or {}
             meta.group_head = f.head or nil
             api.track_set(id, "meta", meta)
           end }
@@ -285,7 +285,7 @@ tb.kind("tracks", {
           st.made[e.row] = track.id
           if e.fields.solo then api.track_set(track.id, "solo", true) end
           if e.fields.armed then api.track_set(track.id, "armed", true) end
-          local meta = api.track_get(track.id).meta or {}
+          local meta = api.track_get(track.id, "meta") or {}
           meta.group_head, meta.group = e.fields.head or nil, nil
           api.track_set(track.id, "meta", meta)
         end)
@@ -300,7 +300,7 @@ tb.kind("tracks", {
             if value then api.track_set(track.id, key, true) end
           end
           if f.head then
-            local meta = api.track_get(track.id).meta or {}
+            local meta = api.track_get(track.id, "meta") or {}
             meta.group_head = true
             api.track_set(track.id, "meta", meta)
           end
@@ -382,7 +382,7 @@ local function project_track(name, row)
   if name:lower() == "master" then error(string.format("line %d: a send goes to a track, not the master", row), 0) end
   local found = {}
   for _, id in ipairs(api.track_list()) do
-    if api.track_get(id).name == name then found[#found + 1] = id end
+    if api.track_get(id, "name") == name then found[#found + 1] = id end
   end
   if #found == 0 then error(string.format("line %d: no track `%s`", row, name), 0) end
   if #found > 1 then error(string.format("line %d: %d tracks are called `%s`: name them apart first", row, #found, name), 0) end

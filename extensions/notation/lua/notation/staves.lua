@@ -63,7 +63,7 @@ function view.score_name()
   if not shown then return "the clip" end
   if shown.kind == "part" then return "the part" end
   local group = shown.scope and scope_group()
-  if group then return "the score of " .. api.track_get(group).name end
+  if group then return "the score of " .. api.track_get(group, "name") end
   return shown.label or "the full score"
 end
 
@@ -168,7 +168,7 @@ function S.player(dir)
   if to == F.player then return false end
   local step = view.step
   view:activate(S.clip_at(u, to, S.song()), { step = step })
-  paw.notify("voice " .. to .. ": " .. api.track_get(u.tracks[to]).name)
+  paw.notify("voice " .. to .. ": " .. api.track_get(u.tracks[to], "name"))
   return true
 end
 
@@ -599,7 +599,7 @@ paw.command("score", function(ctx)
     local scope = paw.scope
     local group = scope.find(words)
     if not group then return paw.notify("no group '" .. words .. "': `:score` alone, `all`, `selection`, or a group's name", "warn") end
-    tracks, label = scope.tracks(group), "the score of " .. api.track_get(group).name
+    tracks, label = scope.tracks(group), "the score of " .. api.track_get(group, "name")
   end
   -- Alone: the tracks the tab is narrowed to, whichever they are then.
   local F = S.show(tracks, label, { scope = words == "" and not tracks })
@@ -609,7 +609,7 @@ end, { raw = true, range = true,
   complete = function()
     local out = { "all", "selection", "off" }
     for _, id in ipairs(api.track_list()) do
-      if paw.groups.is_group(id) then out[#out + 1] = api.track_get(id).name end
+      if paw.groups.is_group(id) then out[#out + 1] = api.track_get(id, "name") end
     end
     return out
   end })
@@ -718,7 +718,7 @@ A.clips_at = function(s, i)
   if word and s:match("^%s", e) and not paw.commands.get(word) then
     local low, out = word:lower(), {}
     for _, u in ipairs(layout.units) do
-      local group = u.group and api.track_get(u.group).name:lower()
+      local group = u.group and api.track_get(u.group, "name"):lower()
       if group == low or P.FAMILIES[u.family] == low then
         for _, id in ipairs(u.clips) do out[#out + 1] = id end
       end

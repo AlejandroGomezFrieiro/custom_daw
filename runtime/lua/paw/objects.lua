@@ -637,7 +637,7 @@ end
 function M.track(which)
   if type(which) == "number" then return wrap(Track, which) end
   for _, id in ipairs(api.track_list()) do
-    if api.track_get(id).name == which then return wrap(Track, id) end
+    if api.track_get(id, "name") == which then return wrap(Track, id) end
   end
 end
 
