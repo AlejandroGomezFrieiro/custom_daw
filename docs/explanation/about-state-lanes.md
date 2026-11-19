@@ -92,8 +92,8 @@ sign, but not longer
 than the render's `settle` time (5 seconds). A plugin in paw's own process
 gives no such sign, so paw waits a fixed half second. The same wait
 occurs at the start of each render. Then paw plays half a second of
-silence with the song stopped, because a plugin can fade over to a new
-model as it plays: TONE3000 takes about a third of a second. This fixes
+silence with the song stopped. A plugin can fade over to a new model as
+it plays, and TONE3000 takes about a third of a second for this. This fixes
 the first second of a render that had no model in it, when a plugin loads
 its model in the background.
 
