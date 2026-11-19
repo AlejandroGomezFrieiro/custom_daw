@@ -112,11 +112,18 @@ pixels. While the song plays, only the squares of the playhead, the clock,
 the meters and the live values change: a few percent of the window. A
 frame that changes no square is not drawn and not shown. The window draws
 each changed square from all the shapes in it, so the pixels are the same
-as when it draws the full window. Where the platform permits it (EGL), the
-window also tells the display server or the compositor which parts
-changed, so they copy only those parts. With `paw.opt.window_cache =
-false`, the window draws each frame in full. A view in a window of its own
-always draws in full.
+as when it draws the full window. With EGL, the window also tells the
+display server or the compositor which parts changed, so they copy only
+those parts. With the software renderer on X11, the window uses GLX and
+copies only the changed parts to the window
+(`GLX_MESA_copy_sub_buffer`). Once a second it copies all of the window,
+so a part that an X server without a compositor lost returns. With
+`paw.opt.window_cache = false`, the window draws each frame in full. A
+view in a window of its own always draws in full.
+
+A view that the kernel paints as a picture (notation) keeps the page of
+the picture as one image. The window makes again only the small images
+of the parts that move over the page, such as the playhead.
 
 The piano roll and the timeline get
 only the notes, lines and points near the visible area. So a clip of
@@ -126,15 +133,17 @@ Measured with the demo song in a 1500x960 window on llvmpipe, without a
 graphics card, with `LP_NUM_THREADS=4`. Other programs used the computer
 at the same time, so the values are not exact:
 
-| State | Load |
+| State | Load of the window, without the kernel |
 | --- | --- |
 | At rest | 0% of a core |
-| While the song plays, the arrange view | about 80% of a core (155% with 25 frames a second and no texture) |
-| While the song plays, the mixer or the piano roll | about 40% of a core (120% to 145% with 25 frames a second and no texture) |
+| While the song plays, the arrange view | about 10% of a core |
+| While the song plays, the mixer | about 11% of a core |
+| While the song plays, the piano roll | about 5% of a core |
+| While the song plays, notation | about 14% of a core |
 
-Most of the load is llvmpipe, which fills pixels on its threads. While the
-song plays, the window paints no square of the texture again: only the
-parts that move change.
+The kernel uses about 5% to 9% more. While the song plays, the window
+draws about 4% of its pixels in each frame. Before the window drew only
+the changed parts, the arrange view used about 37% of a core.
 
 llvmpipe uses as many threads as the processor has free. So the load
 that you measure changes with what else runs. To compare two windows, set
