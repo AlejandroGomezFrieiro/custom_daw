@@ -57,10 +57,14 @@ use clap_sys::fixedpoint::CLAP_BEATTIME_FACTOR;
 use clap_sys::host::clap_host;
 use clap_sys::id::clap_id;
 use clap_sys::plugin::clap_plugin;
-use clap_sys::process::{CLAP_PROCESS_ERROR, clap_process};
+use clap_sys::ext::tail::{CLAP_EXT_TAIL, clap_plugin_tail};
+use clap_sys::process::{
+    CLAP_PROCESS_CONTINUE_IF_NOT_QUIET, CLAP_PROCESS_ERROR, CLAP_PROCESS_SLEEP, CLAP_PROCESS_TAIL,
+    clap_process,
+};
 use clap_sys::stream::{clap_istream, clap_ostream};
 use clap_sys::version::CLAP_VERSION;
-use paw_engine::device::assign_keys;
+use paw_engine::device::{assign_keys, silent};
 use paw_engine::{
     Controller, Device, DeviceFactory, DeviceInfo, EventKind, Instance, Io, NOTE_BEND_RANGE,
     NoteCtl, ParamInfo, Ports, ProcessCtx, Registry, ump,
@@ -251,6 +255,8 @@ struct Shared {
     gui: *const clap_plugin_gui,
     timers: *const clap_plugin_timer_support,
     fds: *const clap_plugin_posix_fd_support,
+    /// How long the plugin rings after its input stops, when it says.
+    tail: *const clap_plugin_tail,
     /// The CLAP id and cookie of each parameter, in the order we list them.
     param_ids: Vec<(clap_id, *mut c_void)>,
     param_infos: Vec<ParamInfo>,
@@ -322,6 +328,7 @@ impl DeviceFactory for ClapFactory {
                 gui: ptr::null(),
                 timers: ptr::null(),
                 fds: ptr::null(),
+                tail: ptr::null(),
                 param_ids: Vec::new(),
                 param_infos: Vec::new(),
                 flags,
@@ -336,6 +343,7 @@ impl DeviceFactory for ClapFactory {
             shared.gui = extension(plugin, CLAP_EXT_GUI);
             shared.timers = extension(plugin, CLAP_EXT_TIMER_SUPPORT);
             shared.fds = extension(plugin, CLAP_EXT_POSIX_FD_SUPPORT);
+            shared.tail = extension(plugin, CLAP_EXT_TAIL);
             read_params(&mut shared);
 
             let ports: *const clap_plugin_audio_ports = extension(plugin, CLAP_EXT_AUDIO_PORTS);
@@ -387,6 +395,8 @@ impl DeviceFactory for ClapFactory {
                 started: false,
                 failed: false,
                 steady_time: 0,
+                quiet: 0,
+                resting: false,
             };
             Ok(Instance {
                 device: Box::new(device),
@@ -605,15 +615,32 @@ struct ClapDevice {
     started: bool,
     failed: bool,
     steady_time: i64,
+    /// Frames the input has ended with silent and without events.
+    quiet: u64,
+    /// What the plugin said of itself after its last block (see
+    /// [`Device::resting`]).
+    resting: bool,
 }
 
 // The buffers hold raw pointers into vectors the device owns.
 unsafe impl Send for ClapDevice {}
 
 impl Device for ClapDevice {
+    /// As the plugin's status after its last block says: asleep, or quiet,
+    /// or done with its tail; unless a parameter has moved since.
+    fn resting(&self) -> bool {
+        self.resting && self.pending.is_empty()
+    }
+
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io) {
         let n = io.left.len();
         let plugin = self.shared.plugin;
+        self.resting = false;
+        if paw_engine::device::quiet(io) {
+            self.quiet = self.quiet.saturating_add(n as u64);
+        } else {
+            self.quiet = 0;
+        }
         unsafe {
             if !self.started && !self.failed {
                 self.started = (*plugin).start_processing.is_none_or(|start| start(plugin));
@@ -776,9 +803,27 @@ impl Device for ClapDevice {
             };
             self.steady_time += n as i64;
             let Some(run) = (*plugin).process else { return };
-            if run(plugin, &process) == CLAP_PROCESS_ERROR {
+            let status = run(plugin, &process);
+            if status == CLAP_PROCESS_ERROR {
                 return;
             }
+            // Whether the plugin may sleep through silence from here on:
+            // it says so, or says it may once its output is quiet, or once
+            // its tail has gone by.
+            let out_quiet = || self.outputs.channels.iter().flatten().all(|c| silent(&c[..n]));
+            self.resting = match status {
+                CLAP_PROCESS_SLEEP => true,
+                CLAP_PROCESS_CONTINUE_IF_NOT_QUIET => out_quiet(),
+                CLAP_PROCESS_TAIL => {
+                    let tail = self.shared.tail;
+                    let frames = match tail.as_ref().and_then(|t| t.get) {
+                        Some(get) => get(plugin) as u64,
+                        None => u64::MAX,
+                    };
+                    frames != u32::MAX as u64 && self.quiet >= frames && out_quiet()
+                }
+                _ => false,
+            };
         }
 
         if let Some(port) = self.outputs.channels.first() {
