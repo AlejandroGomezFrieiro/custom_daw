@@ -323,6 +323,10 @@ impl Scene {
         }
         let (xvfb, display) = start_xvfb(&tools, &dir);
         envs.push(("PAW_BIN", paw.clone()));
+        // A scene named so asks for the processor (GLX, its parts copied).
+        if name.ends_with("-sw") {
+            envs.push(("PAW_GUI_RENDERER", "software".into()));
+        }
 
         let mut command = Command::new(&tools.openbox);
         command
@@ -1121,7 +1125,18 @@ fn differ(a: &[[u8; 3]], b: &[[u8; 3]]) -> (usize, usize) {
 // the pixels are the same.
 #[test]
 fn a_window_drawn_again_where_it_changed_looks_as_one_drawn_whole() {
-    let mut w = scene!("partial-look", DEMO);
+    partial_look("partial-look");
+}
+
+// The same with the software renderer asked for, which on X11 shows a
+// frame by copying its changed parts to the window, with no swap.
+#[test]
+fn a_window_on_the_processor_drawn_again_where_it_changed_looks_as_one_drawn_whole() {
+    partial_look("partial-look-sw");
+}
+
+fn partial_look(name: &str) {
+    let mut w = scene!(name, DEMO);
     w.pause(3.0);
     w.mouse_to(arrange_point(&w, "v.flags.mute + 0.5", "row('track', 2) + 0.5"));
     let keys = w.number("return paw.api.clip_list(paw.api.track_list()[3])[1].id") as i32;

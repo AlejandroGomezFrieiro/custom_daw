@@ -332,6 +332,9 @@ struct Runner {
     /// The window was uncovered (a redraw not asked for): all of it is
     /// shown again.
     exposed: bool,
+    /// When the window was shown, and when all of it was last copied to it.
+    shown_at: Option<Instant>,
+    copied_all: Option<Instant>,
     closing: bool,
     failed: Option<anyhow::Error>,
 }
@@ -385,6 +388,8 @@ pub fn run(builder: ViewportBuilder, make: impl FnOnce(&egui::Context, &GlInfo) 
         stats: Stats { since: std::env::var_os("PAW_GUI_STATS").map(|_| Instant::now()), ..Stats::default() },
         shown: false,
         exposed: false,
+        shown_at: None,
+        copied_all: None,
         closing: false,
         failed: None,
     };
@@ -615,7 +620,14 @@ impl Runner {
         // Shown: only what changed, where the platform lets it say so.
         if let Some(copy) = &gl.copy_sub {
             let h = screen[1] as i32;
-            let parts = if all { vec![[0, 0, screen[0] as i32, h]] } else { changed };
+            // All of it now and then, and for a second after it is shown: what
+            // an X server without a compositor lost of a covered window, or
+            // of one not yet mapped, comes back.
+            let refresh = self.copied_all.is_none_or(|at| at.elapsed() > Duration::from_secs(1));
+            if all || refresh {
+                self.copied_all = Some(Instant::now()).filter(|_| self.shown_at.is_some_and(|at| at.elapsed() > Duration::from_secs(1)));
+            }
+            let parts = if all || refresh { vec![[0, 0, screen[0] as i32, h]] } else { changed };
             for r in parts {
                 unsafe { (copy.copy)(copy.display, copy.drawable, r[0], h - r[3], r[2] - r[0], r[3] - r[1]) };
             }
@@ -624,6 +636,7 @@ impl Runner {
             if !self.shown {
                 self.shown = true;
                 window.set_visible(true);
+                self.shown_at = Some(Instant::now());
             }
             return;
         }
