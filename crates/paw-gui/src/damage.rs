@@ -51,6 +51,10 @@ pub struct Damage {
     fresh: Vec<bool>,
     /// The squares changed in each frame shown, the newest last.
     history: VecDeque<Vec<bool>>,
+    /// The shapes and their places in squares, all told, for the counts.
+    pub counted: u64,
+    pub pushes: u64,
+    pub passes: u64,
 }
 
 impl Damage {
@@ -79,6 +83,7 @@ impl Damage {
             for y in y0..=y1 {
                 for x in x0..=x1 {
                     bins[(y * self.cols + x) as usize].push(i as u32);
+                    self.pushes += 1;
                 }
             }
         }
@@ -98,6 +103,8 @@ impl Damage {
                     });
             }
         }
+        self.counted += shapes.len() as u64;
+        self.passes += 1;
         self.shapes = shapes;
         self.bounds = bounds;
         self.spare = std::mem::replace(&mut self.bins, bins);

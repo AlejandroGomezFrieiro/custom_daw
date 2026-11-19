@@ -202,7 +202,7 @@ impl View {
             last_mode: String::new(),
             panes: panes::Panes::default(),
             canvases: canvas::Canvases::default(),
-            scenes: scene::Scenes::default(),
+            scenes: scene::Scenes::counting(std::env::var_os("PAW_GUI_STATS").is_some()),
             menu: None,
             kernel_menu: 0,
             dialogs: dialogs::Dialogs::default(),

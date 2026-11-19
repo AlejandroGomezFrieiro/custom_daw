@@ -256,11 +256,12 @@ struct Stats {
 }
 
 impl Stats {
-    fn report(&mut self, screen: [u32; 2]) {
-        let Some(since) = self.since else { return };
+    /// Print the counts every 10 s; true when it did.
+    fn report(&mut self, screen: [u32; 2]) -> bool {
+        let Some(since) = self.since else { return false };
         let seconds = since.elapsed().as_secs_f64();
         if seconds < 10.0 {
-            return;
+            return false;
         }
         let shown = self.shown.max(1) as f64;
         let all = (screen[0] as f64 * screen[1] as f64).max(1.0);
@@ -277,6 +278,7 @@ impl Stats {
             self.ages,
         );
         *self = Stats { since: Some(Instant::now()), ..Stats::default() };
+        true
     }
 }
 
@@ -362,7 +364,12 @@ pub fn run(builder: ViewportBuilder, make: impl FnOnce(&egui::Context, &GlInfo) 
 impl Runner {
     /// OpenGL, the main window, and the program.
     fn start(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
-        let builder = self.builder.clone().with_visible(false);
+        let mut builder = self.builder.clone().with_visible(false);
+        // No larger than the screen, as eframe kept it.
+        if let (Some(size), Some(monitor)) = (builder.inner_size, event_loop.primary_monitor().or_else(|| event_loop.available_monitors().next())) {
+            let screen = monitor.size().to_logical::<f32>(monitor.scale_factor());
+            builder.inner_size = Some(egui::vec2(size.x.min(screen.width), size.y.min(screen.height)));
+        }
         let attributes = egui_winit::create_winit_window_attributes(&self.ctx, builder.clone());
         let template = ConfigTemplateBuilder::new().prefer_hardware_accelerated(None).with_depth_size(0).with_stencil_size(0).with_transparency(false);
         // EGL first: it says how old a buffer is and shows only what changed.
@@ -498,7 +505,15 @@ impl Runner {
         }
         gl.outputs(Some(event_loop), &output.viewport_output);
         let screen = gl.viewports.get(&ViewportId::ROOT).and_then(|v| v.window.as_ref()).map_or([0, 0], |w| w.inner_size().into());
-        self.stats.report(screen);
+        if self.stats.report(screen) {
+            let passes = self.damage.passes.max(1);
+            eprintln!(
+                "paw-gui: stats: {:.0} shapes a pass, in {:.0} places in squares",
+                self.damage.counted as f64 / passes as f64,
+                self.damage.pushes as f64 / passes as f64
+            );
+            (self.damage.counted, self.damage.pushes, self.damage.passes) = (0, 0, 0);
+        }
         if self.closing {
             event_loop.exit();
         }

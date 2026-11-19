@@ -49,6 +49,10 @@ struct Picture {
     image: Option<(TextureHandle, [usize; 2])>,
 }
 
+/// What the still part of a scene was painted for: its rectangle, its cut,
+/// the cell and scale, the roles that moved, and the clips' pictures made.
+type StillKey = (Rect, Rect, [f32; 3], Vec<usize>, u64);
+
 /// A window's scene, and what is drawn of it.
 #[derive(Default)]
 struct Shown {
@@ -67,6 +71,9 @@ struct Shown {
     /// The shapes of what is drawn over the roles, each with what it is
     /// cut to, made as the cells' are.
     over_shapes: Option<(Vec<(Rect, Shape)>, [f32; 5])>,
+    /// The shapes of what does not move, as last painted, and for what:
+    /// where, cut to what, at what cell and scale, with which roles moving.
+    still: Option<(StillKey, Vec<egui::epaint::ClippedShape>)>,
 }
 
 #[derive(Default)]
@@ -86,9 +93,17 @@ pub struct Scenes {
     pub cell: Option<(f32, f32)>,
     /// What bound nodes are moved by, as the kernel last sent it.
     pub live: Value,
+    /// With `PAW_GUI_STATS`: the patches taken by window, the nodes they
+    /// set, and since when.
+    pub counted: Option<(HashMap<String, (u64, u64)>, std::time::Instant)>,
 }
 
 impl Scenes {
+    /// The scenes, counting the patches taken when `count` (`PAW_GUI_STATS`).
+    pub fn counting(count: bool) -> Scenes {
+        Scenes { counted: count.then(|| (HashMap::new(), std::time::Instant::now())), ..Scenes::default() }
+    }
+
     /// The window's cell, or the size it has before it is measured.
     pub fn cell(&self) -> (f32, f32) {
         self.cell.unwrap_or((7.8, 17.0))
@@ -202,6 +217,7 @@ impl Shown {
         self.roles = placed;
         self.shapes = None;
         self.over_shapes = None;
+        self.still = None;
     }
 
     /// The shapes of the runs and fills a view drew over the roles painted
@@ -335,7 +351,52 @@ impl Shown {
     /// not move costs no drawing.
     fn draw(&mut self, ui: &Ui, id: &str, rect: Rect, clip: Rect, cell: (f32, f32), live: &Value) {
         let painter = ui.painter().with_clip_rect(clip.intersect(ui.clip_rect()));
-        let still = painter.clone();
+        let ppp = ui.ctx().pixels_per_point();
+        // What moves: the roles bound to live values, and the one under
+        // the pointer.
+        let moving: Vec<usize> = (0..self.roles.len())
+            .filter(|&i| {
+                let (node, at, _) = &self.roles[i];
+                node.bind.is_some() || ui.rect_contains_pointer(roles::rect_of(*at, rect.min, cell))
+            })
+            .collect();
+        // The rest is painted once, and its shapes are given again while
+        // nothing of it changes: no layout, no painting of roles.
+        let still_key = (rect, painter.clip_rect(), [cell.0, cell.1, ppp], moving.clone(), crate::timeline::pictures_made());
+        if self.still.as_ref().is_none_or(|(key, _)| *key != still_key) {
+            let kept = egui::LayerId::new(painter.layer_id().order, Id::unique(("scene-still", id)));
+            let still = egui::Painter::new(ui.ctx().clone(), kept, painter.clip_rect());
+            self.paint_still(ui, &still, id, rect, cell, live, &moving);
+            let shapes = ui.ctx().graphics_mut(|g| std::mem::take(g.entry(kept)));
+            self.still = Some((still_key, shapes.all_entries().cloned().collect()));
+        } else {
+            // What it says to a reader of the window, as when painted, and
+            // the clips' pictures it shows, kept.
+            for (i, (node, at, _)) in self.roles.iter().enumerate() {
+                if !moving.contains(&i) {
+                    roles::name(ui, Id::unique(("scene-role", id, &node.key)), node, roles::rect_of(*at, rect.min, cell));
+                    crate::timeline::keep_picture(node);
+                }
+            }
+        }
+        if let Some((_, shapes)) = &self.still {
+            ui.ctx().graphics_mut(|g| {
+                let list = g.entry(painter.layer_id());
+                for shape in shapes {
+                    list.add(shape.clip_rect, shape.shape.clone());
+                }
+            });
+        }
+        for i in moving {
+            self.role(ui, &painter, id, i, rect.min, cell, live);
+        }
+    }
+
+    /// Paint what does not move of the scene with `still`: the ground, the
+    /// cells, the pictures, the roles but those `moving`, what is drawn
+    /// over them, the cursor.
+    #[allow(clippy::too_many_arguments)]
+    fn paint_still(&mut self, ui: &Ui, still: &egui::Painter, id: &str, rect: Rect, cell: (f32, f32), live: &Value, moving: &[usize]) {
         still.rect_filled(rect, CornerRadius::ZERO, colour(&self.scene.bg));
         let ppp = ui.ctx().pixels_per_point();
         let key = [rect.min.x, rect.min.y, cell.0, cell.1, ppp];
@@ -346,16 +407,12 @@ impl Shown {
         let Some((back, text, _)) = &self.shapes else { return };
         still.extend(back.iter().cloned());
         let text = text.clone();
-        self.pictures(ui, &still, rect.min, cell, true);
+        self.pictures(ui, still, rect.min, cell, true);
         still.extend(text);
-        let mut moving = Vec::new();
-        for (i, (node, at, _)) in self.roles.iter().enumerate() {
-            let at = roles::rect_of(*at, rect.min, cell);
-            if node.bind.is_some() || ui.rect_contains_pointer(at) {
-                moving.push(i);
-                continue;
+        for i in 0..self.roles.len() {
+            if !moving.contains(&i) {
+                self.role(ui, still, id, i, rect.min, cell, live);
             }
-            self.role(ui, &still, id, i, rect.min, cell, live);
         }
         if self.over_shapes.as_ref().is_none_or(|s| s.1 != key) {
             self.over_shapes = Some((self.over_shapes(ui.ctx(), rect.min, cell), key));
@@ -369,13 +426,10 @@ impl Shown {
                 }
             }
         }
-        self.pictures(ui, &still, rect.min, cell, false);
+        self.pictures(ui, still, rect.min, cell, false);
         if let Some([x, y]) = self.scene.cursor {
             let bar = Rect::from_min_size(pos2(rect.min.x + x * cell.0, rect.min.y + y * cell.1), vec2(2.0, cell.1));
             still.rect_filled(bar, CornerRadius::ZERO, colour(&self.scene.fg));
-        }
-        for i in moving {
-            self.role(ui, &painter, id, i, rect.min, cell, live);
         }
     }
 
@@ -458,6 +512,17 @@ impl View {
             }
             let shown = self.scenes.shown.entry(patch.win.clone()).or_default();
             shown.take(&patch, &self.scenes.blobs);
+            if let Some((counts, since)) = &mut self.scenes.counted {
+                let count = counts.entry(patch.win.clone()).or_default();
+                count.0 += 1;
+                count.1 += patch.set.len() as u64;
+                if since.elapsed().as_secs() >= 10 {
+                    let mut all: Vec<_> = counts.drain().collect();
+                    all.sort();
+                    eprintln!("paw-gui: stats: scene patches (window: patches, nodes set) {all:?}");
+                    *since = std::time::Instant::now();
+                }
+            }
             self.repaint = true;
         }
     }

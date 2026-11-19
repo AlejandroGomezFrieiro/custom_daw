@@ -1134,14 +1134,11 @@ fn a_window_drawn_again_where_it_changed_looks_as_one_drawn_whole() {
     for (what, setup) in views {
         w.ctl(&setup);
         let partial = look(&w, true);
+        w.shot(&format!("{what}-partial.png"));
         let whole = look(&w, false);
         let (count, big) = differ(&partial, &whole);
         eprintln!("{what}: {count} pixels differ, {big} by more than 2");
         if count > 0 {
-            w.ctl("paw.opt.window_cache = true");
-            look(&w, true);
-            w.shot(&format!("{what}-partial.png"));
-            look(&w, false);
             w.shot(&format!("{what}-whole.png"));
             panic!("{what}: {count} pixels differ, {big} by more than 2");
         }
