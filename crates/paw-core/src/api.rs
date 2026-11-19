@@ -869,7 +869,9 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         }
 
         // Load a preset into a device, as one undo step:
-        // `{ name =, state =, params =, factory = }`.
+        // `{ name =, state =, params =, factory =, call = }`. `call = { method =,
+        // data = }` is a `device_call` that changes the state of the plugin
+        // (`property.set` of an LV2 plugin). The state after it is kept.
         fn device_load(lua, sh, (id, load) => (Id, LuaValue)) {
             sh.session.borrow_mut().device_load(id, options(lua, load)?).lua()
         }

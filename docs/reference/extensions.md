@@ -25,6 +25,7 @@ made by the scenes in its `images/make` (`docs/images/make/make.sh <name>`).
 | [`musicops`](../../extensions/musicops/README.md) | musical operators: humanize, strum, arpeggiate, scales |
 | [`notation`](../../extensions/notation/README.md) | a MIDI clip as staff notation, in the terminal and in the graphical window |
 | [`pattern`](../../extensions/pattern/README.md) | clips written as patterns of text, as in TidalCycles |
+| [`plugstate`](../../extensions/plugstate/README.md) | the models, impulse responses and instrument files of plugins, set without their windows, and snapshots of the state of a device |
 | [`projdiff`](../../extensions/projdiff/README.md) | the changes between two versions of a project, and three-way merges for git |
 | [`rpp`](../../extensions/rpp/README.md) | opens and writes REAPER projects |
 | [`sampler`](../../extensions/sampler/README.md) | the sample player of paw, a CLAP plugin written in Rust |

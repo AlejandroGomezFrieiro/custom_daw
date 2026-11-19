@@ -112,6 +112,16 @@ window. Without them, an editor is an empty black window.
   `paw.api.device_load(device, { name = "Violins", factory = "file:/path/Violins.sfz" })`
   (one undo step), or
   `paw.api.device_call(device, "preset.load", "file:/path")`.
+- An LV2 plugin can list properties (`patch:writable`): files and values
+  outside its parameters, such as the model of an amp.
+  `paw.api.device_call(device, "properties")` lists them as JSON, with the
+  value that the plugin told last.
+  `paw.api.device_call(device, "property.set", '{"property": "model", "value": "/path/amp.nam"}')`
+  sets one, as the window of the plugin does. A path must be absolute.
+- `paw.api.device_load(device, { name = "Deluxe", params = p, call = { method = "property.set", data = json } })`
+  makes the same change as one undo step. The project keeps the state that
+  the plugin has after the call. The
+  [plugstate](../../extensions/plugstate/README.md) extension uses it.
 
 ## Editors
 

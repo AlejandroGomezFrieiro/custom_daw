@@ -22,6 +22,7 @@ use paw_engine::{
 };
 use lilv_sys::*;
 
+use crate::lv2_patch::{self, Kind, PatchUrids, Property};
 use crate::window::{GtkWindow, HostWindow, WindowEvent, ui_scale};
 use crate::{HeldNotes, search_dirs, write_output};
 
@@ -150,6 +151,7 @@ struct Urids {
     time_beat_unit: u32,
     time_beats_per_bar: u32,
     time_beats_per_minute: u32,
+    patch: PatchUrids,
 }
 
 fn urids() -> &'static Urids {
@@ -177,6 +179,21 @@ fn urids() -> &'static Urids {
         time_beat_unit: urid(c"http://lv2plug.in/ns/ext/time#beatUnit"),
         time_beats_per_bar: urid(c"http://lv2plug.in/ns/ext/time#beatsPerBar"),
         time_beats_per_minute: urid(c"http://lv2plug.in/ns/ext/time#beatsPerMinute"),
+        patch: PatchUrids {
+            object: urid(c"http://lv2plug.in/ns/ext/atom#Object"),
+            urid: urid(c"http://lv2plug.in/ns/ext/atom#URID"),
+            path: urid(c"http://lv2plug.in/ns/ext/atom#Path"),
+            string: urid(c"http://lv2plug.in/ns/ext/atom#String"),
+            float: urid(c"http://lv2plug.in/ns/ext/atom#Float"),
+            double: urid(c"http://lv2plug.in/ns/ext/atom#Double"),
+            int: urid(c"http://lv2plug.in/ns/ext/atom#Int"),
+            long: urid(c"http://lv2plug.in/ns/ext/atom#Long"),
+            bool_: urid(c"http://lv2plug.in/ns/ext/atom#Bool"),
+            set: urid(c"http://lv2plug.in/ns/ext/patch#Set"),
+            get: urid(c"http://lv2plug.in/ns/ext/patch#Get"),
+            property: urid(c"http://lv2plug.in/ns/ext/patch#property"),
+            value: urid(c"http://lv2plug.in/ns/ext/patch#value"),
+        },
     })
 }
 
@@ -209,6 +226,12 @@ struct World {
     name: *mut LilvNode,
     minor_version: *mut LilvNode,
     micro_version: *mut LilvNode,
+    // Properties set with patch messages (see `lv2_patch`).
+    patch_writable: *mut LilvNode,
+    patch_readable: *mut LilvNode,
+    patch_message: *mut LilvNode,
+    range: *mut LilvNode,
+    file_types: *mut LilvNode,
 }
 
 // Created and used on the main thread only.
@@ -262,6 +285,11 @@ fn world() -> &'static World {
             name: uri(format!("{LV2_CORE}name")),
             minor_version: uri(format!("{LV2_CORE}minorVersion")),
             micro_version: uri(format!("{LV2_CORE}microVersion")),
+            patch_writable: uri("http://lv2plug.in/ns/ext/patch#writable".into()),
+            patch_readable: uri("http://lv2plug.in/ns/ext/patch#readable".into()),
+            patch_message: uri("http://lv2plug.in/ns/ext/patch#Message".into()),
+            range: uri("http://www.w3.org/2000/01/rdf-schema#range".into()),
+            file_types: uri("http://moddevices.com/ns/mod#fileTypes".into()),
         }
     })
 }
@@ -758,6 +786,11 @@ struct Shared {
     ui: Option<UiInfo>,
     /// Whether an editor is open and wants to hear from the plugin.
     ui_open: AtomicBool,
+    /// The properties the plugin lists (`patch:writable`, `patch:readable`).
+    properties: Vec<Property>,
+    /// The port index of the atom input that takes patch messages, when
+    /// the plugin has properties.
+    patch_port: Option<u32>,
 }
 
 /// Where a plugin's editor lives on disk, and how it is shown.
@@ -1123,6 +1156,29 @@ impl DeviceFactory for Lv2Factory {
                 .then(|| lilv_port_get_index(plugin, wheel))
                 .and_then(|index| control_ports.iter().find(|(port, _)| *port == index))
                 .map(|(_, slot)| *slot);
+            let properties = find_properties(plugin, w);
+            // Patch messages go to the atom input that says it takes them,
+            // else to the first one that is not only for MIDI.
+            let atom_inputs: Vec<u32> = atom_ports
+                .iter()
+                .zip(&atoms)
+                .filter(|(_, atom)| atom.input)
+                .map(|(port, _)| *port)
+                .collect();
+            let supports = |port: u32, what| {
+                let p = lilv_plugin_get_port_by_index(plugin, port);
+                lilv_port_supports_event(plugin, p, what)
+            };
+            let patch_port = (!properties.is_empty())
+                .then(|| {
+                    atom_inputs
+                        .iter()
+                        .find(|p| supports(**p, w.patch_message))
+                        .or_else(|| atom_inputs.iter().find(|p| !supports(**p, w.midi_event)))
+                        .or(atom_inputs.first())
+                        .copied()
+                })
+                .flatten();
             let shared = Arc::new(Shared {
                 plugin,
                 instance,
@@ -1139,6 +1195,8 @@ impl DeviceFactory for Lv2Factory {
                 port_symbols,
                 ui: find_ui(plugin),
                 ui_open: AtomicBool::new(false),
+                properties,
+                patch_port,
             });
             if !worker_interface.is_null() {
                 let handle = lilv_instance_get_handle(instance);
@@ -1193,22 +1251,26 @@ impl DeviceFactory for Lv2Factory {
                 held: HeldNotes::new(),
                 response: Vec::with_capacity(WORK_CAPACITY),
             };
+            let mut controller = Lv2Controller {
+                link: Box::new(UiLink {
+                    shared: shared.clone(),
+                    to_plugin: UnsafeCell::new(to_plugin),
+                    changes: RefCell::new(Vec::new()),
+                    resize: Cell::new(None),
+                    closed: Cell::new(false),
+                }),
+                shared,
+                from_plugin,
+                message: Vec::with_capacity(ATOM_CAPACITY),
+                ui: None,
+                ports,
+                values: HashMap::new(),
+            };
+            // Ask the plugin what its properties hold now.
+            controller.ask_properties();
             Ok(Instance {
                 device: Box::new(device),
-                controller: Some(Box::new(Lv2Controller {
-                    link: Box::new(UiLink {
-                        shared: shared.clone(),
-                        to_plugin: UnsafeCell::new(to_plugin),
-                        changes: RefCell::new(Vec::new()),
-                        resize: Cell::new(None),
-                        closed: Cell::new(false),
-                    }),
-                    shared,
-                    from_plugin,
-                    message: Vec::with_capacity(ATOM_CAPACITY),
-                    ui: None,
-                    ports,
-                })),
+                controller: Some(Box::new(controller)),
             })
         }
     }
@@ -1359,7 +1421,10 @@ impl Device for Lv2Device {
             }
         }
 
-        if shared.ui_open.load(Relaxed) {
+        // An open editor hears everything the plugin sends; with none open,
+        // the controller still hears the new values of its properties.
+        let ui_open = shared.ui_open.load(Relaxed);
+        if ui_open || shared.patch_port.is_some() {
             for (atom, port) in self
                 .atoms
                 .iter()
@@ -1367,6 +1432,9 @@ impl Device for Lv2Device {
                 .filter(|(atom, _)| !atom.input)
             {
                 atom.each_event(|event| {
+                    if !ui_open && !lv2_patch::is_set(&urids().patch, event) {
+                        return;
+                    }
                     self.message.clear();
                     self.message.extend_from_slice(&port.to_le_bytes());
                     self.message.extend_from_slice(event);
@@ -1704,9 +1772,102 @@ struct Lv2Controller {
     message: Vec<u8>,
     ui: Option<Ui>,
     ports: Ports,
+    /// The value of each property the plugin told (by URID), or that was
+    /// set from here.
+    values: HashMap<u32, serde_json::Value>,
+}
+
+/// Note the value a message from the plugin gives a property.
+fn note_property(values: &mut HashMap<u32, serde_json::Value>, atom: &[u8]) {
+    if let Some((property, value)) = lv2_patch::parse_set(&urids().patch, atom) {
+        values.insert(property, value);
+    }
 }
 
 impl Lv2Controller {
+    /// Send a patch message to the plugin's control port. False when the
+    /// plugin takes none, or the way to it is full.
+    fn send_patch(&mut self, atom: &[u8]) -> bool {
+        let Some(port) = self.shared.patch_port else {
+            return false;
+        };
+        let mut message = port.to_le_bytes().to_vec();
+        message.extend_from_slice(atom);
+        write_message(self.link.to_plugin.get_mut(), &message)
+    }
+
+    fn ask_properties(&mut self) {
+        if !self.shared.properties.is_empty() {
+            self.send_patch(&lv2_patch::get_message(&urids().patch));
+        }
+    }
+
+    /// Take what the plugin sent while no editor is open: the new values of
+    /// its properties.
+    fn read_plugin(&mut self) {
+        while read_message(&mut self.from_plugin, &mut self.message) {
+            if let Some((_, atom)) = self.message.split_at_checked(4) {
+                note_property(&mut self.values, atom);
+            }
+        }
+    }
+
+    fn properties_json(&mut self) -> Vec<u8> {
+        if self.ui.is_none() {
+            self.read_plugin();
+        }
+        let list: Vec<serde_json::Value> = self
+            .shared
+            .properties
+            .iter()
+            .map(|p| p.json(self.values.get(&p.urid)))
+            .collect();
+        serde_json::to_vec(&list).unwrap_or_default()
+    }
+
+    /// Set a property from `{ "property": name, "value": value }`.
+    fn set_property(&mut self, data: &[u8]) -> Result<()> {
+        #[derive(serde::Deserialize)]
+        struct Set {
+            property: String,
+            value: serde_json::Value,
+        }
+        let set: Set = serde_json::from_slice(data)
+            .context("give the property as { \"property\": name, \"value\": value }")?;
+        let shared = self.shared.clone();
+        if shared.properties.is_empty() {
+            bail!("this plugin has no properties");
+        }
+        let Some(property) = lv2_patch::find(&shared.properties, &set.property) else {
+            let names: Vec<&str> = shared.properties.iter().map(|p| p.key()).collect();
+            bail!(
+                "this plugin has no property `{}` (it has: {})",
+                set.property,
+                names.join(", ")
+            );
+        };
+        if !property.writable {
+            bail!("the plugin does not take a value for `{}`", property.key());
+        }
+        if property.kind == Kind::Path
+            && let Some(path) = set.value.as_str()
+            && !path.is_empty()
+        {
+            let file = std::path::Path::new(path);
+            if !file.is_absolute() {
+                bail!("give `{}` an absolute path, not {path}", property.key());
+            }
+            if !file.exists() {
+                bail!("there is no file {path}");
+            }
+        }
+        let message = lv2_patch::set_message(&urids().patch, property, &set.value)?;
+        if !self.send_patch(&message) {
+            bail!("the plugin did not take the message: try again");
+        }
+        self.values.insert(property.urid, set.value);
+        Ok(())
+    }
     /// Keep the open editor up to date and let it do its work.
     fn run_editor(&mut self) {
         let Some(ui) = self.ui.as_mut() else { return };
@@ -1741,6 +1902,7 @@ impl Lv2Controller {
                         continue;
                     };
                     let port = u32::from_le_bytes(port.try_into().unwrap());
+                    note_property(&mut self.values, atom);
                     port_event(
                         ui.handle,
                         port,
@@ -1788,7 +1950,11 @@ impl Controller for Lv2Controller {
     }
 
     fn idle(&mut self) {
-        self.run_editor();
+        if self.ui.is_some() {
+            self.run_editor();
+        } else {
+            self.read_plugin();
+        }
     }
 
     fn take_changes(&mut self) -> Vec<(usize, f64)> {
@@ -2088,6 +2254,10 @@ impl Controller for Lv2Controller {
             Ok(unsafe { lilv_new_uri(w, text.as_ptr()) })
         };
         match method {
+            // What the plugin holds besides its parameters (a model file, an
+            // impulse response), and the values it last told.
+            "properties" => Ok(self.properties_json()),
+            "property.set" => self.set_property(data).map(|_| Vec::new()),
             // The presets the plugin's bundles (and the user's) describe.
             "presets" => unsafe {
                 let class = uri("http://lv2plug.in/ns/ext/presets#Preset")?;
@@ -2145,6 +2315,52 @@ impl Controller for Lv2Controller {
             restore(shared, state);
             lilv_state_free(state);
         }
+        self.ask_properties();
         Ok(())
     }
+}
+
+/// The properties a plugin lists as `patch:writable` or `patch:readable`.
+unsafe fn find_properties(plugin: *const LilvPlugin, w: &World) -> Vec<Property> {
+    let mut properties: Vec<Property> = Vec::new();
+    unsafe {
+        let subject = lilv_plugin_get_uri(plugin);
+        for (predicate, writable) in [(w.patch_writable, true), (w.patch_readable, false)] {
+            let nodes = lilv_world_find_nodes(w.world, subject, predicate, ptr::null());
+            if nodes.is_null() {
+                continue;
+            }
+            let mut it = lilv_nodes_begin(nodes);
+            while !lilv_nodes_is_end(nodes, it) {
+                let node = lilv_nodes_get(nodes, it);
+                it = lilv_nodes_next(nodes, it);
+                let uri = node_text(node);
+                if let Some(known) = properties.iter_mut().find(|p| p.uri == uri) {
+                    known.writable |= writable;
+                    known.readable |= !writable;
+                    continue;
+                }
+                let range = take_text(lilv_world_get(w.world, node, w.range, ptr::null()));
+                let label = take_text(lilv_world_get(w.world, node, w.label, ptr::null()));
+                let types = take_text(lilv_world_get(w.world, node, w.file_types, ptr::null()));
+                let Ok(c_uri) = CString::new(uri.clone()) else { continue };
+                properties.push(Property {
+                    urid: urid(&c_uri),
+                    label: if label.is_empty() { uri.rsplit(['#', '/', ':']).next().unwrap_or(&uri).to_string() } else { label },
+                    kind: Kind::from_range(&range),
+                    range,
+                    writable,
+                    readable: !writable,
+                    file_types: types
+                        .split(',')
+                        .map(|t| t.trim().to_string())
+                        .filter(|t| !t.is_empty())
+                        .collect(),
+                    uri,
+                });
+            }
+            lilv_nodes_free(nodes);
+        }
+    }
+    properties
 }
