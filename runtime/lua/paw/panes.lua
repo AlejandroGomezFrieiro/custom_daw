@@ -5,8 +5,7 @@
 -- A frontend says how big its main area is (`area`), and is told with each
 -- state (`state`) where every window of the current tab goes, which has the
 -- keyboard, the borders between them and the tabs. It draws the views it
--- has its own drawing for (`native`: the session view)
--- in their panes, and is sent
+-- has its own drawing for (`native`: none now) in their panes, and is sent
 -- every other as a scene (paw/scene.lua): a view that paints as a picture
 -- at the pane's size, any other cell by cell as the terminal draws it,
 -- with the roles it marks (paw/roles.lua) as widgets where it knows them.
@@ -18,15 +17,16 @@ local L = require("paw.layout")
 
 local M = {
   -- Views a frontend draws in its own way.
-  native = { session = true },
+  native = {},
   -- Views that stay in the layout when they show in a window of their own
   -- too, as a second view of them: the arrange view, the device panel, and
   -- those a frontend draws itself.
-  stays = { arrange = true, devices = true, session = true },
-  -- The least room, in pixels, a view needs in a frontend.
+  stays = { arrange = true, devices = true },
+  -- The least room, in pixels, a view needs in a frontend. An extension
+  -- adds its views' (`paw.panes.least.session = { h = 150 }`).
   least = {
     arrange = { w = 320, h = 120 }, devices = { w = 260 }, pianoroll = { h = 200 },
-    mixer = { h = 280 }, session = { h = 150 },
+    mixer = { h = 280 },
   },
   -- The height of the row of tabs along the top, when there is more than one.
   tabline = 28,
@@ -179,7 +179,16 @@ end
 
 -- The event as the view takes it.
 function point(view, id, event, drawn)
-  if view.paint then
+  if event.kind == "drop" then
+    -- A clip dragged from another window let go over this one: the view
+    -- takes it in the cell under the pointer, if it takes clips.
+    drawn = drawn or {}
+    local cell = drawn.cell or paw.canvas.cell
+    if view.on_drop then
+      view:on_drop({ clip = event.clip, x = math.floor((event.x or 0) / cell.w), y = math.floor((event.y or 0) / cell.h),
+        win = id, w = drawn.cols, h = drawn.rows, mods = (event.ctrl and "C" or "") .. (event.shift and "S" or "") })
+    end
+  elseif view.paint then
     if view.pointer then view:pointer(event) end
   else
     drawn = drawn or {}

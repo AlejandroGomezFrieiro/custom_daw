@@ -208,7 +208,6 @@ paw.takes = require("paw.takes")
 paw.stretch = require("paw.stretch")
 paw.harmony = require("paw.harmony")
 paw.snippet = require("paw.snippet")
-paw.launcher = require("paw.launcher")
 -- The window's menus, shown by it and built here (paw/window_menus.lua).
 require("paw.window_menus")
 
@@ -239,7 +238,7 @@ paw._kernel = K
 function K.startup()
   paw.ui.theme(require("paw.theme").groups)
   paw.statusline = require("paw.statusline")
-  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "eventlist", "help", "effect_windows", "session" }) do
+  for _, name in ipairs({ "arrange", "status", "cmdline", "mixer", "devices", "pianoroll", "eventlist", "help", "effect_windows" }) do
     require("paw.views." .. name)
   end
   -- What the pointer does in them: the window's gestures, in cells.

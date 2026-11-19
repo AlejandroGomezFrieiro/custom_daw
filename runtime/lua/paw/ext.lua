@@ -233,6 +233,7 @@ M.registries = {
   keyed("curves", "curve providers", function() return paw.curves and paw.curves.providers end),
   keyed("addresses", "address schemes", function() return paw.address and paw.address.schemes end),
   keyed("complete", "completion sources", function() return paw.complete and paw.complete.sources end),
+  keyed("triggers", "controller buttons", function() return paw.learn and paw.learn.triggers end),
   { kind = "layers", title = "layers", snapshot = function()
       local out = {}
       for view, parts in pairs(paw.ui.layers) do

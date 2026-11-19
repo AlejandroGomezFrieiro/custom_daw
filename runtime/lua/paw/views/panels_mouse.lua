@@ -1,6 +1,6 @@
--- The pointer in the mixer, the device panel and the session view: faders,
--- pans, sends and parameters dragged, buttons clicked, slots chosen,
--- launched and moved, as in the window, through `paw.frontend.act`. A
+-- The pointer in the mixer and the device panel: faders,
+-- pans, sends and parameters dragged and buttons clicked,
+-- as in the window, through `paw.frontend.act`. A
 -- control follows the pointer as it moves; moves of one control close
 -- together are one undo step.
 local api = paw.api
@@ -262,79 +262,3 @@ end
 
 devices.gestures = {}
 for kind in pairs(device_hints) do devices.gestures[kind] = device_gesture end
-
--- The session view -----------------------------------------------------------------------
-
-local session = paw.ui.views.session
-
-local slot_hints = {
-  clip = "clip: its play mark launches it · click chooses · double click opens its notes · drag moves it, Ctrl copies · right click for more",
-  empty = "empty slot: double click makes a MIDI clip · its dot records a bar into it",
-  scene = "scene: launches every clip in its row together",
-  stop = "stops the track's clip",
-}
-
---- The column of the session view under `x`, if any.
-local function slot_column(geo, x)
-  for _, c in ipairs(geo.columns) do
-    if x >= c.x - 1 and x < c.x + geo.cw - 1 then return c end
-  end
-end
-
-function session:on_mouse(e)
-  local geo = self.geometry
-  if not geo then return end
-  local launcher = paw.launcher
-  -- Under the title bar, in the body's own lines.
-  local x, y = e.x, e.y - 1
-  local row = self.top + y - 1
-  local step, sideways = mouse.wheel(e)
-  if step then
-    if sideways or mouse.has(e, "S") then paw.cursor.move_track(step) else self.top = math.max(0, self.top + step) end
-    return api.ui_redraw()
-  end
-  local in_slots = y >= 1 and y <= geo.shown
-  if x >= geo.sx then
-    if e.kind == "move" then return mouse.hint(in_slots and slot_hints.scene or nil) end
-    if e.kind ~= "down" or e.button ~= "left" then return end
-    if y == geo.h - 1 then return A.stop_slots(nil) end
-    if in_slots then return A.scene(row) end
-    return
-  end
-  local col = slot_column(geo, x)
-  if not col then return end
-  local clip = in_slots and launcher.clip(col.id, row) or nil
-  if e.kind == "move" then
-    return mouse.hint(y == geo.h - 1 and slot_hints.stop or in_slots and (clip and slot_hints.clip or slot_hints.empty) or nil)
-  end
-  if e.kind ~= "down" then return end
-  if y == geo.h - 1 then
-    if e.button == "left" then A.stop_slots(col.id) end
-    return
-  end
-  if not in_slots then return end
-  if e.button == "right" then
-    if clip then
-      local where = screen(e)
-      mouse.grab(e, { up = function(u) if not u.moved then paw.ui.menu(menus.clip(clip.id, clip.start), where) end end })
-    end
-    return
-  end
-  if e.button ~= "left" then return end
-  if e.double then return A.open_slot(col.id, row) end
-  if clip and x == col.x then
-    -- The play mark launches it, and its release lets a gate or a one-shot go.
-    A.press_slot(col.id, row, true)
-    return mouse.grab(e, { up = function() A.press_slot(col.id, row, false) end })
-  end
-  if not clip and x == col.x + 1 then return A.record_slot(col.id, row) end
-  A.choose_slot(col.id, row)
-  if not clip then return end
-  mouse.grab(e, {
-    up = function(u)
-      local to = u.moved and slot_column(geo, u.x)
-      local to_row = self.top + u.y - 2
-      if to and to_row >= 0 then A.move_slot(clip.id, to.id, to_row, mouse.has(u, "C")) end
-    end,
-  })
-end

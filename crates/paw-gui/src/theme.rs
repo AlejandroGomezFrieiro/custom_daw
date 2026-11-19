@@ -73,11 +73,6 @@ pub fn hex(text: &str) -> Option<Color32> {
     })
 }
 
-/// A colour as the kernel writes it, `#rrggbb`, grey where it is not one.
-pub fn colour(value: &Value) -> Color32 {
-    value.as_str().and_then(hex).unwrap_or(Color32::from_rgb(0x7a, 0x81, 0x94))
-}
-
 static THEME: OnceLock<Theme> = OnceLock::new();
 
 /// The window's colours, once the kernel has said them (or the window's own).

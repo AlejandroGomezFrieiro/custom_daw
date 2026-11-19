@@ -1,5 +1,7 @@
-//! Clip launching: clips kept in a track's slots, apart from the timeline,
-//! started and stopped on the beat while the song plays.
+//! Cues: clips kept off a track's timeline, started and stopped on the
+//! beat while the song plays (`paw-core`'s `session/cues.rs`; the clip
+//! launcher extension is one user). A track's cue clips are in rows here,
+//! which the core keeps stable for each clip.
 //!
 //! A launch is asked for with [`Msg::Launch`](crate::Msg::Launch) and
 //! happens on the first boundary of its [`Quantize`] at or after the

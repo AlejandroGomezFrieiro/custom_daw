@@ -4,7 +4,7 @@
 
 The screen has the layout of Neovim.
 
-- A **buffer** is a thing to show and edit. The views are buffers: the arrange view (`arrange`), the piano roll (`roll`), the mixer (`mixer`), the device panel (`devices`) and the session view (`session`). The event list, help and the view of an extension (`notation`, `drums`, `utau` and other) are buffers too.
+- A **buffer** is a thing to show and edit. The views are buffers: the arrange view (`arrange`), the piano roll (`roll`), the mixer (`mixer`), the device panel (`devices`). The event list, help and the view of an extension (`notation`, `drums`, `utau`, the session view `session` of the clip launcher and other) are buffers too.
 - A **window** shows one buffer.
 - A **tab** holds windows, split side by side and one above the other.
 
@@ -49,7 +49,7 @@ An empty window shows the start page: `:vnew`, `:tabnew` without a name,
 in the new half. `Ctrl-w h` and `Ctrl-w l` go between the two. Each window
 takes its own keys, and a clip that you open shows in that window.
 
-- The arrange view, the piano roll, the notation view, the mixer, the device panel and the session view show in any number of windows. Each window has its own state: the open clip, the cursor, the scroll and the zoom of the view. The edit cursor of the arrange view (the track and the time) is one for all the windows.
+- The arrange view, the piano roll, the notation view, the mixer, the device panel and the session view of the clip launcher show in any number of windows. Each window has its own state: the open clip, the cursor, the scroll and the zoom of the view. The edit cursor of the arrange view (the track and the time) is one for all the windows.
 - Each device panel follows the cursor track, or shows the track that it is pinned to (`devices://Bass`, `\p`). See [Two panels on two tracks](device-panel.md#two-panels-on-two-tracks).
 - The views of extensions without a state for each window show in one window at a time. If you show one of them in a different window, it moves there, with a message.
 - A panel window closed with `Ctrl-w c` keeps its place. The panel returns there. A second window of a view closes for good.
@@ -174,7 +174,7 @@ layout of the windows, if the project has one.
 `:narrow Strings` (or `zn`) narrows a tab to a group. The tab starts with
 the windows of the tab before it. Everything in it sees only the tracks of
 that group. This includes the arrange view, the mixer, the device panel and
-the session view. It also includes `paw://tracks`, the pickers, `:query`,
+the session view of the clip launcher. It also includes `paw://tracks`, the pickers, `:query`,
 the motions and the Ex ranges.
 `:widen` (`zw`) closes the tab and returns.
 

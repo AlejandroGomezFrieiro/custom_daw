@@ -28,7 +28,7 @@ For the reasons of the rule, see [About the key rule](../explanation/about-the-k
 | `gC`, `Enter` | Opens the curve of what is under the cursor: a lane row, a parameter, the fader or pan of the mixer, the strip of the piano roll. `gX` opens the expression of the note. |
 | `Alt-h` `Alt-l`, `H` `L` | Shorter and longer. Earlier and later. For a clip, a note, a chord in the score. |
 | `Esc` | Cancels: a count, an operator, a selection, insert mode, a suggestion, the chosen notes, a check that runs. It never leaves or closes a view. A second `Esc` says how to leave: `Ctrl-w p` returns to the window before, and `:q`, `ZZ`, `Ctrl-w c` or the key of the view (`,m` `,d` `,p`, `q` on a page) close it. Pickers, menus and floating lists are prompts, and close on `Esc`. |
-| `s` `M` `r` | Solo, mute, arm the track: in the arrange view, the mixer, the session view (the track of the column) and the device panel (its track). |
+| `s` `M` `r` | Solo, mute, arm the track: in the arrange view, the mixer, the session view of the clip launcher (the track of the column) and the device panel (its track). |
 | `a` | Append: a device after the chain of the track (arrange view, mixer, device panel), notes after the note (piano roll, score), a drawing from the curve (curve editor). |
 | `A` | Automate the main value: a point at the cursor on the volume of the track, the parameter, the lane. |
 | `c` | Change what is under the cursor: an operator over clips and notes. On a lane point or a parameter, type its value. On a device, choose a preset. |

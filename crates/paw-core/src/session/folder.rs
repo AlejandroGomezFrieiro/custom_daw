@@ -207,17 +207,15 @@ impl Writer<'_> {
         entry.devices = Vec::new();
         entry.clips = Vec::new();
         entry.lanes = Vec::new();
-        entry.slots = Vec::new();
+        entry.cues = Vec::new();
         let mut value = serde_json::to_value(&entry)?;
         let mut clips = Vec::new();
         for clip in &track.clips {
             clips.push(self.clip(clip, folder, &mut taken)?);
         }
-        let mut slots = Vec::new();
-        for slot in &track.slots {
-            let mut s = serde_json::to_value(slot)?;
-            s["clip"] = self.clip(&slot.clip, folder, &mut taken)?;
-            slots.push(s);
+        let mut cues = Vec::new();
+        for clip in &track.cues {
+            cues.push(self.clip(clip, folder, &mut taken)?);
         }
         // A chain kept in a file outside the folder: named, not written.
         let outside_chain = track.chain_source.as_ref().map(|f| outside_name(f, self.dir));
@@ -240,12 +238,12 @@ impl Writer<'_> {
             lanes.push(json!(rel));
         }
         let map = value.as_object_mut().context("a track")?;
-        for key in ["devices", "clips", "lanes", "slots"] {
+        for key in ["devices", "clips", "lanes", "cues"] {
             map.remove(key);
         }
         map.insert("clips".into(), Value::Array(clips));
-        if !slots.is_empty() {
-            map.insert("slots".into(), Value::Array(slots));
+        if !cues.is_empty() {
+            map.insert("cues".into(), Value::Array(cues));
         }
         if !lanes.is_empty() {
             map.insert("lanes".into(), Value::Array(lanes));
@@ -401,7 +399,7 @@ pub fn layout(
         if let Some(source) = &track.source {
             // A track folder outside the project: the project names it and
             // writes nothing of it.
-            for clip in track.clips.iter().chain(track.slots.iter().map(|s| &s.clip)) {
+            for clip in track.clips.iter().chain(&track.cues) {
                 if let Some(file) = &clip.source {
                     w.layout.clip_files.insert(clip.id, file.clone());
                 }
@@ -766,13 +764,10 @@ fn ids_in(track: &Value, used: &mut BTreeSet<u64>) {
     used.extend(id(track));
     // A chain from a file outside is numbered after the rest.
     let chain = if track.get("chain_source").is_some() { "" } else { "devices" };
-    for key in ["clips", chain, "lanes"] {
+    for key in ["clips", "cues", chain, "lanes"] {
         if let Some(Value::Array(list)) = track.get(key) {
             used.extend(list.iter().filter_map(id));
         }
-    }
-    if let Some(Value::Array(slots)) = track.get("slots") {
-        used.extend(slots.iter().filter_map(|s| s.get("clip").and_then(id)));
     }
 }
 
@@ -812,14 +807,9 @@ fn renumber(track: &mut Value, used: &mut BTreeSet<u64>, devices_only: bool) {
         return;
     }
     fresh(track, used);
-    if let Some(Value::Array(clips)) = track.get_mut("clips") {
-        for clip in clips {
-            fresh(clip, used);
-        }
-    }
-    if let Some(Value::Array(slots)) = track.get_mut("slots") {
-        for slot in slots {
-            if let Some(clip) = slot.get_mut("clip") {
+    for key in ["clips", "cues"] {
+        if let Some(Value::Array(clips)) = track.get_mut(key) {
+            for clip in clips {
                 fresh(clip, used);
             }
         }
@@ -922,11 +912,9 @@ pub fn read_with(dir: &Path, head_path: &Path) -> Result<Read> {
                 take_clip_file(clip, files, root);
             }
         }
-        if let Some(Value::Array(slots)) = track.get_mut("slots") {
-            for slot in slots {
-                if let Some(clip) = slot.get_mut("clip") {
-                    take_clip_file(clip, files, root);
-                }
+        if let Some(Value::Array(cues)) = track.get_mut("cues") {
+            for clip in cues {
+                take_clip_file(clip, files, root);
             }
         }
         track
@@ -1033,7 +1021,7 @@ pub fn read_with(dir: &Path, head_path: &Path) -> Result<Read> {
         let needs = track
             .clips
             .iter()
-            .chain(track.slots.iter().map(|s| &s.clip))
+            .chain(&track.cues)
             .any(|c| contents.contains_key(&c.id));
         if !needs {
             continue;
@@ -1042,8 +1030,8 @@ pub fn read_with(dir: &Path, head_path: &Path) -> Result<Read> {
         for clip in &mut track.clips {
             fill(clip);
         }
-        for slot in &mut track.slots {
-            fill(&mut slot.clip);
+        for clip in &mut track.cues {
+            fill(clip);
         }
     }
     Ok(Read {
@@ -1224,7 +1212,7 @@ impl super::Session {
         for t in self.project.all_tracks() {
             used.insert(t.id);
             used.extend(t.clips.iter().map(|c| c.id));
-            used.extend(t.slots.iter().map(|s| s.clip.id));
+            used.extend(t.cues.iter().map(|c| c.id));
             used.extend(t.devices.iter().map(|d| d.id));
             used.extend(t.lanes.iter().map(|l| l.id));
         }
@@ -1246,14 +1234,9 @@ impl super::Session {
         let mut value = read_outside_track(&folder, &mut used, &mut problems)?;
         let root = track_root(&folder);
         let mut files = Vec::new();
-        if let Some(Value::Array(clips)) = value.get_mut("clips") {
-            for clip in clips {
-                take_clip_file(clip, &mut files, &root);
-            }
-        }
-        if let Some(Value::Array(slots)) = value.get_mut("slots") {
-            for slot in slots {
-                if let Some(clip) = slot.get_mut("clip") {
+        for key in ["clips", "cues"] {
+            if let Some(Value::Array(clips)) = value.get_mut(key) {
+                for clip in clips {
                     take_clip_file(clip, &mut files, &root);
                 }
             }
@@ -1262,7 +1245,7 @@ impl super::Session {
         let unique: Vec<PathBuf> = files.iter().map(|(_, p)| p.clone()).collect::<BTreeSet<_>>().into_iter().collect();
         let decoded: HashMap<PathBuf, Result<clipfile::Clip>> = unique.iter().cloned().zip(read_clips(&unique)).collect();
         let by_id: HashMap<u64, PathBuf> = files.into_iter().collect();
-        for clip in track.clips.iter_mut().chain(track.slots.iter_mut().map(|s| &mut s.clip)) {
+        for clip in track.clips.iter_mut().chain(track.cues.iter_mut()) {
             let Some(path) = by_id.get(&clip.id) else {
                 continue;
             };

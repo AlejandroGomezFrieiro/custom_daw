@@ -291,7 +291,7 @@ Stop half way through a sequence and the keys that can follow are listed.
 | `<Tab>` `<C-w>w` | next window |
 | `<C-w>p` | back to the window that had the keyboard before (out of R, say) |
 | `<C-^>` | show again what this window showed before (`:b #`) |
-| `,m` `,d` `,p` `,l` | mixer, device panel, piano roll, session view |
+| `,m` `,d` `,p` `,l` | mixer, device panel, piano roll, session view (with the clip launcher extension) |
 | `E` | in R: the clip's notes and controller moves as a list to change in place |
 | `<C-w>c` `<C-w>o` | close this window, close every other window |
 | `<C-w>s` `<C-w>v` | split the window, one above the other, side by side (`:vs roll` shows the piano roll beside) |
@@ -342,6 +342,9 @@ text. `:w` shows the plan and `y` does it. Deleted files go to the trash.
 | `cw` `dd` `yy` `p` `o` | rename (or move, with a path); trash; copy; new file (`name/` a folder) |
 
 ## Launch clips (the session view, `,l`)
+
+With the clip launcher extension (`:ext.load launcher`). Its
+[README](../../extensions/launcher/README.md) has all of its keys.
 
 | Keys | |
 | --- | --- |

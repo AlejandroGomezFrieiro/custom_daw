@@ -197,7 +197,6 @@ status line tells what the pointer does at its position.
 | Project name | Click it to open the file menu. A dot beside the name tells that there are changes that are not saved. |
 | Mixer, Automation, Piano roll | Show or hide these views. |
 | More | Lists all the other views of the kernel, also the views of extensions. Each one opens in a pane: where it docks, else split from the pane that has the keyboard. A view with a painted twin (`painted = "name"` on its table, as the undo tree and the mix report have) is offered as the twin. |
-| Session | Shows the session view under the timeline. |
 | Engine indicator (`pipewire · UR22mkII · 48 kHz`) | Click it to open the engine menu. |
 
 ## File menu
@@ -317,7 +316,7 @@ ruler's second row, and a click on one goes to its start.
 | Right-drag | Draws a box. The clips that it touches become selected. With `Shift`, they are added. With `Ctrl`, each one changes state. |
 | Hold the middle button | Moves the view. |
 | Right-click | Opens a menu on release, if the pointer did not move: a new clip, paste, a new track. |
-| Drag a clip onto a slot of the session view | Copies the clip into the slot. |
+| Drag a clip onto another pane | The view of the pane takes the clip if it takes clips: a slot of the session view of the clip launcher copies it. |
 
 ## Clips
 
@@ -472,18 +471,9 @@ automation mode of the track, which the letter on the header shows.
 
 ## Session view
 
-| Gesture | Effect |
-| --- | --- |
-| Click the play mark of a slot | Launches the slot. For a gate clip, the release stops it. |
-| Click a slot | Selects it. |
-| Double-click a slot | Opens its notes. An empty slot gets a new MIDI clip first. |
-| Drag a slot to another slot | Moves the clip. With `Ctrl`, copies it. |
-| Drag a clip from the timeline to a slot | Copies the clip there. |
-| Click the dot of an empty slot | Records into the slot. |
-| Click a scene at the right | Launches its row. |
-| Bar along the top | Sets the quantize, captures, returns all tracks to the arrangement, and stops all clips. |
-
-See [The session view](session-view.md).
+The clip launcher extension adds the session view (More ▸ Session). The
+window draws it from its scene, with the gestures of the terminal. See
+[its README](../../extensions/launcher/README.md).
 
 ## Mixer
 
@@ -755,7 +745,6 @@ its view needs.
 
 | View | How the window draws it |
 | --- | --- |
-| The session view | The window's own drawing. |
 | The arrange view, the mixer, the piano roll, the device panel, the drum grid | From the scene. The window paints the roles (clips, curves, faders, meters, switches, buttons, sliders, notes) as widgets. |
 | A view that paints (the notation, the vocal editor, the undo tree) | From the scene, as a picture. |
 | Any other buffer (a curve `paw://lane/3`, the quickfix list, a text buffer `paw://tracks`, an empty window) | From the scene, cell by cell in the monospace font, as the terminal draws it. |

@@ -20,7 +20,8 @@ subproject in REAPER. The module is `paw.scope`.
 - It is the same project, with one undo tree. Undo in any tab undoes an
   edit made in the narrowed tab.
 - Only the tracks of the group show in these: the arrange view, the mixer,
-  the device panel, the session view, `paw://tracks`, the pickers.
+  the device panel, the session view of the clip launcher, `paw://tracks`,
+  the pickers.
 - The track motions (`gg`, `G`, `j`) and the Ex ranges use only these
   tracks. `t1` is the group, `t*` and
   `%` are its tracks, and `:g` and `:s` look only in them.

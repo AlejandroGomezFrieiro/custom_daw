@@ -103,7 +103,7 @@ fn wanted(project: &Project, rate: u32) -> HashSet<Key> {
     let map = project.tempo_map();
     project
         .all_tracks()
-        .flat_map(|t| t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)))
+        .flat_map(|t| t.clips.iter().chain(&t.cues))
         .filter_map(|c| Key::of(c, rate, map))
         .collect()
 }
@@ -394,11 +394,11 @@ impl Session {
                     }
                 }
             }
-            // So do clips in slots (`session/launcher.rs`).
-            if track.slots.iter().any(|s| touched(&s.clip)) {
-                for slot in Arc::make_mut(track).slots.iter_mut() {
-                    if touched(&slot.clip) {
-                        slot.clip = Arc::new((*slot.clip).clone());
+            // So do clips off the timeline (`session/cues.rs`).
+            if track.cues.iter().any(|c| touched(c)) {
+                for clip in Arc::make_mut(track).cues.iter_mut() {
+                    if touched(clip) {
+                        *clip = Arc::new((**clip).clone());
                     }
                 }
             }

@@ -234,7 +234,6 @@ returns when the project did not change.
 | `project` | The name, the tempo, the loop, the markers and other: `state.project` without `lines`. |
 | `lines` | The bar and beat lines: `state.project.lines`. |
 | `tracks`, `clips`, `devices` | As in the state. |
-| `slots` | The slots of the session view. |
 | `routing` | The routing of the selected track, or `false` without a selected track. |
 | `view` | `{ "selected": track id, "cursor": beat }` |
 | `kinds` | The kinds of device. |

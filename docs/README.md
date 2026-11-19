@@ -69,7 +69,6 @@ writers of extensions come after them.
 - [How to record takes over a loop and comp them](how-to/record-takes-and-comp.md)
 - [How to punch in over a part](how-to/punch-in-over-a-part.md)
 - [How to set the recording offset](how-to/set-the-recording-offset.md)
-- [How to record a performance from the session view](how-to/record-a-performance-from-the-session-view.md)
 
 ### Mix
 
@@ -173,7 +172,6 @@ writers of extensions come after them.
 - [Plugins](reference/plugins.md): formats, scan, editors, processes, status, offline devices
 - [Lua devices](reference/lua-devices.md): the fields of a device in Lua, the block, MIDI, helpers, reload
 - [Device parameters](reference/device-parameters.md): the fields of each parameter, the ids of plugins, values as text, the plugin itself
-- [The session view](reference/session-view.md): slots, scenes, launch rules, keys and commands
 - [MIDI controllers](reference/learn.md): bind knobs, faders and pads to controls
 - [Harmony](reference/harmony.md): the chords and keys that paw reads, providers, theory functions, voicings, ranges
 - [Snippets](reference/snippets.md): keys, the first set, the fields of a snippet
@@ -207,7 +205,7 @@ writers of extensions come after them.
 - [About groups and VCAs](explanation/about-groups-and-vcas.md): why groups and VCAs are usual tracks, narrowing, freezing
 - [About time stretch](explanation/about-stretching.md): the two methods, formants, why paw stretches a file one time
 - [About project files](explanation/about-project-files.md): why a project is a folder of files, MIDI clip files, `unused`, files from outside, safety copies
-- [About the session view](explanation/about-the-session-view.md): why the engine times a launch, and why a render needs a capture
+- [About cues](explanation/about-cues.md): clips off the timeline played from a beat, why the engine times a cue, and why a render plays only the timeline
 - [About language servers](explanation/about-language-servers.md): the four layers, addresses with ids, subjects, LSP
 - [About the harmony reading](explanation/about-the-harmony-reading.md): how paw finds chords and keys, and why providers can replace it
 - [About MIDI 2.0 in paw](explanation/about-midi-2.md): fractions, controllers for each note, ports, MPE

@@ -601,7 +601,8 @@ function M.doc(opts)
         block:add(midi_item(clip, ctx, label))
       end
     end
-    if (t.slots and #t.slots > 0) then ctx.report:count("Clips in launcher slots", t.name, #t.slots) end
+    local cues = #api.cue_list(t.id)
+    if cues > 0 then ctx.report:count("Clips off the timeline (the clip launcher's slots)", t.name, cues) end
   end
   return doc, ctx.report
 end

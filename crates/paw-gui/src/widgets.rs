@@ -146,15 +146,6 @@ pub fn button(ui: &mut Ui, rect: Rect, id: Id, icon_shape: Option<Icon>, label: 
     response
 }
 
-/// Where `button` went down this frame, over `response`. A click can come
-/// and go within one frame, which `is_pointer_button_down_on` misses.
-pub fn pressed_on(ui: &Ui, response: &Response, button: egui::PointerButton) -> Option<Pos2> {
-    if !(response.hovered() || response.clicked() || response.is_pointer_button_down_on()) {
-        return None;
-    }
-    pressed_at(ui, button).filter(|p| response.interact_rect.contains(*p))
-}
-
 /// Where `button` went down this frame, if it did.
 pub fn pressed_at(ui: &Ui, button: egui::PointerButton) -> Option<Pos2> {
     ui.input(|i| {
