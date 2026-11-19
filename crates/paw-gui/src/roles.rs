@@ -53,15 +53,22 @@ fn font_for(rect: Rect, bold: bool) -> egui::FontId {
 /// Paint a role node over `rect` (points), on a scene whose cells are
 /// `row` points high, with the live values the kernel last sent; `id` is
 /// its own in the window. False for a role this window does not know.
+/// What a role is called (its `label`), for whoever reads the window
+/// without seeing it; said each frame, painted or not.
+pub fn name(ui: &Ui, id: Id, node: &Node, rect: Rect) {
+    if let Kind::Role { props, .. } = &node.kind
+        && let Some(name) = props["label"].as_str()
+    {
+        let response = ui.interact(rect, id, Sense::hover());
+        widgets::name(&response, name);
+    }
+}
+
 pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: (f32, f32), live: &Value) -> bool {
     let row = cell.1;
     let Kind::Role { role, props } = &node.kind else { return false };
     let t = th();
-    // What it is called, for whoever reads the window without seeing it.
-    if let Some(name) = props["label"].as_str() {
-        let response = ui.interact(rect, id, Sense::hover());
-        widgets::name(&response, name);
-    }
+    name(ui, id, node, rect);
     let under = ui.rect_contains_pointer(rect);
     match role.as_str() {
         "label" => {
