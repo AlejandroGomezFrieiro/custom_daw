@@ -12,7 +12,9 @@ os.execute("mkdir -p '" .. scratch .. "'")
 -- one that is new is a file a test left behind (a clip file named by a
 -- clip's id was once written into the current directory).
 local function checkout_files()
-  local out, pipe = {}, io.popen("find . -path ./target -prune -o -path ./.git -prune -o -type f -print 2>/dev/null")
+  -- .claude holds the worktrees of other checkouts, whose own suites write
+  -- into them while this one runs.
+  local out, pipe = {}, io.popen("find . -path ./target -prune -o -path ./.git -prune -o -path ./.claude -prune -o -type f -print 2>/dev/null")
   if not pipe then return nil end
   for line in pipe:lines() do out[line] = true end
   pipe:close()
