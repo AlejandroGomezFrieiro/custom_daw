@@ -208,7 +208,7 @@ function M.set(name, key, value)
       input.name = new
       paw.midi.open_port(new)
       for _, id in ipairs(api.track_list()) do
-        local midi = api.track_get(id).midi_input
+        local midi = api.track_get(id, "midi_input")
         if midi and midi.port == old then api.track_set(id, "midi_input", { port = new, channel = midi.channel }) end
       end
     end

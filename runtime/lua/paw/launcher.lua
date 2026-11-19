@@ -296,7 +296,7 @@ end
 function M.record(track, row, bars)
   if M.clip(track, row) then error("the slot holds a clip already", 2) end
   if M.recording then error("a slot is being recorded already", 2) end
-  if not api.track_get(track).armed then api.track_set(track, "armed", true) end
+  if not api.track_get(track, "armed") then api.track_set(track, "armed", true) end
   local before = {}
   for _, c in ipairs(api.clip_list(track)) do before[c.id] = true end
   -- The slot's bars are the take: punching (and with it the pre-roll) is

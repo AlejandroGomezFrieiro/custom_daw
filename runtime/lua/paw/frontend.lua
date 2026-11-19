@@ -427,7 +427,7 @@ end
 function M.vca_words(id)
   local names = {}
   local list = paw.vca.is_vca(id) and paw.vca.members(id) or paw.vca.of(id)
-  for i, other in ipairs(list) do names[i] = api.track_get(other).name end
+  for i, other in ipairs(list) do names[i] = api.track_get(other, "name") end
   return table.concat(names, ", ")
 end
 
@@ -755,7 +755,7 @@ end
 function M.input_menu(track)
   local out = {
     audio = {}, midi = {}, channel = {}, midi_out = {}, midi_out_channel = {}, midi_out_form = {},
-    monitor = api.track_get(track).monitor,
+    monitor = api.track_get(track, "monitor"),
   }
   for _, choice in ipairs(paw.audio.choices(track)) do
     local list = out[choice.group]
@@ -1451,7 +1451,7 @@ function A.record()
     return
   end
   local armed = false
-  for _, id in ipairs(api.track_list()) do armed = armed or api.track_get(id).armed end
+  for _, id in ipairs(api.track_list()) do armed = armed or api.track_get(id, "armed") end
   if not armed then
     local track = paw.cursor.track()
     if not track then
@@ -1747,7 +1747,7 @@ function A.keys(keys)
   paw.keymap.feed(keys)
 end
 
-function A.set_volume(track, db) api.track_set(track, "volume", paw.util.fader_db(api.track_get(track).volume, db)) end
+function A.set_volume(track, db) api.track_set(track, "volume", paw.util.fader_db(api.track_get(track, "volume"), db)) end
 
 --- A fader, a pan or a parameter is under the pointer (`on`), or let go:
 --- in touch mode it writes automation for as long as it is held. `device`
@@ -1783,7 +1783,7 @@ function A.leave(how, what)
     end
   end
   if how ~= "save" then return go() end
-  if api.project_get().path then
+  if api.project_get("path") then
     paw.project.save()
     return go()
   end
@@ -1920,7 +1920,7 @@ function M.routing(track)
   -- Not a track whose sound reaches this one, by any route.
   local reaching = paw.routes.reaching(track)
   for _, id in ipairs(api.track_list()) do
-    if id ~= track and not reaching[id] then targets[#targets + 1] = { id = id, name = api.track_get(id).name } end
+    if id ~= track and not reaching[id] then targets[#targets + 1] = { id = id, name = api.track_get(id, "name") } end
   end
   local sends = {}
   for i, send in ipairs(t.sends or {}) do
@@ -1991,7 +1991,7 @@ function M.outputs_menu(device)
       local choices = { { label = "Nowhere: not heard", checked = o.target == nil } }
       for _, id in ipairs(api.track_list()) do
         if id ~= d.track and not reaching[id] then
-          choices[#choices + 1] = { label = api.track_get(id).name, checked = id == o.target }
+          choices[#choices + 1] = { label = api.track_get(id, "name"), checked = id == o.target }
         end
       end
       out[#out + 1] = { label = string.format("%d %s → %s", o.pair, o.name, o.target_name or "not heard"), choices = choices }
@@ -2034,7 +2034,7 @@ end
 
 function A.set_pan(track, pan) api.track_set(track, "pan", paw.util.clamp(pan, -1, 1)) end
 
-function A.toggle(track, flag) api.track_set(track, flag, not api.track_get(track)[flag]) end
+function A.toggle(track, flag) api.track_set(track, flag, not api.track_get(track, flag)) end
 
 local function nth(list, group, index)
   local n = 0

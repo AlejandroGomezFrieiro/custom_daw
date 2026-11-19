@@ -18,6 +18,8 @@ mlua = { version = "0.12", features = ["luajit", "vendored", "serde"] }
 include_dir = "0.7"
 unicode-width = "0.2"
 base64 = "0.22"
+# project.toml, the settings of a project folder.
+toml = "1.1"
 rtrb = "0.4"
 libc = "0.2"
 # Pure Rust FLAC encoder, for renders to .flac.
@@ -29,3 +31,8 @@ realfft = "3.5"
 rustls.workspace = true
 # The self-signed certificate an instance listening on the network shows.
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+
+[build-dependencies]
+# Compiles the Lua runtime to bytecode (build.rs), with the LuaJIT the
+# program runs it on.
+mlua = { version = "0.12", features = ["luajit", "vendored"] }

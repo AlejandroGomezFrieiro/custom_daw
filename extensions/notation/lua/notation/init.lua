@@ -190,7 +190,7 @@ function view.tempo_at(beat)
     local ok, v = pcall(f, beat)
     if ok and tonumber(v) then return tonumber(v) end
   end
-  return api.project_get().tempo
+  return api.project_get("tempo")
 end
 
 --- What the notation keeps with a clip: `{ settings, tuplets, marks }`.

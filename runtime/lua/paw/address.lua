@@ -426,7 +426,7 @@ local function rendered(info)
   local entry = paw.util.merge(info, { opts = pending_opts[info.path] or {}, at = api.now() })
   pending_opts[info.path] = nil
   M.renders[info.path] = entry
-  paw.emit("address.changed", { uris = { M.render(info.path) }, revision = api.project_get().edits, rendered = entry })
+  paw.emit("address.changed", { uris = { M.render(info.path) }, revision = api.project_get("edits"), rendered = entry })
 end
 paw.on("render.done", rendered)
 paw.on("render.finished", rendered)
@@ -440,22 +440,21 @@ paw.on("project.loaded", function() M.renders = {} end)
 -- become one `address.changed { uris, revision }` for the edit, after the
 -- kernel's own `changed`, so that whoever watches addresses never diffs
 -- snapshots.
-local pending, scheduled = {}, false
+local pending, scheduled = {}, nil
 local function tell()
-  scheduled = false
+  -- Told now (at the kernel's `changed`): the timer is not needed any more.
+  if scheduled then paw.cancel(scheduled) end
+  scheduled = nil
   if not next(pending) then return end
   local uris = {}
   for uri in pairs(pending) do uris[#uris + 1] = uri end
   table.sort(uris)
   pending = {}
-  paw.emit("address.changed", { uris = uris, revision = api.project_get().edits })
+  paw.emit("address.changed", { uris = uris, revision = api.project_get("edits") })
 end
 local function changed(uris)
   for _, uri in ipairs(uris) do pending[uri] = true end
-  if not scheduled then
-    scheduled = true
-    paw.defer(tell, 0)
-  end
+  if not scheduled then scheduled = paw.defer(tell, 0) end
 end
 paw.on("track.*", function(e) if e.id then changed({ M.track(e.id) }) end end)
 paw.on("clip.*", function(e) if e.id then changed({ M.clip(e.id) }) end end)

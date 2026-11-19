@@ -47,13 +47,18 @@ test(":g/pat/p lists the matches in the quickfix list, as :g/pat/ does", functio
   end
 end)
 
-test(":w with a folder says to name a file in it instead of failing to write", function()
+test(":w with a folder of other files says to name a project folder in it instead of taking it over", function()
   start()
   local folder = T.scratch .. "/a-folder"
-  os.execute("mkdir -p '" .. folder .. "'")
+  os.execute("mkdir -p '" .. folder .. "' && touch '" .. folder .. "/notes.txt'")
   T.keys(":w " .. folder .. "<CR>")
-  eq(paw.ui.message.text, folder .. " is a folder: name a file in it, `:w " .. folder .. "/song.json`", "the message")
+  eq(paw.ui.message.text, folder .. " has files and is not a project: `:w " .. folder .. "/song` makes a project folder in it", "the message")
   eq(paw.ui.message.level, "warn", "a warning, not an error with a trace")
+  -- An empty folder becomes the project's folder.
+  local empty = T.scratch .. "/an-empty-folder"
+  os.execute("mkdir -p '" .. empty .. "'")
+  T.keys(":w " .. empty .. "<CR>")
+  eq(paw.ui.message.text, "saved " .. empty .. "/project.toml", "saved into it")
 end)
 
 test("a time signature's lower number is a power of two", function()

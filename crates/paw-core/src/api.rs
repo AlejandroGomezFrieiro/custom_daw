@@ -41,7 +41,10 @@ pub struct Timer {
     pub id: u64,
     pub due: Instant,
     pub repeat: Option<Duration>,
-    pub func: Function,
+    /// In the registry, not held as a `Function`: each Lua value that Rust
+    /// holds takes a slot of a stack that has room for about 8000, and a
+    /// script that never lets the timers fire can start more than that.
+    pub func: Rc<mlua::RegistryKey>,
 }
 
 /// Everything the kernel and the Lua API functions both reach into.
@@ -598,7 +601,7 @@ fn xdg_dir(variable: &str, fallback: &str) -> String {
 
 /// The functions of the timers that are due, with one-shot timers removed
 /// and repeating ones moved on.
-pub fn due_timers(shared: &Shared) -> Vec<Function> {
+pub fn due_timers(shared: &Shared) -> Vec<Rc<mlua::RegistryKey>> {
     let now = Instant::now();
     let mut timers = shared.timers.borrow_mut();
     let mut due = Vec::new();
@@ -642,7 +645,16 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
 
     define! { lua, api, shared;
         // --- project ---
-        fn project_get(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().project_view()) }
+        // The project as a table. With `key`, only that entry of the table:
+        // this is quicker (`edits`, which goes up with each change, is asked
+        // for on each key and each edit).
+        fn project_get(lua, sh, key => Option<String>) {
+            let session = sh.session.borrow();
+            match key {
+                Some(key) => to_lua(lua, &session.project_field(&key)),
+                None => to_lua(lua, &session.project_view()),
+            }
+        }
         fn project_set(lua, sh, (key, value) => (String, LuaValue)) {
             sh.session.borrow_mut().project_set(&key, from_lua(lua, value)?).lua()
         }
@@ -654,6 +666,13 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn project_shelved(_, sh, () => ()) { Ok(sh.session.borrow().project_shelved()) }
         fn project_new(_, sh, () => ()) {
             sh.session.borrow_mut().project_new();
+            Ok(())
+        }
+        // Count the project as it is now as saved, for a script that wrote
+        // what it holds somewhere itself (a clip opened alone, written
+        // back to its file).
+        fn project_mark_saved(_, sh, () => ()) {
+            sh.session.borrow_mut().mark_saved();
             Ok(())
         }
         // `opts.plugins_offline` opens it with all plugins offline.
@@ -687,6 +706,36 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             session.set_open_opts(Default::default());
             to_lua(lua, &recovered.lua()?)
         }
+        // The files of a project kept in a folder, with what each holds and
+        // whether it differs from the disk (see `:ls`).
+        fn project_files(lua, sh, () => ()) {
+            to_lua(lua, &sh.session.borrow_mut().project_files().lua()?)
+        }
+        // Save only these files of a project kept in a folder, by their path
+        // in it. Returns the paths written.
+        fn project_save_files(lua, sh, paths => Vec<String>) {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            to_lua(lua, &sh.session.borrow_mut().project_save_files(&paths).lua()?)
+        }
+        // Make every clip that refers to a MIDI clip file outside the
+        // project the project's own. Returns how many.
+        fn clip_collect(_, sh, () => ()) {
+            Ok(sh.session.borrow_mut().clip_collect())
+        }
+        // The files of the open project that changed outside paw and are not
+        // acted on yet: paths in its folder, or full paths outside it.
+        fn project_changed_files(lua, sh, () => ()) {
+            to_lua(lua, &sh.session.borrow().changed_files())
+        }
+        // Keep the project as paw has it: forget the changes made outside.
+        fn project_keep_changes(_, sh, () => ()) {
+            sh.session.borrow_mut().keep_changed_files();
+            Ok(())
+        }
+        // Read a project kept in a folder again, as one undo step.
+        fn project_reload(_, sh, () => ()) {
+            sh.session.borrow_mut().project_reload().lua()
+        }
         fn project_save(_, sh, path => Option<String>) {
             let saved = sh.session.borrow_mut().project_save(path.as_deref().map(AsRef::as_ref)).lua()?;
             Ok(saved.to_string_lossy().into_owned())
@@ -707,7 +756,15 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn track_list(_, sh, () => ()) {
             Ok(sh.session.borrow().project.tracks.iter().map(|t| t.id).collect::<Vec<Id>>())
         }
-        fn track_get(lua, sh, id => Id) { to_lua(lua, &sh.session.borrow().track_view(id).lua()?) }
+        // A track as a table. With `key`, only that entry of the table: this
+        // is quicker, because the table lists each clip of the track.
+        fn track_get(lua, sh, (id, key) => (Id, Option<String>)) {
+            let session = sh.session.borrow();
+            match key {
+                Some(key) => to_lua(lua, &session.track_field(id, &key).lua()?),
+                None => to_lua(lua, &session.track_view(id).lua()?),
+            }
+        }
         fn track_add(lua, sh, opts => LuaValue) { sh.session.borrow_mut().track_add(options(lua, opts)?).lua() }
         fn track_remove(_, sh, id => Id) { sh.session.borrow_mut().track_remove(id).lua() }
         fn track_move(_, sh, (id, index) => (Id, usize)) {
@@ -1313,6 +1370,38 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn project_file_text(lua, _sh, value => LuaValue) {
             crate::session::project_file_text(from_lua(lua, value)?).lua()
         }
+        // A MIDI 2.0 clip file (`.midi2`): `{ notes, controls, length,
+        // skipped }`, with times in beats; `skipped` says what the file held
+        // that a clip has no place for.
+        fn midi2_read(lua, _sh, path => String) {
+            let bytes = std::fs::read(&path).map_err(|e| mlua::Error::runtime(format!("{path}: {e}")))?;
+            let clip = crate::clipfile::decode(&bytes).lua()?;
+            to_lua(lua, &json!({
+                "notes": clip.notes, "controls": clip.controls, "length": clip.length, "skipped": clip.skipped,
+            }))
+        }
+        // Write notes and controller moves (`{ notes, controls, length }`) as
+        // a MIDI 2.0 clip file, all or nothing.
+        fn midi2_write(lua, _sh, (path, clip) => (String, LuaValue)) {
+            #[derive(Deserialize)]
+            struct Given {
+                #[serde(default)]
+                notes: Vec<Note>,
+                #[serde(default)]
+                controls: Vec<Control>,
+                #[serde(default)]
+                length: f64,
+            }
+            let given: Given = from_lua(lua, clip)?;
+            let bytes = crate::clipfile::encode(&given.notes, &given.controls, given.length);
+            crate::safe::write_file(Path::new(&path), &bytes, false).lua()
+        }
+        // A MIDI 2.0 clip file as text, one note or controller move to a line,
+        // as `paw clip cat` prints it.
+        fn midi2_text(_, _sh, path => String) {
+            let bytes = std::fs::read(&path).map_err(|e| mlua::Error::runtime(format!("{path}: {e}")))?;
+            Ok(crate::clipfile::text(&crate::clipfile::decode(&bytes).lua()?))
+        }
         // Give a name to the open step. The first name wins. nil removes a name
         // given while the step changed nothing.
         fn undo_label(_, sh, text => Option<String>) {
@@ -1605,7 +1694,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         }
 
         // --- timers ---
-        fn timer_start(_, sh, (ms, repeat, func) => (f64, bool, Function)) {
+        fn timer_start(lua, sh, (ms, repeat, func) => (f64, bool, Function)) {
+            let func = Rc::new(lua.create_registry_value(func)?);
             let id = sh.next_timer.get() + 1;
             sh.next_timer.set(id);
             let period = Duration::from_secs_f64(ms.max(0.0) / 1000.0);
@@ -1642,7 +1732,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             let mut idled = Instant::now() - Duration::from_secs(1);
             loop {
                 for func in due_timers(&sh) {
-                    timer.call::<()>(func)?;
+                    timer.call::<()>(lua.registry_value::<Function>(&func)?)?;
                 }
                 // Plugins are looked after as they are while the program runs.
                 if idled.elapsed() >= Duration::from_millis(15) {

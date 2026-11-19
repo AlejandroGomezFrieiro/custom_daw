@@ -237,7 +237,7 @@ function P.instruments(opts)
       local group = paw.groups and paw.groups.of(t.id)
       local found = P.family(t.name)
       -- A track in a group named for a family ("Strings", "Flutes") is of that family.
-      local by_group = group and P.family(api.track_get(group).name)
+      local by_group = group and P.family(api.track_get(group, "name"))
       local family = (by_group and by_group.family) or (found and found.family) or #P.FAMILIES + 1
       out[#out + 1] = { id = t.id, track = track, clip = clip, clips = clips, name = own.name or t.name, short = own.short or P.short(t.name),
         family = family, rank = found and found.family == family and found.rank or 0, order = order,

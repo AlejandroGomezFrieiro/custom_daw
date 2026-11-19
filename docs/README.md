@@ -87,7 +87,8 @@ writers of extensions come after them.
 - [How to export part of the song or a loop](how-to/export-part-of-the-song.md)
 - [How to render stems](how-to/render-stems.md)
 - [How to export MIDI for another program](how-to/export-midi.md)
-- [How to open a REAPER project, and save one for REAPER](how-to/open-a-reaper-project.md)
+- [How to move a song between paw and REAPER](how-to/open-a-reaper-project.md)
+- [How to move a song between paw and other DAWs](how-to/move-a-song-to-another-daw.md): Bitwig Studio, Studio One, Cubase
 
 ### Projects and files
 
@@ -167,7 +168,7 @@ writers of extensions come after them.
 - [Markers and regions](reference/markers.md): markers, regions, their keys and commands
 - [Render](reference/render.md): `:render`, formats, tags, stems, bounce
 - [Media files and audio clips](reference/media.md): paths, relink, sample rates, long files, fades, clip operations
-- [Project files](reference/project-files.md): saves, the same file each time, safety copies, `:recover`
+- [Project files](reference/project-files.md): the project folder, `:w` and `:wa`, MIDI clip files, files from outside, changes from outside, safety copies, `:recover`
 - [Devices](reference/devices.md): the built-in devices, wet/dry and output gain, presets
 - [Plugins](reference/plugins.md): formats, scan, editors, processes, status, offline devices
 - [Lua devices](reference/lua-devices.md): the fields of a device in Lua, the block, MIDI, helpers, reload
@@ -204,7 +205,7 @@ writers of extensions come after them.
 - [About time and tempo](explanation/about-time-and-tempo.md): the tempo map, and which clock each thing keeps
 - [About groups and VCAs](explanation/about-groups-and-vcas.md): why groups and VCAs are usual tracks, narrowing, freezing
 - [About time stretch](explanation/about-stretching.md): the two methods, formants, why paw stretches a file one time
-- [About project files](explanation/about-project-files.md): saves, the same bytes, relative paths, safety copies
+- [About project files](explanation/about-project-files.md): why a project is a folder of files, MIDI clip files, `unused`, files from outside, safety copies
 - [About the session view](explanation/about-the-session-view.md): why the engine times a launch, and why a render needs a capture
 - [About language servers](explanation/about-language-servers.md): the four layers, addresses with ids, subjects, LSP
 - [About the harmony reading](explanation/about-the-harmony-reading.md): how paw finds chords and keys, and why providers can replace it

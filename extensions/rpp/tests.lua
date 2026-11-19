@@ -219,14 +219,19 @@ test("rpp: import, track by track and clip by clip", function()
   near(pts[2][1], 6, 1e-9, "point 2 beat (4 s)")
   near(pts[2][2], -24.08, 0.01, "point 2 dB")
   eq(vol.enabled, true, "volume lane on")
+  local vshapes = api.lane_shapes(vol.id)
+  eq(#vshapes, 1, "one stretch that is not straight")
+  near(vshapes[1].beat, 9, 1e-9, "from the point at 6 s")
+  eq(vshapes[1].shape, "smooth", "REAPER's slow start and end is smooth")
   local pan = band:lane("pan")
   eq(pan.enabled, false, "pan lane off, as in REAPER")
   local pp = pan:points()
-  eq(#pp, 3, "pan points with the square step")
+  eq(#pp, 2, "pan points")
   near(pp[1][2], -0.5, 1e-9, "pan +0.5 in REAPER's envelope is left")
-  near(pp[2][1], 3, 1e-9, "held to the next point")
-  near(pp[2][2], -0.5, 1e-9, "held value")
-  near(pp[3][2], 0.5, 1e-9, "then the next value")
+  near(pp[2][1], 3, 1e-9, "the next point")
+  near(pp[2][2], 0.5, 1e-9, "the next value")
+  eq(api.lane_shapes(pan.id)[1].shape, "hold", "a square point holds until the next")
+  eq(band.color, "#418000", "track colour from PEAKCOL")
   if has("lv2:http://lsp-plug.in/plugins/lv2/gate_mono") then
     local gate = band:devices()[1]
     eq(gate.kind, "lv2:http://lsp-plug.in/plugins/lv2/gate_mono", "LV2 plugin")
@@ -262,12 +267,21 @@ test("rpp: import, track by track and clip by clip", function()
   near(notes[2].start, 1, 1e-9, "second start")
   near(notes[2].length, 1, 1e-9, "second length")
   eq(notes[2].meta.channel, 2, "MIDI channel kept with the note")
+  local moves = clips[1]:controls()
+  eq(#moves, 2, "a controller and the pitch wheel")
+  eq(moves[1].type .. moves[1].number, "cc7", "CC 7")
+  near(moves[1].value, 100 / 127, 1e-9, "its value")
+  eq(moves[2].type, "bend", "the pitch wheel")
+  near(moves[2].start, 2.25, 1e-9, "at tick 2160")
+  near(moves[2].value, 0.25, 1e-9, "a quarter up")
   local b = clips[2]:get()
   near(b.start, 12, 1e-9, "looped clip start")
   near(b.length, 6, 1e-9, "looped clip length")
+  eq(b["loop"], true, "a looped item is a looped clip")
+  near(b.loop_length, 0.75, 1e-9, "a pass is 960 ticks at 120 BPM = 0.75 beats at 90")
+  near(b.loop_start, 0, 1e-9, "from the clip's start")
   local looped = clips[2]:notes()
-  eq(#looped, 8, "the source loops 8 times")
-  near(looped[2].start, 0.75, 1e-9, "a pass is 960 ticks at 120 BPM = 0.75 beats at 90")
+  eq(#looped, 1, "the source once")
   near(looped[1].length, 0.375, 1e-9, "note length at the source's own tempo")
   local c = clips[3]:get()
   eq(c.muted, true, "muted item")
@@ -284,7 +298,7 @@ test("rpp: import, track by track and clip by clip", function()
   eq(gtr.armed, true, "armed")
   near(gtr.pan, -1, 1e-9, "panned left")
   local g = gtr:clips()
-  eq(#g, 3, "an audio clip and a looped one in two parts")
+  eq(#g, 2, "an audio clip and a looped one")
   local di = g[1]:get()
   eq(di.name, "DI take", "the active take")
   eq(di.file:match("media/tone%.wav$") ~= nil, true, "file relative to the project")
@@ -292,15 +306,17 @@ test("rpp: import, track by track and clip by clip", function()
   near(di.gain, -12.0412, 1e-3, "item volume times take volume")
   near(di.start, 1.5, 1e-9, "start")
   near(di.length, 1.5, 1e-9, "length")
-  local l1, l2 = g[2]:get(), g[3]:get()
-  eq(l1.file:match("media/tone%.wav$") ~= nil, true, "found in the recording folder")
-  near(l1.start, 6, 1e-9, "first pass start")
-  near(l1.length, 1.5, 1e-9, "first pass: the rest of the file after 1 s")
-  near(l1.offset, 1, 1e-9, "first pass offset")
-  near(l2.start, 7.5, 1e-9, "second pass start")
-  near(l2.length, 3, 1e-9, "second pass: until the item ends")
-  near(l2.offset, 0, 1e-9, "second pass from the file's start")
-  eq(l1.muted and l2.muted, true, "both muted")
+  near(di.fade_in, 0.015, 1e-9, "a fade in of 10 ms at 90 BPM")
+  near(di.fade_out, 0.015, 1e-9, "and a fade out")
+  local l = g[2]:get()
+  eq(l.file:match("media/tone%.wav$") ~= nil, true, "found in the recording folder")
+  near(l.start, 6, 1e-9, "looped clip start")
+  near(l.length, 4.5, 1e-9, "the whole item")
+  near(l.offset, 1, 1e-9, "1 s into the file")
+  eq(l["loop"], true, "it loops")
+  near(l.loop_length, 3, 1e-9, "the whole file (2 s) again and again")
+  near(l.loop_start, -1.5, 1e-9, "which starts 1 s before the clip")
+  eq(l.muted, true, "muted")
 
   -- Verb: receives become sends on the senders.
   near(verb.volume, -6.0206, 1e-3, "Verb volume")
@@ -310,15 +326,18 @@ test("rpp: import, track by track and clip by clip", function()
   near(bs[1].level, -6.0206, 1e-3, "send level")
   eq(#keys.sends, 1, "Keys send")
   near(keys.sends[1].level, -12.0412, 1e-3, "pre-fader send level")
+  eq(keys.sends[1].pre, true, "before the fader")
   eq(#gtr.sends, 0, "a muted send is left out")
 
-  -- Markers and regions for other extensions.
-  local meta = p.meta
-  eq(meta.markers[1].name, "Verse", "marker")
-  near(meta.markers[1].beat, 6, 1e-9, "marker beat")
-  eq(meta.regions[1].name, "Big Chorus", "region")
-  near(meta.regions[1].start, 12, 1e-9, "region start")
-  near(meta.regions[1].length, 6, 1e-9, "region length")
+  -- Markers and regions, as paw.markers has them.
+  local marks = paw.markers.list()
+  eq(#marks, 2, "a marker and a region")
+  eq(marks[1].name, "Verse", "marker")
+  near(marks[1].beat, 6, 1e-9, "marker beat")
+  eq(marks[1].length, nil, "a marker has no length")
+  eq(marks[2].name, "Big Chorus", "region")
+  near(marks[2].beat, 12, 1e-9, "region start")
+  near(marks[2].length, 6, 1e-9, "region length")
   -- The master's JSFX is a placeholder.
   eq(paw.master.meta.rpp_placeholders[1].format, "JSFX", "master placeholder")
 end)
@@ -330,25 +349,22 @@ test("rpp: what is not carried over is reported, grouped", function()
   local function check(group, pattern)
     eq(has_item(report, group, pattern), true, group .. ": " .. pattern)
   end
-  check("Envelope curve shapes (made straight lines)", "Band volume")
+  check("Envelope curve shapes (fast start, fast end and Bezier made straight or smooth)", "Band volume")
   check("Plugins left as placeholders", "Nowhere Amp")
   check("Plugins left as placeholders", "JS: loser/masterLimiter")
-  check("Plugin parameter automation", "Band")
-  check("MIDI other than notes", "CC")
-  check("MIDI other than notes", "pitch bend")
+  check("Plugin parameter automation", "Band: 2 (its plugin did not come across)")
   check("MIDI other than notes", "sysex")
+  eq(has_item(report, "MIDI other than notes", "CC"), false, "controllers come across")
   check("Muted MIDI notes (left out)", "Chords A")
-  check("Play rate (ignored: played at 1x)", "rate 1.5")
+  check("Play rate of MIDI items (played at 1x)", "rate 1.5")
   check("Item volume on MIDI items", "riff.mid")
   check("Takes other than the active one (left out)", "Gtr DI")
-  check("Fades (ignored)", "Gtr DI")
   check("Missing media", "/nonexistent/folder/lost.wav")
   check("Tracks with the master/parent send off (here they still play through their output)", "Verb")
-  check("Pre-fader and pre-FX sends (made post-fader)", "Keys -> Verb")
   check("Muted sends (left out)", "Gtr DI -> Verb")
   local text = report:text()
   eq(text:find("Not carried over from song.rpp", 1, true) ~= nil, true, "titled")
-  eq(#report:lines(1) < #report:lines(100), true, "long groups are shortened")
+  eq(report:text(1):find("%.%.%. and %d+ more") ~= nil, true, "long groups are shortened")
 end)
 
 test("rpp: MIDI timing follows the project tempo", function()
@@ -465,16 +481,17 @@ local function describe()
   for _, t in ipairs(paw.tracks()) do
     local g = t:get()
     local d = {
-      string.format("%s vol %.4f pan %.4f mute %s solo %s armed %s out %s input %s monitor %s",
+      string.format("%s vol %.4f pan %.4f mute %s solo %s armed %s out %s input %s monitor %s colour %s",
         g.name, g.volume, g.pan, tostring(g.mute), tostring(g.solo), tostring(g.armed),
-        tostring(name_of[g.output]), tostring(g.input), tostring(g.monitor)),
+        tostring(name_of[g.output]), tostring(g.input), tostring(g.monitor), tostring(g.color)),
     }
-    for _, s in ipairs(g.sends) do d[#d + 1] = string.format("send %s %.4f", name_of[s.target], s.level) end
+    for _, s in ipairs(g.sends) do d[#d + 1] = string.format("send %s %.4f pre %s", name_of[s.target], s.level, tostring(s.pre)) end
     for _, lane in ipairs(t:lanes()) do
       local l = lane:get()
       local pts = {}
       for _, pt in ipairs(lane:points()) do pts[#pts + 1] = string.format("%.6f:%.4f", pt[1], pt[2]) end
-      d[#d + 1] = string.format("lane %s %s %s", l.target, tostring(l.enabled), table.concat(pts, " "))
+      for _, s in ipairs(api.lane_shapes(l.id)) do pts[#pts + 1] = string.format("%s@%.6f", s.shape, s.beat) end
+      d[#d + 1] = string.format("lane %s %s %s %s", l.target, tostring(l.param), tostring(l.enabled), table.concat(pts, " "))
     end
     for _, dev in ipairs(t:devices()) do
       local keys = {}
@@ -487,12 +504,18 @@ local function describe()
     for _, c in ipairs(t:clips()) do
       local cg = c:get()
       local line = string.format("clip %s %s %.6f+%.6f muted %s", cg.kind, cg.name, cg.start, cg.length, tostring(cg.muted))
+      if cg["loop"] then line = line .. string.format(" loop %.6f+%.6f", cg.loop_start, cg.loop_length) end
       if cg.kind == "audio" then
-        line = line .. string.format(" %s offset %.6f gain %.4f", cg.file, cg.offset, cg.gain)
+        line = line .. string.format(" %s offset %.6f gain %.4f fades %.6f %.6f stretch %.6f pitch %.4f", cg.file,
+          cg.offset, cg.gain, cg.fade_in, cg.fade_out, cg.stretch, cg.pitch)
       else
         for _, n in ipairs(c:notes()) do
           line = line .. string.format(" [%d %.6f %.6f %d %s]", n.pitch, n.start, n.length, n.velocity,
             tostring(n.meta and n.meta.channel))
+        end
+        for _, m in ipairs(c:controls()) do
+          line = line .. string.format(" {%s %s %s %s %.6f %.3f}", m.type, tostring(m.number or m.program),
+            tostring(m.key), tostring(m.bank), m.start, m.value)
         end
       end
       d[#d + 1] = line
@@ -526,28 +549,52 @@ local function build(dir)
   kick.mute = true
   snare.solo = true
   keys.armed = true
+  keys.color = "#3a7bd5"
+  bus.color = "#e04020"
   keys:send(verb, -9)
   snare:send(verb, -15.5)
+  api.track_set(snare.id, "sends", { { target = verb.id, level = -15.5, pre = true } })
   kick:add_clip({ name = "kick", start = 0, length = 3, notes = {
     { pitch = 36, start = 0, length = 0.25, velocity = 120 },
     { pitch = 36, start = 1.5, length = 0.25, velocity = 90, meta = { channel = 10 } },
   } })
-  keys:add_clip({ name = "chords", start = 3, length = 6, notes = {
+  local chords = keys:add_clip({ name = "chords", start = 3, length = 6, notes = {
     { pitch = 60, start = 0, length = 2, velocity = 80 }, { pitch = 64, start = 0, length = 2, velocity = 80 },
     { pitch = 67, start = 2.5, length = 0.125, velocity = 64 },
   } })
+  chords:set_controls({
+    { start = 0, type = "cc", number = 1, value = 64 / 127 },
+    { start = 0.5, type = "program", program = 5, bank = 130 },
+    { start = 1, type = "bend", value = -0.5 },
+    { start = 1.5, type = "pressure", value = 100 / 127 },
+    { start = 2, type = "pressure", key = 64, value = 20 / 127 },
+    { start = 2.5, type = "cc", number = 64, value = 1 },
+  })
   local quiet = keys:add_clip({ name = "muted", start = 12, length = 3, notes = { { pitch = 72, start = 0, length = 1 } } })
   quiet.muted = true
+  -- A looped MIDI clip whose repeated stretch begins half a beat before it.
+  api.clip_add(kick.id, { name = "loop", start = 4, length = 5, notes = {
+    { pitch = 38, start = -0.5, length = 0.25, velocity = 100 }, { pitch = 42, start = 0.5, length = 0.25, velocity = 70 },
+  }, controls = { { start = 0, type = "cc", number = 7, value = 64 / 127 } }, ["loop"] = true, loop_length = 2, loop_start = -0.5 })
   local wav = dir .. "/media/tone.wav"
   local audio = gtr:add_clip({ start = 1, file = wav, offset = 0.25, gain = -3.5 })
   audio.length = 2
+  api.clip_set(audio.id, "fade_in", 0.25)
+  api.clip_set(audio.id, "fade_out", 0.5)
+  -- Faster and higher; and a looped clip of the part of the file after 0.5 s.
+  api.clip_add(gtr.id, { name = "fast", start = 4, file = wav, offset = 0, length = 1, stretch = 0.5, pitch = 3 })
+  api.clip_add(gtr.id, { name = "looped", start = 6, file = wav, offset = 0.75, length = 6, ["loop"] = true,
+    loop_length = 2.5, loop_start = -0.4166666666666667 })
   keys:automate("volume"):set_points({ { 0, -10 }, { 4, 0 }, { 8, -120 } })
+  local vol = keys:lane("volume")
+  api.lane_set_shapes(vol.id, { { beat = 0, shape = "hold", tension = 0 }, { beat = 4, shape = "smooth", tension = 0 } })
   local pan = gtr:automate("pan")
   pan:set_points({ { 0, -1 }, { 6, 0.5 } })
   pan.enabled = false
   bus:automate("volume"):set_points({ { 2, 3 } })
-  paw.project.meta = { markers = { { name = "Intro", beat = 0 }, { name = "Drop", beat = 9 } },
-    regions = { { name = "Verse", start = 3, length = 6 } } }
+  paw.markers.add(0, "Intro")
+  paw.markers.add(9, "Drop", { color = "#ff8000" })
+  paw.markers.add(3, "Verse", { length = 6 })
   paw.flush()
 end
 
@@ -575,11 +622,13 @@ test("rpp: export, then import, gives the same project", function()
   r.import(dir .. "/built.rpp")
   local after = describe()
   same(before, after)
-  local meta = paw.project.get().meta
-  eq(meta.markers[2].name, "Drop", "marker")
-  near(meta.markers[2].beat, 9, 1e-9, "marker beat")
-  eq(meta.regions[1].name, "Verse", "region")
-  near(meta.regions[1].length, 6, 1e-9, "region length")
+  local marks = paw.markers.list()
+  eq(#marks, 3, "markers and the region")
+  eq(marks[3].name, "Drop", "marker")
+  near(marks[3].beat, 9, 1e-9, "marker beat")
+  eq(marks[3].color, "#ff8000", "marker colour")
+  eq(marks[2].name, "Verse", "region")
+  near(marks[2].length, 6, 1e-9, "region length")
 end)
 
 test("rpp: plugins go out and come back with their settings", function()
@@ -593,6 +642,7 @@ test("rpp: plugins go out and come back with their settings", function()
   local t = paw.add_track({ name = "FX" })
   local a = t:add_device(clap)
   a:set("output_gain", -6)
+  a:automate("output_gain"):set_points({ { 0, -12 }, { 4, 0 } })
   local b = t:add_device(lv2)
   b:set("scr", 37)
   b.bypass = true
@@ -610,6 +660,11 @@ test("rpp: plugins go out and come back with their settings", function()
   eq(#devs, 2, "the CLAP and the LV2 plugin")
   eq(devs[1].kind, clap, "CLAP back")
   near(devs[1].params.output_gain, -6, 1e-3, "CLAP setting from its state")
+  eq(chain:child("PARMENV") ~= nil, true, "the parameter's envelope is written")
+  local lane = devs[1]:lane("output_gain")
+  eq(lane ~= nil, true, "and comes back as a lane")
+  near(lane:points()[1][2], -12, 1e-3, "its first point")
+  near(lane:points()[2][2], 0, 1e-3, "its last point")
   eq(devs[2].kind, lv2, "LV2 back")
   near(devs[2].params.scr, 37, 1e-3, "LV2 setting from its parameters")
   eq(devs[2].bypass, true, "bypass")
@@ -729,7 +784,251 @@ test("rpp: sections go out as regions and note attributes are listed as left out
   eq(has_item(result.report, "Note attributes (MIDI 2.0 articulations)", "Strings"), true, "attributes listed: " .. result.report:text())
   eq(has_item(result.report, "Sections written as regions (they come back as regions)", "sections"), true, "sections listed")
   r.import(T.scratch .. "/sections.rpp")
-  local regions = paw.project.get().meta.regions
+  local regions = paw.markers.regions()
   eq(regions[1].name .. " " .. regions[2].name, "Verse Chorus", "the sections are REAPER regions")
   near(regions[1].length, 4, 1e-9, "a section runs to the next")
+end)
+
+-- The real REAPER ------------------------------------------------------------------------
+
+--- What REAPER read from a project (tools/reaper-dump.lua): tables of the
+--- dump's lines by kind, each line a list of its values.
+local function reaper_open(path, build)
+  local reaper = os.getenv("PAW_REAPER")
+  if not reaper or reaper == "" then return nil, "skipped: set PAW_REAPER to the reaper program to open the file in REAPER" end
+  local dump = path .. ".dump"
+  local code = os.execute(string.format("'%s/tools/reaper-open.sh' '%s' '%s' %s 2>&1", HERE, path, dump,
+    build and ("'" .. build .. "'") or ""))
+  if code ~= 0 and code ~= true then error("reaper-open.sh failed: " .. tostring(code)) end
+  local out = {}
+  for line in T.read_file(dump):gmatch("[^\n]+") do
+    local fields = {}
+    for f in (line .. "\t"):gmatch("([^\t]*)\t") do fields[#fields + 1] = tonumber(f) or f end
+    local kind = table.remove(fields, 1)
+    out[kind] = out[kind] or {}
+    table.insert(out[kind], fields)
+  end
+  eq(out["end"] ~= nil, true, "REAPER read the whole project")
+  return out
+end
+
+test("rpp: REAPER opens an exported project with the same tracks, items, notes and controllers", function()
+  local r = load()
+  local dir = project_dir("song.rpp")
+  build(dir)
+  local path = dir .. "/built.rpp"
+  r.export(path)
+  local got, why = reaper_open(path)
+  if not got then return why end
+  local sec = paw.tempo.beats_to_seconds
+  eq(got.tempo[1][1], 100, "tempo")
+  eq(got.tempo[1][2] .. "/" .. got.tempo[1][3], "3/4", "time signature")
+  -- Tracks: the master first, then each track in order.
+  local tracks = paw.tracks()
+  eq(#got.track, #tracks + 1, "number of tracks")
+  near(got.track[1][3], 10 ^ (-2 / 20), 1e-4, "master volume")
+  local index = {}
+  for i, t in ipairs(tracks) do
+    index[t.id] = i
+    local row = got.track[i + 1]
+    eq(row[2], t.name, "track " .. i .. " name")
+    near(row[3], 10 ^ (t.volume / 20), 1e-4, t.name .. " volume")
+    near(row[4], t.pan, 1e-4, t.name .. " pan")
+    eq(row[5] == 1, t.mute, t.name .. " mute")
+    eq(row[6] ~= 0, t.solo, t.name .. " solo")
+    eq(row[8], t.color or "none", t.name .. " colour")
+  end
+  eq(got.track[2][7], 1, "Drum Bus opens a folder")
+  eq(got.track[4][7], -1, "Snare closes it")
+  -- Sends, from the sender.
+  local sends = {}
+  for _, s in ipairs(got.send or {}) do sends[#sends + 1] = string.format("%d>%d %.2f", s[1], s[2], 20 * math.log10(s[3])) end
+  table.sort(sends)
+  eq(table.concat(sends, ", "), "3>5 -15.50, 4>5 -9.00", "sends")
+  -- Items and their notes.
+  local items = {}
+  for _, it in ipairs(got.item or {}) do
+    items[it[1]] = items[it[1]] or {}
+    items[it[1]][it[2]] = it
+  end
+  local notes, ccs = {}, {}
+  for _, n in ipairs(got.note or {}) do
+    local key = n[1] .. ":" .. n[2]
+    notes[key] = notes[key] or {}
+    table.insert(notes[key], n)
+  end
+  for _, c in ipairs(got.cc or {}) do
+    local key = c[1] .. ":" .. c[2]
+    ccs[key] = ccs[key] or {}
+    table.insert(ccs[key], c)
+  end
+  local checked = 0
+  for _, t in ipairs(tracks) do
+    local clips = t:clips()
+    for k, c in ipairs(clips) do
+      local cg = c:get()
+      local it = (items[index[t.id]] or {})[k]
+      local what = t.name .. ": " .. cg.name
+      eq(it ~= nil, true, what .. " is an item")
+      near(it[3], sec(cg.start), 1e-6, what .. " position")
+      near(it[4], sec(cg.start + cg.length) - sec(cg.start), 1e-6, what .. " length")
+      eq(it[5] == 1, cg["loop"] == true, what .. " loop")
+      eq(it[9] == 1, cg.muted, what .. " mute")
+      if cg.kind == "audio" then
+        near(it[6], sec(cg.start + cg.fade_in) - sec(cg.start), 1e-6, what .. " fade in")
+        near(it[7], sec(cg.start + cg.length) - sec(cg.start + cg.length - cg.fade_out), 1e-6, what .. " fade out")
+        near(20 * math.log10(it[8]), cg.gain, 1e-3, what .. " gain")
+        near(it[11], 1 / cg.stretch, 1e-6, what .. " rate")
+        near(it[12], cg.pitch, 1e-6, what .. " pitch")
+        eq(tostring(it[13]):match("tone%.wav$") ~= nil, true, what .. " file: " .. tostring(it[13]))
+        if not cg["loop"] then near(it[10], cg.offset, 1e-6, what .. " offset") end
+      else
+        local want = {}
+        for _, n in ipairs(c:notes()) do
+          if cg["loop"] then
+            if n.start >= cg.loop_start and n.start < cg.loop_start + cg.loop_length then
+              -- REAPER gives the first pass, which begins where the repeat does.
+              want[#want + 1] = { cg.start + n.start, n }
+            end
+          elseif n.start >= 0 then
+            want[#want + 1] = { cg.start + n.start, n }
+          end
+        end
+        local list = notes[index[t.id] .. ":" .. k] or {}
+        eq(#list, #want, what .. " notes")
+        for j, w in ipairs(want) do
+          local n = list[j]
+          near(n[3], sec(w[1]), 1e-6, what .. " note " .. j .. " start")
+          near(n[4] - n[3], sec(w[1] + w[2].length) - sec(w[1]), 1e-6, what .. " note " .. j .. " length")
+          eq(n[5], w[2].pitch, what .. " note " .. j .. " pitch")
+          eq(n[6], w[2].velocity, what .. " note " .. j .. " velocity")
+          eq(n[7], (w[2].meta and w[2].meta.channel or 1) - 1, what .. " note " .. j .. " channel")
+        end
+        local moves = ccs[index[t.id] .. ":" .. k] or {}
+        local wantc = 0
+        for _, m in ipairs(c:controls()) do wantc = wantc + (m.type == "program" and m.bank and 3 or 1) end
+        eq(#moves, wantc, what .. " controller events")
+      end
+      checked = checked + 1
+    end
+  end
+  eq(checked, 7, "every clip was checked")
+  -- The controllers of the chords, as REAPER reads them.
+  local chords = ccs[index[paw.track("Keys").id] .. ":1"]
+  local text = {}
+  for _, c in ipairs(chords) do text[#text + 1] = string.format("%d:%d,%d", c[4], c[6], c[7]) end
+  eq(table.concat(text, " "), "176:1,64 176:0,1 176:32,2 192:5,0 224:0,32 208:100,0 160:64,20 176:64,127",
+    "CC 1, bank and program, pitch bend, pressure, key pressure, sustain")
+  -- Envelopes: the volume of Keys with its hold and smooth shapes.
+  local shapes = {}
+  for _, p in ipairs(got.point or {}) do
+    if p[1] == index[paw.track("Keys").id] and p[2] == "Volume" then shapes[#shapes + 1] = string.format("%.3f:%d", p[3], p[5]) end
+  end
+  eq(table.concat(shapes, " "), string.format("0.000:1 %.3f:2 %.3f:0", sec(4), sec(8)), "Keys volume points and shapes")
+  -- Markers and the region.
+  eq(#got.marker, 2, "markers")
+  eq(got.marker[2][2], "Drop", "marker name")
+  near(got.marker[2][1], sec(9), 1e-6, "marker time")
+  eq(#got.region, 1, "region")
+  near(got.region[1][2], sec(9), 1e-6, "region end")
+end)
+
+test("rpp: the README names every command of the extension", function()
+  local readme = T.read_file(HERE .. "/README.md")
+  local source = T.read_file(HERE .. "/init.lua")
+  local names = {}
+  for name in source:gmatch('paw%.command%("([^"]+)"') do names[#names + 1] = name end
+  for name, alias in source:gmatch('hook%("([^"]+)", "([^"]+)"') do
+    names[#names + 1] = name
+    names[#names + 1] = alias
+  end
+  eq(#names, 6, "the commands and the hooked ones")
+  for _, name in ipairs(names) do
+    eq(readme:find("`:" .. name .. " ", 1, true) ~= nil, true, "README names :" .. name)
+  end
+  eq(source:find("paw.keymap.set", 1, true), nil, "no keys of its own")
+end)
+
+test("rpp: a project that REAPER made and saved comes into paw as REAPER has it", function()
+  local r = load()
+  local dir = project_dir("song.rpp")
+  local path = dir .. "/made.rpp"
+  local got, why = reaper_open(path, HERE .. "/tools/reaper-build.lua")
+  if not got then return why end
+  local result = r.import(path)
+  local sec = paw.tempo.beats_to_seconds
+  eq(paw.project.tempo, got.tempo[1][1], "tempo")
+  eq(paw.project.sig_num .. "/" .. paw.project.sig_den, got.tempo[1][2] .. "/" .. got.tempo[1][3], "time signature")
+  local tracks = paw.tracks()
+  eq(#tracks, #got.track - 1, "tracks")
+  local parents = {}
+  for i, t in ipairs(tracks) do
+    local row = got.track[i + 1]
+    eq(t.name, row[2], "name " .. i)
+    near(t.volume, 20 * math.log10(row[3]), 1e-6, t.name .. " volume")
+    near(t.pan, row[4], 1e-6, t.name .. " pan")
+    eq(t.mute, row[5] == 1, t.name .. " mute")
+    eq(t.color or "none", row[8], t.name .. " colour")
+    parents[i] = t.output and paw.track(t.output) and paw.track(t.output).name or "-"
+  end
+  eq(table.concat(parents, ","), "-,Bus,Bus,-", "the folder holds Keys and Gtr")
+  local keys = paw.track("Keys")
+  eq(#keys.sends, 1, "the send of Keys")
+  near(keys.sends[1].level, 20 * math.log10(got.send[1][3]), 1e-6, "its level")
+  eq(keys.sends[1].pre, true, "before the fader, as REAPER's mode 3")
+  -- Items, notes and controllers at the times REAPER gives.
+  local n = 0
+  for i, t in ipairs(tracks) do
+    for k, c in ipairs(t:clips()) do
+      local it
+      for _, row in ipairs(got.item) do
+        if row[1] == i and row[2] == k then it = row end
+      end
+      local cg = c:get()
+      near(sec(cg.start), it[3], 1e-6, t.name .. " item position")
+      near(sec(cg.start + cg.length) - sec(cg.start), it[4], 1e-6, t.name .. " item length")
+      if cg.kind == "audio" then
+        near(cg.offset, it[10], 1e-6, "offset")
+        near(sec(cg.start + cg.fade_in) - sec(cg.start), it[6], 1e-6, "fade in")
+      else
+        local list = {}
+        for _, row in ipairs(got.note) do
+          if row[1] == i and row[2] == k then list[#list + 1] = row end
+        end
+        local notes = c:notes()
+        eq(#notes, #list, "notes")
+        for j, row in ipairs(list) do
+          near(sec(cg.start + notes[j].start), row[3], 1e-6, "note " .. j .. " start")
+          eq(notes[j].pitch .. " " .. notes[j].velocity, row[5] .. " " .. row[6], "note " .. j)
+          eq((notes[j].meta and notes[j].meta.channel or 1) - 1, row[7], "note " .. j .. " channel")
+        end
+        local moves = c:controls()
+        eq(#moves, #got.cc, "controller events")
+        eq(moves[1].type .. moves[1].number, "cc1", "CC 1")
+        near(moves[1].value, 64 / 127, 1e-9, "its value")
+        near(sec(cg.start + moves[2].start), got.cc[2][3], 1e-6, "the bend's time")
+        near(moves[2].value, (96 * 128 - 8192) / 8192, 1e-9, "the bend's value")
+      end
+      n = n + 1
+    end
+  end
+  eq(n, 2, "the MIDI item and the audio item")
+  -- The envelope and the markers.
+  local pts = keys:lane("volume"):points()
+  local want = {}
+  for _, p in ipairs(got.point) do
+    if p[1] == 2 and p[2] == "Volume" then want[#want + 1] = p end
+  end
+  eq(#pts, #want, "volume points")
+  for j, p in ipairs(want) do
+    near(sec(pts[j][1]), p[3], 1e-6, "point " .. j .. " time")
+    near(pts[j][2], 20 * math.log10(p[4]), 1e-6, "point " .. j .. " value")
+  end
+  eq(api.lane_shapes(keys:lane("volume").id)[1].shape, "hold", "the square point holds")
+  local marks = paw.markers.list()
+  eq(#marks, 2, "a marker and a region")
+  near(sec(marks[1].beat), got.marker[1][1], 1e-6, "marker time")
+  eq(marks[2].name, got.region[1][3], "region name")
+  near(sec(marks[2].beat + marks[2].length), got.region[1][2], 1e-6, "region end")
+  eq(result.report:empty(), true, "everything came across: " .. result.report:text())
 end)

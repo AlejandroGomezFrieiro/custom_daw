@@ -408,6 +408,79 @@ test("scripts can wait while timers fire", function()
   paw.cancel(every)
 end)
 
+test("a script can start more timers than Lua has stack slots, and the API still answers", function()
+  fresh()
+  -- Each timer used to hold its function in a slot of a stack with room
+  -- for about 8000: past that, every call that made a list failed.
+  local handles = {}
+  for i = 1, 9000 do handles[i] = paw.defer(function() end, 60000) end
+  local t = paw.add_track({ name = "T" })
+  for i = 1, 3 do t:add_clip({ start = i * 4, length = 4 }) end
+  paw.flush()
+  eq(#api.clip_list(t.id), 3, "a list is made")
+  for _, h in ipairs(handles) do paw.cancel(h) end
+end)
+
+test("clip events name each clip added, changed, moved to another track and removed, also among many", function()
+  fresh()
+  local a, b = paw.add_track({ name = "A" }), paw.add_track({ name = "B" })
+  local clips = {}
+  for i = 1, 300 do clips[i] = a:add_clip({ start = i * 4, length = 4 }) end
+  paw.flush()
+  local seen = {}
+  local handle = paw.on("clip.*", function(e, name) seen[#seen + 1] = name:sub(6) .. ":" .. e.id .. "@" .. e.track end)
+  local function step(fn)
+    seen = {}
+    fn()
+    paw.flush()
+    table.sort(seen)
+    return table.concat(seen, " ")
+  end
+  eq(step(function() clips[150].start = clips[150].start + 1 end), "changed:" .. clips[150].id .. "@" .. a.id, "moved in time")
+  local new
+  eq(step(function() new = a:add_clip({ start = 2, length = 1 }) end), "added:" .. new.id .. "@" .. a.id, "added among many")
+  eq(step(function() api.clip_remove(clips[7].id) end), "removed:" .. clips[7].id .. "@" .. a.id, "removed among many")
+  eq(step(function() api.clip_set(clips[9].id, "track", b.id) end), "changed:" .. clips[9].id .. "@" .. b.id, "to another track")
+  local both = { "removed:" .. clips[1].id .. "@" .. a.id, "removed:" .. clips[2].id .. "@" .. a.id }
+  table.sort(both)
+  eq(step(function() api.clip_remove(clips[1].id) api.clip_remove(clips[2].id) end), table.concat(both, " "), "two removed")
+  paw.off(handle)
+end)
+
+test("api.track_get and api.project_get with a key give that entry of the table", function()
+  fresh()
+  local t = paw.add_track({ name = "Keys", volume = -6, pan = 0.5 })
+  t:add_clip({ start = 0, length = 4 })
+  api.track_set(t.id, "meta", { kind = "x" })
+  local whole = api.track_get(t.id)
+  for key, value in pairs(whole) do
+    eq(paw.inspect(api.track_get(t.id, key)), paw.inspect(value), key)
+  end
+  eq(api.track_get(t.id, "nothing"), nil, "a key that is not there")
+  eq(pcall(api.track_get, 9999, "volume"), false, "a track that is not there")
+  eq(t.volume, -6, "a track's field reads its entry")
+  local project = api.project_get()
+  for key, value in pairs(project) do
+    eq(paw.inspect(api.project_get(key)), paw.inspect(value), "project " .. key)
+  end
+  eq(paw.project.edits, project.edits, "paw.project reads one entry")
+end)
+
+test("edits in a script that never waits leave no timers behind", function()
+  fresh()
+  local t = paw.add_track({ name = "T" })
+  paw.flush()
+  api.undo_checkpoint()
+  local function count() local n = 0 for _ in pairs(paw.timers) do n = n + 1 end return n end
+  local before = count()
+  for i = 1, 50 do
+    t:add_clip({ start = i * 4, length = 4 })
+    paw.flush()
+    api.undo_checkpoint()
+  end
+  eq(count() - before <= 1, true, "timers left by 50 edits: " .. (count() - before))
+end)
+
 test("an LV2 plugin that follows the song's tempo is told it", function()
   local kind
   for _, info in ipairs(paw.device_types()) do

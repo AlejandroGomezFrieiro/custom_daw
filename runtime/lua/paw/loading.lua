@@ -61,7 +61,7 @@ function M.suggested(path)
 end
 
 paw.on("device.stopped", function(event)
-  local path = api.project_get().path
+  local path = api.project_get("path")
   if not event.loading or not path then return end
   local data = M.memory(path)
   local ok, device = pcall(api.device_get, event.device)
@@ -73,7 +73,7 @@ end)
 
 -- One that loads is no longer suggested offline.
 paw.on("device.ready", function(event)
-  local path = api.project_get().path
+  local path = api.project_get("path")
   if not path then return end
   local data = M.memory(path)
   if data.stopped[tostring(event.id)] then

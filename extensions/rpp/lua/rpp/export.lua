@@ -40,6 +40,14 @@ local function guid_maker(seed)
   end
 end
 
+--- A colour as #rrggbb to REAPER's native colour (red + green * 256 +
+--- blue * 65536 on Linux, with 0x1000000 to say it is in use), or nil.
+function M.native_colour(colour)
+  local r, g, b = tostring(colour or ""):match("^#(%x%x)(%x%x)(%x%x)$")
+  if not r then return nil end
+  return 0x1000000 + tonumber(r, 16) + tonumber(g, 16) * 256 + tonumber(b, 16) * 65536
+end
+
 -- Pieces -----------------------------------------------------------------------------
 
 local function relative(path, dir)
@@ -49,7 +57,42 @@ end
 
 local SOURCE_TYPES = { wav = "WAVE", wave = "WAVE", aif = "WAVE", aiff = "WAVE", flac = "FLAC", mp3 = "MP3", ogg = "VORBIS" }
 
-local function envelope(name, lane, ctx)
+--- REAPER's point shape for each of paw's: hold is square (1), smooth is
+--- slow start and end (2).
+local SHAPES = { hold = 1, smooth = 2 }
+
+--- The shape number of each point of a lane, by its beat.
+local function shapes_of(lane, ctx, label)
+  local out = {}
+  for _, s in ipairs(api.lane_shapes(lane.id)) do
+    out[s.beat] = SHAPES[s.shape] or 0
+    if s.shape == "smooth" and math.abs(s.tension or 0) > 1e-9 then
+      ctx.report:count("Tension of smooth automation curves (REAPER's slow start and end has none)", label)
+    end
+  end
+  return out
+end
+
+--- A plugin parameter's lane as `<PARMENV`: the parameter by its place
+--- among the plugin's (from 0), the values as a share of its range.
+local function param_envelope(lane, index, info, ctx, label)
+  local env = fmt.block("PARMENV", index - 1, 0, 1, 0)
+  env:add(fmt.line("EGUID", ctx.guid()))
+  env:add(fmt.line("ACT", lane.enabled and 1 or 0, -1))
+  env:add(fmt.line("VIS", 1, 1, 1))
+  env:add(fmt.line("LANEHEIGHT", 0, 0))
+  env:add(fmt.line("ARM", 0))
+  env:add(fmt.line("DEFSHAPE", 0, -1, -1))
+  local shapes = shapes_of(lane, ctx, label)
+  local span = info.max - info.min
+  for _, p in ipairs(api.lane_points(lane.id)) do
+    local f = span ~= 0 and (p[2] - info.min) / span or 0
+    env:add(fmt.line("PT", string.format("%.12f", ctx.sec(p[1])), math.max(0, math.min(1, f)), shapes[p[1]] or 0))
+  end
+  return env
+end
+
+local function envelope(name, lane, ctx, label)
   local env = fmt.block(name)
   env:add(fmt.line("EGUID", ctx.guid()))
   env:add(fmt.line("ACT", lane.enabled and 1 or 0, -1))
@@ -61,6 +104,7 @@ local function envelope(name, lane, ctx)
   -- envelopes with fader scaling, which only changes how they are drawn.
   if name:match("VOLENV") then env:add(fmt.line("VOLTYPE", 1)) end
   local points = api.lane_points(lane.id)
+  local shapes = shapes_of(lane, ctx, label or name)
   for _, p in ipairs(points) do
     local value
     if lane.target == "volume" then
@@ -68,13 +112,35 @@ local function envelope(name, lane, ctx)
     else
       value = -p[2] -- REAPER's pan envelopes run from +1 (left) to -1 (right)
     end
-    env:add(fmt.line("PT", string.format("%.12f", ctx.sec(p[1])), value, 0))
+    env:add(fmt.line("PT", string.format("%.12f", ctx.sec(p[1])), value, shapes[p[1]] or 0))
   end
   return env
 end
 
 local function fx_chain(name, track, t, ctx, label)
   local chain = fmt.block(name)
+  -- The parameter lanes of each device, written after its plugin.
+  local lanes_of = {}
+  for _, lane in ipairs(api.lane_list(track)) do
+    if lane.target == "param" then
+      lanes_of[lane.device] = lanes_of[lane.device] or {}
+      table.insert(lanes_of[lane.device], lane)
+    end
+  end
+  local function param_lanes(device, written)
+    for _, lane in ipairs(lanes_of[device] or {}) do
+      local index, info
+      for i, p in ipairs(api.device_get(device).param_info or {}) do
+        if p.key == lane.param then index, info = i, p end
+      end
+      if written and index then
+        chain:add(param_envelope(lane, index, info, ctx, label .. ": " .. lane.param))
+      else
+        ctx.report:add("Plugin parameter automation", label .. ": " .. tostring(lane.param)
+          .. (written and "" or " (its device is not written)"))
+      end
+    end
+  end
   chain:add(fmt.line("SHOW", 0))
   chain:add(fmt.line("LASTSEL", 0))
   chain:add(fmt.line("DOCKED", 0))
@@ -114,25 +180,32 @@ local function fx_chain(name, track, t, ctx, label)
         if ok and block then
           add(block, d.bypass)
           if why then ctx.report:count("Plugin settings", why) end
+          param_lanes(device, true)
         else
           ctx.report:add("Plugins not written", label .. ": " .. d.kind .. " (" .. tostring(ok and why or block) .. ")")
+          param_lanes(device, false)
         end
       else
         ctx.report:add("Built-in devices (no REAPER equivalent)", label .. ": " .. d.kind)
+        param_lanes(device, false)
       end
     end
   end
   return count > 0 and chain or nil
 end
 
-local function item_common(item, clip, ctx)
+local function item_common(item, clip, ctx, looped)
+  local stop = clip.start + clip.length
   item:add(fmt.line("POSITION", ctx.sec(clip.start)))
   item:add(fmt.line("SNAPOFFS", 0))
-  item:add(fmt.line("LENGTH", ctx.sec(clip.start + clip.length) - ctx.sec(clip.start)))
-  item:add(fmt.line("LOOP", 0))
+  item:add(fmt.line("LENGTH", ctx.sec(stop) - ctx.sec(clip.start)))
+  item:add(fmt.line("LOOP", looped and 1 or 0))
   item:add(fmt.line("ALLTAKES", 0))
-  item:add(fmt.line("FADEIN", 1, 0, 0, 1, 0, 0, 0))
-  item:add(fmt.line("FADEOUT", 1, 0, 0, 1, 0, 0, 0))
+  -- Fade lengths in seconds; shape 1 is REAPER's default.
+  local fin = (clip.fade_in or 0) > 0 and ctx.sec(clip.start + clip.fade_in) - ctx.sec(clip.start) or 0
+  local fout = (clip.fade_out or 0) > 0 and ctx.sec(stop) - ctx.sec(stop - clip.fade_out) or 0
+  item:add(fmt.line("FADEIN", 1, fin, 0, 1, 0, 0, 0))
+  item:add(fmt.line("FADEOUT", 1, fout, 0, 1, 0, 0, 0))
   item:add(fmt.line("MUTE", clip.muted and 1 or 0, 0))
   item:add(fmt.line("SEL", 0))
   item:add(fmt.line("IGUID", ctx.guid()))
@@ -141,26 +214,79 @@ local function item_common(item, clip, ctx)
   item:add(fmt.line("NAME", clip.name or "")):quoted(1)
 end
 
-local function audio_item(clip, ctx)
+--- The repeat of a looped clip: { from, beats } in beats from its start,
+--- or nil.
+local function repeat_of(clip)
+  if clip["loop"] and (clip.loop_length or 0) > 0 then return clip.loop_start or 0, clip.loop_length end
+end
+
+local function audio_item(clip, ctx, label)
   local item = fmt.block("ITEM")
-  item_common(item, clip, ctx)
+  local stretch = clip.stretch or 1
+  local from, beats = repeat_of(clip)
+  if from and math.abs(stretch - 1) > 1e-9 then
+    ctx.report:add("Loops of stretched audio clips (written without the loop)", label)
+    from = nil
+  end
+  item_common(item, clip, ctx, from ~= nil)
   item:add(fmt.line("VOLPAN", 1, 0, amp(clip.gain or 0), -1))
-  item:add(fmt.line("SOFFS", clip.offset or 0))
-  item:add(fmt.line("PLAYRATE", 1, 1, 0, -1, 0, 0.0025))
+  -- A looped clip repeats a stretch of its file that begins `lead`
+  -- seconds before the clip's start (see paw's audio_regions). When that
+  -- is not the start of the file, the item plays a section of it.
+  local offset, section = clip.offset or 0, nil
+  if from then
+    local period = ctx.sec(clip.start + beats) - ctx.sec(clip.start)
+    local begins = offset + from * period / beats
+    section = { start = begins, length = period }
+    offset = offset - begins
+  end
+  item:add(fmt.line("SOFFS", offset))
+  -- The rate keeps the pitch; paw's pitch is REAPER's pitch shift.
+  item:add(fmt.line("PLAYRATE", 1 / stretch, 1, clip.pitch or 0, -1, 0, 0.0025))
   item:add(fmt.line("CHANMODE", 0))
   item:add(fmt.line("GUID", ctx.guid()))
   local ext = (clip.file:match("%.(%w+)$") or ""):lower()
-  local source = item:add(fmt.block("SOURCE", SOURCE_TYPES[ext] or "WAVE"))
+  local source = item
+  if section then
+    source = item:add(fmt.block("SOURCE", "SECTION"))
+    source:add(fmt.line("LENGTH", section.length))
+    source:add(fmt.line("STARTPOS", section.start))
+    source:add(fmt.line("OVERLAP", 0))
+  end
+  source = source:add(fmt.block("SOURCE", SOURCE_TYPES[ext] or "WAVE"))
   source:add(fmt.line("FILE", relative(clip.file, ctx.dir))):quoted(1)
   if not SOURCE_TYPES[ext] then ctx.report:add("Media REAPER may not read", clip.file) end
+  if clip.stretch_mode and clip.stretch_mode ~= "auto" then
+    ctx.report:add("Stretch modes (REAPER uses its own)", label .. ": " .. tostring(clip.stretch_mode))
+  end
+  if clip.warp and #clip.warp > 0 then ctx.report:add("Warp markers", label) end
   return item
+end
+
+--- Controller moves of a clip as ticks, for the events of a source.
+local function control_ticks(controls, from, to, shift)
+  local out = {}
+  for _, c in ipairs(controls) do
+    if c.start >= from - 1e-9 and c.start < to - 1e-9 then
+      out[#out + 1] = {
+        tick = math.floor((c.start - shift) * M.PPQ + 0.5), type = c.type, number = c.number, value = c.value,
+        key = c.key, program = c.program, bank = c.bank,
+      }
+    end
+  end
+  return out
 end
 
 local function midi_item(clip, ctx, label)
   local item = fmt.block("ITEM")
-  item_common(item, clip, ctx)
+  -- A looped clip: its repeated stretch is the source, which the item
+  -- starts into by the stretch's distance before the clip's start.
+  local from, beats = repeat_of(clip)
+  local lo, hi, shift = 0, clip.length, 0
+  if from then lo, hi, shift = from, from + beats, from end
+  item_common(item, clip, ctx, from ~= nil)
   item:add(fmt.line("VOLPAN", 1, 0, 1, -1))
-  item:add(fmt.line("SOFFS", 0))
+  item:add(fmt.line("SOFFS", from and -from * 60 / api.tempo_at(clip.start) or 0))
   item:add(fmt.line("PLAYRATE", 1, 1, 0, -1, 0, 0.0025))
   item:add(fmt.line("CHANMODE", 0))
   item:add(fmt.line("GUID", ctx.guid()))
@@ -170,9 +296,13 @@ local function midi_item(clip, ctx, label)
   source:add(fmt.line("POOLEDEVTS", ctx.guid()))
   local notes, rounded, attrs = {}, 0, 0
   local shown = {}
-  -- Notes before the clip's start are hidden by a trim, and not played.
+  -- Notes before the clip's start are hidden by a trim, and not played;
+  -- in a looped clip, those outside the repeated stretch.
   for _, n in ipairs(api.clip_notes(clip.id)) do
-    if n.start >= 0 then shown[#shown + 1] = n end
+    if n.start >= lo - 1e-9 and n.start < hi - 1e-9 then
+      shown[#shown + 1] = { start = n.start - shift, length = n.length, pitch = n.pitch, velocity = n.velocity,
+        meta = n.meta, attr = n.attr }
+    end
   end
   for _, n in ipairs(shown) do
     local tick = math.floor(n.start * M.PPQ + 0.5)
@@ -190,8 +320,18 @@ local function midi_item(clip, ctx, label)
   if rounded > 0 then ctx.report:count("Note times rounded to 1/960 beat", label, rounded) end
   -- A REAPER project keeps MIDI 1.0, where a note has no attribute.
   if attrs > 0 then ctx.report:count("Note attributes (MIDI 2.0 articulations)", label, attrs) end
-  local length = math.floor(clip.length * M.PPQ + 0.5)
-  for _, line in ipairs(midi.event_lines(notes, length)) do source:add(line) end
+  local length = math.floor((hi - lo) * M.PPQ + 0.5)
+  local controls = control_ticks(api.clip_controls(clip.id), lo, hi, shift)
+  local other = 0
+  for i = #controls, 1, -1 do
+    local c = controls[i]
+    if c.type ~= "cc" and c.type ~= "bend" and c.type ~= "pressure" and c.type ~= "program" or (c.key and c.type ~= "pressure") then
+      other = other + 1
+      table.remove(controls, i)
+    end
+  end
+  if other > 0 then ctx.report:count("Controllers MIDI 1.0 has no event for (registered, assignable, per note)", label, other) end
+  for _, line in ipairs(midi.event_lines(notes, length, controls)) do source:add(line) end
   source:add(fmt.line("CCINTERP", 32))
   source:add(fmt.line("GUID", ctx.guid()))
   source:add(fmt.line("IGNTEMPO", 0, 120, 4, 4))
@@ -237,7 +377,7 @@ local function track_block(t, i, ctx, depth, unfoldered, index, receives)
   local guid = ctx.guid()
   local block = fmt.block("TRACK", guid)
   block:add(fmt.line("NAME", t.name or "")):quoted(1)
-  block:add(fmt.line("PEAKCOL", 16576))
+  block:add(fmt.line("PEAKCOL", M.native_colour(t.color) or 16576))
   block:add(fmt.line("BEAT", -1))
   block:add(fmt.line("AUTOMODE", 0))
   block:add(fmt.line("VOLPAN", amp(t.volume or 0), t.pan or 0, -1, -1, 1))
@@ -266,7 +406,8 @@ local function track_block(t, i, ctx, depth, unfoldered, index, receives)
   block:add(fmt.line("MIDIOUT", -1))
   block:add(fmt.line("MAINSEND", unfoldered[t.id] and 0 or 1, 0))
   for _, r in ipairs(receives[t.id] or {}) do
-    block:add(fmt.line("AUXRECV", index[r.from] - 1, 0, amp(r.level), 0, 0, 0, 0, 0, 0, "-1:U", 0, -1, "")):quoted(13)
+    -- Mode 0 is after the fader, 3 before it (after the plugins).
+    block:add(fmt.line("AUXRECV", index[r.from] - 1, r.pre and 3 or 0, amp(r.level), 0, 0, 0, 0, 0, 0, "-1:U", 0, -1, "")):quoted(13)
   end
   return block
 end
@@ -377,25 +518,28 @@ function M.doc(opts)
   if master_chain then root:add(master_chain) end
   for _, lane in ipairs(api.lane_list(0)) do
     if lane.target == "volume" or lane.target == "pan" then
-      root:add(envelope(lane.target == "volume" and "MASTERVOLENV2" or "MASTERPANENV2", lane, ctx))
-    else
-      ctx.report:add("Plugin parameter automation", "Master: " .. tostring(lane.param))
+      root:add(envelope(lane.target == "volume" and "MASTERVOLENV2" or "MASTERPANENV2", lane, ctx, "Master " .. lane.target))
     end
   end
-  -- Markers and regions kept in the project's meta (from an import, or
-  -- another extension), in beats.
+  -- Markers and regions (paw.markers: `project.meta.markers`, a region
+  -- with a length), in beats; and `project.meta.regions` as older
+  -- versions of this extension kept them.
   local meta = p.meta or {}
   local n = 0
-  for _, m in ipairs(meta.markers or {}) do
+  local function colour(c) return M.native_colour(c) or 0 end
+  for _, m in ipairs(type(meta.markers) == "table" and meta.markers or {}) do
     n = n + 1
-    line("MARKER", tonumber(m.id) or n, ctx.sec(m.beat or 0), m.name or "", 0, m.color or 0, 1, "B", ctx.guid(), 0):quoted(3)
+    if m.length then
+      line("MARKER", n, ctx.sec(m.beat or 0), m.name or "", 1, colour(m.color), 1, "R", ctx.guid(), 0):quoted(3)
+      line("MARKER", n, ctx.sec((m.beat or 0) + m.length), "", 1):quoted(3)
+    else
+      line("MARKER", n, ctx.sec(m.beat or 0), m.name or "", 0, colour(m.color), 1, "B", ctx.guid(), 0):quoted(3)
+    end
   end
-  for _, r in ipairs(meta.regions or {}) do
+  for _, r in ipairs(type(meta.regions) == "table" and meta.regions or {}) do
     n = n + 1
-    local id = tonumber(r.id) or n
-    local guid = ctx.guid()
-    line("MARKER", id, ctx.sec(r.start or 0), r.name or "", 1, r.color or 0, 1, "B", ctx.guid(), 0):quoted(3)
-    line("MARKER", id, ctx.sec((r.start or 0) + (r.length or 0)), "", 1):quoted(3)
+    line("MARKER", n, ctx.sec(r.start or 0), r.name or "", 1, colour(r.color), 1, "R", ctx.guid(), 0):quoted(3)
+    line("MARKER", n, ctx.sec((r.start or 0) + (r.length or 0)), "", 1):quoted(3)
   end
   -- Song sections (`project.meta.sections`, as the sections extension
   -- keeps them) become regions, each up to where the next starts.
@@ -421,20 +565,18 @@ function M.doc(opts)
       receives[t.output] = receives[t.output] or {}
       table.insert(receives[t.output], { from = t.id, level = 0 })
       ctx.report:add("Routing written as a send (REAPER folders need the child right after its parent)",
-        t.name .. " -> " .. api.track_get(t.output).name)
+        t.name .. " -> " .. api.track_get(t.output, "name"))
     end
     for _, s in ipairs(t.sends or {}) do
       receives[s.target] = receives[s.target] or {}
-      table.insert(receives[s.target], { from = t.id, level = s.level })
+      table.insert(receives[s.target], { from = t.id, level = s.level, pre = s.pre })
     end
   end
   for i, t in ipairs(list) do
     local block = root:add(track_block(t, i, ctx, depth, unfoldered, index, receives))
     for _, lane in ipairs(api.lane_list(t.id)) do
       if lane.target == "volume" or lane.target == "pan" then
-        block:add(envelope(lane.target == "volume" and "VOLENV2" or "PANENV2", lane, ctx))
-      else
-        ctx.report:add("Plugin parameter automation", t.name .. ": " .. tostring(lane.param))
+        block:add(envelope(lane.target == "volume" and "VOLENV2" or "PANENV2", lane, ctx, t.name .. " " .. lane.target))
       end
     end
     local chain = fx_chain("FXCHAIN", t.id, t, ctx, t.name)
@@ -442,12 +584,12 @@ function M.doc(opts)
     for _, clip in ipairs(api.clip_list(t.id)) do
       local label = t.name .. ": " .. (clip.name or "clip")
       if clip.kind == "audio" then
-        block:add(audio_item(clip, ctx))
+        block:add(audio_item(clip, ctx, label))
       else
         block:add(midi_item(clip, ctx, label))
       end
     end
-    if t.color then ctx.report:count("Track colours", t.name) end
+    if (t.slots and #t.slots > 0) then ctx.report:count("Clips in launcher slots", t.name, #t.slots) end
   end
   return doc, ctx.report
 end

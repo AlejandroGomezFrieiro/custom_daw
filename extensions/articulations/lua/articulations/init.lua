@@ -72,7 +72,7 @@ end
 
 local function keep(track, fn)
   local id = track_of(track)
-  local meta = util.merge(api.track_get(id).meta or {}, {})
+  local meta = util.merge(api.track_get(id, "meta") or {}, {})
   local info = util.merge(type(meta.articulations) == "table" and meta.articulations or {}, {})
   fn(info)
   meta.articulations = next(info) and info or nil

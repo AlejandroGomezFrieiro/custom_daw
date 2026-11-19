@@ -260,6 +260,7 @@ function K.startup()
   paw.fx.setup()
   paw.routes.setup()
   paw.media = require("paw.media")
+  paw.external = require("paw.external")
   require("paw.render")
   -- Freezing tracks, and tabs narrowed to a group.
   paw.freeze = require("paw.freeze")

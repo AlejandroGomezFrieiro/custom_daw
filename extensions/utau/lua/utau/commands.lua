@@ -270,7 +270,7 @@ command("utau.freeze", function()
   if not track then return end
   local ok, audio = pcall(require("utau.freeze").freeze, track)
   if not ok then return paw.notify("utau.freeze: " .. tostring(audio), "warn") end
-  paw.notify(api.track_get(track).name .. " is frozen: it plays as audio on " .. audio.name .. "; `:utau.unfreeze` to sing it again")
+  paw.notify(api.track_get(track, "name") .. " is frozen: it plays as audio on " .. audio.name .. "; `:utau.unfreeze` to sing it again")
 end, { desc = "Render the vocal track to audio on a track below it, and stop singing it" })
 
 command("utau.unfreeze", function()
@@ -548,7 +548,7 @@ command("utau.status", function()
     local state, counts = utau.status(vocal.track)
     local parts = {}
     for name, n in pairs(counts) do parts[#parts + 1] = n .. " " .. name end
-    lines[#lines + 1] = string.format("%s: %s %s", api.track_get(vocal.track).name, state, table.concat(parts, ", "))
+    lines[#lines + 1] = string.format("%s: %s %s", api.track_get(vocal.track, "name"), state, table.concat(parts, ", "))
   end
   paw.notify(table.concat(lines, "\n"))
 end, { desc = "Show what the singing engine is doing" })

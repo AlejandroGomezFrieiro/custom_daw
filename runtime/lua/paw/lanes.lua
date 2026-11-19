@@ -138,7 +138,7 @@ function M.value_at(lane, beat)
   if type(lane) == "number" then lane = api.lane_get(lane) end
   local ok, v = pcall(api.lane_value_at, lane.id, beat)
   if ok and v then return v end
-  if lane.target == "volume" or lane.target == "pan" then return api.track_get(lane.track)[lane.target] end
+  if lane.target == "volume" or lane.target == "pan" then return api.track_get(lane.track, lane.target) end
   local d = api.device_get(lane.device)
   return d.params[lane.param] or 0
 end

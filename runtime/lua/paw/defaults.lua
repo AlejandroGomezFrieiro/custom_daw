@@ -463,7 +463,7 @@ local function track_named(name)
   if name:lower() == "master" then return 0 end
   local found
   for _, id in ipairs(api.track_list()) do
-    local known = api.track_get(id).name
+    local known = api.track_get(id, "name")
     if known == name then return id end
     if known:lower():find(name:lower(), 1, true) then found = found or id end
   end
@@ -526,9 +526,9 @@ command("send", function(ctx)
   local level = asked or paw.opt.send_level
   local pre = ctx.args.pre ~= nil and ctx.args.pre ~= false and ctx.args.pre ~= 0 and ctx.args.pre ~= "0" or nil
   local function add(target)
-    local to, said = api.track_get(target).name, {}
+    local to, said = api.track_get(target, "name"), {}
     for _, id in ipairs(ids) do
-      local name = api.track_get(id).name
+      local name = api.track_get(id, "name")
       local index
       for i, send in ipairs(api.track_get(id).sends) do
         if send.target == target then index = i end
@@ -559,7 +559,7 @@ command("send", function(ctx)
   end
   local name = ctx.args[1]
   if not name then
-    local first = api.track_get(ids[1]).name
+    local first = api.track_get(ids[1], "name")
     return pick_target(ids[1], "Send " .. (#ids == 1 and first or #ids .. " tracks") .. " to", false, add)
   end
   local target = track_named(tostring(name))
@@ -573,7 +573,7 @@ command("send.remove", function(ctx)
   local sends = track:get().sends
   local name = ctx.args[1]
   for index, send in ipairs(sends) do
-    local to = api.track_get(send.target).name
+    local to = api.track_get(send.target, "name")
     if not name or to:lower():find(tostring(name):lower(), 1, true) then
       paw.frontend.act.remove_send(track.id, index)
       return paw.notify(track.name .. " no longer sends to " .. to)
@@ -584,7 +584,7 @@ end, {
   desc = "Take a send away: `send.remove Reverb`; alone, the first",
   complete = function()
     local track, out = cursor.track(), {}
-    for _, send in ipairs(track and track:get().sends or {}) do out[#out + 1] = api.track_get(send.target).name end
+    for _, send in ipairs(track and track:get().sends or {}) do out[#out + 1] = api.track_get(send.target, "name") end
     return out
   end,
 })
@@ -644,7 +644,7 @@ command("track.into", function(ctx)
   end
   local groups = {}
   for _, id in ipairs(api.track_list()) do
-    if paw.groups.is_group(id) then groups[#groups + 1] = { id = id, name = api.track_get(id).name } end
+    if paw.groups.is_group(id) then groups[#groups + 1] = { id = id, name = api.track_get(id, "name") } end
   end
   local name = ctx.args[1]
   if name then
@@ -661,7 +661,7 @@ end, {
   complete = function()
     local out = {}
     for _, id in ipairs(api.track_list()) do
-      if paw.groups.is_group(id) then out[#out + 1] = api.track_get(id).name end
+      if paw.groups.is_group(id) then out[#out + 1] = api.track_get(id, "name") end
     end
     return out
   end,
@@ -685,7 +685,7 @@ command("group.link", function()
   local group = paw.groups.is_group(track.id) and track.id or paw.groups.of(track.id)
   if not group then return paw.notify("not in a group", "warn") end
   paw.groups.link(group)
-  paw.notify(string.format("faders of “%s” %s", api.track_get(group).name,
+  paw.notify(string.format("faders of “%s” %s", api.track_get(group, "name"),
     paw.groups.linked(group) and "are linked: moving one member's fader moves the others" or "are free again"))
 end, { desc = "Link the faders of the group's members, or let them go: moving one moves the others by as many dB" })
 
@@ -694,13 +694,13 @@ end, { desc = "Link the faders of the group's members, or let them go: moving on
 --- The VCA named, by part of its name, or nil.
 local function vca_named(name)
   for _, id in ipairs(paw.vca.list()) do
-    if api.track_get(id).name:lower():find(tostring(name):lower(), 1, true) then return id end
+    if api.track_get(id, "name"):lower():find(tostring(name):lower(), 1, true) then return id end
   end
 end
 
 local function vca_names()
   local out = {}
-  for _, id in ipairs(paw.vca.list()) do out[#out + 1] = api.track_get(id).name end
+  for _, id in ipairs(paw.vca.list()) do out[#out + 1] = api.track_get(id, "name") end
   return out
 end
 
@@ -708,7 +708,7 @@ end
 local function with_vca(name, title, from, act)
   if name == "" then name = nil end
   local vcas = {}
-  for _, id in ipairs(from) do vcas[#vcas + 1] = { id = id, name = api.track_get(id).name } end
+  for _, id in ipairs(from) do vcas[#vcas + 1] = { id = id, name = api.track_get(id, "name") } end
   if name then
     local id = vca_named(name)
     if id then return act(id) end
@@ -964,6 +964,7 @@ end
 --- project, with plugins offline as `opts` says (see `paw.loading.open`).
 function paw.open(path, opts)
   if paw.is_audio_file(path) then return paw.import_audio(path, { start = 0 }) end
+  if paw.midifile.is_clip_file(path) then return paw.midifile.open_clip(path) end
   if paw.midifile.is_midi_file(path) then return paw.midifile.open(path) end
   return paw.loading.open(path, opts)
 end
@@ -979,6 +980,13 @@ end
 command("import", function(ctx)
   local tempo = ctx.args.tempo
   local function bring(path)
+    if paw.midifile.is_clip_file(path) then
+      local track = cursor.track_id() and paw.track(cursor.track_id())
+      if not track or track.id == 0 then track = paw.add_track({ name = (path:match("([^/]+)$") or path):gsub("%.[^.]+$", "") }) end
+      local ok, clip = pcall(paw.midifile.import_clip, path, track, cursor.beat)
+      if not ok then return paw.notify("could not import " .. path .. ": " .. tostring(clip):gsub("^[^:]*:%d+: ", ""), "error") end
+      return paw.notify(string.format("imported %s: %d notes on track “%s”; it refers to the file until you edit it", path:match("([^/]+)$") or path, clip.note_count or #clip:notes(), track.name))
+    end
     if paw.midifile.is_midi_file(path) then
       local ok, done = pcall(paw.midifile.import, path, { tempo = tempo == true or tempo == "yes" or tempo == "on" })
       if not ok then return paw.notify("could not import " .. path .. ": " .. tostring(done):gsub("^[^:]*:%d+: ", ""), "error") end
@@ -1009,10 +1017,11 @@ command("open", function(ctx)
     local ok, err = pcall(paw.open, path)
     if not ok then return paw.notify("could not open " .. path .. ": " .. tostring(err):gsub("^[^:]*:%d+: ", ""), "error") end
     if paw.midifile.is_midi_file(path) then return paw.notify("opened " .. midi_said(path, err) .. " (`:w` asks where to save it)") end
+    if paw.midifile.is_clip_file(path) then return paw.notify("opened " .. (path:match("([^/]+)$") or path) .. " alone: `:w` writes it back, `:w song` saves a project of it") end
     paw.notify("opened " .. path)
   end
   local path = ctx.args[1]
-  if path and path ~= "" and paw.files.is_dir(path) then return paw.files.open(path, { here = true }) end
+  if path and path ~= "" and paw.files.is_dir(path) and not paw.project.is_folder(path) then return paw.files.open(path, { here = true }) end
   if path and path ~= "" then return go(paw.files.path(path)) end
   paw.pick.file({ title = "Open", on_choose = go })
 end, { desc = "Open a project, a MIDI file as a new project, or a sound file on a new track: `open song.json`, `open song.mid`, `open take.wav`; alone, choose it from a list", raw = true, complete = "files" })
@@ -1036,7 +1045,8 @@ command("export", function(ctx)
     return paw.notify("export what: `clip`, `selection`, or nothing for the whole project", "warn")
   end
   local notes = paw.midifile.export(path, opts)
-  paw.notify(string.format("exported %d notes to %s", notes, path))
+  local lost = paw.midifile.lost_text()
+  paw.notify(string.format("exported %d notes to %s%s", notes, path, lost and "; MIDI 1.0 " .. lost or ""))
 end, { desc = "Write a MIDI file of the project, of the clip at the cursor, or of the selection's tracks: `export song.mid`, `export riff.mid clip`, `export part.mid selection`", complete = { "files", function() return { "clip", "selection" } end } })
 
 command("set", function(ctx)
@@ -1705,27 +1715,93 @@ command("redo", function(ctx)
   end
   paw.notify("redid " .. table.concat(redone, ", "))
 end, { desc = "Redo, saying what was redone" })
+--- The files of a project kept in a folder that the buffer of the current
+--- window shows: a clip's file in the piano roll, a chain's files in the
+--- device panel; nil for the whole project. With each, the files that it
+--- needs to be found: its track's `track.json` and `project.toml`.
+local function buffer_files()
+  local win = paw.layout.current()
+  local files = api.project_files()
+  if #files == 0 or not win then return nil end
+  local want
+  if win.view == "pianoroll" and roll:clip() then
+    local id = roll:clip().id
+    want = function(f) return f.clip == id end
+  elseif win.view == "devices" and cursor.track_id() then
+    local id = cursor.track_id()
+    want = function(f) return f.track == id and (f.what == "devices" or f.what == "state") end
+  else
+    return nil
+  end
+  local out, tracks = {}, {}
+  for _, f in ipairs(files) do
+    if want(f) then
+      out[#out + 1] = f.path
+      if f.track then tracks[f.track] = true end
+    end
+  end
+  for _, f in ipairs(files) do
+    if (f.what == "track" and tracks[f.track]) or f.what == "project" then out[#out + 1] = f.path end
+  end
+  return out
+end
+
+--- Paths as a short list for a message: the names of the files.
+local function file_names(list)
+  local names = {}
+  for i, path in ipairs(list) do
+    if i > 4 then
+      names[#names + 1] = string.format("%d more", #list - 4)
+      break
+    end
+    names[#names + 1] = path:match("([^/]+)$") or path
+  end
+  return table.concat(names, ", ")
+end
+
 command("write", function(ctx)
   local path = ctx.args[1] and tostring(ctx.args[1]) or nil
+  -- In a project kept in a folder, `:w` writes the files of this window's
+  -- buffer (and those that it needs to be found); `:wa` writes them all.
+  if not path and not api.project_get("path") and paw.midifile.document then
+    local ok, written = pcall(paw.midifile.write_clip)
+    if not ok then return paw.notify(tostring(written):gsub("^[^:]*:%d+: ", ""), "error") end
+    return paw.notify("wrote " .. written)
+  end
+  local files = not path and buffer_files()
+  if files then
+    local ok, written = pcall(api.project_save_files, files)
+    if not ok then return paw.notify(tostring(written):gsub("^[^:]*:%d+: ", ""), "error") end
+    if #written == 0 then return paw.notify("nothing to write: " .. file_names(files) .. " are as on the disk") end
+    return paw.notify(string.format("wrote %s", file_names(written)))
+  end
   -- A relative name goes beside the project, or to the folder `:cd` set.
   if path then path = paw.files.path(path) end
   -- A project that has no file yet is asked where it goes, when there is
   -- somebody to ask.
-  if not path and not api.project_get().path and paw.fx.interactive() then return paw.frontend.save_as() end
+  if not path and not api.project_get("path") and paw.fx.interactive() then return paw.frontend.save_as() end
   if path and paw.midifile.is_midi_file(path) then
     return paw.notify("a project is not saved as a MIDI file: `:export " .. path .. "` writes one", "warn")
   end
-  if path and paw.files.is_dir(path) then
-    return paw.notify(path .. " is a folder: name a file in it, `:w " .. path:gsub("/+$", "") .. "/song.json`", "warn")
+  -- A project is a folder: one that holds other files and no project is
+  -- not taken over.
+  if path and paw.files.is_dir(path) and not paw.project.is_folder(path) and #api.read_dir(path) > 0 then
+    return paw.notify(path .. " has files and is not a project: `:w " .. path:gsub("/+$", "") .. "/song` makes a project folder in it", "warn")
   end
   paw.notify("saved " .. paw.project.save(path))
 end, { desc = "Save the project: `write song.json`", complete = { "projects" } })
+command("wall", function()
+  local path = api.project_get("path")
+  if not path and paw.fx.interactive() then return paw.frontend.save_as() end
+  paw.notify("saved " .. paw.project.save())
+end, { desc = "Save every file of the project" })
+command.alias("wa", "wall")
 command("saveas", function() paw.frontend.save_as() end, { desc = "Save the project under a name chosen from a list of directories" })
 command("edit", function(ctx)
   -- Alone, as in Vim, it opens the project's own file again: `:e!` goes
   -- back to the saved project and throws away what changed since.
   if not ctx.args[1] then
-    local path = api.project_get().path
+    local path = api.project_get("path")
     if not path then return paw.notify("the project has no file yet: `:e song.json` opens one, `:w song.json` saves this one", "warn") end
     if not paw.project.guard("edit") then return end
     paw.open(path)
@@ -1734,15 +1810,15 @@ command("edit", function(ctx)
   local how = ctx.args[2] and tostring(ctx.args[2])
   if how and how ~= "offline" and how ~= "online" then return paw.notify("usage: edit <project.json> [offline|online]", "warn") end
   local path = tostring(ctx.args[1])
-  -- A folder is listed as a buffer to edit (`paw.files`).
-  if paw.files.is_dir(path) then return paw.files.open(path, { here = true }) end
+  -- A folder is listed as a buffer to edit (`paw.files`), unless it is a project.
+  if paw.files.is_dir(path) and not paw.project.is_folder(path) then return paw.files.open(path, { here = true }) end
   -- A buffer's name, a view's or an address (`paw://tracks`) shows it here;
   -- only a file's path asks about the project.
   local view, buf, target = paw.layout.resolve(path)
   local win = view and not how and paw.layout.current()
   if win then return paw.layout.show_in(win, view, buf and not buf.single and buf.id or nil, target) end
   path = paw.files.path(path)
-  if paw.midifile.is_midi_file(path) or paw.is_audio_file(path) then return paw.commands.run("open", { path }) end
+  if paw.midifile.is_midi_file(path) or paw.midifile.is_clip_file(path) or paw.is_audio_file(path) then return paw.commands.run("open", { path }) end
   if not paw.project.guard("edit") then return end
   paw.open(path, { plugins_offline = how == "offline", all_online = how == "online" })
 end, { desc = "Open a project: `edit song.json`; alone, the project's file again (`edit!` goes back to it as saved); `edit song.json offline` with every plugin offline, `online` with none held back; a MIDI or sound file as `open` does", complete = { "openable", function() return { "offline", "online" } end } })
@@ -2104,7 +2180,7 @@ command("marks", function()
     table.sort(names)
     for _, name in ipairs(names) do
       local pos = list[name]
-      local where = view == "arrange" and paw.time.format(pos.beat) .. "  " .. (pcall(api.track_get, pos.track) and api.track_get(pos.track).name or "(track gone)")
+      local where = view == "arrange" and paw.time.format(pos.beat) .. "  " .. (pcall(api.track_get, pos.track) and api.track_get(pos.track, "name") or "(track gone)")
         or paw.music.name(pos[1]) .. "  beat " .. pos[2] + 1
       lines[#lines + 1] = string.format("%s  %-10s %s", name, view, where)
     end
@@ -2117,7 +2193,7 @@ command("changes", function()
   local list = keymap.changes()
   for i = #list, 1, -1 do
     local pos = list[i]
-    local where = pos.beat and paw.time.format(pos.beat) .. "  " .. (pcall(api.track_get, pos.track) and api.track_get(pos.track).name or "(track gone)")
+    local where = pos.beat and paw.time.format(pos.beat) .. "  " .. (pcall(api.track_get, pos.track) and api.track_get(pos.track, "name") or "(track gone)")
       or string.format("row %d  beat %g", pos[1], (pos[2] or 0) + 1)
     lines[#lines + 1] = string.format("%3d  %s", #list - i + 1, where)
   end
@@ -2164,6 +2240,9 @@ command("info", function()
     lines[#lines + 1] = string.format("  %s to %s, %g beats%s", paw.time.format(c.start), paw.time.format(c.start + c.length), c.length, c.muted and ", muted" or "")
     if c.kind == "midi" then
       lines[#lines + 1] = string.format("  %d notes", c.note_count)
+      -- A clip from a file outside the project, or a copy of one.
+      if c.source then lines[#lines + 1] = string.format("  refers to %s%s", c.source, c.offline and " (missing)" or "") end
+      if c.origin then lines[#lines + 1] = string.format("  copied from %s", c.origin) end
     else
       lines[#lines + 1] = string.format("  %s", c.file)
       lines[#lines + 1] = string.format("  from %.3f s into the file, gain %+.1f dB", c.offset, c.gain)
@@ -2174,10 +2253,10 @@ command("info", function()
   local kind = paw.track_kinds.describe(track.id)
   if kind then lines[#lines + 1] = "  kind    " .. kind end
   lines[#lines + 1] = string.format("  volume %+.1f dB, pan %+.2f%s%s%s", t.volume, t.pan, t.mute and ", muted" or "", t.solo and ", solo" or "", t.armed and ", armed" or "")
-  lines[#lines + 1] = "  output  " .. (t.output and api.track_get(t.output).name or "Master")
+  lines[#lines + 1] = "  output  " .. (t.output and api.track_get(t.output, "name") or "Master")
   if t.input then lines[#lines + 1] = "  input   " .. t.input end
   for _, send in ipairs(t.sends) do
-    lines[#lines + 1] = string.format("  send    %s at %+.1f dB", api.track_get(send.target).name, send.level)
+    lines[#lines + 1] = string.format("  send    %s at %+.1f dB", api.track_get(send.target, "name"), send.level)
   end
   for i, device in ipairs(track:devices()) do
     local d = device:get()
@@ -3609,7 +3688,7 @@ end
 -- A plugin runs in a process of its own; when that stops, the session goes
 -- on without it and says so.
 paw.on("device.stopped", function(event)
-  local track = pcall(api.track_get, event.track) and api.track_get(event.track).name or "a track"
+  local track = pcall(api.track_get, event.track) and api.track_get(event.track, "name") or "a track"
   if event.loading then
     return paw.notify(string.format("%s on %s could not be loaded: %s. It is passed over and keeps its saved state; `:device.restart` tries again.",
       event.name, track, event.reason), "error")
@@ -3628,7 +3707,7 @@ command("plugins.rescan", function(ctx)
 end, { desc = "Look into plugin files again, including ones skipped because they failed: `plugins.rescan`, `plugins.rescan surge`" })
 -- A device whose output holds NaN or infinity is silenced where it is, once said.
 paw.on("device.invalid", function(event)
-  local track = pcall(api.track_get, event.track) and api.track_get(event.track).name or "a track"
+  local track = pcall(api.track_get, event.track) and api.track_get(event.track, "name") or "a track"
   paw.notify(string.format("%s on %s put out invalid numbers (NaN or infinity); its output is replaced by silence",
     event.name, track), "error")
 end)

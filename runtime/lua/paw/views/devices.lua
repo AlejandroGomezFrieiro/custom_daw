@@ -33,7 +33,7 @@ local cache = { revision = -1, tracks = {} }
 
 --- The panel as a flat list of rows: a device heading, then its parameters.
 local function rows_for(track_id)
-  local edits = api.project_get().edits
+  local edits = api.project_get("edits")
   if cache.revision ~= paw.frontend.revision or cache.edits ~= edits then
     cache = { revision = paw.frontend.revision, edits = edits, tracks = {} }
   end
@@ -100,7 +100,7 @@ local function track_named(target)
   local id = tonumber(target) or tonumber(tostring(target):match("^paw://track/(%d+)"))
   if id then return id ~= 0 and pcall(api.track_get, id) and id or nil end
   for _, other in ipairs(api.track_list()) do
-    if api.track_get(other).name == target then return other end
+    if api.track_get(other, "name") == target then return other end
   end
 end
 view.track_named = track_named
@@ -120,7 +120,7 @@ function view:window_target() return pinned(self) end
 function view:set_pin(track)
   self.pin, self.row, self.scroll = track, 1, 0
   if track then
-    paw.notify("the device panel stays on " .. api.track_get(track).name .. "; `:devices.pin` again follows the cursor")
+    paw.notify("the device panel stays on " .. api.track_get(track, "name") .. "; `:devices.pin` again follows the cursor")
   else
     paw.notify("the device panel follows the cursor track")
   end
