@@ -83,6 +83,11 @@ interleaved rounds of 10 s.
 | Stopped | 5.7 (4.9 to 6.0) | 1.1 (0.9 to 1.6) |
 | Playing | 6.1 (5.8 to 6.3) | 3.4 (3.1 to 6.5) ¹ |
 
+After a merge with main at e0ae197, which has the memory changes of the
+same day, the same measurement against that build gave these values:
+stopped 4.6 (3.8 to 5.2) before and 1.0 (0.8 to 1.9) after; playing 5.5
+(5.2 to 6.3) before and 3.3 (2.6 to 3.6) after.
+
 ¹ The 6.5 % run was at load 50. There, the measured work was more than a
 quarter of the block, and the worker threads helped (2.3 % of the 6.5 %).
 
