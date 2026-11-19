@@ -55,6 +55,27 @@ your own presets (`.t3kpreset`, `.soundshed.presets` packs and `.json`
 presets) in a folder of `paw.opt.plugstate_folders`. For a guide, see
 [How to switch amp models and presets from paw](../../docs/how-to/switch-amp-models-and-presets.md).
 
+### How to find a model in TONE3000's library
+
+TONE3000 (www.tone3000.com) is a library of amp models and impulse
+responses that its users share. plugstate finds them and loads them into
+TONE3000, Neural Amp Modeler and the impulse response plugins of LSP.
+
+1. Give paw a token of your TONE3000 account. See
+   [TONE3000 tokens](#tone3000-tokens).
+2. In the device panel, put the row on the plugin and press `\t`. Type
+   words, for example `plexi crunch`, and press Enter. Or type
+   `:plugstate.search plexi crunch`.
+3. A list of tones opens, 25 at a time. The pane at the side shows the
+   author, the license and the description. `Alt-n` and `Alt-p` show the
+   next page and the page before.
+4. Press Enter on a tone. If the tone has more than one model, a second
+   list opens. Press Enter on a model.
+
+paw downloads the model one time, and loads it as one undo step. To find
+only one kind of tone, add `gear=`, `type=` or `by=`:
+`:plugstate.search gear=pedal by=someone fuzz`.
+
 ### How to set a plugin that holds more than one file
 
 Give the file a name with `slot=`: `:plugstate.load slot=ifn1 hall.wav`.
@@ -103,6 +124,7 @@ These keys are in the device panel. They act on the device of the row.
 | `\m` | opens the picker of the files that the plugin takes |
 | `\s` | keeps the state of the device as a snapshot (A, B, C and so on) |
 | `\v` | opens the picker of the snapshots |
+| `\t` | asks for words, then searches TONE3000's library (`:plugstate.search_prompt`) |
 | `]v` `[v` | brings back the next or the previous snapshot |
 
 ### Commands
@@ -118,6 +140,9 @@ These keys are in the device panel. They act on the device of the row.
 | `:plugstate.recall_next`, `:plugstate.recall_prev` | brings back the next or the previous snapshot |
 | `:plugstate.forget <name>` | removes a snapshot |
 | `:plugstate.adapters` | lists the kinds of plugin that plugstate knows |
+| `:plugstate.search [gear=<gear>] [type=nam\|ir] [by=<user>] [sort=<order>] [arch=<n>] [slot=<key>] [words]` | searches TONE3000's library and opens a picker of the tones. Enter on a tone shows its models, and Enter on a model loads it |
+| `:plugstate.search_more` | shows the next page of the last search (a count skips more) |
+| `:plugstate.search_prompt` | asks for words, then does `:plugstate.search` |
 
 - The commands act on the device of the row of the device panel when
   plugstate knows it. Else, they act on the first device of the cursor
@@ -133,6 +158,72 @@ These keys are in the device panel. They act on the device of the row.
 | Option | Default | Effect |
 | --- | --- | --- |
 | `plugstate_folders` | `""` | the folders of models and impulse responses, separated by `:` |
+| `plugstate_tone3000_token_file` | `""` | a file that holds a TONE3000 access token on its first line. paw uses it only if its mode is 600 or 400 |
+| `plugstate_tone3000_plugin_session` | `false` | when `true`, paw also uses the session of the TONE3000 plugin (see [TONE3000 tokens](#tone3000-tokens)) |
+| `plugstate_tone3000_api` | `""` | another address of the API. Empty: `https://www.tone3000.com/api/v1` |
+
+### The search of TONE3000
+
+- `gear=` is `amp`, `amp-cab`, `pedal`, `outboard`, `cab`, `space` or
+  `experimental`. `type=` is `nam` (models) or `ir` (impulse responses).
+  `by=` is the user name of the author. `sort=` is `best-match`,
+  `newest`, `oldest`, `trending` or `downloads-all-time`. Without words,
+  TONE3000 gives the tones that are popular now.
+- paw asks only for the kinds of file that the device takes. For the
+  TONE3000 plugin, paw asks for the models of the second architecture
+  (A2), as the window of the plugin does. `arch=1` asks for the others.
+- A model goes into the slot named by `slot=`. Else, a `.nam` model goes
+  into the first slot of a model, and a `.wav` impulse response into the
+  first slot of an impulse response.
+- paw keeps each file that it downloads in
+  `$XDG_CACHE_HOME/paw/tone3000/<model id>/<model name>.<nam or wav>`, and
+  does not download it again. You can delete the folder at any time.
+- The project keeps the file as the adapter does (TONE3000 keeps its bytes,
+  Neural Amp Modeler keeps its path), and keeps the tone in
+  `meta.plugstate.tone3000.<slot>` of the device: `tone_id`, `tone`,
+  `model_id`, `model`, `author`, `license` and `url`. So the project opens
+  and plays without the network.
+- Each request is a `curl` process with a time limit: 20 s for a search,
+  120 s for a download. A key never waits for the network. paw tells when
+  you are not signed in, when TONE3000 limits the rate of requests, and
+  when the computer is offline.
+- `:checkhealth plugstate.tone3000` tells if curl is there, where the
+  token comes from, and the folder of the downloads.
+
+### TONE3000 tokens
+
+TONE3000 needs a token of your account to download a model. paw looks for
+the token in this order, and uses the first one that it finds:
+
+1. The environment variable `TONE3000_TOKEN`.
+2. The file that `paw.opt.plugstate_tone3000_token_file` names. Only you
+   can read the file: `chmod 600 <file>`.
+3. The keyring, through `secret-tool`. Keep the token there with
+   `secret-tool store --label="TONE3000 for paw" application paw service tone3000`.
+4. Only when `paw.opt.plugstate_tone3000_plugin_session` is `true`: the
+   session of the TONE3000 plugin, from the `t3k_tokens` value in
+   `~/.config/TONE3000/ui-preferences.settings`. paw only reads this
+   file. When the session expires, open the window of the plugin one time.
+   paw does not renew it.
+
+paw sends the token to curl on its standard input. The token is not on a
+command line, in a log, in a project or in a file that paw writes.
+
+### The terms of TONE3000
+
+The API of TONE3000 has terms of use (https://www.tone3000.com/api/terms).
+paw obeys them in these ways:
+
+- paw downloads a model only when you choose it. It does not download
+  the library, and it does not write the results of a search to a file.
+- paw shows the author and the license of each tone, and keeps them in
+  the project.
+- The pane of the picker says "Powered by TONE3000" and gives the address
+  of the tone.
+- paw asks for one page when you ask for it. TONE3000 permits 100 requests
+  in a minute, and fewer for the search.
+- Do not share the models that you download in a way that their license
+  does not permit.
 
 ### Adapters
 
@@ -200,6 +291,10 @@ The extension sends the events `plugstate.loaded` (`device`, `slot`,
   with less than a second of sound without the model.
 - Soundshed Guitar keeps the path of a file. paw copies the files of a
   preset of a pack to `~/.local/share/paw/plugstate/<pack>`.
+- The search of TONE3000 needs curl. paw does not sign in to TONE3000
+  itself: it uses a token that you give (see [TONE3000 tokens](#tone3000-tokens)).
+  paw loads models (`nam`) and impulse responses (`ir`), not the other
+  formats of TONE3000 (`aida-x`, `proteus`, `aa-snapshot`).
 - TONE3000 and Soundshed Guitar keep their own files in `~/.config`
   (`TONE3000`, `Soundshed Guitar`), also when `XDG_CONFIG_HOME` names
   another folder.

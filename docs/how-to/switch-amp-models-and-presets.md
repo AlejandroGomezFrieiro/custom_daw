@@ -1,6 +1,6 @@
 # How to switch amp models and presets from paw
 
-<!-- tags: amp-models switch-presets tone3000 soundshed -->
+<!-- tags: amp-models switch-presets tone3000 soundshed tone3000-library -->
 
 This guide shows you how to change the preset, the amp model and the
 impulse response of an amp plugin. You use keys and commands, and you do
@@ -47,6 +47,29 @@ a list opens. The selected preset plays while you move in the list.
 A `.wav` file goes into a block in the same way, as an impulse response.
 TONE3000 keeps the bytes of the file in the project. Soundshed Guitar
 keeps the path of the file, so do not move the file.
+
+## Find a model in TONE3000's library
+
+TONE3000 needs a token of your account to download a model. Give it to paw
+first: for example, put the token in the environment variable
+`TONE3000_TOKEN` before you start paw. For the other places, see
+[TONE3000 tokens](../../extensions/plugstate/README.md#tone3000-tokens).
+
+1. In the device panel, put the row on the amp plugin and press `\t`.
+2. Type words of the tone, for example `plexi`, and press `Enter`. A list
+   of tones opens. The pane at the side shows the author, the license and
+   the description of the selected tone.
+3. To see more tones, press `Alt-n`. `Alt-p` shows the page before.
+4. Press `Enter` on a tone. If the tone has more than one model, select a
+   model and press `Enter` again.
+
+paw downloads the model and loads it into a block of TONE3000, or into
+Neural Amp Modeler. The message line shows its name, author and license.
+If you do not like it, press `u`. paw keeps the downloaded file, so a
+second load does not use the network.
+
+To find only pedals, or the tones of one author, type the search as a
+command: `:plugstate.search gear=pedal by=someone fuzz`.
 
 ## Change the scene of a Soundshed preset
 

@@ -175,12 +175,13 @@
             # there for MP3, Ogg and Opus export (no codec is linked into the
             # program); it goes last on the PATH, so that the user's own wins.
             # fc-list is how the window finds a font for Japanese and the like.
+            # curl is how extensions/plugstate asks TONE3000's library.
             # The window starts the `paw` beside its binary, which is the
             # unwrapped one; it inherits these from the window's wrapper.
             for bin in paw paw-gui paw-mcp; do
               makeWrapper ${programs}/bin/$bin $out/bin/$bin \
                 --set-default PAW_HOME $out/share/paw \
-                --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.ffmpeg-headless pkgs.fontconfig.bin ]}
+                --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.ffmpeg-headless pkgs.fontconfig.bin pkgs.curl ]}
             done
           '';
           # The extensions as packages, and the program with some of them:
@@ -346,7 +347,7 @@
           # What the window tests (`crates/paw-gui/tests/window.rs`) drive: a
           # private X server, a window manager, a pointer and key sender, and
           # tesseract to find words on a screenshot.
-          packages = with pkgs; [ xvfb openbox xdotool imagemagick tesseract vale ];
+          packages = with pkgs; [ xvfb openbox xdotool imagemagick tesseract vale curl ];
           # The style packages Vale checks the docs with (tools/vale.sh joins
           # them with the project's own in .vale/styles; see .vale.ini).
           PAW_VALE_STYLES = "${valeStyles pkgs}";

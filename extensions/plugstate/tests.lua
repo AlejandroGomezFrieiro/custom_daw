@@ -641,3 +641,6 @@ test("plugstate: as the song plays, a state lane switches the NAM model and TONE
   eq(plays_past(1, function() return plugstate.slot(tone.id).value == b end), true,
     "TONE3000 holds the second preset once the playhead is past its point")
 end)
+
+-- The search of TONE3000's library, against a mock of its API.
+assert(loadfile("extensions/plugstate/tests_tone3000.lua"))(T)
