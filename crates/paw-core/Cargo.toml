@@ -29,3 +29,8 @@ realfft = "3.5"
 rustls.workspace = true
 # The self-signed certificate an instance listening on the network shows.
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+
+[build-dependencies]
+# Compiles the Lua runtime to bytecode (build.rs), with the LuaJIT the
+# program runs it on.
+mlua = { version = "0.12", features = ["luajit", "vendored"] }
