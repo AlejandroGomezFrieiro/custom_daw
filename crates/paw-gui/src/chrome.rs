@@ -8,6 +8,7 @@ use serde_json::json;
 
 use crate::app::View;
 use crate::icons;
+use crate::live::Part;
 use crate::model::{flag, int, number, rows, text};
 use crate::theme::{T_BASE, T_CLOCK, T_MICRO, T_SMALL, T_TITLE, alpha, mix, mode_colour, mono, mono_medium, sans, semi, th};
 use crate::widgets::{self, Look};
@@ -80,9 +81,9 @@ impl View {
         // Where the playhead is: bars and beats, then minutes and seconds.
         let clock = row(x, 168.0);
         ui.painter().rect_filled(clock, CornerRadius::same(4), t.well);
-        let (time, colour) = if counting > 0 { (format!("count {counting}"), t.rec) } else { (text(&self.s.tick["time"]), t.text) };
-        ui.painter().text(pos2(clock.left() + 10.0, clock.center().y), Align2::LEFT_CENTER, time, mono_medium(T_CLOCK), colour);
-        ui.painter().text(pos2(clock.right() - 10.0, clock.center().y), Align2::RIGHT_CENTER, text(&self.s.tick["clock"]), mono(T_SMALL), t.text_3);
+        let part = self.live.begin(ui.painter(), Part::Clock { rect: clock });
+        self.clock(ui.painter(), clock);
+        self.live.end(ui.painter(), part);
         x = clock.right() + 8.0;
         // Tempo: the wheel changes it, or a drag up and down; a double click types it.
         let tempo = row(x, 64.0);
@@ -175,11 +176,10 @@ impl View {
             let opts = json!({ "remote": !self.ours, "listening": self.listening });
             self.open_menu("engine", json!([opts]), engine.left_bottom());
         }
-        let cpu = number(&self.s.tick["cpu"]).clamp(0.0, 1.0);
         let meter = Rect::from_min_size(pos2(engine.right() - 6.0 - 40.0, engine.center().y - 2.0), vec2(40.0, 4.0));
-        ui.painter().rect_filled(meter, CornerRadius::same(2), t.well);
-        let load = if cpu > 0.9 { t.error } else if cpu > 0.7 { t.warn } else { t.text_3 };
-        ui.painter().rect_filled(Rect::from_min_size(meter.min, vec2(40.0 * cpu, 4.0)), CornerRadius::same(2), load);
+        let part = self.live.begin(ui.painter(), Part::Load { rect: meter });
+        self.load(ui.painter(), meter);
+        self.live.end(ui.painter(), part);
         let (said, colour) = match &self.note {
             Some((message, error, _)) => (message.clone(), if *error { t.error } else { t.text_3 }),
             None => (text(&self.s.project["engine"]), t.text_3),
@@ -187,6 +187,25 @@ impl View {
         let room = engine.width() - 6.0 - 40.0 - 8.0;
         let shown = widgets::elide(ui, &said, sans(T_SMALL), room);
         ui.painter().text(pos2(meter.left() - 8.0, engine.center().y), Align2::RIGHT_CENTER, shown, sans(T_SMALL), colour);
+    }
+
+    /// The clock's words: where the playhead is, in bars and beats and in
+    /// minutes and seconds; while counting in, the beats left.
+    pub fn clock(&self, painter: &egui::Painter, clock: Rect) {
+        let t = th();
+        let counting = int(&self.s.tick["counting"]);
+        let (time, colour) = if counting > 0 { (format!("count {counting}"), t.rec) } else { (text(&self.s.tick["time"]), t.text) };
+        painter.text(pos2(clock.left() + 10.0, clock.center().y), Align2::LEFT_CENTER, time, mono_medium(T_CLOCK), colour);
+        painter.text(pos2(clock.right() - 10.0, clock.center().y), Align2::RIGHT_CENTER, text(&self.s.tick["clock"]), mono(T_SMALL), t.text_3);
+    }
+
+    /// How hard the engine works, as a bar filled from the left.
+    pub fn load(&self, painter: &egui::Painter, meter: Rect) {
+        let t = th();
+        let cpu = number(&self.s.tick["cpu"]).clamp(0.0, 1.0);
+        painter.rect_filled(meter, CornerRadius::same(2), t.well);
+        let load = if cpu > 0.9 { t.error } else if cpu > 0.7 { t.warn } else { t.text_3 };
+        painter.rect_filled(Rect::from_min_size(meter.min, vec2(40.0 * cpu, 4.0)), CornerRadius::same(2), load);
     }
 
     fn acts_seek(&self, beat: f32) {

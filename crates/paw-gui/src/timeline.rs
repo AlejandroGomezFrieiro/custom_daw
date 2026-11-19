@@ -68,14 +68,12 @@ fn beats(props: &Value, key: &str) -> Vec<f32> {
 
 /// Paint a role of the arrange view over `rect` (points), a cell being
 /// `cell` points; false for one of other views.
-pub fn paint(ui: &Ui, painter: &Painter, node: &Node, role: &str, props: &Value, rect: Rect, cell: (f32, f32), live: &Value) -> bool {
+pub fn paint(ui: &Ui, painter: &Painter, role: &str, props: &Value, rect: Rect, cell: (f32, f32)) -> bool {
     match role {
         "clip" => clip(ui, painter, props, rect, cell),
         "beats" => ground(painter, props, rect, cell),
-        "hmeter" => hmeter(ui, painter, props, node.bind.as_deref(), live, rect),
         "curve" => curve(painter, props, rect, cell),
         "trackhead" => trackhead(ui, painter, props, rect),
-        "recording" => recording(painter, props, node.bind.as_deref(), live, rect, cell),
         _ => return false,
     }
     true
@@ -233,7 +231,7 @@ fn trackhead(ui: &Ui, painter: &Painter, props: &Value, rect: Rect) {
 
 /// A take being recorded: a red box from where it began to the playhead,
 /// as far as the punch-out, growing with the live values.
-fn recording(painter: &Painter, props: &Value, bind: Option<&str>, live: &Value, rect: Rect, (cw, _): (f32, f32)) {
+pub fn recording(painter: &Painter, props: &Value, bind: Option<&str>, live: &Value, rect: Rect, (cw, _): (f32, f32)) {
     let t = th();
     let start = num(props, "start");
     let at = match bind {
@@ -357,7 +355,7 @@ fn curve(painter: &Painter, props: &Value, rect: Rect, (cw, _): (f32, f32)) {
 /// A level across a row: a well lit from the left in the meter colours by
 /// how far it reaches on the fader's scale, both sides a half each, the
 /// loudest of late a line; with `at`, a fader's cap where the volume stands.
-fn hmeter(ui: &Ui, painter: &Painter, props: &Value, bind: Option<&str>, live: &Value, rect: Rect) {
+pub fn hmeter(painter: &Painter, props: &Value, bind: Option<&str>, live: &Value, rect: Rect, under: bool) {
     let t = th();
     let track = bind.and_then(|b| b.strip_prefix("meter:"));
     let levels = track.map(|id| &live["meters"][id]).filter(|v| v.is_array()).unwrap_or(&props["levels"]);
@@ -397,7 +395,6 @@ fn hmeter(ui: &Ui, painter: &Painter, props: &Value, bind: Option<&str>, live: &
     }
     if props.get("at").is_some_and(Value::is_number) {
         let x = well.left() + well.width() * num(props, "at").clamp(0.0, 1.0);
-        let under = ui.rect_contains_pointer(rect);
         let cap = Rect::from_center_size(pos2(x, rect.center().y), vec2(5.0, (rect.height() - 2.0).max(6.0)));
         painter.rect_filled(cap, CornerRadius::same(1), if under { t.bright } else { t.thumb });
     }

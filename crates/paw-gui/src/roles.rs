@@ -197,7 +197,9 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: 
             painter.hline(middle.min(at)..=middle.max(at), y, Stroke::new(2.0, t.select));
             painter.circle_filled(pos2(at, y), (rect.height() * 0.28).clamp(3.0, 6.0), if under { t.bright } else { t.thumb });
         }
-        "param" => param(painter, rect, props, node.bind.as_deref(), live, cell, under),
+        "param" | "playhead" | "meter" | "peak" | "hmeter" | "recording" => {
+            paint_live(painter, node, rect, cell, live, under);
+        }
         "power" => {
             // A power button, lit while the device plays.
             let on = props["on"] == true;
@@ -217,22 +219,8 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: 
         }
         "note" => note(ui, painter, rect, props, under),
         "keyboard" => keyboard(painter, rect, props, row),
-        "playhead" => playhead(painter, rect, props, node.bind.as_deref(), live, cell),
         "scrollbar" => scrollbar(painter, rect, props, under),
         "fader" => fader(painter, rect, props, under, row),
-        "meter" => meter(painter, rect, props, node.bind.as_deref(), live),
-        "peak" => {
-            // The loudest of late in a well, which turns red with the clip
-            // light.
-            let (hold, clipped) = held(props, node.bind.as_deref(), live);
-            let db = 20.0 * hold.max(1e-6).log10();
-            let said = crate::model::decibels(db);
-            let well = rect.shrink2(vec2(0.0, 1.0));
-            painter.rect_filled(well, CornerRadius::same(2), if clipped { alpha(t.meter_clip, 0.25) } else if under { t.control_hover } else { t.well });
-            let colour = if clipped { t.meter_clip } else if db > -0.1 { t.meter_hot } else { t.text_2 };
-            let size = (rect.height() * 0.7).clamp(8.0, T_SMALL + 1.0);
-            painter.text(well.right_center() - vec2(3.0, 0.0), Align2::RIGHT_CENTER, said, mono_medium(size), colour);
-        }
         "chip" => {
             let colour = props["color"].as_str().and_then(hex).unwrap_or(t.control);
             painter.rect_filled(rect, CornerRadius::ZERO, colour);
@@ -250,7 +238,39 @@ pub fn paint(ui: &Ui, painter: &Painter, id: Id, node: &Node, rect: Rect, cell: 
             }
         }
         // The arrange view's (crate::timeline).
-        other => return crate::timeline::paint(ui, painter, node, other, props, rect, cell, live),
+        other => return crate::timeline::paint(ui, painter, other, props, rect, cell),
+    }
+    true
+}
+
+/// Paint a role that the live values can move (`bind`): the playhead, a
+/// meter, a peak, a parameter, a level across a row, a take being
+/// recorded. It needs no `Ui`: the window paints these again by themselves
+/// while only the live values change (crate::runner). False for another
+/// role.
+pub fn paint_live(painter: &Painter, node: &Node, rect: Rect, cell: (f32, f32), live: &Value, under: bool) -> bool {
+    let Kind::Role { role, props } = &node.kind else { return false };
+    let t = th();
+    let bind = node.bind.as_deref();
+    match role.as_str() {
+        "param" => param(painter, rect, props, bind, live, cell, under),
+        "playhead" => playhead(painter, rect, props, bind, live, cell),
+        "meter" => meter(painter, rect, props, bind, live),
+        "peak" => {
+            // The loudest of late in a well, which turns red with the clip
+            // light.
+            let (hold, clipped) = held(props, bind, live);
+            let db = 20.0 * hold.max(1e-6).log10();
+            let said = crate::model::decibels(db);
+            let well = rect.shrink2(vec2(0.0, 1.0));
+            painter.rect_filled(well, CornerRadius::same(2), if clipped { alpha(t.meter_clip, 0.25) } else if under { t.control_hover } else { t.well });
+            let colour = if clipped { t.meter_clip } else if db > -0.1 { t.meter_hot } else { t.text_2 };
+            let size = (rect.height() * 0.7).clamp(8.0, T_SMALL + 1.0);
+            painter.text(well.right_center() - vec2(3.0, 0.0), Align2::RIGHT_CENTER, said, mono_medium(size), colour);
+        }
+        "hmeter" => crate::timeline::hmeter(painter, props, bind, live, rect, under),
+        "recording" => crate::timeline::recording(painter, props, bind, live, rect, cell),
+        _ => return false,
     }
     true
 }
@@ -359,6 +379,23 @@ fn playhead(painter: &Painter, rect: Rect, props: &Value, bind: Option<&str>, li
         _ => props["at"].as_f64(),
     };
     let Some(at) = at else { return };
+    // Along pieces of time (notation's systems, spaced by their notes):
+    // `[from, to, x0, x1, top, bottom]` each, in points from the corner.
+    if let Some(pieces) = props["segments"].as_array() {
+        let last = pieces.len().saturating_sub(1);
+        for (i, piece) in pieces.iter().enumerate() {
+            let n = |k: usize| piece[k].as_f64().unwrap_or(0.0);
+            let (from, to) = (n(0), n(1));
+            if at >= from && (at < to || (i == last && at <= to)) {
+                let x = rect.left() + (n(2) + (n(3) - n(2)) * (at - from) / (to - from).max(1e-9)) as f32;
+                let (top, bottom) = (rect.top() + n(4) as f32, rect.top() + n(5) as f32);
+                let line = Rect::from_min_max(pos2(x.round() - 1.0, top.round()), pos2(x.round() + 1.0, bottom.round()));
+                painter.rect_filled(line, CornerRadius::ZERO, t.play);
+                return;
+            }
+        }
+        return;
+    }
     let (lo, hi) = (props["lo"].as_f64().unwrap_or(f64::MIN), props["hi"].as_f64().unwrap_or(f64::MAX));
     if at < lo || at > hi {
         return;

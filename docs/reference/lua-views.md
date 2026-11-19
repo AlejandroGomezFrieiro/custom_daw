@@ -48,6 +48,8 @@ lists the fields for the graphical window (`title`, `window`, `paint`,
 | `live_values()` | values of its own for the live messages, by name (see [Roles](#roles)) |
 | `moving(self)` | true while the view also shows something else that moves (see [Roles](#roles)) |
 | `redraw_every` | the milliseconds between two scenes of a view that moves while the song plays |
+| `scene_key(self)` | a string that says what the drawing of the view in a window shows, without the live values (see [Roles](#roles)) |
+| `scene_roles` | the roles that a window must paint for `scene_key` (see [Roles](#roles)) |
 | `title_of(self)` | the title of its pane in the graphical window, for what the view shows now |
 | `window_state` | the names of the fields of the view that each window has for itself (see [A state for each window](#a-state-for-each-window)) |
 | `window_fresh` | the fields of `window_state` that a new window starts without, for example caches |
@@ -194,6 +196,17 @@ The widget roles:
   moves, such as the gain reduction of a compressor. Then the window gets
   new scenes while the song plays. `view.redraw_every` is the time between
   them, in milliseconds (30 by default; the device panel has 100).
+- `view:scene_key()` returns a string that says what the drawing of the
+  view in a window shows, other than what the live values move. While
+  the song plays, the window gets a new scene of the view only when the
+  key changes. Notation gives the system of the playhead, and the session
+  view gives the cells that the slots that play fill. `view.scene_roles`
+  names the roles that the window must paint, for example `{ "playhead" }`.
+- A view that paints (`view:paint`) can put roles over its picture: when
+  the context of the paint has `marks`, the view adds
+  `{ role, x, y, w, h, props }` to it, in pixels. Notation puts its
+  playhead there, bound to `position`, with `segments`: the pieces of
+  its systems as `{ from, to, x0, x1, top, bottom }`, in beats and pixels.
 - A view whose title row has buttons of its own has `titled = true`. A
   window then gives it no title of its own.
 - A `button` with `menu` opens a menu (it shows a caret).

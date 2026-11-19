@@ -734,6 +734,7 @@ function M.paint(name, width, height, opts)
   local ok, err = xpcall(view.paint, debug.traceback, view, g, {
     width = width, height = height, focused = paw.ui.focused == name,
     cell = opts.surface and opts.cell or M.cell, surface = opts.surface or false, fg = colors.fg, bg = colors.bg,
+    marks = opts.marks,
   })
   if not ok then
     -- Show the failure where the view would have been.

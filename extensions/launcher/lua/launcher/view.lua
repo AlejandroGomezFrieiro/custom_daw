@@ -79,6 +79,25 @@ local function status_text(s)
   return "timeline" .. queued, "TrackIndex"
 end
 
+--- What the drawing in a window shows of what plays, as a key (see
+--- `paw.scene`): the cells each slot that plays is filled to, and what the
+--- last row says. While it stays the same, the window gets no new scene of
+--- the view as the song plays.
+function view:scene_key()
+  local geo = self.geometry
+  if not geo then return nil end
+  local state = launcher.state()
+  local parts = { tostring(launcher.capturing), tostring(launcher.recording ~= nil) }
+  for _, c in ipairs(geo.columns) do
+    local s = state[c.id]
+    if s then
+      local filled = s.length and s.length > 0 and math.floor(util.clamp((s.phase or 0) / s.length, 0, 1) * (geo.cw - 1) + 0.5) or 0
+      parts[#parts + 1] = table.concat({ c.id, tostring(s.slot), tostring(s.queued), filled, (status_text(s)) }, "/")
+    end
+  end
+  return table.concat(parts, ";")
+end
+
 function view:render(buf, ctx)
   local g = draw.g
   -- A VCA has no clips to launch.

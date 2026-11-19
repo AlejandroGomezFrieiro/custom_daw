@@ -1355,6 +1355,31 @@ test("notation page: the selection, suggestions, diagnostics and the playhead ar
   eq(play[1] and play[1][4], 2, "a 2 px playhead")
 end)
 
+test("notation in a window: the playhead is a mark the live values move, and the scene stays while it stays in its system", function()
+  local view = song({ N(60, 0, 1), N(62, 1, 1), N(64, 2, 1), N(65, 3, 1) }, 8)
+  paw.ui.focus("notation")
+  api.transport_seek(1.5)
+  local marks = {}
+  local d = paw.canvas.paint("notation", 1053, 800, { glyphs = true, cell = { w = 13, h = 27 }, marks = marks })
+  local without = paw.canvas.paint("notation", 1053, 800, { glyphs = true, cell = { w = 13, h = 27 } })
+  eq(#layer_ops(without, "playhead") - #layer_ops(d, "playhead"), 1, "not in the page")
+  local mark = marks[1]
+  eq(mark and mark.role .. " " .. mark.props.bind, "playhead position", "a mark, bound to the position")
+  -- Where the window puts it at beat 1.5 is where the page draws it.
+  local x
+  for _, s in ipairs(mark.props.segments) do
+    if 1.5 >= s[1] and 1.5 < s[2] then x = s[3] + (s[4] - s[3]) * (1.5 - s[1]) / (s[2] - s[1]) end
+  end
+  local drawn = layer_ops(without, "playhead")[1]
+  T.near(x - 1, drawn[2], 1, "at the x of the page's playhead")
+  -- Its key stays while the playhead stays in its system.
+  api.transport_play()
+  local key = view:scene_key()
+  api.transport_seek(2.5)
+  eq(view:scene_key(), key, "the same system: the same scene")
+  api.transport_stop()
+end)
+
 test("notation page: a cursor move draws the page from what was engraved; an edit engraves only the measures it changed", function()
   local view, clip = song({ N(60, 0, 1), N(62, 4, 1), N(64, 8, 1), N(65, 12, 1) }, 16)
   paw.ui.focus("notation")

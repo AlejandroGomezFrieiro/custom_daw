@@ -434,6 +434,52 @@ local function draw_playhead(g, eng, layout, F, area)
   g.ops[#g.ops + 1] = { "r", round(x + dx - 1), round(top + dy), 2, round(bottom - top), c.play, "", 1, 0 }
 end
 
+--- The playhead as a mark that a window paints and moves by the live
+--- values, with no new scene (`ctx.marks`): over the whole paint, in
+--- `segments` (`{ from, to, x0, x1, top, bottom }`, the song's beats and
+--- pixels), one for each stretch between two slots of a measure that
+--- shows, so that it goes as `draw_playhead` puts it.
+local function playhead_mark(eng, layout, F, area, w, h)
+  local st = eng.style
+  local dy = area.top - gui.scroll
+  local dx = view.galley and -gui.hscroll or 0
+  local segments = {}
+  for _, sys in ipairs(eng.systems) do
+    local top = max(area.top, engrave.y_of(st, sys, 1, 8) - 2 * st.sp + dy)
+    local bottom = min(area.bottom, engrave.y_of(st, sys, #layout.staves, 0) + 2 * st.sp + dy)
+    if bottom > top then
+      for _, placed in ipairs(sys.measures) do
+        local m = placed.m
+        local points = { { m.start, placed.x + model.x_of(placed.p, m.start) } }
+        for _, slot in ipairs(placed.p.slots) do
+          if slot.t > m.start + EPS and slot.t < m.start + m.length - EPS then points[#points + 1] = { slot.t, placed.x + slot.x } end
+        end
+        points[#points + 1] = { m.start + m.length, placed.x + model.x_of(placed.p, m.start + m.length) }
+        for i = 1, #points - 1 do
+          local a, b = points[i], points[i + 1]
+          if b[1] > a[1] + EPS then
+            segments[#segments + 1] = { F.start + a[1], F.start + b[1], a[2] + dx, b[2] + dx, top, bottom }
+          end
+        end
+      end
+    end
+  end
+  return { role = "playhead", x = 0, y = 0, w = w, h = h, props = { segments = segments, bind = "position" } }
+end
+
+--- What the drawing in a window shows but the playhead, as a key: while
+--- the song plays, the system that the playhead is in (the page follows
+--- it), and in the galley where it is (the galley scrolls with it). Other
+--- changes draw the view again by themselves.
+function view:scene_key()
+  local eng = gui.engraved
+  if not eng then return nil end
+  local t = api.transport_get()
+  local sys = at_beat(eng, self:follow_beat())
+  return table.concat({ tostring(t.playing), sys and sys.y or -1, view.galley and t.playing and t.position or 0, gui.scroll, gui.hscroll }, ":")
+end
+view.scene_roles = { "playhead" }
+
 -- Painting ---------------------------------------------------------------------------------------
 
 local VALUE_BUTTONS = { 4, 2, 1, 0.5, 0.25, 0.125 }
@@ -659,7 +705,11 @@ function view:paint(g, ctx)
     g:rect(x0, y0, abs(b.x1 - b.x0), abs(b.y1 - b.y0), { fill = alpha(st.accent, 0.12), stroke = st.accent, width = 1 })
   end
   g:layer("playhead")
-  draw_playhead(g, eng, layout, F, area)
+  if ctx.marks then
+    ctx.marks[#ctx.marks + 1] = playhead_mark(eng, layout, F, area, w, h)
+  else
+    draw_playhead(g, eng, layout, F, area)
+  end
   -- A popover is drawn under the caret's system, so that the staff and what
   -- it previews stay in sight (at the foot of the page when the system
   -- reaches it); `paint` takes the line its box ends on.

@@ -823,3 +823,54 @@ fn a_press_in_a_pane_the_kernel_draws_goes_back_in_cells() {
     assert_eq!(input[0], "2");
     assert!((num(&input[1]["x"]) - 3.5).abs() < 0.01 && (num(&input[1]["y"]) - 2.5).abs() < 0.01, "{input:?}");
 }
+
+/// The shapes of a frame, the live parts' markers left out, as `damage`
+/// compares them.
+fn same_frame(a: &[egui::epaint::ClippedShape], b: &[egui::epaint::ClippedShape]) -> Result<(), String> {
+    let real = |s: &&egui::epaint::ClippedShape| crate::live::marker(s).is_none();
+    let (a, b): (Vec<_>, Vec<_>) = (a.iter().filter(real).collect(), b.iter().filter(real).collect());
+    if a.len() != b.len() {
+        return Err(format!("{} shapes and {}", a.len(), b.len()));
+    }
+    match a.iter().zip(&b).position(|(x, y)| !crate::damage::same(x, y)) {
+        Some(i) => Err(format!("shape {i}: {:?} and {:?}", a[i].shape, b[i].shape)),
+        None => Ok(()),
+    }
+}
+
+#[test]
+fn a_frame_made_from_the_live_values_is_the_frame_a_pass_makes() {
+    let (mut h, _, patches) = arrange_window();
+    patches.borrow_mut().push(json!({ "scene.live": { "meters": { "1": [0.2, 0.1] }, "peaks": { "1": 0.3 } } }));
+    h.run_steps(2);
+    let before = h.output().shapes.clone();
+    assert!(crate::live::ranges(&before).len() >= 3, "the level, the clock and the load are live parts");
+    // The level moves: its part is painted again, with no pass.
+    patches.borrow_mut().push(json!({ "scene.live": { "meters": { "1": [1.0, 0.5] }, "peaks": { "1": 1.0 } } }));
+    let ctx = h.ctx.clone();
+    let parts = h.state_mut().replay(&ctx, &egui::RawInput::default()).expect("only the live values changed");
+    let made = crate::live::splice(&before, &parts);
+    assert!(same_frame(&made, &before).is_err(), "the level moved");
+    h.run_steps(1);
+    same_frame(&made, &h.output().shapes).expect("as a pass draws it");
+    // Input, or a new scene, needs a pass.
+    let mut raw = egui::RawInput::default();
+    raw.events.push(Event::PointerMoved(pos2(10.0, 10.0)));
+    assert!(h.state_mut().replay(&ctx, &raw).is_none(), "the pointer moved");
+    patches.borrow_mut().push(serde_json::to_value(arrange_scene()).unwrap());
+    assert!(h.state_mut().replay(&ctx, &egui::RawInput::default()).is_none(), "a new scene");
+}
+
+#[test]
+fn a_state_new_in_the_live_values_alone_needs_no_pass() {
+    let tick = json!({ "position": 1.0, "time": "1.1.00", "clock": "0:00.0", "cpu": 0.1, "playing": true, "modal": { "mode": "n" } });
+    let mut moved = tick.clone();
+    (moved["position"], moved["time"], moved["cpu"]) = (json!(1.5), json!("1.2.00"), json!(0.2));
+    assert!(crate::live::only_live(&moved, &tick));
+    let mut stopped = moved.clone();
+    stopped["playing"] = json!(false);
+    assert!(!crate::live::only_live(&stopped, &tick), "playing changed");
+    stopped = moved.clone();
+    stopped["modal"]["mode"] = json!("i");
+    assert!(!crate::live::only_live(&stopped, &tick), "the mode changed");
+}

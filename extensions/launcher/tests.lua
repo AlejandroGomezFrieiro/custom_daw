@@ -599,3 +599,27 @@ test("launcher: while the song plays, the session view is drawn again as a live 
   for row = 1, H do eq(moved.cells[row], whole.cells[row], "row " .. row .. ":\n" .. moved.text[row] .. "\n" .. whole.text[row]) end
   paw.ui.hide("session")
 end)
+
+test("launcher: in a window, the session view's scene is drawn again only when what plays fills another cell", function()
+  start()
+  local t = synth("Lead", 0, 60, 2)
+  paw.ui.show("session")
+  paw.cursor.set_track(t.id)
+  api.ui_snapshot(120, 36)
+  local view = paw.ui.views.session
+  launcher.launch(t.id, 0, { quantize = "off" })
+  until_(function() return state(t.id).slot == 0 end, 5000, "the clip to start")
+  -- Its key (`paw.scene`) says what the window shows of what plays: it
+  -- stays while the slot fills no new cell, as the song plays.
+  local samples, changes, last = 0, 0, nil
+  until_(function()
+    local key = view:scene_key()
+    samples = samples + 1
+    if key ~= last then changes, last = changes + 1, key end
+    return changes >= 3
+  end, 8000, "the slot to fill three cells")
+  eq(type(last), "string", "a key")
+  eq(changes < samples / 2, true, "the same key for many ticks: " .. changes .. " changes in " .. samples)
+  paw.transport.stop()
+  paw.ui.hide("session")
+end)

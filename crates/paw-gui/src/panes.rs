@@ -114,9 +114,9 @@ impl View {
     /// with the keyboard, and the tabs.
     pub fn draw_kernel_panes(&mut self, ui: &mut Ui, area: Rect, state: &Value) {
         let t = th();
-        let all = rows(&state["panes"]).to_vec();
+        let all = rows(&state["panes"]);
         let (_, cell_h) = self.scenes.cell();
-        for pane in &all {
+        for pane in all {
             let kind = pane["kind"].as_str().unwrap_or("");
             if kind == "native" {
                 continue;
