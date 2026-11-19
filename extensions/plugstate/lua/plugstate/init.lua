@@ -304,4 +304,46 @@ function M.forget(id, name)
   return snap
 end
 
+-- --- state lanes -------------------------------------------------------------
+-- A choice of a slot or a snapshot as a state of the device's state lane
+-- (a core lane: `paw.Device:automate_state`), so that it changes at a point
+-- of the song. The lane keeps what the adapter gives: an LV2 property set
+-- lands on the point's frame; a saved state is loaded there.
+
+--- A slot set to `value` as a state lane takes it: `{ name, call }` or
+--- `{ name, state, params }`. Nothing changes in the device. Nil and why
+--- when no adapter knows the device or the value.
+function M.lane_state(id, slot_key, value)
+  local a, d = M.adapter_of(id)
+  if not a then return nil, "no adapter knows this device" end
+  local slot = M.slot(id, slot_key)
+  if not slot then return nil, "the device has no " .. (slot_key or "file") .. " to set" end
+  if type(value) == "string" and slot.kind ~= "text" then
+    value = value:gsub("^~", os.getenv("HOME") or "~")
+  end
+  local ok, spec = pcall(a.load, id, d, slot, value)
+  if not ok then return nil, (tostring(spec):gsub("^.-:%d+: ", "")) end
+  local name = spec.name or (a.name_of and type(value) == "string" and a.name_of(value))
+    or (type(value) == "string" and stem(value)) or tostring(value)
+  local state = { name = name, call = spec.call, state = spec.state, params = spec.params }
+  if state.state and not state.params then state.params = d.params end
+  return state
+end
+
+--- A snapshot of the device as a state lane takes it.
+function M.lane_snapshot(id, name)
+  local snap = find_snapshot((data_of(id)), name)
+  if not snap then return nil, "no snapshot `" .. name .. "`" end
+  return { name = snap.name, state = snap.state, params = snap.params or {} }
+end
+
+--- Give the device a state (from `lane_state` or `lane_snapshot`) from
+--- `beat` on, on its state lane, made if it has none. One undo step.
+function M.lane_point(id, beat, state)
+  local lane = paw.device(id):automate_state()
+  local index = lane:add_state(state)
+  lane:add(beat, index)
+  return lane, index
+end
+
 return M

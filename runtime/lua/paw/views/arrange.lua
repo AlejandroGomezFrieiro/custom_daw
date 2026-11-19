@@ -651,13 +651,31 @@ function view:draw_lane_row(headers, timeline, row, lines)
   if l.target == "volume" then lo, hi = -60, 6 end
   local function level(v) return hi ~= lo and util.clamp((v - lo) / (hi - lo), 0, 1) or 0.5 end
   local points = {}
-  for i, p in ipairs(api.lane_points(l.id)) do points[i] = { p[1], level(p[2]) } end
-  curve(timeline, 0, y, tw, 2, l.point_count > 0 and function(i)
-    return level(api.lane_value_at(l.id, scroll + (i + 0.5) / (zoom * 2)))
-  end or nil, {
-    points = points, style = l.enabled and "Automation" or "Faint", from = scroll, per = zoom,
-    color = draw.track_colour(api.track_get(row.id), row.index), enabled = l.enabled,
-  })
+  if l.target == "state" then
+    -- No curve: each point's state, by name, up to the next point.
+    local list = api.lane_points(l.id)
+    for i, p in ipairs(list) do points[i] = { p[1], 1 } end
+    curve(timeline, 0, y, tw, 2, nil, {
+      points = points, style = l.enabled and "Automation" or "Faint", from = scroll, per = zoom,
+      color = draw.track_colour(api.track_get(row.id), row.index), enabled = l.enabled,
+    })
+    for i, p in ipairs(list) do
+      local x0 = math.max(0, math.floor((p[1] - scroll) * zoom + 0.5))
+      local x1 = list[i + 1] and math.floor((list[i + 1][1] - scroll) * zoom + 0.5) or tw
+      x1 = math.min(tw, x1)
+      if x1 - x0 >= 2 then
+        timeline:text(x0, y + 1, util.fit(paw.lanes.format(l, p[2]), x1 - x0 - 1), l.enabled and "Automation" or "Faint")
+      end
+    end
+  else
+    for i, p in ipairs(api.lane_points(l.id)) do points[i] = { p[1], level(p[2]) } end
+    curve(timeline, 0, y, tw, 2, l.point_count > 0 and function(i)
+      return level(api.lane_value_at(l.id, scroll + (i + 0.5) / (zoom * 2)))
+    end or nil, {
+      points = points, style = l.enabled and "Automation" or "Faint", from = scroll, per = zoom,
+      color = draw.track_colour(api.track_get(row.id), row.index), enabled = l.enabled,
+    })
+  end
   if not on then return end
   -- A selection on this lane: the stretch of time chosen.
   local selection = paw.keymap.selection()

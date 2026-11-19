@@ -737,6 +737,7 @@ pub fn diff(a: &Project, b: &Project) -> Value {
         crate::model::Target::Volume => "volume".to_string(),
         crate::model::Target::Pan => "pan".to_string(),
         crate::model::Target::Param { param, .. } => param.clone(),
+        crate::model::Target::State { .. } => "state".to_string(),
     };
     for (id, (track, lane)) in sorted(&lanes_b) {
         match lanes_a.get(&id) {
@@ -752,6 +753,7 @@ pub fn diff(a: &Project, b: &Project) -> Value {
                 if !Arc::ptr_eq(prev, lane)
                     && (prev.points != lane.points
                         || prev.shapes != lane.shapes
+                        || prev.states != lane.states
                         || prev.enabled != lane.enabled
                         || prev.target != lane.target) =>
             {

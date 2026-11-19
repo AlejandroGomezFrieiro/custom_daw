@@ -17,7 +17,7 @@ use paw_engine::{
     AudioData, AudioRegion, AutoLane, AutoTarget, Automation, ClipSet, Controller, Delay, Part, PartEdit,
     DiskStore, MASTER,
     KeyRt, MAX_BLOCK, MAX_DELAY, MAX_DEVICES, MAX_TRACKS, MidiEv, Msg, NO_SLOT, OutRt, ParamInfo,
-    Registry, SchedEntry, Schedule, SendRt, Slot, TrackRt, db_to_gain,
+    Registry, SchedEntry, Schedule, SendRt, Slot, StateChange, StateLane, TrackRt, db_to_gain,
 };
 use serde_json::{Value, json};
 
@@ -129,6 +129,11 @@ pub struct Mapper {
     /// Each track's MIDI clips off the timeline as engine events, so that
     /// a change of one compiles only that one.
     cue_events: HashMap<Id, HashMap<Id, (Arc<Clip>, Arc<[MidiEv]>)>>,
+    /// For each state lane the engine has, by the lane's id: which of its
+    /// states need the main thread (a whole saved state, or a request the
+    /// device could not prepare for its audio side). The session loads
+    /// those as the song plays, and a render stops on their points.
+    pub state_main: HashMap<Id, Vec<bool>>,
 }
 
 impl Default for Mapper {
@@ -165,6 +170,7 @@ impl Mapper {
             played: HashMap::new(),
             cue_rows: HashMap::new(),
             cue_events: HashMap::new(),
+            state_main: HashMap::new(),
         }
     }
 
@@ -1980,7 +1986,12 @@ pub fn is_active(lane: &Lane) -> bool {
     lane.enabled && !lane.points.is_empty()
 }
 
-fn build_automation(track: &Track, project: &Project, map: &Mapper, ctx: &SyncCtx) -> Automation {
+fn build_automation(
+    track: &Track,
+    project: &Project,
+    map: &mut Mapper,
+    ctx: &mut SyncCtx,
+) -> Automation {
     let mut set = Automation::default();
     // A track whose automation is off keeps its lanes and plays none.
     let on = track.automation != crate::model::AutoMode::Off;
@@ -1988,9 +1999,18 @@ fn build_automation(track: &Track, project: &Project, map: &Mapper, ctx: &SyncCt
     if let Some(points) = &vca {
         set.lanes.push(AutoLane::new(AutoTarget::Volume, points.clone()));
     }
+    for lane in &track.lanes {
+        map.state_main.remove(&lane.id);
+    }
     for lane in track.lanes.iter().filter(|l| on && is_active(l)) {
         let mut range = None;
         let target = match &lane.target {
+            Target::State { device } => {
+                if let Some(state) = state_lane(lane, *device, map, ctx) {
+                    set.states.push(state);
+                }
+                continue;
+            }
             // The fader's lane is already there when VCAs are involved.
             Target::Volume if vca.is_some() => continue,
             Target::Volume => AutoTarget::Volume,
@@ -2022,6 +2042,62 @@ fn build_automation(track: &Track, project: &Project, map: &Mapper, ctx: &SyncCt
         set.lanes.push(AutoLane::new(target, points));
     }
     set
+}
+
+/// A state lane as the engine plays it: what each state does on the audio
+/// thread (parameters, a program change, a request the device's controller
+/// prepares as a message), and in `map.state_main` which states also need
+/// the main thread.
+fn state_lane(lane: &Lane, device: Id, map: &mut Mapper, ctx: &mut SyncCtx) -> Option<StateLane> {
+    let &slot = map.devices.get(&device)?;
+    let live = ctx.live.get_mut(&device);
+    let (params, mut controller) = match live {
+        Some(live) => (live.params.clone(), live.controller.as_mut()),
+        None => (Arc::new(Vec::new()), None),
+    };
+    let mut main = Vec::with_capacity(lane.states.len());
+    let mut changes = Vec::with_capacity(lane.states.len());
+    for state in &lane.states {
+        let mut change = StateChange {
+            params: state
+                .params
+                .iter()
+                .filter_map(|(key, value)| {
+                    let index = params.iter().position(|p| &p.key == key)?;
+                    Some((index as u32, param_value(&params[index], *value) as f32))
+                })
+                .collect(),
+            program: state.program.map(|p| (p, state.bank)),
+            message: None,
+        };
+        let mut needs_main = state.state.is_some();
+        if let Some(call) = &state.call {
+            match controller
+                .as_mut()
+                .map(|c| c.prepare(&call.method, call.data.as_bytes()))
+            {
+                Some(Ok(Some(message))) => change.message = Some(message.into()),
+                Some(Err(err)) => {
+                    ctx.warnings
+                        .push(format!("state `{}` of a lane: {err:#}", state.name));
+                    needs_main = true;
+                }
+                _ => needs_main = true,
+            }
+        }
+        main.push(needs_main);
+        changes.push(change);
+    }
+    let points: Vec<(f64, u32)> = lane
+        .points
+        .iter()
+        .filter(|(_, v)| (*v as usize) < lane.states.len())
+        .map(|&(beat, v)| (beat, v as u32))
+        .collect();
+    if main.iter().any(|m| *m) {
+        map.state_main.insert(lane.id, main);
+    }
+    Some(StateLane::new(slot, points, changes))
 }
 
 /// Whether a track is a VCA: a fader, mute and solo that belong to other
@@ -2172,6 +2248,43 @@ fn release_targets(
                     .filter(|_| !is_host(&live.params, index))
                 {
                     controller.set_value(index, value);
+                }
+            }
+            // The device takes back the state the project gives it, and
+            // the parameters set in the project.
+            Target::State { device } => {
+                let Some(inst) = new.devices.iter().find(|d| d.id == *device) else {
+                    continue;
+                };
+                let (Some(&slot), Some(live)) = (map.devices.get(device), ctx.live.get_mut(device))
+                else {
+                    continue;
+                };
+                if let Some(controller) = live.controller.as_mut()
+                    && let Some(state) = &inst.state
+                    && let Ok(bytes) = BASE64.decode(state)
+                    && let Err(err) = controller.load_state(&bytes)
+                {
+                    ctx.warnings
+                        .push(format!("could not give a device its state back: {err:#}"));
+                }
+                for (index, param) in live.params.iter().enumerate() {
+                    let Some(&value) = inst.params.get(&param.key) else {
+                        continue;
+                    };
+                    let value = param_value(param, value);
+                    send(Msg::SetParam {
+                        device: slot,
+                        param: index as u32,
+                        value: value as f32,
+                    });
+                    if let Some(controller) = live
+                        .controller
+                        .as_mut()
+                        .filter(|_| !is_host(&live.params, index))
+                    {
+                        controller.set_value(index, value);
+                    }
                 }
             }
         }

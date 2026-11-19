@@ -580,6 +580,17 @@ function paw.Clip:track() end
 ---@param param any
 function paw.Device:automate(param) end
 
+--- The device's state lane, made if there is none yet: a lane whose points
+--- each give the device one of the lane's states, from that point on.
+---   local lane = amp:automate_state()
+---   lane:set_state(16, lane:add_state(amp:capture("crunch")))
+function paw.Device:automate_state() end
+
+--- The device's whole state now, as a state lane takes it: `{ name, state,
+--- params }`. The plugin's saved state, and the parameters set in the project.
+---@param name any
+function paw.Device:capture(name) end
+
 --- Close the plugin's own window.
 function paw.Device:close_editor() end
 
@@ -652,6 +663,9 @@ function paw.Device:set_sidechain(track, opts) end
 --- data contains its state, which holds more than its parameters.
 function paw.Device:snapshot() end
 
+--- The device's state lane, if it has one.
+function paw.Device:state_lane() end
+
 --- The track this device is on.
 function paw.Device:track() end
 
@@ -667,6 +681,11 @@ function paw.Device:value_at(param, beat) end
 ---@param beat any
 ---@param value any
 function paw.Lane:add(beat, value) end
+
+--- Add a state to a state lane, or replace the one of its name. Returns
+--- its index, from 0: the value of a point that gives it.
+---@param state any
+function paw.Lane:add_state(state) end
 
 --- Remove every point of the lane.
 function paw.Lane:clear() end
@@ -687,6 +706,21 @@ function paw.Lane:remove() end
 --- also be written { beat = 0, value = -60 }.
 ---@param points any
 function paw.Lane:set_points(points) end
+
+--- Give the device a state of a state lane from `beat` on: a point that
+--- names the state by its name or its index.
+---   lane:set_state(16, "crunch")
+---@param beat any
+---@param which any
+function paw.Lane:set_state(beat, which) end
+
+--- The index of a state of a state lane, by its name or its index. Nil
+--- when the lane has no such state.
+---@param which any
+function paw.Lane:state_index(which) end
+
+--- The states of a state lane: `{ name, state, params, call, program, bank }` each.
+function paw.Lane:states() end
 
 --- The track the lane belongs to.
 function paw.Lane:track() end
@@ -8023,6 +8057,12 @@ function paw.api.lane_add(track, opts) end
 ---@param value number
 function paw.api.lane_add_point(id, beat, value) end
 
+--- Add a state to a state lane, or replace the one of its name, as
+--- one undo step. Returns its index, from 0.
+---@param id integer
+---@param state any
+function paw.api.lane_add_state(id, state) end
+
 ---@param id integer
 function paw.api.lane_get(id) end
 
@@ -8049,10 +8089,22 @@ function paw.api.lane_set_points(id, points) end
 ---@param shapes any
 function paw.api.lane_set_shapes(id, shapes) end
 
+--- Replace the states of a state lane, as one undo step. A point
+--- that names a state no longer there names the last.
+---@param id integer
+---@param states any
+function paw.api.lane_set_states(id, states) end
+
 --- The shapes of the stretches that are not straight, `{ beat, shape, tension }`
 --- each by the beat of the point they leave: "hold" or "smooth".
 ---@param id integer
 function paw.api.lane_shapes(id) end
+
+--- The states of a state lane, whole: `{ name, state, params, call =
+--- { method, data }, program, bank }` each. A point's value is the
+--- index of one, from 0.
+---@param id integer
+function paw.api.lane_states(id) end
 
 ---@param id integer
 ---@param beat number

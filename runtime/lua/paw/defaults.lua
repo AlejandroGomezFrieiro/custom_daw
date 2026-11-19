@@ -3407,18 +3407,34 @@ command("lane.pick", function()
   local items = { { target = "volume", name = "Volume" }, { target = "pan", name = "Pan" } }
   for _, device in ipairs(track:devices()) do
     local d = device:get()
+    items[#items + 1] = { target = "state", device = d.id, name = d.name .. " › state (presets, models, snapshots)" }
     for _, p in ipairs(d.param_info) do
       items[#items + 1] = { target = "param", device = d.id, param = p.key, name = d.name .. " › " .. p.name }
     end
+  end
+  local function key_of(item)
+    if item.target == "param" then return item.device .. ":" .. item.param end
+    if item.target == "state" then return item.device .. ":state" end
+    return item.target
+  end
+  for _, l in ipairs(api.lane_list(track.id)) do
+    if l.target == "state" then have[l.device .. ":state"] = true end
   end
   paw.pick({
     title = "Automate on " .. track.name,
     items = items,
     format = function(item)
-      local key = item.target == "param" and item.device .. ":" .. item.param or item.target
-      return (have[key] and "● " or "  ") .. item.name
+      return (have[key_of(item)] and "● " or "  ") .. item.name
     end,
     on_choose = function(item)
+      if item.target == "state" then
+        local lane = paw.device(item.device):automate_state()
+        paw.lanes.open(track)
+        cursor.set_track(track.id, lane.id)
+        paw.ui.focus("arrange")
+        paw.notify(paw.lanes.name(lane.id) .. " lane: `\\s` keeps the device's state at the cursor, `+` `-` `c` choose a state, `x` removes it")
+        return
+      end
       local lane = item.target == "param" and paw.device(item.device):automate(item.param) or track:automate(item.target)
       paw.lanes.open(track)
       cursor.set_track(track.id, lane.id)
@@ -3480,6 +3496,22 @@ command("lane.point.set", function()
   local at, point = paw.lanes.point_at(l.id, cursor.beat, reach())
   local beat = point and point[1] or cursor.beat
   local now = point and point[2] or value_now(lane)
+  if l.target == "state" then
+    if #l.states == 0 then return paw.notify("the lane has no states yet: `\\s` keeps the device's state at the cursor", "warn") end
+    local items = {}
+    for i, name in ipairs(l.states) do items[i] = { index = i - 1, name = name } end
+    return paw.pick({
+      title = paw.lanes.name(l) .. " at " .. paw.time.format(beat),
+      items = items,
+      format = function(item) return item.name end,
+      on_choose = function(item)
+        paw.lanes.edit(l.id, function(points)
+          if at then points[at][2] = item.index else points[#points + 1] = { beat, item.index } end
+        end)
+        paw.notify(string.format("%s: %s from %s", paw.lanes.name(l), item.name, paw.time.format(beat)))
+      end,
+    })
+  end
   local opts = { label = paw.lanes.name(l), now = now, min = l.min, max = l.max }
   local scale = 1
   if l.target == "volume" then
@@ -3539,7 +3571,33 @@ local function to_point(dir, n)
   end
 end
 
+command("lane.state", function(ctx)
+  local lane = cursor_lane()
+  if not lane then return end
+  local l = lane:get()
+  if l.target ~= "state" then return paw.notify("the cursor is not on a state lane: `,al` makes one for a device", "warn") end
+  local device = paw.device(l.device)
+  local name = table.concat(ctx.args, " ")
+  if name == "" then
+    local d = device:get()
+    name = (d.meta or {}).preset
+    local taken = {}
+    for _, n in ipairs(l.states) do taken[n] = true end
+    if not name or taken[name] then
+      for c in ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):gmatch(".") do
+        if not taken[c] then name = c break end
+      end
+    end
+  end
+  local ok, state = pcall(device.capture, device, name)
+  if not ok then return paw.notify((tostring(state):gsub("^.-:%d+: ", "")), "error") end
+  local index = lane:add_state(state)
+  lane:add(cursor.beat, index)
+  paw.notify(string.format("%s: %s from %s", paw.lanes.name(l), state.name, paw.time.format(cursor.beat)))
+end, { desc = "Keep the device's state now as a state of its state lane, given from the cursor on: `lane.state crunch`", label = "Keep the state here" })
+
 local function lmap(lhs, rhs, desc, opts) map(lhs, rhs, util.merge({ view = "arrange.lane", desc = desc }, opts)) end
+lmap("<localleader>s", "lane.state", "Keep the device's state now as a state of the lane, from the cursor on")
 lmap("A", "lane.point.add", "Add a point at the cursor, at the curve's value")
 lmap("+", "lane.point.nudge by=1", "Raise the point under the cursor", { role = "main+" })
 lmap("-", "lane.point.nudge by=-1", "Lower the point under the cursor", { role = "main-" })

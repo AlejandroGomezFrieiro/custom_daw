@@ -1182,6 +1182,22 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             let shapes: Vec<crate::model::Segment> = from_lua(lua, shapes)?;
             sh.session.borrow_mut().lane_set_shapes(id, shapes).lua()
         }
+        // The states of a state lane, whole: `{ name, state, params, call =
+        // { method, data }, program, bank }` each. A point's value is the
+        // index of one, from 0.
+        fn lane_states(lua, sh, id => Id) { to_lua(lua, &sh.session.borrow().lane_states(id).lua()?) }
+        // Replace the states of a state lane, as one undo step. A point
+        // that names a state no longer there names the last.
+        fn lane_set_states(lua, sh, (id, states) => (Id, LuaValue)) {
+            let states: Vec<crate::model::LaneState> = from_lua(lua, states)?;
+            sh.session.borrow_mut().lane_set_states(id, states).lua()
+        }
+        // Add a state to a state lane, or replace the one of its name, as
+        // one undo step. Returns its index, from 0.
+        fn lane_add_state(lua, sh, (id, state) => (Id, LuaValue)) {
+            let state: crate::model::LaneState = from_lua(lua, state)?;
+            sh.session.borrow_mut().lane_add_state(id, state).lua()
+        }
         // A control is held (a fader under the pointer) or let go: in touch
         // mode it writes automation for as long as it is held. The control
         // is named as a lane's target is.

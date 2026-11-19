@@ -633,13 +633,32 @@ impl Lv2Factory {
 /// Runs a plugin's non-real-time work on its own thread. Requests travel from
 /// the audio thread and responses back to it through lock-free byte queues,
 /// each message framed by its length.
+///
+/// In a render the device waits after each `run` until the work it asked
+/// for is done: its response then reaches the plugin after the very `run`
+/// that asked for it, so a file loaded on a state lane's point plays from
+/// that point, the same in every render. (LV2 also lets a host that does
+/// not play in real time do the work inside `schedule_work`; Neural Amp
+/// Modeler then played some renders differently.)
 struct Worker {
     /// Written by `schedule_work`, which the plugin calls from its `run`.
     requests: UnsafeCell<rtrb::Producer<u8>>,
     /// Read by the device after each `run`.
     responses: UnsafeCell<rtrb::Consumer<u8>>,
+    /// Rendering: the device waits after each block for the work it asked.
+    offline: AtomicBool,
+    /// Pieces of work asked for and not done yet.
+    pending: Arc<AtomicU32>,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
+}
+
+unsafe extern "C" fn respond(queue: *mut c_void, size: u32, data: *const c_void) -> u32 {
+    unsafe {
+        let queue = &mut *(queue as *mut rtrb::Producer<u8>);
+        let data = std::slice::from_raw_parts(data as *const u8, size as usize);
+        if write_message(queue, data) { 0 } else { 2 }
+    }
 }
 
 struct SendPtr<T>(*mut T);
@@ -678,34 +697,34 @@ fn read_message(queue: &mut rtrb::Consumer<u8>, into: &mut Vec<u8>) -> bool {
 impl Worker {
     fn start(interface: *const WorkerInterface, handle: *mut c_void) -> Self {
         let (requests, mut incoming) = rtrb::RingBuffer::new(WORK_CAPACITY);
-        let (mut outgoing, responses) = rtrb::RingBuffer::new(WORK_CAPACITY);
+        let (outgoing, responses) = rtrb::RingBuffer::new(WORK_CAPACITY);
+        let outgoing = Arc::new(std::sync::Mutex::new(outgoing));
         let stop = Arc::new(AtomicBool::new(false));
-        let (stopped, interface, handle) = (
+        let (raw_interface, raw_handle) = (interface as *mut WorkerInterface, handle);
+        let pending = Arc::new(AtomicU32::new(0));
+        let done = pending.clone();
+        let (stopped, to_ui, interface, handle) = (
             stop.clone(),
-            SendPtr(interface as *mut WorkerInterface),
-            SendPtr(handle),
+            outgoing.clone(),
+            SendPtr(raw_interface),
+            SendPtr(raw_handle),
         );
-        unsafe extern "C" fn respond(queue: *mut c_void, size: u32, data: *const c_void) -> u32 {
-            unsafe {
-                let queue = &mut *(queue as *mut rtrb::Producer<u8>);
-                let data = std::slice::from_raw_parts(data as *const u8, size as usize);
-                if write_message(queue, data) { 0 } else { 2 }
-            }
-        }
         let thread = std::thread::spawn(move || {
             let (interface, handle) = (interface, handle);
             let mut message = Vec::with_capacity(WORK_CAPACITY);
             while !stopped.load(Relaxed) {
                 while read_message(&mut incoming, &mut message) {
+                    let mut outgoing = to_ui.lock().unwrap_or_else(|e| e.into_inner());
                     unsafe {
                         ((*interface.0).work)(
                             handle.0,
                             respond,
-                            &mut outgoing as *mut _ as *mut c_void,
+                            &mut *outgoing as *mut _ as *mut c_void,
                             message.len() as u32,
                             message.as_ptr().cast(),
                         );
                     }
+                    done.fetch_sub(1, std::sync::atomic::Ordering::Release);
                 }
                 std::thread::sleep(Duration::from_millis(2));
             }
@@ -713,8 +732,25 @@ impl Worker {
         Self {
             requests: UnsafeCell::new(requests),
             responses: UnsafeCell::new(responses),
+            offline: AtomicBool::new(false),
+            pending,
             stop,
             thread: Some(thread),
+        }
+    }
+
+    /// In a render, wait (at most ten seconds) until the worker has done
+    /// what was asked of it, so that its responses reach the plugin after
+    /// the very block that asked.
+    fn finish(&self) {
+        if !self.offline.load(Relaxed) {
+            return;
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while self.pending.load(std::sync::atomic::Ordering::Acquire) > 0
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_micros(200));
         }
     }
 }
@@ -735,9 +771,12 @@ unsafe extern "C" fn schedule_work(handle: *mut c_void, size: u32, data: *const 
             return 1;
         };
         let data = std::slice::from_raw_parts(data as *const u8, size as usize);
+        // Counted before the worker can see it, so the count never goes below 0.
+        worker.pending.fetch_add(1, Relaxed);
         if write_message(&mut *worker.requests.get(), data) {
             0
         } else {
+            worker.pending.fetch_sub(1, Relaxed);
             2
         }
     }
@@ -1250,6 +1289,7 @@ impl DeviceFactory for Lv2Factory {
                 _spare: spare,
                 held: HeldNotes::new(),
                 response: Vec::with_capacity(WORK_CAPACITY),
+                queued: Vec::with_capacity(QUEUED_CAPACITY),
             };
             let mut controller = Lv2Controller {
                 link: Box::new(UiLink {
@@ -1342,9 +1382,51 @@ struct Lv2Device {
     _spare: Vec<f32>,
     held: HeldNotes,
     response: Vec<u8>,
+    /// Messages a state lane handed for the next block, each as its frame,
+    /// the index of its atom input, its length and the atom.
+    queued: Vec<u8>,
+}
+
+/// Room for the messages of state lanes that one block takes.
+const QUEUED_CAPACITY: usize = 16384;
+
+impl Lv2Device {
+    /// Put the messages state lanes handed into their atom inputs: those
+    /// for the first frame, or (`later`) the others.
+    fn push_queued(&mut self, n: usize, later: bool) {
+        let mut at = 0;
+        while let Some(head) = self.queued.get(at..at + 12) {
+            let word = |i: usize| u32::from_le_bytes(head[i..i + 4].try_into().unwrap()) as usize;
+            let (frame, index, len) = (word(0).min(n.saturating_sub(1)), word(4), word(8));
+            if let Some(atom) = self.queued.get(at + 12..at + 12 + len)
+                && (frame > 0) == later
+            {
+                self.atoms[index].push_atom(frame as u32, atom);
+            }
+            at += 12 + len;
+        }
+    }
 }
 
 impl Device for Lv2Device {
+    fn message(&mut self, frame: u32, data: &[u8]) -> bool {
+        let Some((port, atom)) = data.split_at_checked(4) else {
+            return false;
+        };
+        let port = u32::from_le_bytes(port.try_into().unwrap());
+        let Some(index) = self.shared.atom_ports.iter().position(|p| *p == port) else {
+            return false;
+        };
+        if !self.atoms[index].input || self.queued.len() + 12 + atom.len() > self.queued.capacity() {
+            return false;
+        }
+        self.queued.extend_from_slice(&frame.to_le_bytes());
+        self.queued.extend_from_slice(&(index as u32).to_le_bytes());
+        self.queued.extend_from_slice(&(atom.len() as u32).to_le_bytes());
+        self.queued.extend_from_slice(atom);
+        true
+    }
+
     fn process(&mut self, ctx: &ProcessCtx, io: &mut Io) {
         let n = io.left.len();
         match self.audio_in.as_mut_slice() {
@@ -1363,6 +1445,8 @@ impl Device for Lv2Device {
         for atom in &mut self.atoms {
             atom.reset();
         }
+        // What state lanes handed for the block's first frame.
+        self.push_queued(n, false);
         if let Some(port) = self.time_in {
             // Told when something changes: starting, stopping, a jump, a new
             // tempo. In between, the plugin counts on from what it was told.
@@ -1400,6 +1484,10 @@ impl Device for Lv2Device {
                 self.atoms[index].push_atom(0, atom);
             }
         }
+        // What state lanes handed for a later frame: after the rest, so
+        // that each sequence stays in the order of its frames.
+        self.push_queued(n, true);
+        self.queued.clear();
 
         let shared = &self.shared;
         unsafe {
@@ -1408,6 +1496,7 @@ impl Device for Lv2Device {
                 (shared.host.worker.get(), shared.worker_interface.as_ref())
             {
                 let handle = lilv_instance_get_handle(shared.instance).cast();
+                worker.finish();
                 while read_message(&mut *worker.responses.get(), &mut self.response) {
                     (interface.work_response)(
                         handle,
@@ -1827,6 +1916,18 @@ impl Lv2Controller {
 
     /// Set a property from `{ "property": name, "value": value }`.
     fn set_property(&mut self, data: &[u8]) -> Result<()> {
+        let (urid, value, message) = self.property_message(data)?;
+        if !self.send_patch(&message) {
+            bail!("the plugin did not take the message: try again");
+        }
+        self.values.insert(urid, value);
+        Ok(())
+    }
+
+    /// The `patch:Set` that sets a property from `{ "property": name,
+    /// "value": value }`, with the property's URID and the value: checked,
+    /// not sent.
+    fn property_message(&self, data: &[u8]) -> Result<(u32, serde_json::Value, Vec<u8>)> {
         #[derive(serde::Deserialize)]
         struct Set {
             property: String,
@@ -1862,11 +1963,7 @@ impl Lv2Controller {
             }
         }
         let message = lv2_patch::set_message(&urids().patch, property, &set.value)?;
-        if !self.send_patch(&message) {
-            bail!("the plugin did not take the message: try again");
-        }
-        self.values.insert(property.urid, set.value);
-        Ok(())
+        Ok((property.urid, set.value, message))
     }
     /// Keep the open editor up to date and let it do its work.
     fn run_editor(&mut self) {
@@ -1939,6 +2036,22 @@ impl Controller for Lv2Controller {
             let value: f32 = if offline { 1.0 } else { 0.0 };
             self.shared.controls[slot].store(value.to_bits(), Relaxed);
         }
+        if let Some(worker) = self.shared.host.worker.get() {
+            worker.offline.store(offline, Relaxed);
+        }
+    }
+
+    fn prepare(&mut self, method: &str, data: &[u8]) -> Result<Option<Vec<u8>>> {
+        if method != "property.set" {
+            return Ok(None);
+        }
+        let Some(port) = self.shared.patch_port else {
+            bail!("this plugin has no properties");
+        };
+        let (_, _, atom) = self.property_message(data)?;
+        let mut message = port.to_le_bytes().to_vec();
+        message.extend_from_slice(&atom);
+        Ok(Some(message))
     }
 
     fn params(&self) -> Vec<ParamInfo> {

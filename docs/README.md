@@ -40,6 +40,7 @@ writers of extensions come after them.
 - [How to add an audio track for a microphone or a guitar](how-to/add-an-audio-track.md): the input, the monitor, an amp
 - [How to name, color, reorder and group tracks](how-to/organize-tracks.md): groups are folders and buses
 - [How to change the sound of an instrument](how-to/change-the-sound-of-an-instrument.md): parameters, presets, the editor of the plugin
+- [How to change a sound at a point in the song](how-to/change-a-sound-at-a-point-in-the-song.md): a state lane gives a plugin another preset, model or state from a point, also in a rendered file
 - [How to switch amp models and presets from paw](how-to/switch-amp-models-and-presets.md): presets, models and impulse responses of TONE3000 and Soundshed Guitar, scenes, snapshots
 - [How to sign in to TONE3000 from paw](how-to/sign-in-to-tone3000.md): the `client_id`, the code, where the tokens go, the live tests
 - [How to play a hardware synth from a track](how-to/play-a-hardware-synth.md)
@@ -213,6 +214,7 @@ writers of extensions come after them.
 - [About the harmony reading](explanation/about-the-harmony-reading.md): how paw finds chords and keys, and why providers can replace it
 - [About MIDI 2.0 in paw](explanation/about-midi-2.md): fractions, controllers for each note, ports, MPE
 - [About the plugin sandbox](explanation/about-the-plugin-sandbox.md): one process for each plugin, and what it costs
+- [About state lanes](explanation/about-state-lanes.md): a lane of presets, models and states, and where each kind of change lands
 - [About the core and extensions](explanation/about-core-and-extensions.md): where the line is, why, and how far an extension goes
 - [About MIDI as the truth](explanation/about-midi-as-the-truth.md): why the notes are the truth, and where extensions keep their data
 - [About seats](explanation/about-seats.md): many people in one instance, and the state of each

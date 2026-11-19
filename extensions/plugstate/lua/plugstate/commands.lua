@@ -107,6 +107,36 @@ end, {
   complete = "files",
 })
 
+command("plugstate.at", function(ctx)
+  local id = target()
+  if not id then return end
+  local key, text = slot_and_words(ctx)
+  local state, why
+  if ctx.args.snapshot then
+    state, why = plugstate.lane_snapshot(id, tostring(ctx.args.snapshot))
+  else
+    local slot = plugstate.slot(id, key)
+    if not slot then return paw.notify(device_name(id) .. ": no " .. (key or "file") .. " to set (`:plugstate.info` lists them)", "warn") end
+    local value = text
+    if slot.kind == "file" and not exists((text:gsub("^~", os.getenv("HOME") or "~"))) then
+      local found = text ~= "" and plugstate.search(slot, text) or {}
+      if #found ~= 1 then
+        return paw.notify(device_name(id) .. ": " .. (#found == 0 and "no file found by `" .. text .. "`" or #found .. " files found: give more words"), "warn")
+      end
+      value = found[1].path
+    end
+    state, why = plugstate.lane_state(id, slot.key, value)
+  end
+  if not state then return paw.notify(device_name(id) .. ": " .. tostring(why), "error") end
+  local beat = paw.cursor.beat
+  local ok, err = pcall(plugstate.lane_point, id, beat, state)
+  if not ok then return paw.notify(device_name(id) .. ": " .. (tostring(err):gsub("^.-:%d+: ", "")), "error") end
+  paw.notify(string.format("%s: %s from %s, on its state lane", device_name(id), state.name, paw.time.format(beat)))
+end, {
+  desc = "Change the plugin to a file or a snapshot at the cursor, on its state lane, as the song plays: `plugstate.at deluxe`, `plugstate.at slot=block2 ~/nam/x.nam`, `plugstate.at snapshot=B`",
+  complete = "files",
+})
+
 local function step(n)
   return function(ctx)
     local id = target()

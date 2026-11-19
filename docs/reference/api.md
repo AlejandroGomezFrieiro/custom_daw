@@ -110,6 +110,13 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
   ```lua
   synth:automate("cutoff"):add(0, 200)
   ```
+- `paw.Device:automate_state()`: The device's state lane, made if there is none yet: a lane whose points each give the device one of the lane's states, from that point on.
+
+  ```lua
+  local lane = amp:automate_state()
+  lane:set_state(16, lane:add_state(amp:capture("crunch")))
+  ```
+- `paw.Device:capture(name)`: The device's whole state now, as a state lane takes it: `{ name, state, params }`. The plugin's saved state, and the parameters set in the project.
 - `paw.Device:close_editor()`: Close the plugin's own window.
 - `paw.Device:exists()`: True if the device is still in the project.
 - `paw.Device:get()`: Everything about the device as plain data (`paw.api.device_get`).
@@ -130,18 +137,27 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.Device:set_output(pair, track)`: Play the output pair `pair` of the device (2 and more: the first pair plays on its own track) into a track, or nowhere with nil. `device.outputs` is a table of pair number to track id. `device.ports.outputs` names the pairs.
 - `paw.Device:set_sidechain(track, opts)`: Listen to the sound of a different track as the side-chain of the device. With `comp:set_sidechain(kick)`, a compressor on the bass ducks under the kick. `{ pre = true }` takes the sound before the fader, pan and mute of that track. nil (or no track) removes the side-chain. `device.sidechain` is the id of the track.
 - `paw.Device:snapshot()`: The device as plain data, for `paw.restore_device`. For a plugin, the data contains its state, which holds more than its parameters.
+- `paw.Device:state_lane()`: The device's state lane, if it has one.
 - `paw.Device:track()`: The track this device is on.
 - `paw.Device:value_at(param, beat)`: The value of a parameter at a beat while the song plays. This is the value of the lane when the lane is on. If not, it is the value of the device.
 
 ## Module paw.Lane
 
 - `paw.Lane:add(beat, value)`: Add a point. It replaces a point at the same beat. The value is in the units of the target: dB for volume and -1 to 1 for pan. For a parameter, it is in the range of the parameter.
+- `paw.Lane:add_state(state)`: Add a state to a state lane, or replace the one of its name. Returns its index, from 0: the value of a point that gives it.
 - `paw.Lane:clear()`: Remove every point of the lane.
 - `paw.Lane:exists()`: True if the lane is still in the project.
 - `paw.Lane:get()`: Everything about the lane as plain data (`paw.api.lane_get`).
 - `paw.Lane:points()`: The points as a list of { beat, value }, sorted by beat.
 - `paw.Lane:remove()`: Take the lane away, and the automation in it.
 - `paw.Lane:set_points(points)`: Replace the points: `lane:set_points({ { 0, -60 }, { 8, 0 } })`. Points may also be written { beat = 0, value = -60 }.
+- `paw.Lane:set_state(beat, which)`: Give the device a state of a state lane from `beat` on: a point that names the state by its name or its index.
+
+  ```lua
+  lane:set_state(16, "crunch")
+  ```
+- `paw.Lane:state_index(which)`: The index of a state of a state lane, by its name or its index. Nil when the lane has no such state.
+- `paw.Lane:states()`: The states of a state lane: `{ name, state, params, call, program, bank }` each.
 - `paw.Lane:track()`: The track the lane belongs to.
 - `paw.Lane:value_at(beat)`: The value at a beat, when the lane is on and when it is off. Nil without points.
 
@@ -2040,6 +2056,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.json_encode(value, pretty)`: --- JSON, for what extensions keep in files ---
 - `paw.api.lane_add(track, opts)`
 - `paw.api.lane_add_point(id, beat, value)`
+- `paw.api.lane_add_state(id, state)`: Add a state to a state lane, or replace the one of its name, as one undo step. Returns its index, from 0.
 - `paw.api.lane_get(id)`
 - `paw.api.lane_list(track)`: --- automation ---
 - `paw.api.lane_points(id)`
@@ -2047,7 +2064,9 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.lane_set(id, key, value)`
 - `paw.api.lane_set_points(id, points)`
 - `paw.api.lane_set_shapes(id, shapes)`
+- `paw.api.lane_set_states(id, states)`: Replace the states of a state lane, as one undo step. A point that names a state no longer there names the last.
 - `paw.api.lane_shapes(id)`: The shapes of the stretches that are not straight, `{ beat, shape, tension }` each by the beat of the point they leave: "hold" or "smooth".
+- `paw.api.lane_states(id)`: The states of a state lane, whole: `{ name, state, params, call = { method, data }, program, bank }` each. A point's value is the index of one, from 0.
 - `paw.api.lane_value_at(id, beat)`
 - `paw.api.limit_hook(func)`: The time limit on Lua (`paw.limit`). The arguments are the function to call when a callback runs too long, and the time when the current callback must return (on the clock of `now`, nil when it returned). `limit_async` tells if paw finds an overrun inside compiled code too.
 - `paw.api.limit_watch(deadline)`
