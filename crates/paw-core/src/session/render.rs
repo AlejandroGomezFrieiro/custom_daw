@@ -533,6 +533,17 @@ impl Session {
         } else {
             Settle::new(settle).wait(&mut live, None);
         }
+        // A plugin that has loaded a model can fade over to it as it plays
+        // (TONE3000 takes about a third of a second): half a second of
+        // silence, with the song stopped, lets it finish before the first
+        // frame, so that each render starts the same.
+        if live.values().any(|d| d.controller.is_some()) {
+            let mut scratch = vec![0.0f32; 2 * paw_engine::MAX_BLOCK];
+            let (left, right) = scratch.split_at_mut(paw_engine::MAX_BLOCK);
+            for _ in 0..(sample_rate as usize / 2).div_ceil(paw_engine::MAX_BLOCK) {
+                engine.process(left, right);
+            }
+        }
         handle.send_while(Msg::Seek(opts.start), &mut engine);
         handle.send_while(Msg::StatesHeld, &mut engine);
         handle.send_while(Msg::Play, &mut engine);

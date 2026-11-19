@@ -799,7 +799,15 @@ test("plugstate: a state lane switches TONE3000's preset through its state, at t
   print(string.format("      TONE3000: the sound changes at frame %s, the point is at %d", tostring(changed), at))
   eq(changed ~= nil and changed >= at and changed < at + 512, true,
     "the sound changes within a block of the point: " .. tostring(changed) .. " for " .. at)
-  eq(first_difference(again, lane, 2), nil, "a second render is the same")
+  local d = first_difference(again, lane, 2)
+  local worst, last = 0, nil
+  for i = 1, math.min(#again, #lane) do
+    local x = math.abs(again[i] - lane[i])
+    if x > 2 then last = i - 1 end
+    worst = math.max(worst, x)
+  end
+  print(string.format("      TONE3000: renders differ from %s to %s, at most %d", tostring(d), tostring(last), worst))
+  eq(d, nil, "a second render is the same")
   local late = at + info.sample_rate
   T.near(rms(lane, late, late + 9600), rms(b, late, late + 9600), 0.003, "the second preset after the point")
   T.near(rms(lane, 9600, at - 9600), rms(a, 9600, at - 9600), 0.003, "the first before it, from the start")

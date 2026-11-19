@@ -59,10 +59,11 @@ answers after the block that brought the message. So the engine gives the
 message on the last frame of the block before the point. The new model
 then plays from the frame of the point.
 
-In a render, the worker does its work at once, inside the block. The LV2
-standard lets a host do this when it does not play in real time. So the
-render has the new model from the frame of the point, and each render is
-the same. As the song plays, the worker loads
+In a render, paw waits after each block until the worker has done the
+work that the block asked for. So the render has the new model from the
+frame of the point, and each render is the same. The LV2 standard also
+lets a host do the work inside the block. paw does not do this, because
+Neural Amp Modeler then gave different sound in some renders. As the song plays, the worker loads
 the model in the background, and the new model plays some milliseconds
 after the point.
 
@@ -90,9 +91,11 @@ works. When the process is quiet, the plugin is ready. paw waits for this
 sign, but not longer
 than the render's `settle` time (5 seconds). A plugin in paw's own process
 gives no such sign, so paw waits a fixed half second. The same wait
-occurs at the start of each render. This fixes the first second of a
-render that had no model in it, when a plugin loads its model in the
-background.
+occurs at the start of each render. Then paw plays half a second of
+silence with the song stopped, because a plugin can fade over to a new
+model as it plays: TONE3000 takes about a third of a second. This fixes
+the first second of a render that had no model in it, when a plugin loads
+its model in the background.
 
 ## The other ways that paw did not choose
 

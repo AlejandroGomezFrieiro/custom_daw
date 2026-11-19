@@ -634,22 +634,21 @@ impl Lv2Factory {
 /// the audio thread and responses back to it through lock-free byte queues,
 /// each message framed by its length.
 ///
-/// In a render the work is done at once, inside `schedule_work`, as LV2
-/// allows a host that does not run in real time: its response then reaches
-/// the plugin after the `run` that asked for it, so a file loaded on a
-/// state lane's point plays from that point, the same in every render.
+/// In a render the device waits after each `run` until the work it asked
+/// for is done: its response then reaches the plugin after the very `run`
+/// that asked for it, so a file loaded on a state lane's point plays from
+/// that point, the same in every render. (LV2 also lets a host that does
+/// not play in real time do the work inside `schedule_work`; Neural Amp
+/// Modeler then played some renders differently.)
 struct Worker {
     /// Written by `schedule_work`, which the plugin calls from its `run`.
     requests: UnsafeCell<rtrb::Producer<u8>>,
     /// Read by the device after each `run`.
     responses: UnsafeCell<rtrb::Consumer<u8>>,
-    /// Where responses are written: by the worker's thread, or in a render
-    /// by `schedule_work` itself.
-    outgoing: Arc<std::sync::Mutex<rtrb::Producer<u8>>>,
-    interface: SendPtr<WorkerInterface>,
-    handle: SendPtr<c_void>,
-    /// Rendering: work is done at once.
+    /// Rendering: the device waits after each block for the work it asked.
     offline: AtomicBool,
+    /// Pieces of work asked for and not done yet.
+    pending: Arc<AtomicU32>,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
@@ -702,6 +701,8 @@ impl Worker {
         let outgoing = Arc::new(std::sync::Mutex::new(outgoing));
         let stop = Arc::new(AtomicBool::new(false));
         let (raw_interface, raw_handle) = (interface as *mut WorkerInterface, handle);
+        let pending = Arc::new(AtomicU32::new(0));
+        let done = pending.clone();
         let (stopped, to_ui, interface, handle) = (
             stop.clone(),
             outgoing.clone(),
@@ -723,6 +724,7 @@ impl Worker {
                             message.as_ptr().cast(),
                         );
                     }
+                    done.fetch_sub(1, std::sync::atomic::Ordering::Release);
                 }
                 std::thread::sleep(Duration::from_millis(2));
             }
@@ -730,26 +732,25 @@ impl Worker {
         Self {
             requests: UnsafeCell::new(requests),
             responses: UnsafeCell::new(responses),
-            outgoing,
-            interface: SendPtr(raw_interface),
-            handle: SendPtr(raw_handle),
             offline: AtomicBool::new(false),
+            pending,
             stop,
             thread: Some(thread),
         }
     }
 
-    /// Do a piece of work at once, on the calling thread: for a render.
-    fn work_now(&self, data: &[u8]) -> u32 {
-        let mut outgoing = self.outgoing.lock().unwrap_or_else(|e| e.into_inner());
-        unsafe {
-            ((*self.interface.0).work)(
-                self.handle.0,
-                respond,
-                &mut *outgoing as *mut _ as *mut c_void,
-                data.len() as u32,
-                data.as_ptr().cast(),
-            )
+    /// In a render, wait (at most ten seconds) until the worker has done
+    /// what was asked of it, so that its responses reach the plugin after
+    /// the very block that asked.
+    fn finish(&self) {
+        if !self.offline.load(Relaxed) {
+            return;
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while self.pending.load(std::sync::atomic::Ordering::Acquire) > 0
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_micros(200));
         }
     }
 }
@@ -770,12 +771,12 @@ unsafe extern "C" fn schedule_work(handle: *mut c_void, size: u32, data: *const 
             return 1;
         };
         let data = std::slice::from_raw_parts(data as *const u8, size as usize);
-        if worker.offline.load(Relaxed) {
-            return worker.work_now(data);
-        }
+        // Counted before the worker can see it, so the count never goes below 0.
+        worker.pending.fetch_add(1, Relaxed);
         if write_message(&mut *worker.requests.get(), data) {
             0
         } else {
+            worker.pending.fetch_sub(1, Relaxed);
             2
         }
     }
@@ -1495,6 +1496,7 @@ impl Device for Lv2Device {
                 (shared.host.worker.get(), shared.worker_interface.as_ref())
             {
                 let handle = lilv_instance_get_handle(shared.instance).cast();
+                worker.finish();
                 while read_message(&mut *worker.responses.get(), &mut self.response) {
                     (interface.work_response)(
                         handle,

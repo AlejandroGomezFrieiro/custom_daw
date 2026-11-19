@@ -80,6 +80,8 @@ The row shows the name of each point's state, up to the next point.
   render). A plugin in paw's own process gives no sign, so the render
   waits half a second after a saved state.
 - A render gives each lane's state at its start before the first frame.
+  With plugins, it then plays half a second of silence with the song
+  stopped, so that a plugin can finish a fade to a new model.
 - While a state lane drives a device, the project keeps the device's own
   state, and does not read the lane's state back. When the lane stops or
   goes, the device gets its own state and parameters again.

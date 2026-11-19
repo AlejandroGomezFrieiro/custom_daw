@@ -279,7 +279,10 @@ pub(crate) struct Settle {
 }
 
 /// How long a process must use no processor time to be counted as ready.
-const QUIET: Duration = Duration::from_millis(80);
+const QUIET: Duration = Duration::from_millis(150);
+/// The least wait after a plugin was given a state: a plugin's process can
+/// be quiet for a moment before its loading starts, more so on a busy machine.
+const LEAST: Duration = Duration::from_millis(150);
 /// Processor time a process may use while it is counted as quiet: two
 /// of the system's ticks, for a plugin's own timers.
 const NOISE: Duration = Duration::from_millis(20);
@@ -337,7 +340,9 @@ impl Settle {
                 None => self.fixed |= self.blind,
             }
         }
-        ready && (!self.fixed || waited >= FIXED.min(self.limit))
+        ready
+            && (!self.blind || waited >= LEAST.min(self.limit))
+            && (!self.fixed || waited >= FIXED.min(self.limit))
     }
 
     /// Wait here until [`ready`](Self::ready).
