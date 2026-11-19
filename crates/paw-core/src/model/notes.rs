@@ -286,16 +286,29 @@ impl Notes {
                 at = i + run.len();
             }
         }
-        let mut runs = Vec::with_capacity(old.len() + 2);
+        let mut runs: Vec<Run> = Vec::with_capacity(old.len() + 2);
         let mut notes = notes.into_iter();
         let mut done = 0;
+        // Notes between the runs kept top up the run before them while it
+        // has room, as `extend` does: notes added one at a time would
+        // otherwise each make a run of their own.
+        let between = |runs: &mut Vec<Run>, mut new: Vec<Note>| {
+            if let Some(last) = runs.last_mut()
+                && last.len() < 2 * RUN
+                && !new.is_empty()
+            {
+                let room = (2 * RUN - last.len()).min(new.len());
+                Arc::make_mut(last).extend(new.drain(..room));
+            }
+            runs.extend(runs_of(new));
+        };
         for (i, run) in kept {
-            runs.extend(runs_of(notes.by_ref().take(i - done).collect()));
+            between(&mut runs, notes.by_ref().take(i - done).collect());
             notes.by_ref().take(run.len()).for_each(drop);
             runs.push(run.clone());
             done = i + run.len();
         }
-        runs.extend(runs_of(notes.collect()));
+        between(&mut runs, notes.collect());
         *self = Self::from_runs(runs);
     }
 
@@ -641,6 +654,18 @@ mod tests {
         assert!(shared(&after, &before) >= runs - 2, "{} of {runs}", shared(&after, &before));
         after.assign(Vec::new());
         assert!(after.is_empty());
+    }
+
+    #[test]
+    fn notes_added_one_at_a_time_through_the_whole_list_fill_runs() {
+        let mut notes = Notes::new();
+        for i in 0..2000 {
+            let mut list = notes.to_vec();
+            list.push(note(i as f64));
+            notes.assign(list);
+        }
+        assert_eq!(starts(&notes), (0..2000).map(|i| i as f64).collect::<Vec<_>>());
+        assert!(notes.runs.len() <= 2000 / RUN + 1, "{} runs", notes.runs.len());
     }
 
     #[test]

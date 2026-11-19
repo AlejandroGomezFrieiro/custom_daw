@@ -1497,8 +1497,8 @@ fn audio_regions(
 /// once gives, and nearly free when the clips follow each other in time).
 /// What the engine has of a track's clips, sent as parts: one for each
 /// clip, or for a long MIDI clip one for its controllers and one for each
-/// run of its notes (see [`Notes`]), so that a note edited compiles and
-/// sends again only the notes of its run.
+/// few runs of its notes (see [`Notes`]), so that a note edited compiles
+/// again only the notes beside it.
 #[derive(Default)]
 struct Parts {
     /// Each clip by id, as compiled and sent.
@@ -1517,10 +1517,8 @@ struct Sent {
     /// Its order (see [`paw_engine::Part::order`]); its parts have this
     /// order and those after it, one each.
     order: u64,
-    /// Its events in pieces, each with the run of notes it was compiled
-    /// from (`None` for the controllers, or the whole clip); none for an
-    /// audio clip.
-    pieces: Vec<(Option<*const Vec<Note>>, Arc<[MidiEv]>)>,
+    /// Its events in pieces (see [`pieces_of`]); none for an audio clip.
+    pieces: Vec<Piece>,
     /// The orders of the parts the engine has of it: those not empty.
     parts: Vec<u64>,
 }
@@ -1534,33 +1532,56 @@ const ORDER_GAP: u64 = 1 << 32;
 /// An edit of more clips than this sends the track's clips whole.
 const MAX_EDIT: usize = 512;
 
-/// The pieces of a clip's events: its controllers and a piece for each run
-/// of its notes (in that order, which is the order a clip's events are
-/// compiled in); a short or looped clip in one piece. A run that the clip
-/// `before` had too is not compiled again.
-fn pieces_of(clip: &Clip, before: Option<&Sent>) -> Vec<(Option<*const Vec<Note>>, Arc<[MidiEv]>)> {
+/// The runs of notes a piece is compiled from (none for the controllers,
+/// or for a clip in one piece), and its events.
+type Piece = (Vec<*const Vec<Note>>, Arc<[MidiEv]>);
+
+/// Notes in a piece of a clip's events: runs side by side go in one piece
+/// until it has this many.
+const PIECE: usize = 256;
+
+/// The pieces of a clip's events: its controllers and its notes in pieces
+/// of a few runs (in that order, which is the order a clip's events are
+/// compiled in); a short or looped clip in one piece. A piece of the very
+/// same runs as one of the clip `before` is not compiled again.
+fn pieces_of(clip: &Clip, before: Option<&Sent>) -> Vec<Piece> {
     let ClipContent::Midi { notes, controls } = &clip.content else {
         return Vec::new();
     };
-    let same_place = before.is_some_and(|b| {
-        b.clip.start == clip.start && b.clip.length == clip.length && !b.clip.muted
-    });
-    if notes.runs().len() < 2 || clip.repeat().is_some() {
-        return vec![(None, compile_clip(clip, notes, controls))];
+    // The very same clip: nothing to compile.
+    if let Some(b) = before.filter(|b| std::ptr::eq(&*b.clip, clip)) {
+        return b.pieces.clone();
     }
-    let mut out = Vec::with_capacity(notes.runs().len() + 1);
+    if notes.len() <= PIECE || clip.repeat().is_some() {
+        return vec![(Vec::new(), compile_clip(clip, notes, controls))];
+    }
+    // Compiled pieces of the clip before, by their first run.
+    let mut known: HashMap<*const Vec<Note>, &Piece> = HashMap::new();
+    if let Some(b) = before.filter(|b| b.clip.start == clip.start && b.clip.length == clip.length) {
+        for piece in &b.pieces {
+            if let Some(&first) = piece.0.first() {
+                known.insert(first, piece);
+            }
+        }
+    }
+    let mut out = Vec::new();
     // The controllers are compiled again with any change of the clip.
-    out.push((None, compile_part(clip, &[], controls)));
-    for run in notes.runs() {
-        let ptr = Arc::as_ptr(run);
-        let kept = before
-            .filter(|_| same_place)
-            .and_then(|b| b.pieces.iter().find(|(p, _)| *p == Some(ptr)));
-        let events = match kept {
-            Some((_, events)) => events.clone(),
-            None => compile_part(clip, run.iter(), &[]),
+    out.push((Vec::new(), compile_part(clip, &[], controls)));
+    let runs = notes.runs();
+    let mut at = 0;
+    while at < runs.len() {
+        let (mut end, mut count) = (at, 0);
+        while end < runs.len() && count < PIECE {
+            count += runs[end].len();
+            end += 1;
+        }
+        let ptrs: Vec<*const Vec<Note>> = runs[at..end].iter().map(Arc::as_ptr).collect();
+        let events = match known.get(&ptrs[0]) {
+            Some((was, events)) if *was == ptrs => events.clone(),
+            _ => compile_part(clip, runs[at..end].iter().flat_map(|r| r.iter()), &[]),
         };
-        out.push((Some(ptr), events));
+        out.push((ptrs, events));
+        at = end;
     }
     out
 }
@@ -2570,9 +2591,10 @@ mod tests {
             let (mut a, mut ha, (sent, fresh)) = engine(&path);
             assert!(sent.contains(&"edit") && !sent.contains(&"clips"), "edit {k} sent {sent:?}");
             if k == 5 || k == 7 {
-                // Notes of the long clip: only their run is compiled again
-                // (two events a note, 256 notes a run, and the controllers).
-                assert!(fresh <= 2 * 512 + 20, "edit {k}: {fresh} events compiled");
+                // Notes of the long clip: only their piece is compiled again
+                // (two events a note, at most 511 notes a piece, and the
+                // controllers), not the clip's 2000 events.
+                assert!(fresh <= 2 * 511 + 20, "edit {k}: {fresh} events compiled");
             }
             let (mut b, mut hb, _) = engine(&[&states[k]]);
             for from in [0.0, 3.4, 60.0] {
