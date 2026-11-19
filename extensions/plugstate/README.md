@@ -13,9 +13,11 @@ it.
 
 ```
 extensions/plugstate/
-  init.lua, lua/plugstate/   the adapters, the library, snapshots, commands
+  init.lua, lua/plugstate/   the adapters, the library, snapshots, commands, the
+                             readers of the state of each framework
   tests.lua                  tests with real plugins (Neural Amp Modeler, LSP, sfizz,
                              TONE3000, Soundshed Guitar, Surge XT, Musio)
+  tests_frameworks.lua       tests of the readers, with states in tests_states/
 ```
 
 ## Try it
@@ -123,9 +125,11 @@ plugstate.adapter({
 An LV2 plugin that lists its files as properties needs no adapter: the
 `lv2` adapter finds them. See [Adapters](#adapters).
 
-### How to find where a JUCE plugin keeps a setting
+### How to find where a plugin keeps a setting
 
-Most commercial plugins use JUCE. paw reads their state as a tree.
+paw reads the saved state of a plugin as a tree. It knows the forms of
+JUCE, DPF, iPlug2, LSP, Dplug, nih-plug and LV2. Of another plugin, it
+shows the bytes.
 
 1. Put the row of the device panel on the plugin.
 2. Type `:plugstate.mark`. paw keeps the state of the plugin.
@@ -136,7 +140,11 @@ Most commercial plugins use JUCE. paw reads their state as a tree.
    The preset loads into each format of the plugin with `:plugstate.load`.
 
 `:plugstate.tree` shows the whole tree, and `:plugstate.path <path> <value>`
-sets one value. To give names to the paths, add a description. See
+sets one value. For a guide, see
+[How to find and change a setting inside a plugin](../../docs/how-to/find-and-change-a-setting-inside-a-plugin.md).
+For the forms of each framework, see
+[The saved state of plugins](../../docs/reference/plugin-state.md). To give
+names to the paths of a JUCE plugin, add a description. See
 [The state of JUCE plugins](../../docs/reference/juce-plugin-state.md).
 
 ## Reference
@@ -162,17 +170,17 @@ These keys are in the device panel. They act on the device of the row.
 | `:plugstate.load [slot=<key>] [file or words]` | loads a file into the plugin. With words, the one file that they find, else the picker |
 | `:plugstate.next`, `:plugstate.prev` | loads the next or the previous file of the folder |
 | `:plugstate.files [words]` | lists the files that the plugin takes, in the library folders |
-| `:plugstate.info` | tells which files the plugin holds, what the files say of themselves, and the snapshots |
+| `:plugstate.info` | tells which files the plugin holds, what the files say of themselves, the framework of its saved state, and the snapshots |
 | `:plugstate.snapshot [name]` | keeps the whole state of the device and its parameters under a name |
 | `:plugstate.recall [name]` | brings back a snapshot. With no name, the picker |
 | `:plugstate.recall_next`, `:plugstate.recall_prev` | brings back the next or the previous snapshot |
 | `:plugstate.forget <name>` | removes a snapshot |
 | `:plugstate.adapters` | lists the kinds of plugin that plugstate knows |
-| `:plugstate.tree [path]` | shows the state of a JUCE plugin as a tree, or the part at the path. A count sets the depth |
-| `:plugstate.mark` | keeps the state of a JUCE plugin, for `:plugstate.changes` |
+| `:plugstate.tree [path]` | shows the saved state of a plugin as a tree, or the part at the path. The first line names the framework. A count sets the depth |
+| `:plugstate.mark` | keeps the saved state of a plugin, for `:plugstate.changes` |
 | `:plugstate.changes` | lists the paths of the state that changed after `:plugstate.mark` |
-| `:plugstate.path <path> [value]` | shows a value of the state of a JUCE plugin, or sets it as one undo step |
-| `:plugstate.preset_write <file>` | writes the changes after `:plugstate.mark` as a `.jucepreset` file |
+| `:plugstate.path <path> [value]` | shows a value of the saved state of a plugin, or sets it as one undo step. A number stays a number, except in a JUCE state |
+| `:plugstate.preset_write <file>` | writes the changes after `:plugstate.mark` as a `.jucepreset` file, with the name of the framework |
 | `:plugstate.search [gear=<gear>] [type=nam\|ir] [by=<user>] [sort=<order>] [arch=<n>] [slot=<key>] [words]` | searches TONE3000's library and opens a picker of the tones. Enter on a tone shows its models, and Enter on a model loads it |
 | `:plugstate.search_more` | shows the next page of the last search (a count skips more) |
 | `:plugstate.search_prompt` | asks for words, then does `:plugstate.search` |
@@ -291,6 +299,7 @@ paw obeys them in these ways:
 | `lv2` | each other LV2 plugin with properties (`patch:writable`) | the property, with a message to the plugin as from its own window |
 | `tone3000` | TONE3000 (CLAP, VST3, LV2) | it writes the state of the plugin. Slots: `preset` (a `.t3kpreset` file: its chain and the values of its parameters), and `block1` to `block5`, `right1` to `right5` (the blocks of the two rows of the chain). A `.nam` or `.wav` file goes into a block with its bytes, as a file that you drop on the block in the window. The name of a model that the block holds switches to that model |
 | `juce` | each JUCE plugin with a description that has slots: Surge XT (CLAP, VST3, LV2) and Musio (VST3) | it writes the state of the plugin. Slots: `preset` (a `.jucepreset` file: its edits apply to the state of the device, in its format), and the values of the description (Surge XT: `name`, `octave`. Musio: `reverb`, `room`, `reverb_amount`) |
+| `state` | each other plugin whose saved state opens (asked after the other adapters) | it writes the state of the plugin. Slot: `preset` (a `.jucepreset` file: its edits apply to the state of the device) |
 | `soundshed` | Soundshed Guitar (VST3, LV2) | it writes the JSON state of the plugin. Slots: `preset` (a preset of a `.soundshed.presets` pack, or a `.json` preset), `scene` (the title or the number of a scene), and the blocks of the scene that take a file (`amp1`, `fx1`, `cab1` and other), set by the path of the file |
 
 ### The Lua module
@@ -299,7 +308,7 @@ paw obeys them in these ways:
 
 | Function | Result |
 | --- | --- |
-| `adapter(def)` | adds an adapter. An adapter added later is asked first |
+| `adapter(def)` | adds an adapter. An adapter added later is asked first. An adapter with `fallback = true` is asked after all the others |
 | `adapter_of(id)` | the adapter for a device, and the device |
 | `slots(id)` | the files and values of a device: `{ key, label, what, kind, types, value }`. A slot can also give `folders` (more folders to look in) or `list(roots)` (its own choices, as `{ path, name, folder }`) |
 | `set(id, key, value)` | sets a slot (nil for the first) as one undo step. Returns `true`, or nil and the reason |
@@ -314,6 +323,8 @@ paw obeys them in these ways:
 
 The JUCE layer is in `require("plugstate.jucestate")`. See
 [The state of JUCE plugins](../../docs/reference/juce-plugin-state.md).
+The readers of each framework are in `require("plugstate.frameworks")`.
+See [The saved state of plugins](../../docs/reference/plugin-state.md).
 
 An adapter can also give `name_of(path)`: the name of a choice in the
 messages.
@@ -353,8 +364,9 @@ The extension sends the events `plugstate.loaded` (`device`, `slot`,
   after it as the song plays.
 - Soundshed Guitar keeps the path of a file. paw copies the files of a
   preset of a pack to `~/.local/share/paw/plugstate/<pack>`.
-- The commands of JUCE plugins act on the device of the row of the
-  device panel, else on the first plugin of the cursor track.
+- `:plugstate.tree`, `:plugstate.mark`, `:plugstate.changes`,
+  `:plugstate.path` and `:plugstate.preset_write` act on the device of the
+  row of the device panel, else on the first plugin of the cursor track.
   `:plugstate.mark` keeps its state in memory, not in the project.
 - Surge XT as a VST3 plugin does not take a state from paw. Its presets
   load in CLAP and LV2.

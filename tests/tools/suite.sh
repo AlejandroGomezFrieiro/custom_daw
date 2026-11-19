@@ -15,12 +15,26 @@ out=$SCRATCH/suite.out
 case "$1" in
   plugins)
     # Plugins that are not in nixpkgs come in by their package's store
-    # path (PAW_TEST_TONE3000, PAW_TEST_SOUNDSHED, PAW_TEST_MUSIO). The plugins get a
+    # path (PAW_TEST_TONE3000, PAW_TEST_SOUNDSHED, PAW_TEST_MUSIO, and the
+    # examples of extensions/plugstate/tests_frameworks.lua), or by one
+    # bundle (a path that ends in .vst3, .clap or .lv2). The plugins get a
     # scratch home: some write beside it, not only to XDG_CONFIG_HOME.
     mkdir -p "$SCRATCH/home"
-    PAW_SCRATCH_HOME=$SCRATCH/home nix develop -c sh -c '
+    rm -rf "$SCRATCH/bundles"
+    mkdir -p "$SCRATCH/bundles/clap" "$SCRATCH/bundles/vst3" "$SCRATCH/bundles/lv2"
+    PAW_SCRATCH_HOME=$SCRATCH/home PAW_BUNDLES=$SCRATCH/bundles nix develop -c sh -c '
       export HOME=$PAW_SCRATCH_HOME
-      for pkg in $PAW_TEST_TONE3000 $PAW_TEST_SOUNDSHED $PAW_TEST_MUSIO; do PAW_TEST_PLUGINS=$PAW_TEST_PLUGINS:$pkg/lib; done
+      for pkg in "$PAW_TEST_TONE3000" "$PAW_TEST_SOUNDSHED" "$PAW_TEST_MUSIO" "$PAW_TEST_DRAGONFLY" "$PAW_TEST_ILDAEIL" \
+          "$PAW_TEST_NEURALNOTE" "$PAW_TEST_DECENTSAMPLER" "$PAW_TEST_AMPLOCKER" "$PAW_TEST_DRUMLOCKER" "$PAW_TEST_MTPDK" \
+          "$PAW_TEST_GUITARIX" "$PAW_TEST_RATATOUILLE" "$PAW_TEST_VOLUM" "$PAW_TEST_UGRITONE" \
+          "$PAW_TEST_GUITARCATCHER" "$PAW_TEST_CIRCVIT"; do
+        case "$pkg" in
+          "") ;;
+          *.vst3|*.clap|*.lv2) ln -sf "$pkg" "$PAW_BUNDLES/${pkg##*.}/" ;;
+          *) PAW_TEST_PLUGINS=$PAW_TEST_PLUGINS:$pkg/lib ;;
+        esac
+      done
+      PAW_TEST_PLUGINS=$PAW_TEST_PLUGINS:$PAW_BUNDLES
       export CLAP_PATH=$(echo $PAW_TEST_PLUGINS | sed "s#:#/clap:#g")/clap
       export LV2_PATH=$(echo $PAW_TEST_PLUGINS | sed "s#:#/lv2:#g")/lv2
       export VST3_PATH=$(echo $PAW_TEST_PLUGINS | sed "s#:#/vst3:#g")/vst3

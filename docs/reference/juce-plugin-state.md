@@ -5,7 +5,8 @@ Most commercial plugins use the JUCE library. The
 state of a JUCE plugin as a tree, and writes it back. This page describes
 the forms that it reads, the paths, the descriptions of plugins and the
 presets. The modules are `plugstate.jucestate` (the layer),
-`plugstate.juce` (trees and paths) and `plugstate.jucexml` (XML).
+`plugstate.juce` (trees and paths) and `plugstate.jucexml` (XML). For the
+other frameworks, see [The saved state of plugins](plugin-state.md).
 
 ## The layers of a state
 
@@ -17,6 +18,7 @@ gives it, and finds these layers by themselves, from the outside in.
 | `vst3` | each VST3 state | splits the part of the component from the part of the controller |
 | `juce-private` | the end of the VST3 component | removes the private data of the JUCE VST3 wrapper (`JUCEPrivateData`, for example `Bypass`) |
 | `lv2` | each LV2 state | reads the JUCE base64 text of `<uri>:StateString` from the Turtle text |
+| `vstw` | `VstW` at the start of the VST3 component | the VST3 wrapper with `JUCE_VST3_CAN_REPLACE_VST2`: the data in an FXB bank (`FBCh`) or FXP program (`FPCh`) chunk, with big-endian sizes. The private data of JUCE stays in the chunk |
 | `header` | a description gives it | a header of the plugin with the size of the data in it, for example `sub3` of Surge XT |
 | `vc2` | `VC2!` at the start | `AudioProcessor::copyXmlToBinary`: the magic, the size, the XML, a zero byte |
 | `gzip`, `zlib` | the magic bytes of the data | `GZIPCompressorOutputStream` and zlib data |
@@ -92,7 +94,9 @@ its type. Else it is `Type[id=<id>]` when its `id` is unique, and else
 | `doc:set_param(id, value)` | sets a parameter. A parameter that is not there is added, also one that the host does not see as a parameter. Returns `true` when it is added |
 
 The node of the parameters is the `params` path of the description. Else
-it is the first node with a `PARAM` child.
+it is the first node with a `PARAM` child. Else it is the first node with
+children that have an `id` and a `value`, for example the `Control` nodes of
+HISE.
 
 ## Differences
 
@@ -132,6 +136,7 @@ extension describes these plugins:
 | `tone3000` | TONE3000 | CLAP, VST3, LV2 | `T3KB`, a ValueTree | none (the `tone3000` adapter) |
 | `surge-xt` | Surge XT | CLAP, VST3, LV2 | `sub3` header, XML of the patch, wavetables | `name`, `octave` |
 | `musio` | Musio | VST3 | `VC2!`, XML (`PluginState`) | `reverb`, `room`, `reverb_amount` |
+| `decent-sampler` | DecentSampler | VST3 | `VC2!`, XML (`DecentSampler`) | none. Paths: `preset_name`, `sample_path`, `library_url`, `tuning` |
 
 ## Presets
 

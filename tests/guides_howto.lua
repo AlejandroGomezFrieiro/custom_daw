@@ -387,6 +387,80 @@ local function amp_plugin(var, format, name)
   return nil, "skipped: " .. name .. " not found"
 end
 
+test("guide: find and change a setting inside a plugin", function()
+  local kind
+  for _, info in ipairs(paw.device_types()) do
+    if info.format == "clap" and info.name == "Compressor Mono" then kind = info.kind end
+  end
+  if not kind then return "skipped: LSP Compressor Mono (CLAP) not found" end
+  start()
+  load_bundled("plugstate")
+  local function said() return paw.ui.messages[#paw.ui.messages].text end
+  local t = paw.add_track({ name = "Bass" })
+  t:add_device("synth")
+  t:add_clip({ start = 0, length = 4, notes = { { pitch = "A2", start = 0, length = 4 } } })
+  local comp = t:add_device(kind)
+  paw.flush()
+  api.undo_checkpoint()
+  paw.cursor.set_track(t.id)
+  -- See the state of the plugin.
+  paw.ui.focus("devices")
+  paw.fx.select(comp.id)
+  keys(":plugstate.tree<CR>")
+  eq(said():find("LSP", 1, true) ~= nil, true, "the first line names the framework: " .. said())
+  keys(":plugstate.tree /LSP/Parameters<CR>")
+  eq(said():find("@g_out = 1", 1, true) ~= nil, true, "one part of the tree: " .. said())
+  keys(":plugstate.info<CR>")
+  eq(said():find("state: LSP", 1, true) ~= nil, true, ":plugstate.info names it: " .. said())
+  -- Find where it keeps a setting: a change as from its window.
+  keys(":plugstate.mark<CR>")
+  api.device_set_param(comp.id, "output_gain", -6)
+  paw.flush()
+  keys(":plugstate.changes<CR>")
+  eq(said():find("set    /LSP/Parameters@g_out: 1 → ", 1, true) ~= nil, true, "the path that changed: " .. said())
+  --- The value at a path of the plugin's state once it is `want` (two
+  --- seconds at most): what paw loads reaches the plugin a moment later.
+  local function value(id, want)
+    local v
+    for _ = 1, 100 do
+      paw.flush()
+      v = require("plugstate.juceplugins").open(id):get("/LSP/Parameters@g_out")
+      if want == nil or v == want then return v end
+      api.sleep(20)
+    end
+    return v
+  end
+  keys("u")
+  eq(value(comp.id, 1), 1, "u: the value of before")
+  -- Change it from paw, and undo.
+  keys(":plugstate.path /LSP/Parameters@g_out 0.5<CR>")
+  eq(value(comp.id, 0.5), 0.5, "the plugin takes the value: " .. said())
+  keys(":plugstate.path /LSP/Parameters@g_out<CR>")
+  eq(said(), "/LSP/Parameters@g_out = 0.5", "a value by its path")
+  keys("u")
+  eq(value(comp.id, 1), 1, "u returns to the value before")
+  -- Keep the change as a preset, and load it on another track.
+  local home = os.getenv("HOME")
+  local file = T.scratch .. "/quiet"
+  keys(":plugstate.mark<CR>")
+  api.device_set_param(comp.id, "output_gain", -6)
+  paw.flush()
+  keys(":plugstate.preset_write " .. file .. "<CR>")
+  eq(io.open(file .. ".jucepreset") ~= nil, true, "the preset file: " .. said())
+  local t2 = paw.add_track({ name = "Keys" })
+  local comp2 = t2:add_device(kind)
+  paw.flush()
+  paw.cursor.set_track(t2.id)
+  paw.fx.select(comp2.id)
+  keys(":plugstate.load " .. file .. ".jucepreset<CR>")
+  local loaded = value(comp2.id, value(comp.id))
+  eq(loaded < 1, true, "the preset loads into the other plugin: " .. tostring(loaded))
+  paw.cursor.beat = 2
+  keys(":plugstate.at " .. file .. ".jucepreset<CR>")
+  eq(said():find("on its state lane", 1, true) ~= nil, true, "the preset at a point: " .. said())
+  eq(home, os.getenv("HOME"), "HOME stays")
+end)
+
 test("guide: switch amp models and presets from paw", function()
   local kind, pkg = amp_plugin("PAW_TEST_TONE3000", "clap", "TONE3000")
   if not kind then return pkg end

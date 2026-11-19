@@ -157,6 +157,14 @@ command("plugstate.info", function()
   if not id then return end
   local a = plugstate.adapter_of(id)
   local lines = { device_name(id) .. " · " .. a.name .. " (" .. (a.desc or "") .. ")" }
+  -- The framework of its saved state, as `:plugstate.tree` reads it.
+  if api.device_get(id).plugin then
+    local doc = require("plugstate.juceplugins").open(id)
+    if doc then
+      lines[#lines + 1] = "state: " .. (doc.title or doc.framework) .. " · " .. table.concat(doc:layer_names(), " › ")
+        .. " · " .. #doc:params() .. " parameters in it"
+    end
+  end
   for _, s in ipairs(plugstate.slots(id)) do
     local value = s.value
     if value == nil or value == "" then value = "none" end
