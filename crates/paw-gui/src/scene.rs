@@ -77,9 +77,6 @@ pub struct Scenes {
     told: HashMap<String, [f32; 2]>,
     /// The windows drawn this frame.
     seen: HashSet<String>,
-    /// The clip a drag in the arrange view moves, while the pointer is
-    /// over the session view's slots, where letting go puts it.
-    pub dragged_clip: Option<i64>,
     /// The window the pointer was over last frame, and this frame: the
     /// kernel is told when it leaves one, for the hint it gave there.
     hovered: Option<String>,
@@ -497,42 +494,35 @@ impl View {
         if let Some(shown) = self.scenes.shown.get_mut(id) {
             shown.draw(ui, id, rect, clip, cell, &self.scenes.live, layer);
         }
-        for mut event in pointer_events(ui, rect, Id::unique(("scene-pointer", id))) {
-            if self.to_slot(rect, &event) {
-                continue;
-            }
+        let pointer = Id::unique(("scene-pointer", id));
+        // Whether the press that a release ends was in this window.
+        let pressed_here = ui.data(|d| d.get_temp::<bool>(pointer)).unwrap_or(false);
+        for mut event in pointer_events(ui, rect, pointer) {
             event["x"] = json!(event["x"].as_f64().unwrap_or(0.0) / cell.0 as f64);
             event["y"] = json!(event["y"].as_f64().unwrap_or(0.0) / cell.1 as f64);
+            if !pressed_here && event["kind"] == "up" && self.drop_clip(&mut event) {
+                self.call_later("scene.input", json!([id, event]));
+                continue;
+            }
             self.call_later("scene.input", json!([id, event]));
         }
     }
 
-    /// A clip dragged from the arrange view over the session view's slots:
-    /// let go there, it goes into the slot (`clip_to_slot`), and the drag
-    /// in the kernel ends without moving it. True when the event was that.
-    fn to_slot(&mut self, rect: Rect, event: &Value) -> bool {
-        let at = rect.min + vec2(event["x"].as_f64().unwrap_or(0.0) as f32, event["y"].as_f64().unwrap_or(0.0) as f32);
-        let Some((column, slot)) = self.session.slot_at(at) else {
-            if event["kind"] == "up" {
-                self.scenes.dragged_clip = None;
-            }
+    /// A release over a window other than the one pressed: if the drag
+    /// there moves a clip (from the arrange view), the drag ends without
+    /// moving it and the event becomes a drop of the clip on this window's
+    /// view (`kind = "drop"`, `clip`), which takes it if it can (a view's
+    /// `on_drop`). True when the event was that.
+    fn drop_clip(&mut self, event: &mut Value) -> bool {
+        let Some(clip) = self.ask("local g = paw.mouse.gesture(); return g and g.clip", json!([])).as_i64() else {
             return false;
         };
-        match event["kind"].as_str() {
-            Some("move") if self.scenes.dragged_clip.is_none() => {
-                self.scenes.dragged_clip = self.ask("local g = paw.mouse.gesture(); return g and g.clip", json!([])).as_i64();
-                false
-            }
-            Some("up") => match self.scenes.dragged_clip.take() {
-                Some(clip) => {
-                    self.eval("paw.mouse.forget(); paw.api.ui_redraw()", json!([]));
-                    self.pass("clip_to_slot", json!([clip, column, slot]));
-                    true
-                }
-                None => false,
-            },
-            _ => false,
-        }
+        // At once, not at the end of the frame: the window that has the
+        // press may have queued its release already, which must not move it.
+        self.ask("paw.mouse.forget(); paw.api.ui_redraw()", json!([]));
+        event["kind"] = json!("drop");
+        event["clip"] = json!(clip);
+        true
     }
 
     /// At the end of a frame: the windows not drawn in it are gone, and

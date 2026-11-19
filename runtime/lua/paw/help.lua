@@ -1148,7 +1148,7 @@ function M.topic_of(view)
 end
 
 M.view_topics = {
-  arrange = "arrange-view", pianoroll = "piano-roll", mixer = "mixer", devices = "device-panel", session = "session-view",
+  arrange = "arrange-view", pianoroll = "piano-roll", mixer = "mixer", devices = "device-panel",
   textbuf = "lists-edited-as-text", qflist = "quickfix-list",
 }
 

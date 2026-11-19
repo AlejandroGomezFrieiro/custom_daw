@@ -1703,16 +1703,16 @@ fn a_tab_closes_by_its_button_or_a_middle_click_a_plus_opens_one_and_a_drag_move
     w.click(tab_at(2, 150 - 13));
     w.expect("its close button closes it", &format!("{views} == 'arrange mixer'"));
     // A middle click on a tab closes it.
-    w.type_text(":tabnew session");
+    w.type_text(":tabnew devices");
     w.key("Return");
-    w.expect("a tab of the session view", &format!("{views} == 'arrange mixer session'"));
+    w.expect("a tab of the device panel", &format!("{views} == 'arrange mixer devices'"));
     w.mouse_to(tab_at(1, 60));
     w.xdotool(&["click", "2"]);
     w.pause(0.3);
-    w.expect("a middle click closes the mixer's tab", &format!("{views} == 'arrange session'"));
+    w.expect("a middle click closes the mixer's tab", &format!("{views} == 'arrange devices'"));
     // A drag of the first tab past the second moves it there, as :tabmove.
     w.drag(tab_at(0, 60), tab_at(1, 100));
-    w.expect("the arrange view's tab is the second now", &format!("{views} == 'session arrange'"));
+    w.expect("the arrange view's tab is the second now", &format!("{views} == 'devices arrange'"));
     w.assert_alive("after the tab buttons");
 }
 
@@ -1905,16 +1905,19 @@ fn keys_reach_the_window_after_an_entry_of_a_submenu() {
     w.assert_alive("after a submenu");
 }
 
-/// Two tracks, clips in slots, two named scenes, and the session view shown.
+/// The clip launcher extension, two tracks, clips in slots, two named
+/// scenes, and the session view shown.
 const SESSION_SONG: &str = "
 local api = paw.api
+paw.ext.load('extensions/launcher')
+local launcher = require('launcher')
 local keys = paw.add_track({ name = 'Keys' })
 keys:add_clip({ start = 0, length = 8, name = 'Chorus', notes = { { pitch = 60, start = 0, length = 2 } } })
 local bass = paw.add_track({ name = 'Bass' })
-api.clip_add(keys.id, { slot = 0, length = 4, name = 'Riff', notes = { { pitch = 67, start = 0, length = 1 } } })
-api.clip_add(bass.id, { slot = 0, length = 4, name = 'Walk', notes = { { pitch = 36, start = 0, length = 1 } } })
-paw.launcher.set_scene_name(0, 'Verse')
-paw.launcher.set_scene_name(1, 'Bridge')
+launcher.add(keys.id, 0, { length = 4, name = 'Riff', notes = { { pitch = 67, start = 0, length = 1 } } })
+launcher.add(bass.id, 0, { length = 4, name = 'Walk', notes = { { pitch = 36, start = 0, length = 1 } } })
+launcher.set_scene_name(0, 'Verse')
+launcher.set_scene_name(1, 'Bridge')
 api.undo_checkpoint()
 paw.ui.show('session')
 ";
@@ -1924,7 +1927,7 @@ fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
     let mut w = scene!("session", SESSION_SONG);
     let keys = w.number("return paw.api.track_list()[1]") as i32;
     let bass = w.number("return paw.api.track_list()[2]") as i32;
-    let playing = |track: i32| format!("(paw.launcher.state()[{track}] or {{}}).slot");
+    let playing = |track: i32| format!("(require('launcher').state()[{track}] or {{}}).slot");
 
     // A scene launches its row on both tracks together.
     w.click_text("Verse");
@@ -1933,13 +1936,14 @@ fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
         &format!("{} == 0 and {} == 0", playing(keys), playing(bass)),
     );
     w.shot("session-playing.png");
-    w.click_text("Stop all");
+    w.click_text("all");
     w.expect(
         "every clip stopped",
-        &format!("(paw.launcher.state()[{keys}] or {{}}).stopped == true"),
+        &format!("(require('launcher').state()[{keys}] or {{}}).stopped == true"),
     );
-    w.click_text("Back to timeline");
-    w.expect("the timeline again", "next(paw.launcher.state()) == nil");
+    w.type_text(":launch.back all");
+    w.key("Return");
+    w.expect("the timeline again", "next(require('launcher').state()) == nil");
 
     // A clip dragged from the timeline onto an empty slot of the bass is
     // copied into it: the slot under the bass's clip, in the second row.
@@ -1952,7 +1956,7 @@ fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
     w.expect(
         "a copy of the chorus in the bass's second slot",
         &format!(
-            "paw.launcher.clip({bass}, 1) ~= nil and paw.launcher.clip({bass}, 1).name == 'Chorus'"
+            "require('launcher').clip({bass}, 1) ~= nil and require('launcher').clip({bass}, 1).name == 'Chorus'"
         ),
     );
     w.expect(
@@ -1965,7 +1969,7 @@ fn the_session_view_launches_scenes_and_takes_clips_from_the_timeline() {
     w.double_click(riff);
     w.expect(
         "the riff in the piano roll",
-        &format!("paw.ui.views.pianoroll:clip().id == paw.launcher.clip({keys}, 0).id"),
+        &format!("paw.ui.views.pianoroll:clip().id == require('launcher').clip({keys}, 0).id"),
     );
     w.shot("session-roll.png");
     w.assert_alive("after the session view");

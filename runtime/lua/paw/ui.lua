@@ -642,7 +642,7 @@ local recording      -- the list that the screen being drawn fills, or nil
 local refreshing     -- the live values of now, while the parts are drawn again
 paw.seats.keep("ui.live", function() return live end, function(l) live = l end, function() return nil end)
 
---- Whether a live part drawn now is one of the terminal's screen.
+--- True if a live part drawn now is one of the terminal's screen.
 function M.live_drawing()
   return recording ~= nil
 end
@@ -746,6 +746,8 @@ function M.render_live(buf)
     recording = {}
     for _, part in ipairs(live) do M.live(part.buf, part.draw) end
   end)
+  -- A part of a view with a state for each window bound that window's.
+  L.settle()
   recording, refreshing, M.screen = nil, nil, false
   api.grid_live_seal()
   if not ok then
@@ -1242,7 +1244,7 @@ function M.frame_ms()
   return 1000 / paw.opt.fps
 end
 
---- Whether something moves on its own now: the song plays, or a moment
+--- True if something moves on its own now: the song plays, or a moment
 --- after activity (`poke`), while meters fall.
 function M.active()
   return api.transport_get().playing or api.now() < active_until

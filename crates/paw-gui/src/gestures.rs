@@ -509,7 +509,7 @@ fn japanese_lyrics_are_drawn_with_glyphs_of_their_own() {
 #[test]
 fn the_views_buttons_show_views_and_more_and_track_open_menus() {
     let (mut h, calls) = window();
-    for (label, words) in [("Session", "view.toggle session"), ("Mixer", "view.toggle mixer"), ("Piano roll", "view.toggle pianoroll")] {
+    for (label, words) in [("Mixer", "view.toggle mixer"), ("Piano roll", "view.toggle pianoroll")] {
         let at = h.get_by_label(label).rect().center();
         click(&mut h, at);
         assert!(sent(&calls, words), "{label}");
@@ -693,29 +693,6 @@ fn a_press_on_a_devices_power_button_goes_back_in_cells() {
     assert!((num(&down["x"]) - 47.0).abs() < 0.1 && (num(&down["y"]) - 1.5).abs() < 0.1, "the power button's middle in units: {down}");
 }
 
-// ------------------------------------------------------------ the session view
-
-#[test]
-fn the_session_views_bar_stops_goes_back_captures_and_quantizes() {
-    let (mut h, calls) = window_with(|s| {
-        s["modal"]["panes"]["panes"][1]["view"] = json!("session");
-        s["modal"]["panes"]["panes"][1]["kind"] = json!("native");
-        s["modal"]["session"] = json!(true);
-    });
-    let at = h.get_by_label("Stop all").rect().center();
-    click(&mut h, at);
-    assert!(acted(&calls, "stop_slots").is_some());
-    let at = h.get_by_label("Back to timeline").rect().center();
-    click(&mut h, at);
-    assert!(acted(&calls, "back_to_timeline").is_some());
-    let at = h.get_by_label("Capture").rect().center();
-    click(&mut h, at);
-    assert!(sent(&calls, "launch.capture"));
-    let at = h.get_by_label("2bars").rect().center();
-    click(&mut h, at);
-    assert!(sent(&calls, "launch.quantize 2bars"));
-}
-
 // ------------------------------------------------------------------ the panes
 
 #[test]
@@ -748,7 +725,6 @@ fn what_the_window_writes_has_glyphs() {
         include_str!("roles.rs"),
         include_str!("model.rs"),
         include_str!("panes.rs"),
-        include_str!("session.rs"),
         include_str!("timeline.rs"),
         include_str!("widgets.rs"),
         include_str!("../../../runtime/lua/paw/window_menus.lua"),

@@ -73,12 +73,12 @@ local function sections_of(state)
   project.lines = nil
   return {
     project = project, lines = state.project.lines or {}, tracks = state.tracks or {},
-    clips = state.clips or {}, devices = state.devices or {}, routing = state.routing or false, slots = state.slots or {},
+    clips = state.clips or {}, devices = state.devices or {}, routing = state.routing or false,
     kinds = state.kinds, view = { selected = state.selected, cursor = state.cursor },
   }
 end
 
-local SECTION_KEYS = { "project", "tracks", "clips", "devices", "routing", "kinds", "selected", "cursor", "slots" }
+local SECTION_KEYS = { "project", "tracks", "clips", "devices", "routing", "kinds", "selected", "cursor" }
 
 --- Send to a connection the changes of the state of the frontend after the
 --- last send. Send nothing when nothing changed.
@@ -150,7 +150,7 @@ end
 paw.on("transport.play", M.wake)
 
 --- A turn had input: a key, the pointer, a call. What the frontends show
---- may have changed.
+--- can be different.
 function M.touch()
   touched = true
   M.touches = M.touches + 1

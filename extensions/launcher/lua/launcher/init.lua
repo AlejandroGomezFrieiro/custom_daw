@@ -1,23 +1,19 @@
--- Clip launching, for playing live: every track has slots, a column of
--- clips kept apart from the timeline, and a row of slots across the tracks
--- is a scene. Launching a slot starts its clip looping on its track at the
--- next boundary of its quantize (a bar by default), to the frame; while a
--- track plays a slot, or has been stopped, its clips on the timeline are
--- silent until it goes back to the arrangement. Stopping the song sends
--- every track back. A render plays the timeline: `capture` writes a
--- performance into it.
+-- The clip launcher: every track has slots, a column of clips kept off the
+-- timeline, and a row of slots across the tracks is a scene. Launching a
+-- slot cues its clip on its track at the next boundary of its quantize (a
+-- bar by default), to the frame (`paw.api.cue`); while a track plays a
+-- slot, or has been stopped, its clips on the timeline are silent until it
+-- goes back to the timeline. Stopping the song sends every track back. A
+-- render plays the timeline: `capture` writes a performance into it.
 --
---   :launch                 the slot under the session view's cursor
---   :scene 2                every clip in the second row
---   :launch.stop            stop the track's clip; `launch.stop all` every one
---   :launch.back            back to the arrangement; `launch.back all`
---   :launch.quantize 1/8    where launches land (off 1/16 1/8 1/4 beat bar 2bars 4bars)
---   paw.launcher.launch(track.id, 0)
+-- The clips are the core's clips off the timeline (`paw.api.clip_add(track,
+-- { cue = true })`), saved with the project and undone like any edit. What
+-- is the launcher's own is kept in `meta.launcher`: on each clip its `row`
+-- (from 0), `quantize`, `mode` and `legato`; on the project the `quantize`
+-- of launches and the names of the `scenes`. Without the extension the
+-- project opens and plays its timeline, and keeps all of it.
 --
--- The clips are clips like any other (`paw.api.clip_add(track, { slot = row })`),
--- saved with the project and undone like any edit. Scene names are kept in
--- `project.meta.scenes`. Rows count from 0 here and in `paw.api`, from 1 in
--- commands and on screen.
+-- Rows count from 0 here and in `paw.api`, from 1 in commands and on screen.
 local api = paw.api
 local M = {
   -- The slot the session view's cursor is on, as a row from 0; the track
@@ -29,9 +25,6 @@ local M = {
   capturing = false,
 }
 
--- Rows the session view shows at least.
-paw.option.define("launch_rows", 8)
-
 local function contains(list, value)
   for _, v in ipairs(list) do
     if v == value then return true end
@@ -39,26 +32,171 @@ local function contains(list, value)
   return false
 end
 
+M.contains = contains
+
+-- The model ------------------------------------------------------------------------
+
+--- The launcher's part of a clip's meta, or nil for a clip that is not in a slot.
+local function slot_meta(clip)
+  local m = type(clip.meta) == "table" and clip.meta.launcher
+  return type(m) == "table" and type(m.row) == "number" and m or nil
+end
+
+--- A clip view as the launcher shows it: `slot` (its row), `mode`,
+--- `quantize` (nil for the project's) and `legato`.
+local function as_slot(clip, m)
+  clip.slot, clip.mode, clip.quantize, clip.legato = m.row, m.mode or "trigger", m.quantize, m.legato == true
+  return clip
+end
+
 --- The clips in a track's slots, by row: `{ [row] = clip view }`.
 function M.slots(track)
   local out = {}
-  for _, clip in ipairs(api.slot_list(track)) do out[clip.slot] = clip end
+  for _, clip in ipairs(api.cue_list(track)) do
+    local m = slot_meta(clip)
+    if m and not out[m.row] then out[m.row] = as_slot(clip, m) end
+  end
   return out
 end
 
 --- The clip in a slot, or nil.
 function M.clip(track, row)
-  for _, clip in ipairs(api.slot_list(track)) do
-    if clip.slot == row then return clip end
+  return M.slots(track)[row]
+end
+
+--- A clip's view as a slot's, by its id, or nil if it is in no slot.
+function M.slot_of(id)
+  local ok, clip = pcall(api.clip_get, id)
+  local m = ok and clip.cue and slot_meta(clip)
+  return m and as_slot(clip, m) or nil
+end
+
+--- Change the launcher's part of a clip's meta: `fields` are set, a false
+--- one is taken away. One edit.
+local function set_meta(id, fields)
+  local meta = api.clip_get(id).meta
+  meta = type(meta) == "table" and meta or {}
+  local m = type(meta.launcher) == "table" and meta.launcher or {}
+  for k, v in pairs(fields) do
+    if v == false then m[k] = nil else m[k] = v end
+  end
+  meta.launcher = m
+  api.clip_set(id, "meta", meta)
+end
+
+--- The project's part: `{ quantize, scenes }`.
+local function project_meta()
+  local m = api.project_get().meta.launcher
+  return type(m) == "table" and m or {}
+end
+
+local function set_project_meta(key, value)
+  local meta = api.project_get().meta
+  local m = type(meta.launcher) == "table" and meta.launcher or {}
+  m[key] = value
+  meta.launcher = next(m) and m or nil
+  api.project_set("meta", meta)
+end
+
+--- Where launches land unless a slot says otherwise: "bar" by default.
+function M.quantize()
+  local q = project_meta().quantize
+  return contains(M.quantizes, q) and q or "bar"
+end
+
+--- Set where launches land.
+function M.set_quantize(q)
+  if not contains(M.quantizes, q) then
+    error("a quantize is one of " .. table.concat(M.quantizes, ", "), 2)
+  end
+  set_project_meta("quantize", q ~= "bar" and q or nil)
+end
+
+--- Change how a slot's clip launches: `mode` (trigger, gate, toggle),
+--- `quantize` (one of `M.quantizes`, or "project" for the project's) or
+--- `legato` (true or false).
+function M.set(id, key, value)
+  if not M.slot_of(id) then error("clip " .. tostring(id) .. " is in no slot", 2) end
+  if key == "mode" then
+    if not contains(M.modes, value) then error("a mode is trigger, gate or toggle", 2) end
+    set_meta(id, { mode = value ~= "trigger" and value or false })
+  elseif key == "quantize" then
+    if value ~= nil and value ~= "project" and not contains(M.quantizes, value) then
+      error("a quantize is project or one of " .. table.concat(M.quantizes, ", "), 2)
+    end
+    set_meta(id, { quantize = (value and value ~= "project") and value or false })
+  elseif key == "legato" then
+    set_meta(id, { legato = value and true or false })
+  else
+    error("a slot has no setting `" .. tostring(key) .. "`: mode, quantize or legato", 2)
   end
 end
 
---- What each track plays and has in its queue, by track id: see
---- `paw.api.launcher`. A track with no launched clip is not in the table.
+--- Put a slot's clip in another slot: `row` on `track` (its own when nil),
+--- in place of what was there.
+function M.move(id, track, row)
+  local c = M.slot_of(id)
+  if not c then error("clip " .. tostring(id) .. " is in no slot", 2) end
+  track = track or c.track
+  local there = M.clip(track, row)
+  if there and there.id ~= id then api.clip_remove(there.id) end
+  if c.track ~= track then api.clip_set(id, "track", track) end
+  set_meta(id, { row = row })
+end
+
+--- The names of the scenes, by row from 1. Rows without a name are "" or nil.
+function M.scenes()
+  local scenes = project_meta().scenes
+  return type(scenes) == "table" and scenes or {}
+end
+
+--- A scene's name (rows from 0): its own, or "Scene N".
+function M.scene_name(row)
+  local name = M.scenes()[row + 1]
+  return (type(name) == "string" and name ~= "") and name or ("Scene " .. (row + 1))
+end
+
+--- Name a scene (rows from 0), kept with the project.
+function M.set_scene_name(row, name)
+  local scenes = M.scenes()
+  for i = 1, row do scenes[i] = scenes[i] or "" end
+  scenes[row + 1] = name
+  while #scenes > 0 and scenes[#scenes] == "" do scenes[#scenes] = nil end
+  set_project_meta("scenes", #scenes > 0 and scenes or nil)
+end
+
+--- How many rows there are: those with clips or names, one empty row more,
+--- and at least `paw.opt.launch_rows`.
+function M.rows()
+  local last = #M.scenes()
+  for _, id in ipairs(api.track_list()) do
+    for row in pairs(M.slots(id)) do last = math.max(last, row + 1) end
+  end
+  return math.max(paw.opt.launch_rows, last + 1)
+end
+
+-- What plays --------------------------------------------------------------------------
+
+--- What each track plays and has in its queue, by track id, from
+--- `paw.api.cue_state`: `slot` (a row) or `stopped`, `phase`, `length`,
+--- `since`, and `queued` (a row, "stop" or "arrangement") with `at`. A
+--- track that plays its timeline with nothing queued is not in the table.
 function M.state()
   local out = {}
-  for _, s in ipairs(api.launcher()) do
-    if s.slot or s.stopped or s.queued then out[s.track] = s end
+  for _, s in ipairs(api.cue_state()) do
+    if s.clip or s.stopped or s.queued then
+      local function row_of(id)
+        local c = M.slot_of(id)
+        return c and c.slot
+      end
+      local q = s.queued
+      out[s.track] = {
+        track = s.track, since = s.since, phase = s.phase, length = s.length, at = s.at,
+        stopped = s.stopped or (s.clip and not row_of(s.clip)) or nil,
+        slot = s.clip and row_of(s.clip) or nil, clip = s.clip,
+        queued = q == "timeline" and "arrangement" or q == "stop" and "stop" or (q and (row_of(q) or "stop")) or nil,
+      }
+    end
   end
   return out
 end
@@ -71,55 +209,31 @@ function M.playing(track)
   return s.slot or (s.stopped and "stopped" or "arrangement"), s.queued
 end
 
---- The names of the scenes, by row from 1. Rows without a name are nil.
-function M.scenes()
-  local scenes = api.project_get().meta.scenes
-  return type(scenes) == "table" and scenes or {}
-end
-
---- A scene's name (rows from 0): its own, or "Scene N".
-function M.scene_name(row)
-  local name = M.scenes()[row + 1]
-  return (type(name) == "string" and name ~= "") and name or ("Scene " .. (row + 1))
-end
-
---- Name a scene (rows from 0), kept with the project.
-function M.set_scene_name(row, name)
-  local meta = api.project_get().meta
-  local scenes = type(meta.scenes) == "table" and meta.scenes or {}
-  for i = 1, row do scenes[i] = scenes[i] or "" end
-  scenes[row + 1] = name
-  while #scenes > 0 and scenes[#scenes] == "" do scenes[#scenes] = nil end
-  meta.scenes = #scenes > 0 and scenes or nil
-  api.project_set("meta", meta)
-end
-
---- How many rows there are: those with clips or names, one empty row more,
---- and at least `paw.opt.launch_rows`.
-function M.rows()
-  local last = #M.scenes()
-  for _, id in ipairs(api.track_list()) do
-    for _, clip in ipairs(api.slot_list(id)) do last = math.max(last, clip.slot + 1) end
-  end
-  return math.max(paw.opt.launch_rows, last + 1)
-end
-
 -- Launching ------------------------------------------------------------------
 
---- Send launches, and start the song if it is stopped: launched while
---- stopped, clips start at once.
+--- Send cues, and start the song if it is stopped: cued while stopped,
+--- clips start at once.
 local function send(list, start)
   if #list == 0 then return end
-  api.launch(list)
+  api.cue(list)
   if start and not paw.transport.playing then paw.transport.play() end
   api.ui_redraw()
+end
+
+--- The cue of a track's slot: its clip, or a stop for an empty slot.
+local function cue_of(track, row, opts)
+  opts = opts or {}
+  local clip = M.clip(track, row)
+  if not clip then return { track = track, stop = true, quantize = opts.quantize or M.quantize() } end
+  local legato = opts.legato
+  if legato == nil then legato = clip.legato end
+  return { track = track, clip = clip.id, quantize = opts.quantize or clip.quantize or M.quantize(), legato = legato }
 end
 
 --- Launch the clip in a slot on its next boundary. An empty slot stops the
 --- track. `opts.quantize` and `opts.legato` replace the values of the slot.
 function M.launch(track, row, opts)
-  opts = opts or {}
-  send({ { track = track, slot = row, quantize = opts.quantize, legato = opts.legato } }, true)
+  send({ cue_of(track, row, opts) }, true)
 end
 
 --- A slot's button pressed, from a key, the mouse or a controller: what that
@@ -142,12 +256,12 @@ end
 --- clips of all tracks. A stopped track makes no sound until you launch it
 --- again or send it back to its timeline.
 function M.stop(track)
-  local list = {}
+  local list, q = {}, M.quantize()
   if track then
-    list[1] = { track = track, stop = true }
+    list[1] = { track = track, stop = true, quantize = q }
   else
     for id, s in pairs(M.state()) do
-      if s.slot or (s.queued and s.queued ~= "stop") then list[#list + 1] = { track = id, stop = true } end
+      if s.slot or (s.queued and s.queued ~= "stop") then list[#list + 1] = { track = id, stop = true, quantize = q } end
     end
   end
   send(list)
@@ -156,11 +270,11 @@ end
 --- Send a track back to its timeline. With no track, send back each track
 --- that left its timeline.
 function M.back(track)
-  local list = {}
+  local list, q = {}, M.quantize()
   if track then
-    list[1] = { track = track, arrangement = true }
+    list[1] = { track = track, timeline = true, quantize = q }
   else
-    for id in pairs(M.state()) do list[#list + 1] = { track = id, arrangement = true } end
+    for id in pairs(M.state()) do list[#list + 1] = { track = id, timeline = true, quantize = q } end
   end
   send(list)
 end
@@ -171,33 +285,52 @@ function M.scene(row)
   local list, state = {}, M.state()
   for _, id in ipairs(api.track_list()) do
     if M.clip(id, row) then
-      list[#list + 1] = { track = id, slot = row }
+      list[#list + 1] = cue_of(id, row)
     elseif state[id] and state[id].slot then
-      list[#list + 1] = { track = id, stop = true }
+      list[#list + 1] = { track = id, stop = true, quantize = M.quantize() }
     end
   end
   send(list, true)
 end
 
---- Where launches land unless a slot says otherwise.
-function M.set_quantize(q)
-  if not contains(M.quantizes, q) then
-    error("a quantize is one of " .. table.concat(M.quantizes, ", "), 2)
-  end
-  api.project_set("launch_quantize", q)
-end
-
 -- Making clips in slots --------------------------------------------------------
+
+--- Add a clip off the timeline in a slot, from `opts` as `paw.api.clip_add`
+--- takes them, in place of what was there. Returns its id.
+function M.add(track, row, opts)
+  local there = M.clip(track, row)
+  if there then api.clip_remove(there.id) end
+  opts = paw.util.merge(opts, { cue = true })
+  local meta = type(opts.meta) == "table" and paw.util.merge(opts.meta, {}) or {}
+  local m = type(meta.launcher) == "table" and paw.util.merge(meta.launcher, {}) or {}
+  m.row = row
+  meta.launcher = m
+  opts.meta = meta
+  return api.clip_add(track, opts)
+end
 
 --- An empty MIDI clip of `bars` bars (1) in a slot. Returns its id.
 function M.new_clip(track, row, bars)
   local length = paw.time.bar(0) * (bars or 1)
-  return api.clip_add(track, { slot = row, length = length, name = "clip " .. (row + 1) })
+  return M.add(track, row, { length = length, name = "clip " .. (row + 1) })
 end
 
---- Copy a clip from the timeline (or another slot) into a slot.
+--- Copy a clip from the timeline (or another slot) into a slot. Returns the copy's id.
 function M.copy(clip, track, row)
-  return api.clip_to_slot(clip, track, row)
+  local there = M.clip(track, row)
+  if there and there.id ~= clip then api.clip_remove(there.id) end
+  local id = api.clip_to_cues(clip, track)
+  set_meta(id, { row = row })
+  return id
+end
+
+--- Put a clip from a snapshot (`paw.restore_clip`) in a slot.
+function M.paste(snap, track, row)
+  local there = M.clip(track, row)
+  if there then api.clip_remove(there.id) end
+  local meta = type(snap.meta) == "table" and paw.util.merge(snap.meta, {}) or {}
+  meta.launcher = paw.util.merge(type(meta.launcher) == "table" and meta.launcher or {}, { row = row })
+  return paw.restore_clip(paw.util.merge(snap, { cue = true, start = 0, meta = meta }), track)
 end
 
 -- Recording into a slot ----------------------------------------------------------
@@ -219,7 +352,7 @@ local bar_counts = { bar = 1, ["2bars"] = 2, ["4bars"] = 4 }
 --- The first boundary of a quantize (the project's by default) at or after
 --- `beat`, as the engine finds it.
 function M.boundary(beat, q)
-  q = q or api.project_get().launch_quantize
+  q = q or M.quantize()
   if q == "off" then return beat end
   local bar = api.tempo_bar_of(beat)
   local start = api.tempo_bar_start(bar)
@@ -271,9 +404,7 @@ local function finish_recording()
   for _, c in ipairs(api.clip_list(r.track)) do
     if not r.before[c.id] then
       if not made and c.start <= r.from + 1e-9 and c.start + c.length > r.from then
-        local opts = piece(c, r.from, r.to)
-        opts.slot = r.row
-        made = api.clip_add(r.track, opts)
+        made = M.add(r.track, r.row, piece(c, r.from, r.to))
       end
       api.clip_remove(c.id)
     end
@@ -283,9 +414,10 @@ local function finish_recording()
   if not made then
     return paw.notify("nothing was recorded into the slot: the song stopped before its first boundary", "warn")
   end
+  paw.notify("recorded into slot " .. (r.row + 1))
   -- Going on in step: the loop counts from where the recording began.
   if paw.transport.playing and stopped_at >= r.to - 1e-9 then
-    api.launch({ { track = r.track, slot = r.row, quantize = "off", from = r.from } })
+    api.cue({ { track = r.track, clip = made, quantize = "off", from = r.from } })
   end
 end
 
@@ -310,11 +442,12 @@ function M.record(track, row, bars)
   end
   local from = M.boundary(paw.transport.position)
   M.recording = { track = track, row = row, from = from, to = from + (bars or 1) * paw.time.bar(from), before = before, punch = punch }
-  api.launch({ { track = track, stop = true } })
+  api.cue({ { track = track, stop = true, quantize = M.quantize() } })
   rec_timer = paw.every(10, function()
     local r = M.recording
     if r and (not paw.transport.playing or paw.transport.position >= r.to) then finish_recording() end
   end)
+  paw.notify("recording into slot " .. (row + 1) .. " from beat " .. paw.time.format(from))
   api.ui_redraw()
 end
 
@@ -324,23 +457,23 @@ M.finish_recording = finish_recording
 -- Capturing a performance ------------------------------------------------------
 --
 -- While capturing and playing, what each track plays is read from the engine
--- every few milliseconds; the engine says on which beat each launch
--- happened, so the timeline gets them exactly. When the song stops, every
--- stretch a track played a slot becomes a looped copy of the clip there, and
--- every stretch it was stopped is cleared, in one undo step.
+-- every few milliseconds; the engine says on which beat each cue began, so
+-- the timeline gets them exactly. When the song stops, every stretch a
+-- track played a clip becomes a looped copy of the clip there, and every
+-- stretch it was stopped is cleared, in one undo step.
 
 local log, last, timer = {}, {}, nil
 
 --- Begin or end a stretch for a track, from what the engine says of it.
 local function note(s, position)
   local was = last[s.track]
-  local key = string.format("%s|%.9f", tostring(s.slot or s.stopped or "timeline"), s.since)
+  local key = string.format("%s|%.9f", tostring(s.clip or s.stopped or "timeline"), s.since)
   if was and was.key == key then return end
   if was and was.kind then was.to = s.since end
-  if s.slot or s.stopped then
+  if s.clip or s.stopped then
     -- How far into its loop the clip was where it began (a legato launch).
-    local phase = s.slot and s.length and ((s.phase or 0) - (position - s.since)) % s.length or 0
-    local entry = { kind = s.slot and "slot" or "stop", row = s.slot, from = s.since, phase = phase, key = key }
+    local phase = s.clip and s.length and ((s.phase or 0) - (position - s.since)) % s.length or 0
+    local entry = { kind = s.clip and "clip" or "stop", clip = s.clip, from = s.since, phase = phase, key = key }
     log[#log + 1] = { track = s.track, entry = entry }
     last[s.track] = entry
   else
@@ -351,7 +484,7 @@ end
 local function poll()
   if not paw.transport.playing then return end
   local position = paw.transport.position
-  for _, s in ipairs(api.launcher()) do note(s, position) end
+  for _, s in ipairs(api.cue_state()) do note(s, position) end
 end
 
 --- Write what was captured into the timeline.
@@ -365,10 +498,14 @@ local function write(position)
     local e, track = item.entry, item.track
     if e.to and e.to - e.from > 1e-9 and pcall(api.track_get, track) then
       paw.edit.arrange.clear(track, e.from, e.to)
-      local clip = e.kind == "slot" and M.clip(track, e.row)
-      if clip then
+      local ok, clip = pcall(api.clip_get, e.clip)
+      if e.kind == "clip" and ok then
         local snap = paw.clip(clip.id):snapshot()
-        snap.slot, snap.quantize, snap.mode, snap.legato = nil, nil, nil, nil
+        snap.cue = nil
+        if type(snap.meta) == "table" then
+          snap.meta.launcher = nil
+          if next(snap.meta) == nil then snap.meta = nil end
+        end
         snap.start, snap.length = e.from, e.to - e.from
         snap.loop, snap.loop_length, snap.loop_start = true, clip.length, 0
         if clip.kind == "midi" and e.phase > 1e-9 then
@@ -402,6 +539,7 @@ function M.capture(on)
     timer = nil
     poll()
     M.write_captured(paw.transport.position)
+    paw.notify("capture stopped")
   end
   api.ui_redraw()
 end
@@ -424,123 +562,5 @@ paw.on("project.loaded", function()
   M.row = 0
   if M.capturing then M.capture(false) end
 end)
-
--- Commands ---------------------------------------------------------------------
-
-local function track_or_warn()
-  local id = paw.cursor.track_id()
-  if not id or id == 0 then paw.notify("no track selected", "warn") end
-  return id ~= 0 and id or nil
-end
-
---- A row from a command's argument (from 1), or the cursor's.
-local function row_arg(arg)
-  local n = tonumber(arg)
-  return n and math.max(0, math.floor(n) - 1) or M.row
-end
-
-paw.command("launch", function(ctx)
-  local track = track_or_warn()
-  if track then M.press(track, row_arg(ctx.args[1])) end
-end, { desc = "Launch a slot of the selected track: `launch 2`, or the one under the cursor" })
-paw.command("launch.stop", function(ctx)
-  if ctx.args[1] == "all" then return M.stop() end
-  local track = track_or_warn()
-  if track then M.stop(track) end
-end, { desc = "Stop the selected track's clip on the next boundary: `launch.stop all` stops every one", complete = { "all" } })
-paw.command("launch.back", function(ctx)
-  if ctx.args[1] == "all" then return M.back() end
-  local track = track_or_warn()
-  if track then M.back(track) end
-end, { desc = "Have the selected track play its timeline again: `launch.back all` for every track", complete = { "all" } })
-paw.command("launch.quantize", function(ctx)
-  local q = ctx.args[1]
-  if not q then return paw.notify("launches land on: " .. api.project_get().launch_quantize) end
-  M.set_quantize(q)
-end, { desc = "Where launches land: `launch.quantize 1/8` (off 1/16 1/8 1/4 beat bar 2bars 4bars)", complete = M.quantizes })
-paw.command("launch.capture", function() M.capture() end, {
-  desc = "Write what is launched into the timeline when the song stops (again: stop capturing)",
-})
-paw.command("scene", function(ctx) M.scene(row_arg(ctx.args[1])) end, {
-  desc = "Launch a scene, every clip in a row: `scene 2`, or the cursor's row",
-})
-paw.command("scene.name", function(ctx)
-  local name = table.concat(ctx.args, " ")
-  if name ~= "" then return M.set_scene_name(M.row, name) end
-  paw.ui.input({ prompt = "Scene name: ", text = M.scene_name(M.row) }, function(text)
-    if text then M.set_scene_name(M.row, text) end
-  end)
-end, { desc = "Name the scene of the cursor's row: `scene.name Chorus`" })
-
---- The clip in the slot under the cursor, or a warning.
-local function slot_clip()
-  local track = track_or_warn()
-  local clip = track and M.clip(track, M.row)
-  if track and not clip then paw.notify("the slot is empty", "warn") end
-  return clip
-end
-
-paw.command("slot.new", function(ctx)
-  local track = track_or_warn()
-  if not track then return end
-  if M.clip(track, M.row) then return paw.notify("the slot holds a clip already", "warn") end
-  M.new_clip(track, M.row, tonumber(ctx.args[1]))
-end, { desc = "A new MIDI clip in the slot under the cursor: `slot.new 2` for two bars" })
-paw.command("slot.record", function(ctx)
-  if M.recording then return M.finish_recording() end
-  local track = track_or_warn()
-  if not track then return end
-  if M.clip(track, M.row) then return paw.notify("the slot holds a clip already", "warn") end
-  M.record(track, M.row, tonumber(ctx.args[1]) or ctx.count)
-end, { desc = "Record into the empty slot under the cursor from the next boundary: `slot.record 2` for two bars (again: stop now)" })
-paw.command("slot.copy", function()
-  local track = track_or_warn()
-  local clip = track and paw.cursor.clip()
-  if not clip then return paw.notify("no clip under the arrange view's cursor", "warn") end
-  M.copy(clip.id, track, M.row)
-end, { desc = "Copy the clip under the arrange view's cursor into the slot under the session view's" })
-paw.command("slot.delete", function()
-  local clip = slot_clip()
-  if clip then api.clip_remove(clip.id) end
-end, { desc = "Empty the slot under the cursor" })
-paw.command("slot.edit", function()
-  local clip = slot_clip()
-  if clip and clip.kind == "midi" then paw.ui.views.pianoroll:edit(paw.clip(clip.id)) end
-end, { desc = "Open the notes of the clip in the slot under the cursor" })
-paw.command("slot.mode", function(ctx)
-  local clip = slot_clip()
-  if not clip then return end
-  local mode = ctx.args[1]
-  if not mode then
-    -- Round the modes.
-    for i, m in ipairs(M.modes) do
-      if m == clip.mode then mode = M.modes[i % #M.modes + 1] end
-    end
-  end
-  if not contains(M.modes, mode) then return paw.notify("a mode is trigger, gate or toggle", "warn") end
-  api.clip_set(clip.id, "mode", mode)
-  paw.notify(clip.name .. ": " .. mode)
-end, { desc = "How the slot's clip launches: `slot.mode gate` (trigger, gate, toggle; none goes round them)", complete = M.modes })
-paw.command("slot.legato", function()
-  local clip = slot_clip()
-  if clip then api.clip_set(clip.id, "legato", not clip.legato) end
-end, { desc = "Have the slot's clip take over where the clip before it had got to, or not" })
-paw.command("slot.quantize", function(ctx)
-  local clip = slot_clip()
-  if not clip then return end
-  local q = ctx.args[1]
-  if q and q ~= "project" and not contains(M.quantizes, q) then
-    return paw.notify("a quantize is project or one of " .. table.concat(M.quantizes, ", "), "warn")
-  end
-  api.clip_set(clip.id, "quantize", (q and q ~= "project") and q or nil)
-end, {
-  desc = "Where the slot's clip launches: `slot.quantize 1/16`, or `slot.quantize` for the project's",
-  complete = function() return { "project", unpack(M.quantizes) } end,
-})
-paw.command("slot.length", function(ctx)
-  local clip = slot_clip()
-  local bars = tonumber(ctx.args[1])
-  if clip and bars and bars > 0 then api.clip_set(clip.id, "length", bars * paw.time.bar(0)) end
-end, { desc = "How many bars the slot's clip loops over: `slot.length 2`" })
 
 return M

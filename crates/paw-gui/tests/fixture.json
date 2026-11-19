@@ -82,7 +82,7 @@
         "editor": "",
         "format": "builtin",
         "gain": 0,
-        "id": 8,
+        "id": 7,
         "keyed": false,
         "more": 0,
         "name": "Synth",
@@ -197,7 +197,6 @@
       "utility"
     ],
     "late_blocks": 0,
-    "launch": {},
     "levels": [
       0,
       0,
@@ -210,7 +209,6 @@
     ],
     "midi_dropped": 0,
     "modal": {
-      "capturing": false,
       "focused": "pianoroll",
       "keys": [
         {
@@ -278,8 +276,6 @@
       "name": "NORMAL",
       "pending": "",
       "recording": "",
-      "session": false,
-      "slot_row": 0,
       "views": [
         {
           "name": "eventlist",
@@ -288,10 +284,6 @@
         {
           "name": "qflist",
           "title": "Quickfix list"
-        },
-        {
-          "name": "session",
-          "title": "session"
         }
       ],
       "windows": {}
@@ -308,7 +300,6 @@
       "count_in": 0,
       "engine": "null · 48 kHz",
       "grid": 1,
-      "launch_quantize": "bar",
       "length": 16,
       "lines": [
         {
@@ -1012,16 +1003,6 @@
       "punch_end": 0,
       "punch_start": 0,
       "sample_rate": 48000,
-      "scenes": [
-        "Verse",
-        "Scene 2",
-        "Scene 3",
-        "Scene 4",
-        "Scene 5",
-        "Scene 6",
-        "Scene 7",
-        "Scene 8"
-      ],
       "signature": "4/4",
       "tempo": 120,
       "threads": 12,
@@ -1029,7 +1010,7 @@
     },
     "record_dropped": 0,
     "recording": false,
-    "revision": 9,
+    "revision": 12,
     "routing": {
       "master": false,
       "output": "Master",
@@ -1052,19 +1033,6 @@
     },
     "selected": 1,
     "signature": "4/4",
-    "slots": [
-      {
-        "id": 6,
-        "legato": false,
-        "midi": true,
-        "mode": "trigger",
-        "muted": false,
-        "name": "Riff",
-        "quantize": "",
-        "row": 0,
-        "track": 0
-      }
-    ],
     "tempo": 120,
     "time": "1.1.00",
     "tracks": [
@@ -1079,13 +1047,13 @@
         "height": 1,
         "id": 1,
         "lane_rows": [
-          7
+          6
         ],
         "lanes": [
           {
             "enabled": true,
             "hi": 6,
-            "id": 7,
+            "id": 6,
             "lo": -60,
             "max": 24,
             "min": -120,
@@ -1192,6 +1160,8 @@
         "volume": 0
       }
     ],
+    "window_cache": "auto",
+    "window_fps": "auto",
     "xruns": 0
   }
 }

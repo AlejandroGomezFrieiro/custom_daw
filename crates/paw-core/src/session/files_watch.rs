@@ -311,11 +311,7 @@ impl super::Session {
             }
         }
         for track in self.project.all_tracks() {
-            for clip in track
-                .clips
-                .iter()
-                .chain(track.slots.iter().map(|s| &s.clip))
-            {
+            for clip in track.clips.iter().chain(&track.cues) {
                 let file = match (&clip.source, &clip.content) {
                     (Some(source), _) => Some(source.clone()),
                     (None, ClipContent::Audio { file, .. }) => Some(file.clone()),
