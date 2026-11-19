@@ -17,14 +17,15 @@ mod chrome;
 mod client;
 mod dialogs;
 mod icons;
+mod damage;
 mod keys;
-mod layer;
 mod menu;
 mod model;
 mod panes;
 mod pictures;
 mod portal;
 mod roles;
+mod runner;
 mod scene;
 mod session;
 #[cfg(test)]
@@ -169,14 +170,18 @@ struct Window {
     child: Option<Child>,
 }
 
-impl eframe::App for Window {
+impl runner::App for Window {
     /// The window's surface, which every frame starts from.
-    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+    fn clear_color(&self) -> [f32; 4] {
         theme::th().surface.to_normalized_gamma_f32()
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui) {
         self.view.frame(ui);
+    }
+
+    fn partial(&self) -> bool {
+        self.view.cache
     }
 
     /// Keys go to the kernel's mappings unless a text box of the window's
@@ -205,7 +210,7 @@ impl eframe::App for Window {
         }));
     }
 
-    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+    fn on_exit(&mut self) {
         if let Some(child) = &mut self.child {
             // The window is gone: so is the kernel it started, unless it has
             // ended already. What was unsaved was asked about before this.
@@ -293,40 +298,28 @@ fn run() -> Result<()> {
     if let (Some(x), Some(y)) = (kept["x"].as_f64(), kept["y"].as_f64()) {
         viewport = viewport.with_position([x as f32, y as f32]);
     }
-    let options = eframe::NativeOptions { viewport, renderer: eframe::Renderer::Glow, ..Default::default() };
     let ours = child.is_some();
     let kernel_pid = child.as_ref().map(|c| c.id());
-    eframe::run_native(
-        "paw",
-        options,
-        Box::new(move |cc| {
-            cc.egui_ctx.set_fonts(theme::fonts(cjk.join().ok().flatten()));
-            cc.egui_ctx.set_visuals(visuals());
-            // Which OpenGL draws the window: said in the log, and to the
-            // kernel, which says it once when it is the processor.
-            let (renderer, version) = match &cc.gl {
-                Some(gl) => unsafe {
-                    use eframe::glow::HasContext as _;
-                    (gl.get_parameter_string(eframe::glow::RENDERER), gl.get_parameter_string(eframe::glow::VERSION))
-                },
-                None => (String::new(), String::new()),
-            };
-            eprintln!("paw-gui: OpenGL renderer: {renderer} ({version})");
-            let report = renderer_report(&renderer, &version, asked, libgl, has_card());
-            let software = report["software"] == true;
-            if let Err(err) = client.eval("paw.frontend.window_renderer_set(...)", json!([report])) {
-                eprintln!("paw-gui: {err:#}");
-            }
-            let ctx = cc.egui_ctx.clone();
-            // A frame for what came, and one only: egui draws two for a
-            // request to draw at once.
-            client.wake_on_events(move || ctx.request_repaint_after(std::time::Duration::from_millis(1)));
-            let mut view = app::View::new(Box::new(client), ours);
-            view.software = software;
-            view.layer = cc.gl.is_some().then(layer::Layer::default);
-            Ok(Box::new(Window { view, child }))
-        }),
-    )
+    runner::run(viewport, move |ctx, gl| {
+        ctx.set_fonts(theme::fonts(cjk.join().ok().flatten()));
+        ctx.set_visuals(visuals());
+        // Which OpenGL draws the window: said in the log, and to the
+        // kernel, which says it once when it is the processor.
+        let (renderer, version) = (&gl.renderer, &gl.version);
+        eprintln!("paw-gui: OpenGL renderer: {renderer} ({version})");
+        let report = renderer_report(renderer, version, asked, libgl, has_card());
+        let software = report["software"] == true;
+        if let Err(err) = client.eval("paw.frontend.window_renderer_set(...)", json!([report])) {
+            eprintln!("paw-gui: {err:#}");
+        }
+        let ctx = ctx.clone();
+        // A frame for what came, and one only: egui draws two for a
+        // request to draw at once.
+        client.wake_on_events(move || ctx.request_repaint_after(std::time::Duration::from_millis(1)));
+        let mut view = app::View::new(Box::new(client), ours);
+        view.software = software;
+        Ok(Box::new(Window { view, child }))
+    })
     .map_err(|err| {
         // A kernel started for a window that never opened ends with it.
         if let Some(pid) = kernel_pid {
