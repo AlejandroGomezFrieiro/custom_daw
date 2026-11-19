@@ -1051,6 +1051,7 @@ impl DeviceFactory for Vst3Factory {
                     class: hex(&self.class),
                     known: vec![f64::NAN; shared.param_ids.len()],
                     loaded: None,
+                    reported: Vec::new(),
                     shared,
                     edits,
                     editor: None,
@@ -1243,10 +1244,16 @@ impl Device for Vst3Device {
             }
             let mut used = 0;
             for (index, value) in self.pending.drain(..) {
-                let (Some(&id), Some(queue)) = (
-                    self.shared.param_ids.get(index as usize),
-                    self.changes.queues.get(used),
-                ) else {
+                let Some(&id) = self.shared.param_ids.get(index as usize) else {
+                    continue;
+                };
+                // One queue for each parameter: the last value set wins (a
+                // value a state gave comes after one set before it).
+                if let Some(queue) = self.changes.queues[..used].iter().find(|q| q.id.get() == id) {
+                    queue.value.set(value as f64);
+                    continue;
+                }
+                let Some(queue) = self.changes.queues.get(used) else {
                     continue;
                 };
                 queue.id.set(id);
@@ -1353,6 +1360,8 @@ struct Vst3Controller {
     /// had run then (`u64::MAX` once the controller has read the state
     /// again).
     loaded: Option<(Instant, u64)>,
+    /// Values a state gave the controller, to report.
+    reported: Vec<(usize, f64)>,
     editor: Option<Editor>,
     ports: Ports,
 }
@@ -1507,7 +1516,7 @@ impl Controller for Vst3Controller {
     }
 
     fn take_changes(&mut self) -> Vec<(usize, f64)> {
-        let mut out = Vec::new();
+        let mut out = std::mem::take(&mut self.reported);
         // Shortly after a state, what the plugin tells of its values is the
         // echo of the state, which the processor has already: passed on, an
         // echo of a state given before an undo would play the old value.
@@ -1703,6 +1712,7 @@ impl Controller for Vst3Controller {
             Ok(data.to_vec())
         };
         let (component, controller) = (part()?, part()?);
+        let before: Vec<Option<f64>> = (0..self.known.len()).map(|i| self.value(i)).collect();
         unsafe {
             let stream = Stream::new(component);
             if self.shared.component.setState(stream_ptr(&stream)) != OK {
@@ -1714,6 +1724,21 @@ impl Controller for Vst3Controller {
                 if !controller.is_empty() {
                     c.setState(stream_ptr(&Stream::new(controller)));
                 }
+            }
+        }
+        // The values the controller took from the state as it was given
+        // it: the processor may still have a parameter set before the
+        // state waiting for its next block, so it is given these after it.
+        // (A plugin that takes the state on only in its next block has the
+        // old values here: nothing changed, nothing is passed on.)
+        self.shared.host.edits.borrow_mut().retain(|(_, _, gesture)| *gesture);
+        for (index, old) in before.into_iter().enumerate() {
+            if let Some(value) = self.value(index)
+                && Some(value) != old
+            {
+                let _ = self.edits.push((index as u32, value as f32));
+                self.known[index] = value;
+                self.reported.push((index, value));
             }
         }
         // Some plugins only queue the state here and take it on in their
