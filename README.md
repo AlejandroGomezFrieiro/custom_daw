@@ -118,7 +118,7 @@ not for the length of its list of features.
 - **Folders.** A file manager as in oil.nvim (`:e ~/samples`). Edit the lines
   to rename, move and place sounds. `:Pdiff` and the git drivers compare and
   merge projects.
-- **Live and remote.** Scenes start clips on the bar ([the session view](docs/reference/session-view.md)).
+- **Live and remote.** Scenes start clips on the bar ([the clip launcher](extensions/launcher/README.md)).
   A terminal or a graphical window can attach to paw on a different computer
   over TLS ([how to work from another computer](docs/how-to/work-from-another-computer.md)).
 

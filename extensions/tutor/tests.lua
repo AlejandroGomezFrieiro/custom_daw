@@ -92,7 +92,7 @@ local function play_lesson(tutor, n)
     eq(paw.ui.float and paw.ui.float.title, "Lesson " .. n .. ": " .. lesson.title, lesson.id .. ": the introduction is shown")
     type_keys("<Esc>")
     eq(paw.ui.float, nil, lesson.id .. ": any key closes the introduction")
-    eq(paw.project.path, T.scratch .. "/tutor/practice/" .. lesson.id .. ".json", lesson.id .. ": the practice project is the tutor's")
+    eq(paw.project.path, T.scratch .. "/tutor/practice/" .. lesson.id .. "/project.toml", lesson.id .. ": the practice project is the tutor's")
     for i, step in ipairs(lesson.steps) do
       local where = lesson.id .. " step " .. i
       eq(tutor.state().step, i, where .. ": the tutor is on it")

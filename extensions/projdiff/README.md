@@ -130,7 +130,7 @@ below the tracks and clips.
 ### What a diff names
 
 - tracks added, removed, renamed and moved. The fader, pan, routing,
-  sends and launcher slots of a track
+  sends and clips off the timeline (the slots of the clip launcher) of a track
 - devices added and removed, their parameters, bypass, offline state,
   side-chain, and the saved state of a plugin
 - clips added, removed, moved, resized and renamed, and their fades,

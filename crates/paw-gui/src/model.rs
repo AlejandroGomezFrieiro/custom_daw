@@ -2,10 +2,7 @@
 //! data, and the small sums the drawing makes on it: levels on a fader's
 //! travel, decibels as words.
 
-use egui::Color32;
 use serde_json::Value;
-
-use crate::theme::colour;
 
 pub fn text(value: &Value) -> String {
     value.as_str().unwrap_or_default().to_string()
@@ -40,9 +37,6 @@ pub fn decibels(db: f32) -> String {
 #[derive(Clone, Debug)]
 pub struct Track {
     pub id: i64,
-    pub name: String,
-    pub color: Color32,
-    pub master: bool,
     /// The lanes it shows as rows of their own under it, by id.
     pub lane_rows: Vec<i64>,
 }
@@ -52,9 +46,6 @@ pub fn tracks(list: &Value) -> Vec<Track> {
         .iter()
         .map(|t| Track {
             id: int(&t["id"]),
-            name: text(&t["name"]),
-            color: colour(&t["color"]),
-            master: flag(&t["master"]),
             lane_rows: rows(&t["lane_rows"]).iter().filter_map(Value::as_i64).collect(),
         })
         .collect()
@@ -77,6 +68,6 @@ mod tests {
     fn a_track_says_the_lanes_it_shows_as_rows() {
         let tracks = tracks(&json!([{ "id": 1, "name": "A", "lane_rows": [7] }, { "id": 0, "name": "Master", "master": true }]));
         assert_eq!(tracks[0].lane_rows, [7]);
-        assert!(tracks[1].master && tracks[1].lane_rows.is_empty());
+        assert!(tracks[1].id == 0 && tracks[1].lane_rows.is_empty());
     }
 }

@@ -179,8 +179,6 @@ local function modal()
     name = keymap.mode == "x" and keymap.visual and visual_names[keymap.visual.kind]
       or mode_names[keymap.mode] or keymap.mode:upper(),
     focused = ui.focused, mixer = ui.visible("mixer"),
-    -- The session view, clips to launch, and the slot its cursor is on.
-    session = ui.visible("session"), slot_row = paw.launcher.row, capturing = paw.launcher.capturing,
     float = ui.float and (ui.float.title or ui.float.name) or nil,
     -- A menu the kernel opened (a right click in a pane drawn from its
     -- scene), by how many were: the window shows it (`paw.frontend.menu("shown")`).
@@ -483,8 +481,6 @@ function M.state(known)
     -- What went wrong while playing (see `:engine.status`).
     xruns = e.xruns, late_blocks = e.late_blocks, midi_dropped = e.midi_dropped,
     record_dropped = e.record_dropped, devices_stopped = e.devices_stopped,
-    -- What each drawn track plays from its slots: `M.launch_state`.
-    launch = M.launch_state(ids),
     -- How often the window draws while the song plays (`paw.opt.window_fps`).
     window_fps = paw.opt.window_fps,
     window_cache = paw.opt.window_cache,
@@ -621,10 +617,6 @@ function M.state(known)
       }
     end
   end
-  -- The clips in slots, the scenes' names and where launches land.
-  out.slots = M.slots(ids)
-  out.project.scenes, out.project.launch_quantize = {}, p.launch_quantize
-  for row = 0, paw.launcher.rows() - 1 do out.project.scenes[row + 1] = paw.launcher.scene_name(row) end
   if out.selected >= 0 then
     for i, id in ipairs(api.track_get(out.selected).devices) do out.devices[i] = device_state(id) end
     out.routing = M.routing(out.selected)
@@ -644,11 +636,13 @@ function M.save_as(after)
     directory = true,
     on_choose = function(dir)
       local p = api.project_get()
-      local name = p.path and p.path:match("([^/]+)$") or ((p.name ~= "" and p.name or "song") .. ".json")
-      paw.ui.input({ prompt = "File name: ", text = name }, function(typed)
+      -- A project is a folder: its name is the folder's.
+      local name = p.path and (p.path:gsub("/project%.toml$", ""):gsub("%.json$", ""):match("([^/]+)$"))
+        or (p.name ~= "" and p.name or "song")
+      paw.ui.input({ prompt = "Folder name: ", text = name }, function(typed)
         if typed == "" then return end
-        if not typed:match("%.[%w]+$") then typed = typed .. ".json" end
-        paw.notify("saved " .. paw.project.save(dir .. "/" .. typed))
+        local saved, note = paw.project.write(dir .. "/" .. typed)
+        paw.notify(note and (note .. ": " .. saved) or ("saved " .. saved))
         if after then after() end
       end)
     end,
@@ -1737,6 +1731,12 @@ end
 
 --- Type keys as if at the keyboard: what a menu entry for an operator does
 --- to a selection.
+--- The window got the focus of the desktop (true), or lost it.
+function A.focus(on)
+  paw.ui.has_focus = on
+  paw.emit("ui.focus", { focused = on })
+end
+
 function A.keys(keys)
   -- Keys typed in the main window are not for a view in a window of its
   -- own, which sends its own (`paw.canvas.key`): they go to the window
@@ -1784,7 +1784,7 @@ function A.leave(how, what)
   end
   if how ~= "save" then return go() end
   if api.project_get("path") then
-    paw.project.save()
+    paw.project.write()
     return go()
   end
   M.save_as(go)
@@ -1796,8 +1796,8 @@ end
 function A.chosen(kind, path)
   remember_dir(path)
   if kind == "saveas" then
-    if not path:match("%.[%w]+$") then path = path .. ".json" end
-    paw.notify("saved " .. paw.project.save(path))
+    local saved, note = paw.project.write(path)
+    paw.notify(note and (note .. ": " .. saved) or ("saved " .. saved))
   else
     paw.commands.run("import", { path })
   end
@@ -1820,7 +1820,7 @@ function A.drop(paths, row, beat)
       sounds[#sounds + 1] = path
     elseif paw.midifile.is_midi_file(path) then
       midis[#midis + 1] = path
-    elseif path:lower():match("%.json$") then
+    elseif path:lower():match("%.json$") or paw.project.is_folder(path) then
       out.open = out.open or path
     else
       out.refused = out.refused + 1
@@ -2899,111 +2899,5 @@ function A.move_device(device, by)
   local d = api.device_get(device)
   api.device_move(device, d.track, paw.util.clamp(d.index + by, 1, #api.track_get(d.track).devices))
 end
-
--- Clip launching (`paw.launcher`) ---------------------------------------------
---
--- The session view shows a column of slots under each track and a scene for
--- each row. Rows and tracks are counted as the rest of the state counts
--- them: rows from 0, tracks by their place among the drawn ones from 0.
-
---- What each drawn track (`ids`, the master last) plays from its slots, by
---- place. `slot` and `queued` are rows or -1. `stopping` and `back` tell
---- that a stop or a return to the timeline is in the queue. `stopped` tells
---- that the track plays nothing. `progress` is the position of the clip in
---- its loop (0 to 1). `recording` is the row that records, or -1. The
---- result is empty while no slot plays or records.
-function M.launch_state(ids)
-  local state, rec = paw.launcher.state(), paw.launcher.recording
-  if not next(state) and not rec then return {} end
-  local out = {}
-  for i, id in ipairs(ids) do
-    local s = state[id] or {}
-    out[i] = {
-      slot = s.slot or -1, queued = type(s.queued) == "number" and s.queued or -1,
-      stopping = s.queued == "stop", back = s.queued == "arrangement", stopped = s.stopped or false,
-      progress = (s.slot and s.length and s.length > 0) and s.phase / s.length or 0,
-      recording = rec and rec.track == id and rec.row or -1,
-    }
-  end
-  return out
-end
-
---- The clips in the drawn tracks' slots: `{ id, track, row, name, midi,
---- mode, legato, quantize, muted }` each, `track` by place from 0.
-function M.slots(ids)
-  local out = {}
-  for i, id in ipairs(ids) do
-    if id ~= 0 then
-      for _, clip in ipairs(api.slot_list(id)) do
-        out[#out + 1] = {
-          id = clip.id, track = i - 1, row = clip.slot, name = clip.name, midi = clip.kind == "midi",
-          mode = clip.mode, legato = clip.legato, quantize = clip.quantize or "", muted = clip.muted,
-        }
-      end
-    end
-  end
-  return out
-end
-
---- A slot pressed, or let go of (`down` false): see `paw.launcher.press`
---- and `release`. The session view's cursor goes there.
-function A.press_slot(track, row, down)
-  paw.cursor.set_track(track)
-  paw.launcher.row = row
-  if down == false then return paw.launcher.release(track, row) end
-  paw.launcher.press(track, row)
-end
-
---- A click on a slot: the cursor goes there, launching nothing, and the
---- keys are the session view's.
-function A.choose_slot(track, row)
-  paw.cursor.set_track(track)
-  paw.launcher.row = row
-  if paw.ui.visible("session") then paw.ui.focus("session") end
-  api.ui_redraw()
-end
-
---- Record into an empty slot: see `paw.launcher.record`.
-function A.record_slot(track, row)
-  A.choose_slot(track, row)
-  if paw.launcher.recording then return paw.launcher.finish_recording() end
-  paw.launcher.record(track, row)
-end
-
---- A double click on an empty slot: a MIDI clip of a bar there, opened in
---- the piano roll. On a slot with a MIDI clip it opens that. Returns the clip.
-function A.open_slot(track, row)
-  A.choose_slot(track, row)
-  local clip = paw.launcher.clip(track, row)
-  local id = clip and clip.id or paw.launcher.new_clip(track, row)
-  if not clip or clip.kind == "midi" then paw.ui.views.pianoroll:edit(paw.clip(id)) end
-  return id
-end
-
---- A clip from the timeline dropped on a slot: a copy of it goes there.
-function A.clip_to_slot(clip, track, row)
-  A.choose_slot(track, row)
-  return paw.launcher.copy(clip, track, row)
-end
-
---- A clip in a slot dragged to another, with `copy` (Ctrl) as a copy.
-function A.move_slot(clip, track, row, copy)
-  if copy then return paw.launcher.copy(clip, track, row) end
-  local c = api.clip_get(clip)
-  if c.track ~= track then api.clip_set(clip, "track", track) end
-  api.clip_set(clip, "row", row)
-  A.choose_slot(track, row)
-end
-
-function A.scene(row)
-  paw.launcher.row = row
-  paw.launcher.scene(row)
-end
-
---- Stop a track's clip, or every clip with no track.
-function A.stop_slots(track) paw.launcher.stop(track) end
-
---- A track back to its timeline, or every track with none.
-function A.back_to_timeline(track) paw.launcher.back(track) end
 
 return M

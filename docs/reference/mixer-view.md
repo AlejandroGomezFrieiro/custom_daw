@@ -47,6 +47,7 @@ sends, the fader, the pan, mute, solo, arm and the input monitor.
 
 <!-- tags: session-view -->
 
-`,l` shows the session view, the clip launcher: a column of slots under
-each track, and a scene for each row. `Enter` launches a slot, and `L`
-launches a row as a scene. Its keys are in [The session view](session-view.md).
+The clip launcher extension (`:ext.load launcher`) adds the session view:
+a column of slots under each track, and a scene for each row. `,l` shows
+it. `Enter` launches a slot, and `L` launches a row as a scene. Its keys
+are in [its README](../../extensions/launcher/README.md).

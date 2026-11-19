@@ -403,7 +403,8 @@ function M.build(opts)
     if t.armed or t.input or t.monitor then
       ctx.report:add("Record arm, inputs and monitoring (DAWproject has none)", t.name)
     end
-    if t.slots and #t.slots > 0 then ctx.report:count("Clips in launcher slots", t.name, #t.slots) end
+    local cues = t.id ~= 0 and #api.cue_list(t.id) or 0
+    if cues > 0 then ctx.report:count("Clips off the timeline (the clip launcher's slots)", t.name, cues) end
   end
   for _, item in ipairs(nest(list)) do track_el(item, structure) end
   local mt = add(structure, node("Track", "id", ctx.id(), "name", "Master", "contentType", "audio notes", "loaded", true))

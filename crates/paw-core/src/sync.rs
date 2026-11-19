@@ -123,6 +123,12 @@ pub struct Mapper {
     pub follow: Option<Id>,
     /// What the engine was last told to play of each track that is not live.
     played: HashMap<Id, Played>,
+    /// The clip in each of a track's cue rows in the engine, so that a
+    /// clip keeps its row (and goes on playing) while others come and go.
+    pub cue_rows: HashMap<Id, Vec<Option<Id>>>,
+    /// Each track's MIDI clips off the timeline as engine events, so that
+    /// a change of one compiles only that one.
+    cue_events: HashMap<Id, HashMap<Id, (Arc<Clip>, Arc<[MidiEv]>)>>,
 }
 
 impl Default for Mapper {
@@ -157,7 +163,20 @@ impl Mapper {
             audible: None,
             follow: None,
             played: HashMap::new(),
+            cue_rows: HashMap::new(),
+            cue_events: HashMap::new(),
         }
+    }
+
+    /// The engine's row of a clip off the timeline, if the engine has it.
+    pub fn cue_row(&self, track: Id, clip: Id) -> Option<u32> {
+        let rows = self.cue_rows.get(&track)?;
+        rows.iter().position(|c| *c == Some(clip)).map(|r| r as u32)
+    }
+
+    /// The clip in a track's cue row in the engine.
+    pub fn cue_clip(&self, track: Id, row: u32) -> Option<Id> {
+        *self.cue_rows.get(&track)?.get(row as usize)?
     }
 
     fn alloc_track(&mut self) -> Option<Slot> {
@@ -649,27 +668,26 @@ pub fn sync(
             }
         }
 
-        let same_slots = !(retimed_notes && !track.slots.is_empty())
-            && prev.map_or(track.slots.is_empty(), |p| {
-            p.attr_map == track.attr_map
-                && p.slots.len() == track.slots.len()
-                && p.slots
-                    .iter()
-                    .zip(&track.slots)
-                    .all(|(a, b)| a.row == b.row && Arc::ptr_eq(&a.clip, &b.clip))
+        let same_cues = !(retimed_notes && !track.cues.is_empty())
+            && prev.map_or(track.cues.is_empty(), |p| {
+            p.attr_map == track.attr_map && p.cues.same(&track.cues)
         });
-        if !same_slots || (replayed && !track.slots.is_empty()) {
+        if !same_cues || (replayed && !track.cues.is_empty()) {
+            let rows = cue_rows(map.cue_rows.remove(&track.id).unwrap_or_default(), track);
             let slots = if held {
                 Slots::default()
             } else {
-                build_slots(track, new.tempo_map(), ctx)
+                build_cues(track, &rows, new.tempo_map(), map, ctx)
             };
+            if !rows.is_empty() {
+                map.cue_rows.insert(track.id, rows);
+            }
             send(Msg::SetSlots {
                 track: slot,
                 slots: Box::new(slots),
             });
-            if !same_slots {
-                emit("slot.changed", json!({ "track": track.id }));
+            if !same_cues {
+                emit("cue.changed", json!({ "track": track.id }));
             }
         }
         match played.remove(&track.id) {
@@ -933,6 +951,8 @@ pub fn sync(
 
     for id in old_tracks.keys().filter(|id| new.track(**id).is_none()) {
         map.parts.remove(id);
+        map.cue_rows.remove(id);
+        map.cue_events.remove(id);
         if let Some(slot) = map.tracks.remove(id) {
             // Notes it left sounding on its MIDI output port end there.
             if map.midi_outputs.get(id).is_some_and(|(port, ..)| *port != 0) {
@@ -1559,7 +1579,7 @@ fn parts_of(
     if !clip.muted {
         match &clip.content {
             ClipContent::Midi { .. } => pieces = pieces_of(clip, before),
-            ClipContent::Audio { file, offset, gain } => {
+            ClipContent::Audio { file, offset, gain, .. } => {
                 clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut audio)
             }
         }
@@ -1759,31 +1779,75 @@ fn frozen_clips(file: &Path, tempo: &paw_engine::TempoMap, ctx: &mut SyncCtx) ->
     set
 }
 
-/// What a track's slots play, each clip laid out from its own start.
-fn build_slots(track: &Track, tempo: &paw_engine::TempoMap, ctx: &mut SyncCtx) -> Slots {
-    let mut rows: Vec<Option<SlotClip>> = Vec::new();
-    for slot in track.slots.iter().filter(|s| !s.clip.muted) {
-        let clip = &slot.clip;
+/// The engine's rows for a track's clips off the timeline: a clip keeps
+/// the row it had, a clip gone frees its row, and a new clip takes the
+/// first free row.
+fn cue_rows(mut rows: Vec<Option<Id>>, track: &Track) -> Vec<Option<Id>> {
+    for row in rows.iter_mut() {
+        if row.is_some_and(|id| !track.cues.iter().any(|c| c.id == id)) {
+            *row = None;
+        }
+    }
+    for clip in &track.cues {
+        if rows.contains(&Some(clip.id)) {
+            continue;
+        }
+        match rows.iter().position(Option::is_none) {
+            Some(free) => rows[free] = Some(clip.id),
+            None => rows.push(Some(clip.id)),
+        }
+    }
+    while rows.last() == Some(&None) {
+        rows.pop();
+    }
+    rows
+}
+
+/// What a track's clips off the timeline play, each laid out from its own
+/// start, in its row (`rows`).
+fn build_cues(
+    track: &Track,
+    rows: &[Option<Id>],
+    tempo: &paw_engine::TempoMap,
+    map: &mut Mapper,
+    ctx: &mut SyncCtx,
+) -> Slots {
+    // A clip that did not change is not compiled again.
+    let cached = map.cue_events.remove(&track.id).unwrap_or_default();
+    let mut kept = HashMap::with_capacity(cached.len() + 1);
+    let mut out: Vec<Option<SlotClip>> = Vec::new();
+    out.resize_with(rows.len(), || None);
+    for (row, id) in rows.iter().enumerate() {
+        let Some(clip) = id.and_then(|id| track.cues.iter().find(|c| c.id == id)) else {
+            continue;
+        };
+        if clip.muted {
+            continue;
+        }
         let mut clips = ClipSet::default();
         match &clip.content {
             ClipContent::Midi { notes, controls } => {
-                clips.midi = compile_clip(clip, notes, controls).to_vec();
+                let events = match cached.get(&clip.id) {
+                    Some((was, events)) if Arc::ptr_eq(was, clip) => events.clone(),
+                    _ => compile_clip(clip, notes, controls),
+                };
+                clips.midi = events.to_vec();
+                kept.insert(clip.id, (clip.clone(), events));
                 downgrade(track, &mut clips, tempo);
             }
-            ClipContent::Audio { file, offset, gain } => {
+            ClipContent::Audio { file, offset, gain, .. } => {
                 clip_audio(clip, (file, *offset, *gain), tempo, ctx, &mut clips.audio)
             }
         }
-        let row = slot.row as usize;
-        if rows.len() <= row {
-            rows.resize_with(row + 1, || None);
-        }
-        rows[row] = Some(SlotClip {
+        out[row] = Some(SlotClip {
             clips,
             length: clip.length,
         });
     }
-    Slots { rows }
+    if !kept.is_empty() {
+        map.cue_events.insert(track.id, kept);
+    }
+    Slots { rows: out }
 }
 
 type TrackIndex<'a> = HashMap<Id, &'a Arc<Track>>;

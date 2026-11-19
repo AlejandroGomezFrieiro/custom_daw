@@ -2,8 +2,7 @@
 
 <!-- tags: saving safety-copies recover autosave project-file project-folder midi2 collect on_external_change -->
 
-A project is a folder of files. A project can also be one JSON file. This
-page describes the files of a project, how paw saves them, keeps safety
+A project is a folder of files. This page describes the files of a project, how paw saves them, keeps safety
 copies and recovers work. For why paw saves this way, see
 [About project files](../explanation/about-project-files.md). For the
 steps, see [How to recover lost work](../how-to/recover-lost-work.md).
@@ -23,7 +22,8 @@ song/
 │       ├── devices.json    the chain and its parameters
 │       ├── 1-synth.state   the state of a plugin, as the plugin gives it
 │       ├── automation/volume.json
-│       └── clips/riff.midi2
+│       ├── clips/riff.midi2
+│       └── clips/take.edits.json  the edit list of an audio clip, if it has one
 ├── media/take1.wav         sound files
 └── unused/                 files that the project does not use now
 ```
@@ -46,8 +46,8 @@ song/
 
 | Command | Effect |
 | --- | --- |
-| `:w song` | Save the project as the folder `song`. A name with no extension is a folder. |
-| `:w song.json` | Save the project in one JSON file. |
+| `:w song` | Save the project as the folder `song`. |
+| `:w song.json` | Also save the project as the folder `song`, and say so. |
 | `:w` | In the piano roll: write the file of the clip. In the device panel: write the files of the chain. Also the `track.json` and `project.toml` if they changed. Elsewhere: write all the files. |
 | `:wa`, `:wall` | Write all the files of the project. |
 | `:ls` | Also list the files of the project. `+` marks a file that is different from the file on the disk. |
@@ -58,6 +58,10 @@ song/
   renames it over the old file. It writes `project.toml` last.
 - `:w` of a folder that has other files and no `project.toml` does not
   save: name a folder in it.
+- A name alone goes beside the folder of the project: `:w take2` makes the
+  folder `take2` next to `song`.
+- paw keeps the `project.toml` before a save that changes it as
+  `project.toml.bak`.
 - A file that the project does not use now goes to `unused/` at the same
   path. A file that is there already stays, and the new one gets `-2`.
   paw never deletes a file from `unused/`.
@@ -68,12 +72,17 @@ song/
 - `:q` refuses to quit with changes that are not saved. `:q!` quits without
   them.
 
-A project in one JSON file:
+### A project in one JSON file
 
-- paw keeps the file as it was before the save next to it, as
-  `song.json.bak`.
-- A `.bak` names media relative to the project, as the project does, so it
-  opens with its media.
+paw writes one JSON file only for its own copies: the safety copies, the
+states of the undo history and `paw.api.project_file_text`. It opens such
+a file, and a project that an earlier version of paw saved in one file.
+
+- `:w` saves a project that you opened from `song.json` as the folder
+  `song` beside it, and says so. `song.json` stays as it was.
+- A script that calls `paw.project.save("song.json")` writes one file, and
+  keeps the file before as `song.json.bak`. A `.bak` names media relative
+  to the project, as the project does, so it opens with its media.
 
 ## MIDI clip files
 
@@ -121,16 +130,44 @@ git config --global diff.paw-midi2.textconv "paw clip cat"
 - A file that paw cannot find leaves the clip empty and offline. A save
   keeps its path.
 
+A whole track and a chain of devices can also come from outside the
+folder, with the same rules:
+
+- A track folder (a folder with a `track.json`, for example
+  `~/library/tracks/Lead` in a different project) gives a track that
+  refers to the folder. `project.toml` names the folder in its list of
+  tracks, and a save writes nothing of the track. Its clips refer to
+  their files in the same way.
+- A chain file (a `devices.json`, with the `.state` files beside it)
+  gives the devices of a track that refers to the file. `track.json`
+  names the file as `devices_file`, and a save writes no `devices.json`.
+- The first edit of the track, or of the chain, makes it the project's
+  own, and paw says this one time: "the track Lead is now this
+  project's own copy (was ~/library/tracks/Lead)". A track takes its
+  clips from that folder with it.
+- A part from outside keeps its ids, and gets new ones only where the
+  project has them. A track from outside plays into the master, with no
+  sends.
+- `K` (`:info`) shows the folder or the file, and where a copy came from.
+
 | Command | Effect |
 | --- | --- |
-| `:collect` | Make every clip from outside the project's own, and copy every sound file from outside into `media`. The next save writes the clip files into the folder. |
+| `:import ~/library/tracks/Lead` | Add the track of a track folder below the track of the cursor. The track refers to the folder. |
+| `:import ~/chains/amp/devices.json` | Give the track of the cursor the devices of a chain file, in place of its devices. The track refers to the file. |
+| `:e devices.json`, `paw devices.json` | Open a chain file alone, on a track of its own, in the device panel. `:w` writes it back. |
+| `:collect` | Make every track, chain and clip from outside the project's own, and copy every sound file from outside into `media`. The next save writes their files into the folder. |
+| `paw.api.track_import_folder(folder, index)` | Add the track of a track folder, as `:import` does. |
+| `paw.api.track_chain_file(track, file, refer)` | Give a track the devices of a chain file. Without `refer`, they are the track's own at once. |
+| `paw.api.chain_write(track, file)` | Write the devices of a track as a chain file. |
 
 ## Changes from outside paw
 
 paw watches the folders of a project folder, and the folders of the files
 outside it that the project uses. A save of paw is not a change. Changes
-close together (a `git checkout`) are one change. paw acts at the next
-key, as `paw.opt.on_external_change` tells:
+close together (a `git checkout`) are one change. paw acts when you come
+back to it: when its terminal or its window gets the focus of the desktop.
+A terminal that does not report the focus (mode 1004) gives the next key
+instead. paw acts as `paw.opt.on_external_change` tells:
 
 | Value | Effect |
 | --- | --- |
@@ -191,7 +228,8 @@ and the drivers for version control.
 
 If a project does not open (it is cut short, or damaged), the message
 tells what can replace it. `:recover` lists its newest safety copy and its
-`.bak` first. Each opens with the name of the damaged project, not saved,
+`.bak` first. For a project folder, the `.bak` is `project.toml.bak`: paw
+opens it with the other files of the folder. Each opens with the name of the damaged project, not saved,
 so `:w` puts it back. If you start paw with such a project on the command
 line, paw starts, with that message.
 

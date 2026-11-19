@@ -166,8 +166,8 @@ do.
 ### Checkpoints on disk
 
 - `:checkpoint <name>` names the current state and writes it to a folder
-  beside the project file. `song.json` keeps its checkpoints in
-  `song.checkpoints/`.
+  beside the project file. The project folder `song` keeps its
+  checkpoints in `song/project.checkpoints/`.
 - The first checkpoint makes the folder. So a project with no checkpoints
   has no folder.
 - Each checkpoint is one file, `<milliseconds since 1970>-<name>.json`.

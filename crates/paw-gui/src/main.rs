@@ -26,7 +26,6 @@ mod pictures;
 mod portal;
 mod roles;
 mod scene;
-mod session;
 #[cfg(test)]
 mod gestures;
 mod theme;

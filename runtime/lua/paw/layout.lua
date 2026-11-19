@@ -1915,7 +1915,7 @@ function M.setup()
     if not close_window() then paw.notify("the last window does not close: `:q` quits", "warn") end
   end, { desc = "Close the window; a panel's comes back where it was" })
   -- A view's own name goes to it: `:arrange`, `:mixer`, `:roll`.
-  for view, word in pairs({ arrange = "arrange", mixer = "mixer", pianoroll = "roll", session = "session" }) do
+  for view, word in pairs({ arrange = "arrange", mixer = "mixer", pianoroll = "roll" }) do
     if ui().views[view] and not paw.commands.get(word) then
       command(word, function() paw.ui.focus(view) end, { desc = "Show " .. M.titles[view] .. " and go to it" })
     end
@@ -1928,8 +1928,8 @@ function M.setup()
   command("q!", function()
     if not close_window() then paw.cmd("quit!") end
   end, { desc = "Close the window; in the last one, quit without saving" })
-  -- `:e roll` shows a buffer here; `:e song.json` opens a project.
-  command("e", function(ctx) return paw.commands.run("edit", ctx.args, ctx) end, { desc = "Show a buffer in this window: `e roll`; or open a file as `open` does: `e song.json`, `e song.mid`, `e take.wav`",
+  -- `:e roll` shows a buffer here; `:e song` opens a project.
+  command("e", function(ctx) return paw.commands.run("edit", ctx.args, ctx) end, { desc = "Show a buffer in this window: `e roll`; or open a file as `open` does: `e song`, `e song.mid`, `e take.wav`",
     complete = function(text, info)
       if info.index > 1 then return {} end
       local out = M.buffer_names()

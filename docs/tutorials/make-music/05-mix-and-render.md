@@ -74,8 +74,9 @@ render the song to a WAV file and an MP3 file, and listen to the file.
 
 ## Save and render
 
-1. Type `:w my-song.json` and press Enter.
+1. Type `:w my-song` and press Enter.
 2. Type `:render my-song.wav` and press Enter.
+   - paw puts the file in the folder of the song, `my-song`.
    - The status line shows the progress. Then paw says
      `rendered my-song.wav`, with the length and the peak level.
    - If the message ends with `(clips)`, the mix is too loud. Lower the
@@ -87,7 +88,7 @@ render the song to a WAV file and an MP3 file, and listen to the file.
 ## Listen to the file
 
 1. Type `:e .` and press Enter.
-   - The folder shows as a list of files, with the length of each sound
+   - The folder of the song shows as a list of files, with the length of each sound
      file.
 2. Type `/my-song.wav` and press Enter. Press `gh`.
    - `gh` plays the file. This is your song, as other people hear it.

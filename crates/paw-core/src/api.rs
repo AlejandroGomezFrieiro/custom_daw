@@ -22,7 +22,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::grid::{self, Caps, Color, Grid, Highlight, Highlights, Rect, Style};
 use crate::io::Io;
-use crate::model::{Control, Id, Note, NoteAttr};
+use crate::model::{ClipContent, Control, Id, Note, NoteAttr};
 use crate::session::notes::{NoteChange, NoteRange, NotesEdit};
 use crate::session::{RenderOpts, Session};
 use crate::watchdog::{self, Watchdog};
@@ -707,7 +707,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             to_lua(lua, &recovered.lua()?)
         }
         // The files of a project kept in a folder, with what each holds and
-        // whether it differs from the disk (see `:ls`).
+        // if it differs from the disk (see `:ls`).
         fn project_files(lua, sh, () => ()) {
             to_lua(lua, &sh.session.borrow_mut().project_files().lua()?)
         }
@@ -721,6 +721,30 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         // project the project's own. Returns how many.
         fn clip_collect(_, sh, () => ()) {
             Ok(sh.session.borrow_mut().clip_collect())
+        }
+        // Make every track read from a folder outside the project, and every
+        // chain of devices read from a file outside it, the project's own.
+        // Returns how many tracks and how many chains.
+        fn track_collect(_, sh, () => ()) {
+            Ok(sh.session.borrow_mut().track_collect())
+        }
+        // Add the track of a track folder outside the project (a folder with
+        // a `track.json`) at `index` (from 1; the end when nil). The project
+        // refers to the folder until the track's first edit. Returns its id.
+        fn track_import_folder(_, sh, (folder, index) => (String, Option<usize>)) {
+            sh.session.borrow_mut().track_import_folder(Path::new(&folder), index).lua()
+        }
+        // Give a track the devices of a chain file (a `devices.json`). With
+        // `refer`, the track refers to the file until the chain's first edit.
+        // Returns how many devices.
+        fn track_chain_file(_, sh, (track, file, refer) => (Id, String, Option<bool>)) {
+            sh.session.borrow_mut().track_chain_file(track, Path::new(&file), refer.unwrap_or(true)).lua()
+        }
+        // Write a track's devices as a chain file: `file` (a `devices.json`)
+        // and the `.state` files of the plugins beside it. Returns the files.
+        fn chain_write(lua, sh, (track, file) => (Id, String)) {
+            let written = sh.session.borrow_mut().chain_write(track, Path::new(&file)).lua()?;
+            to_lua(lua, &written)
         }
         // The files of the open project that changed outside paw and are not
         // acted on yet: paths in its folder, or full paths outside it.
@@ -944,6 +968,29 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn clip_reverse(lua, sh, id => Id) {
             to_lua(lua, &sh.session.borrow_mut().clip_reverse(id).lua()?)
         }
+        // Add an edit to an audio clip's edit list (`edits.rs`): `{ kind =
+        // "gain", from, to, db }` or `{ kind = "pencil", at, channel, values }`,
+        // in seconds from where the clip starts in its sound. Returns how many
+        // edits it has.
+        fn clip_edit_add(lua, sh, (id, edit) => (Id, LuaValue)) {
+            let edit: crate::edits::AudioEdit = from_lua(lua, edit)?;
+            sh.session.borrow_mut().clip_edit_add(id, edit).lua()
+        }
+        // Take away an audio clip's edit list. Returns how many edits it had.
+        fn clip_edits_clear(_, sh, id => Id) {
+            sh.session.borrow_mut().clip_edits_clear(id).lua()
+        }
+        // An audio clip's edit list, as `clip_edit_add` takes its edits (with
+        // times in seconds of its sound).
+        fn clip_edits(lua, sh, id => Id) {
+            let session = sh.session.borrow();
+            let clip = session.project.clip(id).ok_or_else(|| mlua::Error::runtime(format!("no clip {id}")))?;
+            let edits = match &clip.content {
+                ClipContent::Audio { edits, .. } => edits.clone(),
+                _ => Vec::new(),
+            };
+            to_lua(lua, &edits)
+        }
         fn clip_normalize(_, sh, (id, level) => (Id, Option<f64>)) {
             sh.session.borrow_mut().clip_normalize(id, level.unwrap_or(0.0)).lua()
         }
@@ -969,23 +1016,24 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         }
         fn clip_remove(_, sh, id => Id) { sh.session.borrow_mut().clip_remove(id).lua() }
 
-        // --- clip launcher (session/launcher.rs) ---
-        // A clip goes into a slot with `clip_add(track, { slot = row, ... })`.
-        // You edit it as a usual clip. `clip_set` also accepts `row`,
-        // `quantize`, `mode` and `legato` for it.
-        fn slot_list(lua, sh, track => Id) { to_lua(lua, &sh.session.borrow().slot_list(track).lua()?) }
-        // Copy a clip into a row of a track's slots. Returns the copy's id.
-        fn clip_to_slot(_, sh, (id, track, row) => (Id, Id, u32)) {
-            sh.session.borrow_mut().clip_to_slot(id, track, row).lua()
+        // --- cues (session/cues.rs) ---
+        // A clip goes off the timeline with `clip_add(track, { cue = true, ... })`:
+        // it starts at 0, loops over its length, and plays only when cued.
+        // You edit it as a usual clip; `clip_set(id, "track", other)` moves it.
+        fn cue_list(lua, sh, track => Id) { to_lua(lua, &sh.session.borrow().cue_list(track).lua()?) }
+        // Copy a clip, with its `meta`, off the timeline of a track. Returns the copy's id.
+        fn clip_to_cues(_, sh, (id, track) => (Id, Id)) {
+            sh.session.borrow_mut().clip_to_cues(id, track).lua()
         }
-        // `{ { track =, slot = row }, { track =, stop = true },
-        // { track =, arrangement = true }, ... }`, each with `quantize` and
-        // `legato` if not the slot's: all on their boundary, timed together.
-        fn launch(lua, sh, list => LuaValue) {
-            sh.session.borrow_mut().launch(from_lua(lua, list)?).lua()
+        // `{ { track =, clip = id }, { track =, stop = true },
+        // { track =, timeline = true }, ... }`, each with `quantize` (`bar`
+        // when not given: off 1/16 1/8 1/4 beat bar 2bars 4bars), `legato`
+        // and `from`: all on their boundary, timed together by the engine.
+        fn cue(lua, sh, list => LuaValue) {
+            sh.session.borrow_mut().cue(from_lua(lua, list)?).lua()
         }
         // What each track plays and has in its queue, in the last report of the engine.
-        fn launcher(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().launcher_view()) }
+        fn cue_state(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().cue_state()) }
         fn clip_set(lua, sh, (id, key, value) => (Id, String, LuaValue)) {
             sh.session.borrow_mut().clip_set(id, &key, from_lua(lua, value)?).lua()
         }

@@ -642,6 +642,7 @@ mod tests {
                 file: file.into(),
                 offset: 0.0,
                 gain: 0.0,
+                edits: Vec::new(),
             },
             fade_in: 0.0,
             fade_out: 0.0,

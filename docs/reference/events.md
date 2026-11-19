@@ -53,9 +53,10 @@ gets.
 | `param.touched` | `{ device, param, from }` | a parameter moved in the editor of the plugin |
 | `clip.added`, `clip.changed`, `clip.removed` | `{ id, track }` | a clip |
 | `clip.copied` | `{ clip, name, origin }` | the first edit of a clip from a file outside the project made it the project's own |
+| `track.copied`, `chain.copied` | `{ track, name, origin }` | the first edit of a track from a track folder outside the project, or of a chain from a chain file outside it, made it the project's own |
 | `lane.added`, `lane.changed`, `lane.removed` | `{ id, track }` | an automation lane |
 | `lanes.changed` | `{}` | the shown lanes changed |
-| `slot.changed` | `{ track }` | a slot of the clip launcher |
+| `cue.changed` | `{ track }` | the clips off the timeline of a track, which cues play ([About cues](../explanation/about-cues.md)) |
 | `edit.before` | `{ changes }` | a turn edited the project, and the edit will become an undo step. `changes` is a list of `{ name, payload }`: the events above that make the edit. A handler can refuse: paw then puts the project back as the turn found it. Edits of a handler join the step |
 | `edit.after` | `{ changes, state }` | paw made the step. `state` is its id in the undo tree. Edits made here are a separate edit |
 | `undo`, `redo` | `{ from, to, how, label }` | a move in the undo tree. `from` and `to` are states, `label` the step. `how` is `undo`, `redo`, `goto`, `step` or `travel`. A jump to an older state is an `undo` |
@@ -90,6 +91,7 @@ gets.
 | `buf.enter`, `buf.leave` | `{ buf, name }` | a window shows a different buffer |
 | `tab.enter` | `{ tab }` | a different tab |
 | `ui.resized` | `{ width, height }` | the screen changed size |
+| `ui.focus` | `{ focused }` | the terminal (mode 1004) or the window got the focus of the desktop, or lost it |
 | `scope.changed` | `{ scope }` | the tab is narrowed to a group, or not narrowed |
 | `seat.opened`, `seat.closing` | `{ seat }` | a terminal or a graphical window attached, or will go |
 | `address.changed` | `{ uris, revision }` | things with addresses changed (`paw/address.lua`) |

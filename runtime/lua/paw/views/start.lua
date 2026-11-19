@@ -39,7 +39,7 @@ local HINTS = {
   { ":e mixer", "the mixer; also devices, session, and the views of extensions" },
   { ":vs <view>", "a view beside this window (:sp <view> below it)" },
   { ":tabnew <view>", "a new tab that shows a view" },
-  { ":e song.json", "open a project file" },
+  { ":e song", "open a project" },
   { ":ls", "the buffers; :close closes this window, :only closes the others" },
 }
 
@@ -70,7 +70,7 @@ local function render(win, canvas, ctx)
   local first, shown = places(h, #list)
   body:text(2, first - 1, "Recent projects", "Title")
   if #list == 0 then
-    body:text(4, first, util.fit("None yet: :e song.json opens one, :w song.json saves this one.", math.max(1, w - 6)), "Empty")
+    body:text(4, first, util.fit("None yet: :e song opens one, :w song saves this one.", math.max(1, w - 6)), "Empty")
     shown = 1
   end
   local top = math.max(0, s.row - shown)
@@ -151,7 +151,7 @@ end
 function M.open(win)
   if not win then return end
   local entry = projects()[state(win).row]
-  if not entry then return paw.notify("no recent projects yet: `:e song.json` opens one", "warn") end
+  if not entry then return paw.notify("no recent projects yet: `:e song` opens one", "warn") end
   if not paw.project.guard("open") then return end
   paw.recent.open(entry.path)
 end

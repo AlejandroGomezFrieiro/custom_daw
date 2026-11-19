@@ -33,7 +33,7 @@ mod encode;
 mod files_watch;
 pub mod folder;
 mod keep;
-pub mod launcher;
+pub mod cues;
 mod loading;
 pub mod media;
 mod midi_out;
@@ -279,12 +279,8 @@ pub struct ClipOpts {
     pub looped: bool,
     pub loop_length: Option<f64>,
     pub loop_start: f64,
-    /// Put it in this row of the track's slots, to be launched, instead of
-    /// on the timeline; and how it launches.
-    pub slot: Option<u32>,
-    pub quantize: Option<crate::model::Quantize>,
-    pub mode: crate::model::LaunchMode,
-    pub legato: bool,
+    /// Keep it off the timeline, among the track's cues (`session/cues.rs`).
+    pub cue: bool,
 }
 
 #[derive(Default, Deserialize)]
@@ -763,6 +759,90 @@ impl Session {
     /// this step changed is now the project's own, in the same step: it
     /// keeps where it came from (`origin`). Said once, as `clip.copied`.
     fn own_edited_references(&mut self) {
+        self.own_edited_clips();
+        self.own_edited_tracks();
+    }
+
+    /// A track read from a folder outside the project, or a chain read from
+    /// a file outside it, that this step changed is now the project's own,
+    /// as a clip is (`own_edited_clips`): `track.copied`, `chain.copied`.
+    /// A track takes its clips from that folder with it.
+    fn own_edited_tracks(&mut self) {
+        let before: HashMap<Id, &Arc<Track>> = self
+            .checkpoint
+            .tracks
+            .iter()
+            .filter(|t| t.source.is_some() || t.chain_source.is_some())
+            .map(|t| (t.id, t))
+            .collect();
+        if before.is_empty() {
+            return;
+        }
+        // A plugin's state is read again at each save: that is not an edit.
+        let stateless = |devices: &[Arc<DeviceInst>]| -> Vec<Value> {
+            devices
+                .iter()
+                .map(|d| {
+                    let mut v = serde_json::to_value(&**d).unwrap_or_default();
+                    v.as_object_mut().map(|o| o.remove("state"));
+                    v
+                })
+                .collect()
+        };
+        let whole = |t: &Track| -> Value {
+            let mut v = serde_json::to_value(t).unwrap_or_default();
+            if let Some(o) = v.as_object_mut() {
+                o.insert("devices".into(), Value::Array(stateless(&t.devices)));
+            }
+            v
+        };
+        let (mut tracks, mut chains) = (Vec::new(), Vec::new());
+        for t in &self.project.tracks {
+            let Some(old) = before.get(&t.id) else {
+                continue;
+            };
+            if Arc::ptr_eq(old, t) {
+                continue;
+            }
+            if t.source.is_some() && t.source == old.source && whole(old) != whole(t) {
+                tracks.push(t.id);
+            } else if t.chain_source.is_some()
+                && t.chain_source == old.chain_source
+                && stateless(&old.devices) != stateless(&t.devices)
+            {
+                chains.push(t.id);
+            }
+        }
+        for id in tracks {
+            let Some(track) = self.project.track_mut(id) else {
+                continue;
+            };
+            track.origin = track.source.take();
+            let folder = track.origin.clone().unwrap_or_default();
+            for clip in track.clips.iter_mut().chain(track.cues.iter_mut()) {
+                if clip.source.as_ref().is_some_and(|s| s.starts_with(&folder)) {
+                    let clip = Arc::make_mut(clip);
+                    clip.origin = clip.source.take();
+                }
+            }
+            self.events.push((
+                "track.copied".into(),
+                json!({ "track": id, "name": track.name, "origin": track.origin }),
+            ));
+        }
+        for id in chains {
+            let Some(track) = self.project.track_mut(id) else {
+                continue;
+            };
+            track.chain_origin = track.chain_source.take();
+            self.events.push((
+                "chain.copied".into(),
+                json!({ "track": id, "name": track.name, "origin": track.chain_origin }),
+            ));
+        }
+    }
+
+    fn own_edited_clips(&mut self) {
         // Only the clips of the tracks the step changed, and of those only
         // the stretch it changed, can have been edited.
         let (old, new) = (&self.checkpoint, &self.project);
@@ -778,7 +858,7 @@ impl Session {
                 Some(now) => now.clips.changed(&track.clips).0,
                 None => 0..track.clips.len(),
             };
-            let clips = track.clips.range(span).chain(track.slots.iter().map(|s| &s.clip));
+            let clips = track.clips.range(span).chain(&track.cues);
             before.extend(clips.filter(|c| c.source.is_some()).map(|c| (c.id, c)));
             if let Some(now) = now {
                 changed.push((now, Some(track)));
@@ -809,7 +889,7 @@ impl Session {
                 Some(was) => track.clips.changed(&was.clips).1,
                 None => 0..track.clips.len(),
             };
-            for clip in track.clips.range(span).chain(track.slots.iter().map(|s| &s.clip)) {
+            for clip in track.clips.range(span).chain(&track.cues) {
                 if let Some(old) = before.get(&clip.id)
                     && clip.source.is_some()
                     && clip.source == old.source
@@ -839,7 +919,7 @@ impl Session {
         let ids: Vec<Id> = self
             .project
             .all_tracks()
-            .flat_map(|t| t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)))
+            .flat_map(|t| t.clips.iter().chain(&t.cues))
             .filter(|c| c.source.as_ref().is_some_and(|s| s.is_file()))
             .map(|c| c.id)
             .collect();
@@ -853,6 +933,40 @@ impl Session {
             self.dirty = true;
         }
         ids.len()
+    }
+
+    /// Make every track read from a folder outside the project, and every
+    /// chain read from a file outside it, the project's own (`:collect`):
+    /// the next save writes them into its folder. Returns how many tracks
+    /// and how many chains. Run before `clip_collect`, which then takes
+    /// such a track's clips.
+    pub fn track_collect(&mut self) -> (usize, usize) {
+        let (mut tracks, mut chains) = (0, 0);
+        let ids: Vec<Id> = self.project.tracks.iter().map(|t| t.id).collect();
+        for id in ids {
+            let Some(t) = self.project.track(id) else {
+                continue;
+            };
+            if t.source.is_none() && t.chain_source.is_none() {
+                continue;
+            }
+            let Some(track) = self.project.track_mut(id) else {
+                continue;
+            };
+            if track.source.is_some() {
+                track.origin = track.source.take();
+                tracks += 1;
+            }
+            if track.chain_source.is_some() {
+                track.chain_origin = track.chain_source.take();
+                chains += 1;
+            }
+        }
+        if tracks + chains > 0 {
+            self.touched = true;
+            self.dirty = true;
+        }
+        (tracks, chains)
     }
 
     pub fn undo(&mut self) -> bool {
@@ -871,7 +985,6 @@ impl Session {
             "name": p.name, "tempo": p.tempo, "sig_num": p.sig_num, "sig_den": p.sig_den,
             "tempo_ramp": p.tempo_ramp, "tempo_changes": p.tempo_changes, "sig_changes": p.sig_changes,
             "path": self.path, "length": p.end(), "meta": p.meta,
-            "launch_quantize": p.launch_quantize,
             "modified": self.touched || !self.history.at_saved(),
             // Goes up with every change: compare two readings to see whether
             // something in between edited the project.
@@ -927,7 +1040,6 @@ impl Session {
                     p.set_tempo_map(map);
                 }
                 "meta" => p.meta = de_meta(key, value)?,
-                "launch_quantize" => p.launch_quantize = de(key, value)?,
                 _ => bail!("project has no settable field `{key}`"),
             }
             Ok(())
@@ -1030,7 +1142,7 @@ impl Session {
         self.screen = None;
         self.send_transport();
         self.flush();
-        self.launcher_reset();
+        self.cue_reset();
         // The old project's audio is not needed for undo any more.
         self.trim_audio();
         self.watch_project_files();
@@ -1105,6 +1217,9 @@ impl Session {
     /// With `as_path`, the copy opens under that file name instead (for a
     /// `.bak` or any other copy that has no note).
     pub fn project_recover(&mut self, path: &Path, as_path: Option<&Path>) -> Result<Value> {
+        if path.file_name().and_then(|n| n.to_str()) == Some(&format!("{}.bak", folder::PROJECT_FILE)) {
+            return self.project_recover_folder(path);
+        }
         let text =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         let mut value: Value =
@@ -1209,6 +1324,9 @@ impl Session {
             "listens": t.devices.iter().filter_map(|d| d.sidechain).collect::<BTreeSet<_>>(),
             // The tracks that further output pairs of its devices play into.
             "pairs_into": t.devices.iter().flat_map(|d| d.outputs.values()).collect::<BTreeSet<_>>(),
+            // A track or a chain read from outside the project's folder, or copied from there.
+            "source": t.source, "origin": t.origin,
+            "chain_source": t.chain_source, "chain_origin": t.chain_origin,
         }))
     }
 
@@ -2202,10 +2320,9 @@ impl Session {
     // --- clips -------------------------------------------------------------
 
     pub fn clip_view(&self, id: Id) -> Result<Value> {
-        if let Some((track, index)) = self.project.find_slot_clip(id) {
-            let slot = &self.project.track(track).unwrap().slots[index];
-            let mut view = clip_json(&slot.clip, track);
-            launcher::slot_json(slot, &mut view);
+        if let Some((track, index)) = self.project.find_cue_clip(id) {
+            let mut view = clip_json(&self.project.track(track).unwrap().cues[index], track);
+            view["cue"] = json!(true);
             return Ok(view);
         }
         let (track, _) = self
@@ -2307,6 +2424,7 @@ impl Session {
                     file,
                     offset: opts.offset,
                     gain,
+                    edits: Vec::new(),
                 };
                 (content, natural, name.unwrap_or_else(|| "audio".into()))
             }
@@ -2347,8 +2465,8 @@ impl Session {
                 loop_start: opts.loop_start,
                 id,
                 name: opts.name.unwrap_or(default_name),
-                // A clip in a slot starts at 0 whatever `start` says.
-                start: if opts.slot.is_some() { 0.0 } else { opts.start },
+                // A clip off the timeline starts at 0 whatever `start` says.
+                start: if opts.cue { 0.0 } else { opts.start },
                 length,
                 muted: false,
                 content,
@@ -2358,22 +2476,12 @@ impl Session {
                 source,
                 origin: None,
             });
-            match opts.slot {
-                Some(row) => launcher::put_slot(
-                    t,
-                    crate::model::SlotClip {
-                        row,
-                        clip,
-                        quantize: opts.quantize,
-                        mode: opts.mode,
-                        legato: opts.legato,
-                    },
-                ),
-                None => {
-                    t.clips.push(clip);
-                    let at = t.clips.len() - 1;
-                    p.found_clip(id, track, at);
-                }
+            if opts.cue {
+                t.cues.push(clip);
+            } else {
+                t.clips.push(clip);
+                let at = t.clips.len() - 1;
+                p.found_clip(id, track, at);
             }
             Ok(id)
         })
@@ -2446,8 +2554,8 @@ impl Session {
 
     pub fn clip_remove(&mut self, id: Id) -> Result<()> {
         self.edit(|p| {
-            if let Some((track, index)) = p.find_slot_clip(id) {
-                p.track_mut(track).unwrap().slots.remove(index);
+            if let Some((track, index)) = p.find_cue_clip(id) {
+                p.track_mut(track).unwrap().cues.remove(index);
                 return Ok(());
             }
             let (track, index) = p.find_clip(id).with_context(|| format!("no clip {id}"))?;
@@ -2484,13 +2592,16 @@ impl Session {
             return done;
         }
         self.edit(|p| {
-            // A clip in a slot has keys of its own, and no `start` or
-            // place on a track's timeline.
-            let in_slot = p.find_slot_clip(id).is_some();
-            if in_slot && launcher::set_slot_key(p, id, key, value.clone())? {
+            // A clip off the timeline has no `start` there.
+            let cue = p.find_cue_clip(id).is_some();
+            if cue && key == "start" {
+                bail!("a clip off the timeline starts at 0");
+            }
+            if cue && key == "track" {
+                cues::move_cue(p, id, de(key, value)?)?;
                 return Ok(());
             }
-            if !in_slot && key == "track" {
+            if key == "track" {
                 let (from, index) = p.find_clip(id).with_context(|| format!("no clip {id}"))?;
                 let to: Id = de(key, value)?;
                 if to == MASTER_ID {
@@ -4610,7 +4721,10 @@ fn clip_json(c: &Clip, track: Id) -> Value {
             }
             v["control_stamp"] = json!(hash.finish() >> 11);
         }
-        ClipContent::Audio { file, offset, gain } => {
+        ClipContent::Audio { file, offset, gain, edits } => {
+            if !edits.is_empty() {
+                v["edits"] = json!(edits.len());
+            }
             // Its file is not there: the clip is silent until it is relinked.
             if !file.is_file() {
                 v["offline"] = json!(true);

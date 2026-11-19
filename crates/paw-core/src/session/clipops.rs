@@ -1,6 +1,7 @@
-//! Operations on audio clips that make a new file: reverse and glue; and
-//! normalize, which only sets the clip's gain. None touches the file a clip
-//! played before, and each is one undo step.
+//! Operations on audio clips: reverse, a gain on a part and pencil fixes,
+//! which go in the clip's edit list (`edits.rs`); glue, which makes a new
+//! file; and normalize, which only sets the clip's gain. None touches the
+//! file a clip played before, and each is one undo step.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,6 +11,7 @@ use paw_engine::AudioData;
 use serde_json::{Value, json};
 
 use super::{RenderOpts, Session, unique_path};
+use crate::edits::AudioEdit;
 use crate::model::{Clip, ClipContent, Id, MASTER_ID};
 
 impl Session {
@@ -20,25 +22,42 @@ impl Session {
             .clip(id)
             .with_context(|| format!("no clip {id}"))?
             .clone();
-        let ClipContent::Audio { file, offset, gain } = &clip.content else {
+        let ClipContent::Audio { file, offset, gain, .. } = &clip.content else {
             bail!("clip {id} is a MIDI clip: this works on audio clips");
         };
         let (file, offset, gain) = (file.clone(), *offset, *gain);
         Ok((clip, file, offset, gain))
     }
 
+    /// How many seconds of its sound an audio clip plays, from `offset`.
+    fn played_seconds(&self, clip: &Clip, offset: f64) -> f64 {
+        // Its real extent in time, by the tempo map, in seconds of the file.
+        let map = self.project.tempo_map();
+        let warp = crate::warp::of(clip, map).unwrap_or_else(|| crate::warp::Warp::even(1.0));
+        let played = map.seconds_between(clip.start, clip.start + clip.length);
+        warp.inverse(warp.forward(offset) + played) - offset
+    }
+
+    /// An audio clip's sound with its edit list made: its file as it is when
+    /// it has none.
+    fn edited_sound(&mut self, clip: &Clip, file: &std::path::Path) -> Result<Arc<AudioData>> {
+        let data = self.audio.load(file)?;
+        match &clip.content {
+            ClipContent::Audio { edits, .. } if !edits.is_empty() => {
+                Ok(Arc::new(crate::edits::apply(&data, edits)))
+            }
+            _ => Ok(data),
+        }
+    }
+
     /// The samples an audio clip plays, from its offset for its length;
     /// silence past the end of the file.
     fn clip_samples(&mut self, id: Id) -> Result<(AudioData, Arc<Clip>, f64)> {
         let (clip, file, offset, gain) = self.audio_clip(id)?;
-        let data = self.audio.load(&file)?;
+        let data = self.edited_sound(&clip, &file)?;
         let rate = data.sample_rate as f64;
         let from = (offset * rate).round() as usize;
-        // Its real extent in time, by the tempo map, in seconds of the file.
-        let map = self.project.tempo_map();
-        let warp = crate::warp::of(&clip, map).unwrap_or_else(|| crate::warp::Warp::even(1.0));
-        let played = map.seconds_between(clip.start, clip.start + clip.length);
-        let seconds = warp.inverse(warp.forward(offset) + played) - offset;
+        let seconds = self.played_seconds(&clip, offset);
 
         let frames = (seconds * rate).round() as usize;
         let take = |c: &[f32]| {
@@ -66,25 +85,88 @@ impl Session {
         ))
     }
 
-    /// Play an audio clip backwards: its part of the file, reversed, as a new
-    /// file. Its fades change ends too.
+    /// Play an audio clip backwards: a `reverse` in its edit list (or one
+    /// taken away, when it was the last edit), and its offset where the same
+    /// part of the sound is. Its fades change ends too. Returns `{ edits }`,
+    /// how many edits the clip has.
     pub fn clip_reverse(&mut self, id: Id) -> Result<Value> {
-        let (mut part, clip, _) = self.clip_samples(id)?;
-        for channel in &mut part.channels {
-            channel.reverse();
+        let (clip, file, offset, _) = self.audio_clip(id)?;
+        let length = self.audio.load(&file)?.seconds();
+        let played = self.played_seconds(&clip, offset);
+        let back = (length - offset - played).max(0.0);
+        let edits = self.edit(|p| {
+            let c = p.clip_mut(id).context("the clip went away")?;
+            let ClipContent::Audio { offset, edits, .. } = &mut c.content else {
+                bail!("clip {id} is a MIDI clip: this works on audio clips");
+            };
+            if edits.last() == Some(&AudioEdit::Reverse) {
+                edits.pop();
+            } else {
+                edits.push(AudioEdit::Reverse);
+            }
+            *offset = back;
+            let n = edits.len();
+            std::mem::swap(&mut c.fade_in, &mut c.fade_out);
+            Ok(n)
+        })?;
+        Ok(json!({ "edits": edits }))
+    }
+
+    /// Add an edit to an audio clip's edit list, with its times counted from
+    /// where the clip starts in its sound: a gain on a part, or samples drawn
+    /// over its own (a pencil fix). Returns how many edits it has.
+    pub fn clip_edit_add(&mut self, id: Id, mut edit: AudioEdit) -> Result<usize> {
+        let (_, _, offset, _) = self.audio_clip(id)?;
+        match &mut edit {
+            AudioEdit::Reverse => {}
+            AudioEdit::Gain { from, to, .. } => {
+                *from += offset;
+                *to += offset;
+            }
+            AudioEdit::Pencil { at, .. } => *at += offset,
         }
-        let path = self.new_media_file(&clip, "reversed")?;
-        write_float(&path, &part)?;
+        crate::edits::check(std::slice::from_ref(&edit))?;
         self.edit(|p| {
             let c = p.clip_mut(id).context("the clip went away")?;
-            if let ClipContent::Audio { file, offset, .. } = &mut c.content {
-                *file = path.clone();
-                *offset = 0.0;
+            let ClipContent::Audio { edits, .. } = &mut c.content else {
+                bail!("clip {id} is a MIDI clip: this works on audio clips");
+            };
+            edits.push(edit);
+            Ok(edits.len())
+        })
+    }
+
+    /// Take away an audio clip's whole edit list: it plays its file again.
+    /// Returns how many edits it had.
+    pub fn clip_edits_clear(&mut self, id: Id) -> Result<usize> {
+        let (clip, file, offset, _) = self.audio_clip(id)?;
+        let ClipContent::Audio { edits, .. } = &clip.content else {
+            return Ok(0);
+        };
+        if edits.is_empty() {
+            return Ok(0);
+        }
+        // Where the part it plays is in the file, with the reverses undone.
+        let reversed = edits.iter().filter(|e| **e == AudioEdit::Reverse).count() % 2 == 1;
+        let back = if reversed {
+            let length = self.audio.load(&file)?.seconds();
+            (length - offset - self.played_seconds(&clip, offset)).max(0.0)
+        } else {
+            offset
+        };
+        self.edit(|p| {
+            let c = p.clip_mut(id).context("the clip went away")?;
+            let ClipContent::Audio { offset, edits, .. } = &mut c.content else {
+                bail!("clip {id} is a MIDI clip: this works on audio clips");
+            };
+            let n = edits.len();
+            edits.clear();
+            *offset = back;
+            if reversed {
+                std::mem::swap(&mut c.fade_in, &mut c.fade_out);
             }
-            std::mem::swap(&mut c.fade_in, &mut c.fade_out);
-            Ok(())
-        })?;
-        Ok(json!({ "file": path }))
+            Ok(n)
+        })
     }
 
     /// Bring the loudest sample an audio clip plays to `level` dB, by its
@@ -231,6 +313,7 @@ impl Session {
                 file: path.clone(),
                 offset: 0.0,
                 gain: 0.0,
+                edits: Vec::new(),
             },
             fade_in: 0.0,
             fade_out: 0.0,
@@ -252,15 +335,4 @@ impl Session {
         })?;
         Ok(json!({ "id": id, "file": path, "glued": chosen.len() }))
     }
-}
-
-/// Write stereo samples as a 32-bit float WAV file.
-fn write_float(path: &std::path::Path, data: &AudioData) -> Result<()> {
-    let mut w = paw_engine::wav::Writer::create(path, data.sample_rate, 32, true)
-        .with_context(|| format!("creating {}", path.display()))?;
-    for (l, r) in data.channels[0].iter().zip(&data.channels[1]) {
-        w.write(*l)?;
-        w.write(*r)?;
-    }
-    w.finish()
 }

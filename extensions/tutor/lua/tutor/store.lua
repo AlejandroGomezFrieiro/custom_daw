@@ -26,9 +26,10 @@ function M.ensure(dir)
   return dir
 end
 
---- The file a lesson's practice project lives in.
+--- The file of a lesson's practice project: the `project.toml` of its
+--- folder.
 function M.practice(id)
-  return M.ensure(M.dir() .. "/practice") .. "/" .. id .. ".json"
+  return M.ensure(M.dir() .. "/practice") .. "/" .. id .. "/project.toml"
 end
 
 function M.progress_path()

@@ -128,9 +128,6 @@ paw.keyrule = {}
 ---@class paw.lanes
 paw.lanes = {}
 
----@class paw.launcher
-paw.launcher = {}
-
 ---@class paw.layout
 paw.layout = {}
 
@@ -388,6 +385,10 @@ function paw.inspect(value, indent, seen) end
 ---@param path any
 function paw.is_audio_file(path) end
 
+--- True if a path names a chain file of devices: a `devices.json`.
+---@param path any
+function paw.is_chain_file(path) end
+
 --- The automation lane of an id, as a `paw.Lane`.
 ---@param id any
 function paw.lane(id) end
@@ -417,6 +418,12 @@ function paw.once(pattern, fn) end
 ---@param path any
 ---@param opts any
 function paw.open(path, opts) end
+
+--- Open a chain file (a `devices.json`) alone, as a new project with no
+--- file: one track with its devices, and the device panel on it. `:w`
+--- writes the chain back to its file. Returns the track.
+---@param path any
+function paw.open_chain(path) end
 
 paw.redo = paw.api.redo
 
@@ -2520,8 +2527,12 @@ function paw.ext.satisfies(version, want) end
 ---@param opts any
 function paw.ext.unload(name, opts) end
 
---- Act on the changes as the option says: called at the next key after them.
+--- Act on the changes as the option says: called when paw gets the focus,
+--- or at the next key after them.
 function paw.external.act() end
+
+--- True if paw asks now what to do with the changes.
+function paw.external.asking() end
 
 --- Keep paw's version of the project.
 function paw.external.keep() end
@@ -2561,9 +2572,16 @@ function paw.files.open(dir, opts) end
 
 --- The full path of a name that the user typed: `~` is the home folder, and
 --- a relative name is in `paw.files.here()`.
----   paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" beside song.json
+---   paw.files.path("mix.wav")  -- "/home/me/songs/mix.wav" in the folder of the project
 ---@param name any
 function paw.files.path(name) end
+
+--- The full path of a project's name that the user typed, as `:w` takes
+--- it: as `path`, but a relative name goes beside a project folder, not
+--- into it.
+---   paw.files.project_path("take2")  -- "/home/me/songs/take2" beside songs/song
+---@param name any
+function paw.files.project_path(name) end
 
 --- What a sound file's header says: `{ rate, channels, seconds }`, or nil
 --- for a file that is not one that can be read.
@@ -2696,15 +2714,6 @@ function paw.frontend.lane_name(lane) end
 ---@param lane any
 function paw.frontend.lane_span(lane) end
 
---- What each drawn track (`ids`, the master last) plays from its slots, by
---- place. `slot` and `queued` are rows or -1. `stopping` and `back` tell
---- that a stop or a return to the timeline is in the queue. `stopped` tells
---- that the track plays nothing. `progress` is the position of the clip in
---- its loop (0 to 1). `recording` is the row that records, or -1. The
---- result is empty while no slot plays or records.
----@param ids any
-function paw.frontend.launch_state(ids) end
-
 --- How the window was left (its size, the zoom, the heights of rows and of
 --- the piano roll, if the mixer shows): a table, empty when nothing
 --- was kept. It belongs to the machine, so it is kept here, where a window
@@ -2782,11 +2791,6 @@ function paw.frontend.send_list(track) end
 --- `act.choose_sidechain` takes one by place.
 ---@param device any
 function paw.frontend.sidechain_menu(device) end
-
---- The clips in the drawn tracks' slots: `{ id, track, row, name, midi,
---- mode, legato, quantize, muted }` each, `track` by place from 0.
----@param ids any
-function paw.frontend.slots(ids) end
 
 --- The data that paw sends to a graphical frontend: transport, tracks,
 --- clips, devices and the modal state, as plain data. `known` is a list of
@@ -3914,118 +3918,6 @@ function paw.lanes.toggle(track) end
 ---@param beat any
 function paw.lanes.value_at(lane, beat) end
 
---- Send a track back to its timeline. With no track, send back each track
---- that left its timeline.
----@param track any
-function paw.launcher.back(track) end
-
---- The first boundary of a quantize (the project's by default) at or after
---- `beat`, as the engine finds it.
----@param beat any
----@param q any
-function paw.launcher.boundary(beat, q) end
-
---- Start or stop the capture. If you stop it while the song plays, paw
---- writes the captured notes.
----@param on any
-function paw.launcher.capture(on) end
-
---- The clip in a slot, or nil.
----@param track any
----@param row any
-function paw.launcher.clip(track, row) end
-
---- Copy a clip from the timeline (or another slot) into a slot.
----@param clip any
----@param track any
----@param row any
-function paw.launcher.copy(clip, track, row) end
-
---- End the clip being recorded into a slot.
-function paw.launcher.finish_recording() end
-
---- Launch the clip in a slot on its next boundary. An empty slot stops the
---- track. `opts.quantize` and `opts.legato` replace the values of the slot.
----@param track any
----@param row any
----@param opts any
-function paw.launcher.launch(track, row, opts) end
-
---- An empty MIDI clip of `bars` bars (1) in a slot. Returns its id.
----@param track any
----@param row any
----@param bars any
-function paw.launcher.new_clip(track, row, bars) end
-
---- What one track plays: "arrangement", "stopped" or a row. The second
---- value is what it has in its queue, if anything.
----@param track any
-function paw.launcher.playing(track) end
-
---- A slot's button pressed, from a key, the mouse or a controller: what that
---- does is the clip's mode. A toggle stops a clip that plays or is queued.
----@param track any
----@param row any
-function paw.launcher.press(track, row) end
-
---- Record `bars` bars (1) into an empty slot of a track, from the next
---- boundary of the quantize of the project. paw arms the track if it is not
---- armed. The track stops what it plays at that boundary. If the song is
---- stopped, it starts. If you stop the song early, paw keeps the recording.
----@param track any
----@param row any
----@param bars any
-function paw.launcher.record(track, row, bars) end
-
---- A slot's button let go: a gate clip stops.
----@param track any
----@param row any
-function paw.launcher.release(track, row) end
-
---- How many rows there are: those with clips or names, one empty row more,
---- and at least `paw.opt.launch_rows`.
-function paw.launcher.rows() end
-
---- Launch a scene: the clip in that row on every track that has one, all
---- on the same boundary. Tracks without one stop what they play from a slot.
----@param row any
-function paw.launcher.scene(row) end
-
---- A scene's name (rows from 0): its own, or "Scene N".
----@param row any
-function paw.launcher.scene_name(row) end
-
---- The names of the scenes, by row from 1. Rows without a name are nil.
-function paw.launcher.scenes() end
-
---- Where launches land unless a slot says otherwise.
----@param q any
-function paw.launcher.set_quantize(q) end
-
---- Name a scene (rows from 0), kept with the project.
----@param row any
----@param name any
-function paw.launcher.set_scene_name(row, name) end
-
---- The clips in a track's slots, by row: `{ [row] = clip view }`.
----@param track any
-function paw.launcher.slots(track) end
-
---- What each track plays and has in its queue, by track id: see
---- `paw.api.launcher`. A track with no launched clip is not in the table.
-function paw.launcher.state() end
-
---- Stop the clip of a track on the next boundary. With no track, stop the
---- clips of all tracks. A stopped track makes no sound until you launch it
---- again or send it back to its timeline.
----@param track any
-function paw.launcher.stop(track) end
-
---- Write the captured notes that paw did not write yet, as one undo step,
---- up to `position` where the capture continues.
----@param position any
-function paw.launcher.write_captured(position) end
-
 --- True if a window of this number is in a tab of the seat, or is a
 --- window in no tab (`M.loose`) that is still in use.
 ---@param id any
@@ -4508,6 +4400,17 @@ function paw.learn.target_for(word) end
 ---@param t any
 function paw.learn.target_name(t) end
 
+--- Add a kind of target that a button or a pad presses: `spec` has
+--- `press(binding, down)` (down is false when it is let go), `name(target)`
+--- (the text of `:learn.list`), and optionally `check(target)` (an error for
+--- a target that is not right), `words` (the words of `:learn` that name it),
+--- `target_for(word, track)` (the target of a word, or nil) and
+--- `under_cursor(focused)` (the target under the cursor of a view, or nil).
+--- A target can keep a number in `slot`, such as a row.
+---@param name any
+---@param spec any
+function paw.learn.trigger(name, spec) end
+
 --- Take a binding away: by its place in `bindings()`, or everything that
 --- moves a target. Returns how many went.
 ---@param which any
@@ -4914,9 +4817,25 @@ function paw.markers.render_regions(dir, opts) end
 ---@param fields any
 function paw.markers.set(id, fields) end
 
+--- Take away an audio clip's edit list. Returns how many edits it had.
+---@param clip any
+function paw.media.clear_edits(clip) end
+
 --- Copy every file from outside the project's folder into `media` beside
 --- it and point the clips at the copies. One undo step. Returns `{ copied, missing, dir }`.
 function paw.media.collect() end
+
+--- An audio clip's edit list: `{ { kind, ... } }`.
+---@param clip any
+function paw.media.edits(clip) end
+
+--- A gain of `db` on a part of an audio clip, from `from` to `to` seconds
+--- of what it plays, in its edit list. Returns how many edits it has.
+---@param clip any
+---@param from any
+---@param to any
+---@param db any
+function paw.media.gain_part(clip, from, to, db) end
 
 --- Join audio clips of one track into one clip that plays a new file. With
 --- a list, join the given clips. With one clip, join it and each audio clip
@@ -4936,6 +4855,15 @@ function paw.media.missing() end
 ---@param level any
 function paw.media.normalize(clip, level) end
 
+--- Samples drawn over an audio clip's (a pencil fix), from `at` seconds of
+--- what it plays, in one channel (0 or 1) or both, in its edit list.
+--- Returns how many edits it has.
+---@param clip any
+---@param at any
+---@param values any
+---@param channel any
+function paw.media.pencil(clip, at, values, channel) end
+
 --- Make the clips that play `from` play the file `to`, and find the other
 --- files that paw cannot find in the folder of `to`. One undo step. Returns
 --- `{ clips, found, missing }`.
@@ -4946,7 +4874,8 @@ function paw.media.relink(from, to) end
 --- Select a file for a file that paw cannot find, or a directory where paw finds all of them.
 function paw.media.relink_pick() end
 
---- Play an audio clip backwards, from a new reversed copy of its part of the file.
+--- Play an audio clip backwards: a `reverse` in its edit list, which leaves
+--- its file as it is (a second reverse takes it away). Returns `{ edits }`.
 ---@param clip any
 function paw.media.reverse(clip) end
 
@@ -5798,7 +5727,7 @@ function paw.remote.listeners() end
 function paw.remote.push(client) end
 
 --- A turn had input: a key, the pointer, a call. What the frontends show
---- may have changed.
+--- can be different.
 function paw.remote.touch() end
 
 --- After each turn of the kernel: push now what its input or its edits
@@ -7087,7 +7016,7 @@ function paw.track_kinds.set(which, name, args) end
 ---@param which any
 function paw.track_kinds.spec(which) end
 
---- Whether something moves on its own now: the song plays, or a moment
+--- True if something moves on its own now: the song plays, or a moment
 --- after activity (`poke`), while meters fall.
 function paw.ui.active() end
 
@@ -7203,7 +7132,7 @@ function paw.ui.layer(view, part, name, order, paint) end
 ---@param draw any
 function paw.ui.live(buf, draw) end
 
---- Whether a live part drawn now is one of the terminal's screen.
+--- True if a live part drawn now is one of the terminal's screen.
 function paw.ui.live_drawing() end
 
 --- While a live part is drawn again: set the props of a mark bound to
@@ -7661,6 +7590,12 @@ function paw.api.automation_hold(track, target, device, param, on) end
 ---@param scale number?
 function paw.api.canvas_export(path, format, pages, scale) end
 
+--- Write a track's devices as a chain file: `file` (a `devices.json`)
+--- and the `.state` files of the plugins beside it. Returns the files.
+---@param track integer
+---@param file string
+function paw.api.chain_write(track, file) end
+
 ---@param file string
 function paw.api.checkpoint_delete(file) end
 
@@ -7691,6 +7626,23 @@ function paw.api.clip_collect() end
 --- { start, type = "cc" | "bend" | "pressure", number, value }.
 ---@param id integer
 function paw.api.clip_controls(id) end
+
+--- Add an edit to an audio clip's edit list (`edits.rs`): `{ kind =
+--- "gain", from, to, db }` or `{ kind = "pencil", at, channel, values }`,
+--- in seconds from where the clip starts in its sound. Returns how many
+--- edits it has.
+---@param id integer
+---@param edit any
+function paw.api.clip_edit_add(id, edit) end
+
+--- An audio clip's edit list, as `clip_edit_add` takes its edits (with
+--- times in seconds of its sound).
+---@param id integer
+function paw.api.clip_edits(id) end
+
+--- Take away an audio clip's edit list. Returns how many edits it had.
+---@param id integer
+function paw.api.clip_edits_clear(id) end
 
 ---@param id integer
 function paw.api.clip_get(id) end
@@ -7773,11 +7725,10 @@ function paw.api.clip_set_notes(id, notes) end
 ---@param id integer
 function paw.api.clip_source_length(id) end
 
---- Copy a clip into a row of a track's slots. Returns the copy's id.
+--- Copy a clip, with its `meta`, off the timeline of a track. Returns the copy's id.
 ---@param id integer
 ---@param track integer
----@param row integer
-function paw.api.clip_to_slot(id, track, row) end
+function paw.api.clip_to_cues(id, track) end
 
 --- Warp markers of an audio clip (`session/stretching.rs`), counted from 1.
 ---@param id integer
@@ -7792,6 +7743,23 @@ function paw.api.clip_warp_move(id, index, beat) end
 ---@param id integer
 ---@param index integer
 function paw.api.clip_warp_remove(id, index) end
+
+--- `{ { track =, clip = id }, { track =, stop = true },
+--- { track =, timeline = true }, ... }`, each with `quantize` (`bar`
+--- when not given: off 1/16 1/8 1/4 beat bar 2bars 4bars), `legato`
+--- and `from`: all on their boundary, timed together by the engine.
+---@param list any
+function paw.api.cue(list) end
+
+--- --- cues (session/cues.rs) ---
+--- A clip goes off the timeline with `clip_add(track, { cue = true, ... })`:
+--- it starts at 0, loops over its length, and plays only when cued.
+--- You edit it as a usual clip; `clip_set(id, "track", other)` moves it.
+---@param track integer
+function paw.api.cue_list(track) end
+
+--- What each track plays and has in its queue, in the last report of the engine.
+function paw.api.cue_state() end
 
 ---@param track integer
 ---@param kind string
@@ -8064,15 +8032,6 @@ function paw.api.lane_shapes(id) end
 ---@param beat number
 function paw.api.lane_value_at(id, beat) end
 
---- `{ { track =, slot = row }, { track =, stop = true },
---- { track =, arrangement = true }, ... }`, each with `quantize` and
---- `legato` if not the slot's: all on their boundary, timed together.
----@param list any
-function paw.api.launch(list) end
-
---- What each track plays and has in its queue, in the last report of the engine.
-function paw.api.launcher() end
-
 --- The time limit on Lua (`paw.limit`). The arguments are the function to
 --- call when a callback runs too long, and the time when the current
 --- callback must return (on the clock of `now`, nil when it returned).
@@ -8307,7 +8266,7 @@ function paw.api.project_changed_files() end
 function paw.api.project_file_text(value) end
 
 --- The files of a project kept in a folder, with what each holds and
---- whether it differs from the disk (see `:ls`).
+--- if it differs from the disk (see `:ls`).
 function paw.api.project_files() end
 
 --- --- project ---
@@ -8463,13 +8422,6 @@ paw.api.signature_set = nil
 ---@param ms number
 function paw.api.sleep(ms) end
 
---- --- clip launcher (session/launcher.rs) ---
---- A clip goes into a slot with `clip_add(track, { slot = row, ... })`.
---- You edit it as a usual clip. `clip_set` also accepts `row`,
---- `quantize`, `mode` and `legato` for it.
----@param track integer
-function paw.api.slot_list(track) end
-
 --- A music font's SMuFL metadata (`Leland`, the default, `Bravura` or
 --- `Petaluma`): `engravingDefaults`, `glyphBBoxes`, `glyphsWithAnchors`
 --- and `glyphs` (every glyph name with its code point). Nil for a
@@ -8589,11 +8541,31 @@ function paw.api.track_add(opts) end
 ---@param attr any
 function paw.api.track_attr_delay(id, attr) end
 
+--- Give a track the devices of a chain file (a `devices.json`). With
+--- `refer`, the track refers to the file until the chain's first edit.
+--- Returns how many devices.
+---@param track integer
+---@param file string
+---@param refer boolean?
+function paw.api.track_chain_file(track, file, refer) end
+
+--- Make every track read from a folder outside the project, and every
+--- chain of devices read from a file outside it, the project's own.
+--- Returns how many tracks and how many chains.
+function paw.api.track_collect() end
+
 --- A track as a table. With `key`, only that entry of the table: this
 --- is quicker, because the table lists each clip of the track.
 ---@param id integer
 ---@param key string?
 function paw.api.track_get(id, key) end
+
+--- Add the track of a track folder outside the project (a folder with
+--- a `track.json`) at `index` (from 1; the end when nil). The project
+--- refers to the folder until the track's first edit. Returns its id.
+---@param folder string
+---@param index integer?
+function paw.api.track_import_folder(folder, index) end
 
 --- --- tracks ---
 function paw.api.track_list() end

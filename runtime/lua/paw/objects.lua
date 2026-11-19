@@ -160,8 +160,8 @@ function Track:snapshot()
     snap.devices[i] = device:snapshot()
   end
   for i, clip in ipairs(self:clips()) do snap.clips[i] = clip:snapshot() end
-  -- The clips in its slots, each knowing its row (`paw.launcher`).
-  for _, clip in ipairs(api.slot_list(self.id)) do snap.clips[#snap.clips + 1] = wrap(Clip, clip.id):snapshot() end
+  -- Its clips off the timeline, for cues (`paw.api.cue`), with their meta.
+  for _, clip in ipairs(api.cue_list(self.id)) do snap.clips[#snap.clips + 1] = wrap(Clip, clip.id):snapshot() end
   for i, lane in ipairs(api.lane_list(self.id)) do
     snap.lanes[i] = {
       target = lane.target, device = lane.device and position[lane.device], param = lane.param,
@@ -504,8 +504,8 @@ function Clip:snapshot()
     warp = paw.stretch.markers(c), formants = c.formants or nil,
     -- What extensions keep with the clip goes where the clip goes.
     meta = next(c.meta) and c.meta or nil,
-    -- A clip in a slot: its row, and how it launches.
-    slot = c.slot, quantize = c.quantize, mode = c.slot and c.mode, legato = c.slot and c.legato,
+    -- A clip off the timeline, played only when cued.
+    cue = c.cue or nil,
   }
   if c.kind == "midi" then
     snap.notes = self:notes()
@@ -652,7 +652,7 @@ function M.lane(id) return wrap(Lane, id) end
 
 M.master = wrap(Track, 0)
 
--- `paw.project.tempo = 140`, `paw.project.save("song.json")`
+-- `paw.project.tempo = 140`, `paw.project.save("song")`
 M.project = setmetatable({
   new = api.project_new,
   load = api.project_load,
@@ -714,6 +714,23 @@ rawset(M.project, "is_folder", function(path)
   local f = io.open(path .. "/project.toml", "rb")
   if f then f:close() end
   return f ~= nil
+end)
+
+--- Save the project as `:w` does, always as a folder: `path`, or its
+--- file when nil. A path that ends in `.json` names the folder of the
+--- same name without `.json`, because one JSON file is only the form of
+--- paw's safety copies and undo states. Returns the path saved, and a
+--- note that tells where the project went when that is not `path`.
+rawset(M.project, "write", function(path)
+  local target = path or api.project_get("path")
+  local stem = type(target) == "string" and target:match("^(.+)%.[jJ][sS][oO][nN]$")
+  if not stem then return M.project.save(path) end
+  local saved = M.project.save(stem)
+  local name = target:match("([^/]+)$") or target
+  local folder = stem:match("([^/]+)$") or stem
+  local note = path and string.format("a project is a folder: saved it in %s/, not in %s", folder, name)
+    or string.format("a project is a folder: saved it in %s/ (%s stays as it was)", folder, name)
+  return saved, note
 end)
 
 --- Whether the project may be replaced: says why not, naming `what` (the

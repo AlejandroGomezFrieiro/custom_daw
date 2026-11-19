@@ -4,7 +4,7 @@
 
 The screen has the layout of Neovim.
 
-- A **buffer** is a thing to show and edit. The views are buffers: the arrange view (`arrange`), the piano roll (`roll`), the mixer (`mixer`), the device panel (`devices`) and the session view (`session`). The event list, help and the view of an extension (`notation`, `drums`, `utau` and other) are buffers too.
+- A **buffer** is a thing to show and edit. The views are buffers: the arrange view (`arrange`), the piano roll (`roll`), the mixer (`mixer`), the device panel (`devices`). The event list, help and the view of an extension (`notation`, `drums`, `utau`, the session view `session` of the clip launcher and other) are buffers too.
 - A **window** shows one buffer.
 - A **tab** holds windows, split side by side and one above the other.
 
@@ -49,7 +49,7 @@ An empty window shows the start page: `:vnew`, `:tabnew` without a name,
 in the new half. `Ctrl-w h` and `Ctrl-w l` go between the two. Each window
 takes its own keys, and a clip that you open shows in that window.
 
-- The arrange view, the piano roll, the notation view, the mixer, the device panel and the session view show in any number of windows. Each window has its own state: the open clip, the cursor, the scroll and the zoom of the view. The edit cursor of the arrange view (the track and the time) is one for all the windows.
+- The arrange view, the piano roll, the notation view, the mixer, the device panel and the session view of the clip launcher show in any number of windows. Each window has its own state: the open clip, the cursor, the scroll and the zoom of the view. The edit cursor of the arrange view (the track and the time) is one for all the windows.
 - Each device panel follows the cursor track, or shows the track that it is pinned to (`devices://Bass`, `\p`). See [Two panels on two tracks](device-panel.md#two-panels-on-two-tracks).
 - The views of extensions without a state for each window show in one window at a time. If you show one of them in a different window, it moves there, with a message.
 - A panel window closed with `Ctrl-w c` keeps its place. The panel returns there. A second window of a view closes for good.
@@ -77,7 +77,7 @@ A name that is not a clip or a track shows a message, and the window shows the v
 | `:sp roll`, `:vs roll` | Split the window, one above the other or side by side, and show a buffer. Without a name, show the same buffer, as in Vim. A list edited as text and a view with a state for each window show in both windows, the new one from the state of this one. A view shown in one window at a time gives the start page. |
 | `Ctrl-w s`, `Ctrl-w v` | The same as `:sp` and `:vs` without a name. |
 | `:vnew`, `Ctrl-w n` | Open an empty window, with the start page. |
-| `:e roll`, `:b roll`, `:b 3` | Show a buffer in this window, by name or number. The name of a buffer or a view, or an address such as `paw://tracks`, comes before a file. Only a file asks about unsaved work: `:e song.json`, `:e song.mid`, `:e take.wav`. A folder shows as a [file buffer](file-manager.md). |
+| `:e roll`, `:b roll`, `:b 3` | Show a buffer in this window, by name or number. The name of a buffer or a view, or an address such as `paw://tracks`, comes before a file. Only a file asks about unsaved work: `:e song`, `:e song.mid`, `:e take.wav`. A folder shows as a [file buffer](file-manager.md). |
 | `:e roll://riff`, `:vs notation://7` | Show a view on a clip (see [Names of a clip in a view](#names-of-a-clip-in-a-view)). |
 | `:bn`, `:bp` | Show the next or the previous buffer. |
 | `:ls` | Lists the buffers. |
@@ -174,7 +174,7 @@ layout of the windows, if the project has one.
 `:narrow Strings` (or `zn`) narrows a tab to a group. The tab starts with
 the windows of the tab before it. Everything in it sees only the tracks of
 that group. This includes the arrange view, the mixer, the device panel and
-the session view. It also includes `paw://tracks`, the pickers, `:query`,
+the session view of the clip launcher. It also includes `paw://tracks`, the pickers, `:query`,
 the motions and the Ex ranges.
 `:widen` (`zw`) closes the tab and returns.
 

@@ -47,9 +47,6 @@ pub struct Project {
     /// [`set_tempo_map`](Project::set_tempo_map) whenever they change.
     #[serde(skip)]
     map: Arc<TempoMap>,
-    /// Where clips launched from slots start, unless a slot says otherwise.
-    #[serde(default, skip_serializing_if = "Quantize::is_bar")]
-    pub launch_quantize: Quantize,
     pub master: Arc<Track>,
     pub tracks: Vec<Arc<Track>>,
     /// Free-form data for extensions, saved with the project.
@@ -84,7 +81,6 @@ impl Default for Project {
             tempo_changes: Vec::new(),
             sig_changes: Vec::new(),
             map: Arc::new(TempoMap::default()),
-            launch_quantize: Quantize::Bar,
             master: Arc::new(Track {
                 name: "Master".into(),
                 ..Track::new(MASTER_ID)
@@ -142,35 +138,33 @@ pub struct Track {
     /// its automation while the song plays, and whether its lanes play.
     #[serde(default, skip_serializing_if = "AutoMode::is_read")]
     pub automation: AutoMode,
-    /// Clips kept apart from the timeline, to be launched while the song
-    /// plays (see `session/launcher.rs`), in order of their rows.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub slots: Vec<SlotClip>,
+    /// Clips kept off the timeline, which play only when cued (see
+    /// `session/cues.rs`). Each starts at 0 and repeats every `length`
+    /// beats while it plays.
+    #[serde(default, skip_serializing_if = "Clips::is_empty")]
+    pub cues: Clips,
     /// How its notes' MIDI 2.0 attributes reach an instrument that does
     /// not take them: see `attr_map.rs`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attr_map: Option<crate::attr_map::AttrMap>,
-}
-
-/// A clip in one of a track's slots. It starts at 0 and repeats every
-/// `length` beats for as long as it plays.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SlotClip {
-    /// The row it is in, from 0: the scene it belongs to.
-    pub row: u32,
-    pub clip: Arc<Clip>,
-    /// Where it starts when launched, in place of the project's.
+    /// The track folder outside the project's folder that the track is
+    /// read from: the project refers to it and keeps no copy. The first
+    /// edit of the track makes it the project's own (`origin`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub quantize: Option<Quantize>,
-    #[serde(default, skip_serializing_if = "LaunchMode::is_trigger")]
-    pub mode: LaunchMode,
-    /// Launched while another clip of the track plays, it takes over
-    /// where that one had got to in its loop.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub legato: bool,
+    pub source: Option<PathBuf>,
+    /// The track folder outside the project that the track was copied from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<PathBuf>,
+    /// The chain file (a `devices.json`) outside the project's folder that
+    /// the devices are read from, kept as `source` is for the track.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_source: Option<PathBuf>,
+    /// The chain file outside the project that the devices were copied from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_origin: Option<PathBuf>,
 }
 
-/// The boundaries a launch waits for.
+/// The boundaries a cue waits for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Quantize {
     #[serde(rename = "off")]
@@ -194,10 +188,6 @@ pub enum Quantize {
 }
 
 impl Quantize {
-    fn is_bar(&self) -> bool {
-        *self == Quantize::Bar
-    }
-
     pub fn engine(self) -> paw_engine::launch::Quantize {
         use paw_engine::launch::Quantize as Q;
         match self {
@@ -210,25 +200,6 @@ impl Quantize {
             Quantize::TwoBars => Q::Bars(2),
             Quantize::FourBars => Q::Bars(4),
         }
-    }
-}
-
-/// What pressing and letting go of a slot's button do.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LaunchMode {
-    /// Pressing launches it, again from its start if it plays.
-    #[default]
-    Trigger,
-    /// It plays while held: letting go stops it.
-    Gate,
-    /// Pressing launches it, and pressing again stops it.
-    Toggle,
-}
-
-impl LaunchMode {
-    fn is_trigger(&self) -> bool {
-        *self == LaunchMode::Trigger
     }
 }
 
@@ -358,8 +329,12 @@ impl Track {
             midi_output: None,
             height: None,
             automation: AutoMode::Read,
-            slots: Vec::new(),
+            cues: Clips::new(),
             attr_map: None,
+            source: None,
+            origin: None,
+            chain_source: None,
+            chain_origin: None,
         }
     }
 
@@ -595,6 +570,10 @@ pub enum ClipContent {
         offset: f64,
         /// Clip gain in dB.
         gain: f64,
+        /// Changes to the sound that its file keeps out of, made in order
+        /// (`edits.rs`).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        edits: Vec<crate::edits::AudioEdit>,
     },
 }
 
@@ -1239,34 +1218,35 @@ impl Project {
         Some(&self.track(track)?.devices[index])
     }
 
-    /// A clip on the timeline or in a slot.
+    /// A clip on the timeline or off it, for cues.
     pub fn clip(&self, id: Id) -> Option<&Arc<Clip>> {
         if let Some((track, index)) = self.find_clip(id) {
             return Some(&self.track(track)?.clips[index]);
         }
-        let (track, index) = self.find_slot_clip(id)?;
-        Some(&self.track(track)?.slots[index].clip)
+        let (track, index) = self.find_cue_clip(id)?;
+        Some(&self.track(track)?.cues[index])
     }
 
-    /// The track that holds a clip in a slot, and the clip's index among
-    /// its slots.
-    pub fn find_slot_clip(&self, id: Id) -> Option<(Id, usize)> {
+    /// The track that holds a clip off the timeline, and the clip's index
+    /// among its cue clips.
+    pub fn find_cue_clip(&self, id: Id) -> Option<(Id, usize)> {
         self.all_tracks()
-            .find_map(|t| t.slots.iter().position(|s| s.clip.id == id).map(|i| (t.id, i)))
+            .find_map(|t| t.cues.iter().position(|c| c.id == id).map(|i| (t.id, i)))
     }
+
 
     pub fn device_mut(&mut self, id: Id) -> Option<&mut DeviceInst> {
         let (track, index) = self.find_device(id)?;
         Some(Arc::make_mut(&mut self.track_mut(track)?.devices[index]))
     }
 
-    /// A clip on the timeline or in a slot, to change.
+    /// A clip on the timeline or off it, to change.
     pub fn clip_mut(&mut self, id: Id) -> Option<&mut Clip> {
         if let Some((track, index)) = self.find_clip(id) {
             return Some(Arc::make_mut(&mut self.track_mut(track)?.clips[index]));
         }
-        let (track, index) = self.find_slot_clip(id)?;
-        Some(Arc::make_mut(&mut self.track_mut(track)?.slots[index].clip))
+        let (track, index) = self.find_cue_clip(id)?;
+        Some(Arc::make_mut(&mut self.track_mut(track)?.cues[index]))
     }
 
     /// Whether routing `from` into `to` would make audio flow in a circle.
@@ -1305,7 +1285,7 @@ impl Project {
                 std::iter::once(t.id)
                     .chain(t.devices.iter().map(|d| d.id))
                     .chain(t.clips.iter().map(|c| c.id))
-                    .chain(t.slots.iter().map(|s| s.clip.id))
+                    .chain(t.cues.iter().map(|c| c.id))
                     .chain(t.lanes.iter().map(|l| l.id))
             })
             .max()
@@ -1517,7 +1497,7 @@ impl Project {
             for d in &t.devices {
                 unique(d.id)?;
             }
-            for c in t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)) {
+            for c in t.clips.iter().chain(&t.cues) {
                 unique(c.id)?;
             }
             for l in &t.lanes {
@@ -1543,12 +1523,10 @@ impl Project {
                     bail!("parameter {key} of device {} is {v}", d.id);
                 }
             }
-            if t.slots.windows(2).any(|w| w[0].row >= w[1].row)
-                || t.slots.iter().any(|s| s.clip.start != 0.0)
-            {
-                bail!("{name} has slots out of order, or a clip in a slot that does not start at 0");
+            if t.cues.iter().any(|c| c.start != 0.0) {
+                bail!("{name} has a clip off the timeline that does not start at 0");
             }
-            for c in t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)) {
+            for c in t.clips.iter().chain(&t.cues) {
                 if !c.start.is_finite() || c.start < 0.0 || !c.length.is_finite() || c.length <= 0.0
                 {
                     bail!(
