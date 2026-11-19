@@ -236,6 +236,17 @@ pub struct PresetLoad {
     pub params: BTreeMap<String, f64>,
     /// One of the plugin's own presets, by the id its list gives.
     pub factory: Option<String>,
+    /// A request to the device that changes its state (see
+    /// [`Session::device_call`]), such as an LV2 property set to a new file:
+    /// the state the device has then is what is kept.
+    pub call: Option<LoadCall>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LoadCall {
+    pub method: String,
+    pub data: String,
 }
 
 #[derive(Default, Deserialize)]
@@ -2035,17 +2046,26 @@ impl Session {
                     }
                 }
             }
-            if let Some(preset) = &load.factory {
+            let request = match (&load.factory, &load.call) {
+                (Some(_), Some(_)) => bail!("give a preset load `factory` or `call`, not both"),
+                (Some(preset), None) => Some(("preset.load", preset.as_bytes(), 10, 30)),
+                // A file the plugin loads in the background (a model) can
+                // take longer than one of its own presets, or much less:
+                // look more often, for up to a second.
+                (None, Some(call)) => Some((call.method.as_str(), call.data.as_bytes(), 200, 5)),
+                (None, None) => None,
+            };
+            if let Some((method, data, tries, wait)) = request {
                 let before = controller.save_state().ok().flatten();
-                controller.call("preset.load", preset.as_bytes())?;
+                controller.call(method, data)?;
                 // Some plugins finish loading on their audio thread: give
                 // them a moment before reading back what they hold.
                 let mut after = controller.save_state()?;
-                for _ in 0..10 {
+                for _ in 0..tries {
                     if after != before {
                         break;
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(30));
+                    std::thread::sleep(std::time::Duration::from_millis(wait));
                     controller.idle();
                     after = controller.save_state()?;
                 }
@@ -2053,13 +2073,17 @@ impl Session {
             }
         } else if load.factory.is_some() {
             bail!("this device has no presets of its own");
+        } else if load.call.is_some() {
+            bail!("this device takes no calls");
         }
         if let Some(text) = &state {
             BASE64
                 .decode(text)
                 .context("a preset's state is given in base64")?;
         }
-        let factory = load.factory.is_some();
+        // The plugin already holds the new state when it loaded one of its
+        // own presets or answered a call.
+        let already = load.factory.is_some() || load.call.is_some();
         self.edit(|p| {
             let d = p.device_mut(id).unwrap();
             d.state = state;
@@ -2071,9 +2095,8 @@ impl Session {
             };
             Ok(())
         })?;
-        // The plugin already holds its own preset: loading the state it gave
-        // back into it again would only cost time.
-        if factory && let Some(device) = self.project.device(id).cloned() {
+        // Loading the state it gave back into it again would only cost time.
+        if already && let Some(device) = self.project.device(id).cloned() {
             let synced_device = self.synced.device_mut(id);
             if let Some(synced_device) = synced_device {
                 *synced_device = (*device).clone();

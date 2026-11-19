@@ -359,7 +359,10 @@
           PAW_GUI_LIBS = pkgs.lib.makeLibraryPath (guiLibs pkgs);
           PAW_PLUGIN_LIB_DIRS = pkgs.lib.makeLibraryPath (pluginLibs pkgs);
           # Plugins in all three formats for the test suite to host.
-          PAW_TEST_PLUGINS = "${pkgs.lsp-plugins}/lib:${pkgs.surge-xt}/lib";
+          PAW_TEST_PLUGINS = "${pkgs.lsp-plugins}/lib:${pkgs.surge-xt}/lib:${pkgs.neural-amp-modeler-lv2}/lib:${pkgs.sfizz-ui}/lib";
+          # Sample amp models for Neural Amp Modeler, from its sources
+          # (extensions/plugstate's tests load them).
+          PAW_TEST_NAM_MODELS = "${pkgs.neural-amp-modeler-lv2.src}/models";
         };
       });
     };

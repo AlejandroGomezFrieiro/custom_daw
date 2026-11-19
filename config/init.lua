@@ -32,6 +32,7 @@ for _, name in ipairs({
   "tutor",      -- the course: `:tutor` starts it
   "doctor",     -- a guided check of the hardware, with a written report (`:doctor`, `paw doctor`)
   "luafx",      -- devices written in Lua: gain and pan, drive, chords, sine (and how to write your own)
+  "plugstate",  -- amp models, impulse responses, instrument files of plugins; snapshots (`]m`, `\s` in the device panel)
 }) do
   paw.ext.load(plugins .. "/" .. name)
 end
