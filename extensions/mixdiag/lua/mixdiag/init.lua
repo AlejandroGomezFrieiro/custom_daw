@@ -89,7 +89,7 @@ function M.range(scope)
     local id = paw.cursor.track_id()
     if not id then error("no track under the cursor", 0) end
     if length <= 0 then error("the project has no clips to measure", 0) end
-    return { start = 0, ["end"] = length, track = id, label = api.track_get(id).name, kind = "track", whole = true }
+    return { start = 0, ["end"] = length, track = id, label = api.track_get(id, "name"), kind = "track", whole = true }
   end
   error("unknown scope `" .. tostring(scope) .. "`: song, loop, selection or track", 0)
 end
@@ -278,7 +278,7 @@ end
 
 --- Whether the project changed since the measurement.
 function M.stale()
-  return M.result and M.result.edits ~= nil and api.project_get().edits ~= M.result.edits
+  return M.result and M.result.edits ~= nil and api.project_get("edits") ~= M.result.edits
 end
 
 function M.clear()

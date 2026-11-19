@@ -19,7 +19,7 @@ local timer
 --- The file this session's copy of the project goes in: one per project
 --- file, or per session for a project that has no file yet.
 function M.file()
-  local path = api.project_get().path
+  local path = api.project_get("path")
   if not path then return string.format("%s/untitled-%d.json", M.dir, env.pid) end
   -- The same project always gets the same name, whatever directory it is in.
   local hash = 5381
@@ -87,7 +87,7 @@ function M.recover(file, opts)
   if not opts.as_path then os.remove(file) end
   copied = nil
   M.offered = nil
-  paw.notify("recovered " .. (api.project_get().path or "an unsaved project") .. ": save it to keep it")
+  paw.notify("recovered " .. (api.project_get("path") or "an unsaved project") .. ": save it to keep it")
 end
 
 local function readable(file)
@@ -168,7 +168,7 @@ local current = nil
 paw.on("project.saved", function()
   forget(current)
   forget()
-  current, copied = M.file(), api.project_get().edits
+  current, copied = M.file(), api.project_get("edits")
 end)
 paw.on("project.loaded", function()
   forget(current)
@@ -209,7 +209,7 @@ end)
 --- stopped during or after a take, without a save, leaves them. A take that
 --- you undid before a save is not one of them. { file, name }.
 function M.orphan_takes()
-  local path = api.project_get().path
+  local path = api.project_get("path")
   if not path then return {} end
   local parent = path:match("^(.*)/[^/]*$") or "."
   local dir = parent .. "/media"

@@ -56,7 +56,7 @@ function M.act()
   if #paths == 0 or asking then return end
   local how = paw.opt.on_external_change
   if how == "keep" then return M.keep() end
-  if how == "reload" and not api.project_get().modified then return M.reload() end
+  if how == "reload" and not api.project_get("modified") then return M.reload() end
   asking = true
   require("paw.views.cmdline").ask_key(
     string.format("%s changed outside paw (%s): read again? y/n ", count(paths), names(paths)),

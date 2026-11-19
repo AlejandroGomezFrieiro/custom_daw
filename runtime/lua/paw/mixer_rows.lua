@@ -225,9 +225,9 @@ view.grid = {
     local list = paw.groups.rows()
     local _, col = view.grid.get()
     for row, id in ipairs(list) do
-      if api.track_get(id).name:lower():find(wanted, 1, true) then hits[#hits + 1] = { row = row, col = col } end
+      if api.track_get(id, "name"):lower():find(wanted, 1, true) then hits[#hits + 1] = { row = row, col = col } end
     end
-    if api.track_get(0).name:lower():find(wanted, 1, true) then hits[#hits + 1] = { row = #list + 1, col = col } end
+    if api.track_get(0, "name"):lower():find(wanted, 1, true) then hits[#hits + 1] = { row = #list + 1, col = col } end
     return hits
   end,
   -- The row under the cursor is a cell: a selection takes it in.
@@ -348,7 +348,7 @@ mmap("<CR>", function()
       end
     end)
   end
-  paw.track(id)[row.field] = not api.track_get(id)[row.field]
+  paw.track(id)[row.field] = not api.track_get(id, row.field)
 end, "Type the row's value, switch it, or show the insert's window")
 
 --- The curve of the row under the cursor, for `gC` and `:curve.open`.
@@ -409,7 +409,7 @@ end, "Yank: whole strips their tracks, rows their settings")
 op("gc", function(region)
   local ids = strips(region)
   local all = #ids > 0
-  for _, id in ipairs(ids) do all = all and api.track_get(id).mute end
+  for _, id in ipairs(ids) do all = all and api.track_get(id, "mute") end
   for _, id in ipairs(ids) do paw.track(id).mute = not all end
 end, "Mute or unmute the strips", { role = "mute" })
 
@@ -441,7 +441,7 @@ vop("<C-x>", each_value(-1), "The rows selected down by the count", "main-")
 local function each_pan(sign) return function(region, ctx)
   for _, id in ipairs(strips(region)) do
     local track = paw.track(id)
-    if not (api.track_get(id).meta or {}).vca then
+    if not (api.track_get(id, "meta") or {}).vca then
       track.pan = util.clamp(util.round(track.pan + count(0.1, ctx) * sign, 0.01), -1, 1)
     end
   end

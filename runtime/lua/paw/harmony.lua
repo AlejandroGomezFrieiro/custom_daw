@@ -345,7 +345,7 @@ local notes_cache = {}
 --- context notes of the piano roll, `paw.roll_clips.context`, are what the
 --- roll shows, in its own beats, and only of the tracks selected to show.
 function M.notes()
-  local edits = api.project_get().edits
+  local edits = api.project_get("edits")
   if notes_cache.edits == edits then return notes_cache.notes end
   local out = {}
   for _, id in ipairs(api.track_list()) do
@@ -421,7 +421,7 @@ local function complete_key(k)
 end
 
 local function signature()
-  local stamp = api.project_get().edits
+  local stamp = api.project_get("edits")
   local parts = { tostring(stamp), tostring(paw.opt.harmony_step) }
   for _, p in ipairs(providers) do parts[#parts + 1] = p.name end
   return table.concat(parts, "|")

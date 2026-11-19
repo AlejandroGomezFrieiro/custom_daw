@@ -463,7 +463,7 @@ local function track_named(name)
   if name:lower() == "master" then return 0 end
   local found
   for _, id in ipairs(api.track_list()) do
-    local known = api.track_get(id).name
+    local known = api.track_get(id, "name")
     if known == name then return id end
     if known:lower():find(name:lower(), 1, true) then found = found or id end
   end
@@ -526,9 +526,9 @@ command("send", function(ctx)
   local level = asked or paw.opt.send_level
   local pre = ctx.args.pre ~= nil and ctx.args.pre ~= false and ctx.args.pre ~= 0 and ctx.args.pre ~= "0" or nil
   local function add(target)
-    local to, said = api.track_get(target).name, {}
+    local to, said = api.track_get(target, "name"), {}
     for _, id in ipairs(ids) do
-      local name = api.track_get(id).name
+      local name = api.track_get(id, "name")
       local index
       for i, send in ipairs(api.track_get(id).sends) do
         if send.target == target then index = i end
@@ -559,7 +559,7 @@ command("send", function(ctx)
   end
   local name = ctx.args[1]
   if not name then
-    local first = api.track_get(ids[1]).name
+    local first = api.track_get(ids[1], "name")
     return pick_target(ids[1], "Send " .. (#ids == 1 and first or #ids .. " tracks") .. " to", false, add)
   end
   local target = track_named(tostring(name))
@@ -573,7 +573,7 @@ command("send.remove", function(ctx)
   local sends = track:get().sends
   local name = ctx.args[1]
   for index, send in ipairs(sends) do
-    local to = api.track_get(send.target).name
+    local to = api.track_get(send.target, "name")
     if not name or to:lower():find(tostring(name):lower(), 1, true) then
       paw.frontend.act.remove_send(track.id, index)
       return paw.notify(track.name .. " no longer sends to " .. to)
@@ -584,7 +584,7 @@ end, {
   desc = "Take a send away: `send.remove Reverb`; alone, the first",
   complete = function()
     local track, out = cursor.track(), {}
-    for _, send in ipairs(track and track:get().sends or {}) do out[#out + 1] = api.track_get(send.target).name end
+    for _, send in ipairs(track and track:get().sends or {}) do out[#out + 1] = api.track_get(send.target, "name") end
     return out
   end,
 })
@@ -644,7 +644,7 @@ command("track.into", function(ctx)
   end
   local groups = {}
   for _, id in ipairs(api.track_list()) do
-    if paw.groups.is_group(id) then groups[#groups + 1] = { id = id, name = api.track_get(id).name } end
+    if paw.groups.is_group(id) then groups[#groups + 1] = { id = id, name = api.track_get(id, "name") } end
   end
   local name = ctx.args[1]
   if name then
@@ -661,7 +661,7 @@ end, {
   complete = function()
     local out = {}
     for _, id in ipairs(api.track_list()) do
-      if paw.groups.is_group(id) then out[#out + 1] = api.track_get(id).name end
+      if paw.groups.is_group(id) then out[#out + 1] = api.track_get(id, "name") end
     end
     return out
   end,
@@ -685,7 +685,7 @@ command("group.link", function()
   local group = paw.groups.is_group(track.id) and track.id or paw.groups.of(track.id)
   if not group then return paw.notify("not in a group", "warn") end
   paw.groups.link(group)
-  paw.notify(string.format("faders of “%s” %s", api.track_get(group).name,
+  paw.notify(string.format("faders of “%s” %s", api.track_get(group, "name"),
     paw.groups.linked(group) and "are linked: moving one member's fader moves the others" or "are free again"))
 end, { desc = "Link the faders of the group's members, or let them go: moving one moves the others by as many dB" })
 
@@ -694,13 +694,13 @@ end, { desc = "Link the faders of the group's members, or let them go: moving on
 --- The VCA named, by part of its name, or nil.
 local function vca_named(name)
   for _, id in ipairs(paw.vca.list()) do
-    if api.track_get(id).name:lower():find(tostring(name):lower(), 1, true) then return id end
+    if api.track_get(id, "name"):lower():find(tostring(name):lower(), 1, true) then return id end
   end
 end
 
 local function vca_names()
   local out = {}
-  for _, id in ipairs(paw.vca.list()) do out[#out + 1] = api.track_get(id).name end
+  for _, id in ipairs(paw.vca.list()) do out[#out + 1] = api.track_get(id, "name") end
   return out
 end
 
@@ -708,7 +708,7 @@ end
 local function with_vca(name, title, from, act)
   if name == "" then name = nil end
   local vcas = {}
-  for _, id in ipairs(from) do vcas[#vcas + 1] = { id = id, name = api.track_get(id).name } end
+  for _, id in ipairs(from) do vcas[#vcas + 1] = { id = id, name = api.track_get(id, "name") } end
   if name then
     local id = vca_named(name)
     if id then return act(id) end
@@ -1763,7 +1763,7 @@ command("write", function(ctx)
   local path = ctx.args[1] and tostring(ctx.args[1]) or nil
   -- In a project kept in a folder, `:w` writes the files of this window's
   -- buffer (and those that it needs to be found); `:wa` writes them all.
-  if not path and not api.project_get().path and paw.midifile.document then
+  if not path and not api.project_get("path") and paw.midifile.document then
     local ok, written = pcall(paw.midifile.write_clip)
     if not ok then return paw.notify(tostring(written):gsub("^[^:]*:%d+: ", ""), "error") end
     return paw.notify("wrote " .. written)
@@ -1779,7 +1779,7 @@ command("write", function(ctx)
   if path then path = paw.files.path(path) end
   -- A project that has no file yet is asked where it goes, when there is
   -- somebody to ask.
-  if not path and not api.project_get().path and paw.fx.interactive() then return paw.frontend.save_as() end
+  if not path and not api.project_get("path") and paw.fx.interactive() then return paw.frontend.save_as() end
   if path and paw.midifile.is_midi_file(path) then
     return paw.notify("a project is not saved as a MIDI file: `:export " .. path .. "` writes one", "warn")
   end
@@ -1791,7 +1791,7 @@ command("write", function(ctx)
   paw.notify("saved " .. paw.project.save(path))
 end, { desc = "Save the project: `write song.json`", complete = { "projects" } })
 command("wall", function()
-  local path = api.project_get().path
+  local path = api.project_get("path")
   if not path and paw.fx.interactive() then return paw.frontend.save_as() end
   paw.notify("saved " .. paw.project.save())
 end, { desc = "Save every file of the project" })
@@ -1801,7 +1801,7 @@ command("edit", function(ctx)
   -- Alone, as in Vim, it opens the project's own file again: `:e!` goes
   -- back to the saved project and throws away what changed since.
   if not ctx.args[1] then
-    local path = api.project_get().path
+    local path = api.project_get("path")
     if not path then return paw.notify("the project has no file yet: `:e song.json` opens one, `:w song.json` saves this one", "warn") end
     if not paw.project.guard("edit") then return end
     paw.open(path)
@@ -2180,7 +2180,7 @@ command("marks", function()
     table.sort(names)
     for _, name in ipairs(names) do
       local pos = list[name]
-      local where = view == "arrange" and paw.time.format(pos.beat) .. "  " .. (pcall(api.track_get, pos.track) and api.track_get(pos.track).name or "(track gone)")
+      local where = view == "arrange" and paw.time.format(pos.beat) .. "  " .. (pcall(api.track_get, pos.track) and api.track_get(pos.track, "name") or "(track gone)")
         or paw.music.name(pos[1]) .. "  beat " .. pos[2] + 1
       lines[#lines + 1] = string.format("%s  %-10s %s", name, view, where)
     end
@@ -2193,7 +2193,7 @@ command("changes", function()
   local list = keymap.changes()
   for i = #list, 1, -1 do
     local pos = list[i]
-    local where = pos.beat and paw.time.format(pos.beat) .. "  " .. (pcall(api.track_get, pos.track) and api.track_get(pos.track).name or "(track gone)")
+    local where = pos.beat and paw.time.format(pos.beat) .. "  " .. (pcall(api.track_get, pos.track) and api.track_get(pos.track, "name") or "(track gone)")
       or string.format("row %d  beat %g", pos[1], (pos[2] or 0) + 1)
     lines[#lines + 1] = string.format("%3d  %s", #list - i + 1, where)
   end
@@ -2253,10 +2253,10 @@ command("info", function()
   local kind = paw.track_kinds.describe(track.id)
   if kind then lines[#lines + 1] = "  kind    " .. kind end
   lines[#lines + 1] = string.format("  volume %+.1f dB, pan %+.2f%s%s%s", t.volume, t.pan, t.mute and ", muted" or "", t.solo and ", solo" or "", t.armed and ", armed" or "")
-  lines[#lines + 1] = "  output  " .. (t.output and api.track_get(t.output).name or "Master")
+  lines[#lines + 1] = "  output  " .. (t.output and api.track_get(t.output, "name") or "Master")
   if t.input then lines[#lines + 1] = "  input   " .. t.input end
   for _, send in ipairs(t.sends) do
-    lines[#lines + 1] = string.format("  send    %s at %+.1f dB", api.track_get(send.target).name, send.level)
+    lines[#lines + 1] = string.format("  send    %s at %+.1f dB", api.track_get(send.target, "name"), send.level)
   end
   for i, device in ipairs(track:devices()) do
     local d = device:get()
@@ -3688,7 +3688,7 @@ end
 -- A plugin runs in a process of its own; when that stops, the session goes
 -- on without it and says so.
 paw.on("device.stopped", function(event)
-  local track = pcall(api.track_get, event.track) and api.track_get(event.track).name or "a track"
+  local track = pcall(api.track_get, event.track) and api.track_get(event.track, "name") or "a track"
   if event.loading then
     return paw.notify(string.format("%s on %s could not be loaded: %s. It is passed over and keeps its saved state; `:device.restart` tries again.",
       event.name, track, event.reason), "error")
@@ -3707,7 +3707,7 @@ command("plugins.rescan", function(ctx)
 end, { desc = "Look into plugin files again, including ones skipped because they failed: `plugins.rescan`, `plugins.rescan surge`" })
 -- A device whose output holds NaN or infinity is silenced where it is, once said.
 paw.on("device.invalid", function(event)
-  local track = pcall(api.track_get, event.track) and api.track_get(event.track).name or "a track"
+  local track = pcall(api.track_get, event.track) and api.track_get(event.track, "name") or "a track"
   paw.notify(string.format("%s on %s put out invalid numbers (NaN or infinity); its output is replaced by silence",
     event.name, track), "error")
 end)

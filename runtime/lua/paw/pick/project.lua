@@ -77,7 +77,7 @@ return function(pick, S)
       for _, id in ipairs(api.track_list()) do
         for _, c in ipairs(api.clip_list(id)) do
           if c.start <= m.beat + (m.length or 0) and c.start + c.length > m.beat then
-            lines[#lines + 1] = string.format("  %-16s %s", api.track_get(id).name, c.name)
+            lines[#lines + 1] = string.format("  %-16s %s", api.track_get(id, "name"), c.name)
           end
         end
       end

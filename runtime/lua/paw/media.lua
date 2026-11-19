@@ -95,7 +95,7 @@ command("media.collect", function()
 end, { desc = "Copy every sound file from outside the project's folder into its `media` folder" })
 
 command("collect", function()
-  if not api.project_get().path then return paw.notify("the project has no folder yet: `:w song` saves it first", "warn") end
+  if not api.project_get("path") then return paw.notify("the project has no folder yet: `:w song` saves it first", "warn") end
   local clips = api.clip_collect()
   local result = api.media_collect()
   local n = #result.missing

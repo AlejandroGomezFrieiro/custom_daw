@@ -41,7 +41,10 @@ pub struct Timer {
     pub id: u64,
     pub due: Instant,
     pub repeat: Option<Duration>,
-    pub func: Function,
+    /// In the registry, not held as a `Function`: each Lua value that Rust
+    /// holds takes a slot of a stack that has room for about 8000, and a
+    /// script that never lets the timers fire can start more than that.
+    pub func: Rc<mlua::RegistryKey>,
 }
 
 /// Everything the kernel and the Lua API functions both reach into.
@@ -577,7 +580,7 @@ fn xdg_dir(variable: &str, fallback: &str) -> String {
 
 /// The functions of the timers that are due, with one-shot timers removed
 /// and repeating ones moved on.
-pub fn due_timers(shared: &Shared) -> Vec<Function> {
+pub fn due_timers(shared: &Shared) -> Vec<Rc<mlua::RegistryKey>> {
     let now = Instant::now();
     let mut timers = shared.timers.borrow_mut();
     let mut due = Vec::new();
@@ -621,7 +624,16 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
 
     define! { lua, api, shared;
         // --- project ---
-        fn project_get(lua, sh, () => ()) { to_lua(lua, &sh.session.borrow().project_view()) }
+        // The project as a table. With `key`, only that entry of the table:
+        // this is quicker (`edits`, which goes up with each change, is asked
+        // for on each key and each edit).
+        fn project_get(lua, sh, key => Option<String>) {
+            let session = sh.session.borrow();
+            match key {
+                Some(key) => to_lua(lua, &session.project_field(&key)),
+                None => to_lua(lua, &session.project_view()),
+            }
+        }
         fn project_set(lua, sh, (key, value) => (String, LuaValue)) {
             sh.session.borrow_mut().project_set(&key, from_lua(lua, value)?).lua()
         }
@@ -723,7 +735,15 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         fn track_list(_, sh, () => ()) {
             Ok(sh.session.borrow().project.tracks.iter().map(|t| t.id).collect::<Vec<Id>>())
         }
-        fn track_get(lua, sh, id => Id) { to_lua(lua, &sh.session.borrow().track_view(id).lua()?) }
+        // A track as a table. With `key`, only that entry of the table: this
+        // is quicker, because the table lists each clip of the track.
+        fn track_get(lua, sh, (id, key) => (Id, Option<String>)) {
+            let session = sh.session.borrow();
+            match key {
+                Some(key) => to_lua(lua, &session.track_field(id, &key).lua()?),
+                None => to_lua(lua, &session.track_view(id).lua()?),
+            }
+        }
         fn track_add(lua, sh, opts => LuaValue) { sh.session.borrow_mut().track_add(options(lua, opts)?).lua() }
         fn track_remove(_, sh, id => Id) { sh.session.borrow_mut().track_remove(id).lua() }
         fn track_move(_, sh, (id, index) => (Id, usize)) {
@@ -1572,7 +1592,8 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
         }
 
         // --- timers ---
-        fn timer_start(_, sh, (ms, repeat, func) => (f64, bool, Function)) {
+        fn timer_start(lua, sh, (ms, repeat, func) => (f64, bool, Function)) {
+            let func = Rc::new(lua.create_registry_value(func)?);
             let id = sh.next_timer.get() + 1;
             sh.next_timer.set(id);
             let period = Duration::from_secs_f64(ms.max(0.0) / 1000.0);
@@ -1609,7 +1630,7 @@ pub fn install(lua: &Lua, shared: &Rc<Shared>) -> mlua::Result<()> {
             let mut idled = Instant::now() - Duration::from_secs(1);
             loop {
                 for func in due_timers(&sh) {
-                    timer.call::<()>(func)?;
+                    timer.call::<()>(lua.registry_value::<Function>(&func)?)?;
                 }
                 // Plugins are looked after as they are while the program runs.
                 if idled.elapsed() >= Duration::from_millis(15) {

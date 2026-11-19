@@ -28,7 +28,9 @@ impl Session {
     pub fn trim_audio(&mut self) {
         // A running render was built from what is in the cache: leave it be
         // until the render is over (its engine holds what it plays anyway).
-        if self.rendering() {
+        // Nothing to let go (a project of MIDI alone): looking through every
+        // step of the history for files would find nothing to keep.
+        if self.rendering() || self.audio.holds_nothing() {
             return;
         }
         let mut keep: HashSet<PathBuf> = HashSet::new();

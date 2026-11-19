@@ -470,7 +470,7 @@ local function import_chain(chain, track, track_name, ctx, chain_bypassed)
 end
 
 local function set_meta(track, key, value)
-  local meta = api.track_get(track).meta or {}
+  local meta = api.track_get(track, "meta") or {}
   meta[key] = value
   api.track_set(track, "meta", meta)
 end
@@ -631,7 +631,7 @@ function M.doc(doc, opts)
       volume = db(vp and vp:argn(1) or 1),
       pan = math.max(-1, math.min(1, vp and vp:argn(2) or 0)),
     })
-    if t.name == "" then t.name = api.track_get(t.id).name end
+    if t.name == "" then t.name = api.track_get(t.id, "name") end
     local colour = M.colour(block:getn("PEAKCOL"))
     if colour then api.track_set(t.id, "color", colour) end
     tracks[#tracks + 1] = t

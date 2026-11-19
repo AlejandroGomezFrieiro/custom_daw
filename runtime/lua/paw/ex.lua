@@ -289,7 +289,7 @@ local function track_range(s, i)
     local text = s:sub(j + 1, (close or #s + 1) - 1)
     local out, wanted = {}, text:lower()
     for _, id in ipairs(scoped()) do
-      if api.track_get(id).name:lower():find(wanted, 1, true) then out[#out + 1] = id end
+      if api.track_get(id, "name"):lower():find(wanted, 1, true) then out[#out + 1] = id end
     end
     if #out == 0 then fail("`t/%s/`: no track's name holds `%s`", text, text) end
     return out, close and close + 1 or #s + 1
@@ -397,7 +397,7 @@ function M.describe(r)
   end
   if r.tracks then
     if #r.tracks == 1 then
-      parts[#parts + 1] = (r.from and "on " or "") .. api.track_get(r.tracks[1]).name
+      parts[#parts + 1] = (r.from and "on " or "") .. api.track_get(r.tracks[1], "name")
     else
       parts[#parts + 1] = (r.from and "on " or "") .. plural(#r.tracks, "track")
     end
@@ -519,9 +519,9 @@ function M.label(item)
     local n = item.note
     return string.format("%s vel %d len %g at %s in %s", paw.music.name(n.pitch), n.velocity, n.length, paw.time.format(item.at), item.clip.name)
   elseif item.kind == "clip" then
-    return string.format("clip %s at %s on %s", item.clip.name, paw.time.format(item.at), api.track_get(item.track).name)
+    return string.format("clip %s at %s on %s", item.clip.name, paw.time.format(item.at), api.track_get(item.track, "name"))
   end
-  return "track " .. api.track_get(item.track).name
+  return "track " .. api.track_get(item.track, "name")
 end
 
 -- Fields and patterns --------------------------------------------------------------
@@ -576,7 +576,7 @@ M.field("name", { level = "clip", type = "text", desc = "the clip's name",
   get = function(item) return item.clip.name end,
   set = function(_, value, change) change.name = value end })
 M.field("track", { level = "track", type = "text", desc = "the track's name",
-  get = function(item) return api.track_get(item.track).name end,
+  get = function(item) return api.track_get(item.track, "name") end,
   set = function(_, value, change) change.name = value end })
 
 local NOTE = { c = 0, d = 2, e = 4, f = 5, g = 7, a = 9, b = 11 }
@@ -1125,7 +1125,7 @@ end
 local function set_tracks(ctx, name, field, read)
   local ids = tracks_in(ctx, name)
   for _, id in ipairs(ids) do
-    local value = read(api.track_get(id)[field])
+    local value = read(api.track_get(id, field))
     api.track_set(id, field, value)
   end
   return ids
@@ -1156,7 +1156,7 @@ local function mute_or_solo(ctx, field, on)
     end
     return changed
   end
-  local function track_flag(id) return api.track_get(id)[field] end
+  local function track_flag(id) return api.track_get(id, field) end
   local function set_track(id, to) api.track_set(id, field, to) end
   -- A stretch of time mutes the clips in it.
   if r.items or r.from then
@@ -1798,7 +1798,7 @@ function M.complete_range(line)
   if stem then
     local out = {}
     for i, id in ipairs(scoped()) do
-      local name = api.track_get(id).name
+      local name = api.track_get(id, "name")
       if name:lower():find(stem:lower(), 1, true) then
         out[#out + 1] = { text = "t/" .. name .. "/ ", label = "t/" .. name .. "/", desc = "track " .. i }
       end

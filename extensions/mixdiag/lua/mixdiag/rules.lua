@@ -417,7 +417,7 @@ rules.no_sound = {
   check = function(ctx, add, rule)
     if ctx.kind ~= "mix" then return end
     local any_solo = false
-    for _, id in ipairs(api.track_list()) do any_solo = any_solo or api.track_get(id).solo end
+    for _, id in ipairs(api.track_list()) do any_solo = any_solo or api.track_get(id, "solo") end
     if any_solo then return end
     for _, peak in ipairs(ctx.result.tracks or {}) do
       if peak.id ~= 0 and peak.peak <= rule.floor then

@@ -1279,7 +1279,7 @@ function M.file(opts)
       on_cancel = opts.on_cancel,
     })
   end
-  local project = api.project_get and api.project_get().path
+  local project = api.project_get and api.project_get("path")
   open(opts.dir or paw.state.pick_dir or (project and project:match("^(.*)/[^/]+$")) or os.getenv("HOME") or "/")
 end
 

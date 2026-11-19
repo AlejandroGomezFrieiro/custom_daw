@@ -902,8 +902,8 @@ function M.after_next(fn) after = { fn = fn } end
 --- Once a command is complete, remember it for `.` if it changed the project.
 local function finish_command()
   if not idle() then return end
-  if track.keys and api.project_get().edits ~= track.edits then push_change() end
-  local changed = track.keys and (api.project_get().edits ~= track.edits or text_changes ~= track.texts)
+  if track.keys and api.project_get("edits") ~= track.edits then push_change() end
+  local changed = track.keys and (api.project_get("edits") ~= track.edits or text_changes ~= track.texts)
   if changed and not track.norepeat and not replaying then
     last_change = track.keys
   end
@@ -951,15 +951,15 @@ handle = function(key)
     local exact, longer
     if key ~= first.key then exact, longer = lookup(first.key .. key) end
     if exact or longer then
-      if first.after ~= first.before and api.project_get().edits == first.after then paw.undo() end
-      if track.keys then track.edits = api.project_get().edits end
+      if first.after ~= first.before and api.project_get("edits") == first.after then paw.undo() end
+      if track.keys then track.edits = api.project_get("edits") end
       -- The count typed first is the longer mapping's: `2[t`.
       count, register = first.count, first.register
     else
       pending = {}
       if track.keys then track.keys[#track.keys] = nil end
       finish_command()
-      track.keys, track.edits, track.texts = { key }, api.project_get().edits, text_changes
+      track.keys, track.edits, track.texts = { key }, api.project_get("edits"), text_changes
     end
   end
 
@@ -1019,10 +1019,10 @@ handle = function(key)
       -- It runs now; the wait is only for a key that makes a longer one.
       -- Its change is a step of its own, so that one undo takes it back.
       api.undo_checkpoint()
-      local before, typed_count, typed_register = api.project_get().edits, count, register
+      local before, typed_count, typed_register = api.project_get("edits"), count, register
       take(exact)
       pending = { key }
-      eager = { key = key, before = before, after = api.project_get().edits, count = typed_count, register = typed_register }
+      eager = { key = key, before = before, after = api.project_get("edits"), count = typed_count, register = typed_register }
       timer = api.timer_start(paw.opt.timeoutlen, false, function()
         timer = nil
         if not eager then return end
@@ -1103,7 +1103,7 @@ function M.dispatch(key)
     if paw.ui.grabber and paw.ui.grabber ~= grabber then return end
   end
   if macro and depth == 0 then macro.keys[#macro.keys + 1] = key end
-  if not track.keys then track.keys, track.edits, track.texts = {}, api.project_get().edits, text_changes end
+  if not track.keys then track.keys, track.edits, track.texts = {}, api.project_get("edits"), text_changes end
   track.keys[#track.keys + 1] = key
   local ok, err = xpcall(handle, debug.traceback, key)
   if not ok then

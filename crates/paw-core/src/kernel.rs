@@ -33,6 +33,11 @@ const IDLE_PERIOD: Duration = Duration::from_millis(16);
 
 static RUNTIME: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../runtime/lua");
 
+/// The same modules as bytecode (made by build.rs).
+mod bytecode {
+    include!(concat!(env!("OUT_DIR"), "/bytecode.rs"));
+}
+
 #[derive(Clone, Debug)]
 pub enum InputEvent {
     /// A key in Neovim notation: `a`, `<C-s>`, `<Space>`, `<S-Tab>`.
@@ -341,6 +346,12 @@ impl Kernel {
         }
         self.settle();
         self.shared.dirty.set(true);
+        // Loading the runtime frees many megabytes that the C library keeps
+        // for later: give them back to the system.
+        #[cfg(target_env = "gnu")]
+        unsafe {
+            libc::malloc_trim(0);
+        }
         Ok(())
     }
 
@@ -445,8 +456,9 @@ impl Kernel {
     }
 
     fn fire_timers(&mut self) {
-        for func in api::due_timers(&self.shared) {
-            if let Err(err) = self.call::<()>("timer", func) {
+        for key in api::due_timers(&self.shared) {
+            let func = self.lua.registry_value::<mlua::Function>(&key);
+            if let Err(err) = func.and_then(|func| self.call::<()>("timer", func)) {
                 self.report("timer", err);
             }
         }
@@ -589,9 +601,20 @@ fn install_loader(lua: &Lua, env: &Env) -> mlua::Result<()> {
     paths.push(package.get::<String>("path")?);
     package.set("path", paths.join(";"))?;
 
-    let embedded = lua.create_function(|lua, name: String| {
+    // Lua's own `loadstring`, taken before anything can replace it: `mlua`
+    // loads no bytecode in its safe mode, and this bytecode is the program's.
+    let loadstring: Function = lua.globals().get("loadstring")?;
+    let embedded = lua.create_function(move |lua, name: String| {
         let path = name.replace('.', "/");
         for candidate in [format!("{path}.lua"), format!("{path}/init.lua")] {
+            // The module compiled when the program was built (build.rs): it
+            // loads many times quicker than its source is parsed.
+            if let Ok(i) = bytecode::BYTECODE.binary_search_by_key(&candidate.as_str(), |(p, _)| p) {
+                let code = lua.create_string(bytecode::BYTECODE[i].1)?;
+                if let Ok(LuaValue::Function(chunk)) = loadstring.call::<LuaValue>(code) {
+                    return Ok(LuaValue::Function(chunk));
+                }
+            }
             if let Some(file) = RUNTIME.get_file(&candidate) {
                 let chunk = lua
                     .load(file.contents())
@@ -617,4 +640,36 @@ fn told(err: &mlua::Error) -> String {
         other => other.to_string(),
     };
     whole.split("\nstack traceback:").next().unwrap_or_default().trim_end().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every module of the runtime is in the program as bytecode too, and
+    /// the bytecode loads: otherwise each start parses its source again.
+    #[test]
+    fn the_runtime_is_built_in_as_bytecode() {
+        fn walk(dir: &Dir<'_>, out: &mut Vec<String>) {
+            for file in dir.files() {
+                if file.path().extension().is_some_and(|e| e == "lua") {
+                    out.push(file.path().to_string_lossy().into_owned());
+                }
+            }
+            for sub in dir.dirs() {
+                walk(sub, out);
+            }
+        }
+        let mut sources = Vec::new();
+        walk(&RUNTIME, &mut sources);
+        sources.sort();
+        let compiled: Vec<&str> = bytecode::BYTECODE.iter().map(|(p, _)| *p).collect();
+        assert_eq!(compiled, sources);
+        let lua = Lua::new();
+        let loadstring: Function = lua.globals().get("loadstring").unwrap();
+        for (path, code) in bytecode::BYTECODE {
+            let loaded: LuaValue = loadstring.call(lua.create_string(code).unwrap()).unwrap();
+            assert!(matches!(loaded, LuaValue::Function(_)), "{path} loads");
+        }
+    }
 }

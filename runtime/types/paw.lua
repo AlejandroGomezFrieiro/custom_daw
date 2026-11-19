@@ -8226,7 +8226,11 @@ function paw.api.project_file_text(value) end
 function paw.api.project_files() end
 
 --- --- project ---
-function paw.api.project_get() end
+--- The project as a table. With `key`, only that entry of the table:
+--- this is quicker (`edits`, which goes up with each change, is asked
+--- for on each key and each edit).
+---@param key string?
+function paw.api.project_get(key) end
 
 --- Keep the project as paw has it: forget the changes made outside.
 function paw.api.project_keep_changes() end
@@ -8500,8 +8504,11 @@ function paw.api.track_add(opts) end
 ---@param attr any
 function paw.api.track_attr_delay(id, attr) end
 
+--- A track as a table. With `key`, only that entry of the table: this
+--- is quicker, because the table lists each clip of the track.
 ---@param id integer
-function paw.api.track_get(id) end
+---@param key string?
+function paw.api.track_get(id, key) end
 
 --- --- tracks ---
 function paw.api.track_list() end

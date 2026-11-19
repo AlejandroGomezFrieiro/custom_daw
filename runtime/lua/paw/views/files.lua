@@ -69,7 +69,7 @@ function M.cwd() return chosen end
 --- paw started in.
 function M.here()
   if chosen then return chosen end
-  local path = api.project_get().path
+  local path = api.project_get("path")
   if path and path ~= "" then return dirname(resolve(path)) end
   return cwd()
 end
@@ -591,7 +591,7 @@ paw.command("cd", function(ctx)
   paw.notify("relative names go to " .. dir)
 end, { desc = "Set the folder that relative names go to, as in Vim: `cd ~/songs`, `cd -` the one before; alone, the home folder", raw = false, complete = { "dirs" } })
 paw.command("pwd", function()
-  local how = chosen and "set with `:cd`" or api.project_get().path and "the project's folder" or "where paw started"
+  local how = chosen and "set with `:cd`" or api.project_get("path") and "the project's folder" or "where paw started"
   paw.notify(M.here() .. " (" .. how .. ")")
 end, { desc = "Show the folder that relative names (`:w mix.json`, `:render mix.wav`) go to" })
 

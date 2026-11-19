@@ -183,8 +183,8 @@ end
 
 --- Where a binding's target is now, 0 to 1.
 local function position(b)
-  if b.target == "volume" then return fader_fraction(api.track_get(b.track).volume) end
-  if b.target == "pan" then return (api.track_get(b.track).pan + 1) / 2 end
+  if b.target == "volume" then return fader_fraction(api.track_get(b.track, "volume")) end
+  if b.target == "pan" then return (api.track_get(b.track, "pan") + 1) / 2 end
   local p = param_of(b)
   return p and paw.params.fraction(p, api.device_get(b.device).params[b.param]) or 0
 end
@@ -293,10 +293,11 @@ paw.on("param.touched", function(e)
 end)
 local seen = {}
 local function look(id)
-  local ok, t = pcall(api.track_get, id)
+  local ok, volume = pcall(api.track_get, id, "volume")
   if not ok then seen[id] = nil return end
   local was = seen[id]
-  seen[id] = { volume = t.volume, pan = t.pan }
+  local t = { volume = volume, pan = api.track_get(id, "pan") }
+  seen[id] = t
   if not was then return end
   if was.volume ~= t.volume then M.last = { track = id, target = "volume" } end
   if was.pan ~= t.pan then M.last = { track = id, target = "pan" } end

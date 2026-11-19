@@ -842,7 +842,7 @@ function M.export(path, opts)
   else
     tracks = paw.tracks()
   end
-  local file = { format = 1, ppq = EXPORT_PPQ, tracks = { { name = paw.api.project_get().name } }, signatures = {}, markers = {} }
+  local file = { format = 1, ppq = EXPORT_PPQ, tracks = { { name = paw.api.project_get("name") } }, signatures = {}, markers = {} }
   local notes, last = 0, 0
   local lost = { times = 0, values = 0, dropped = 0 }
   M.last_export = lost

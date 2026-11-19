@@ -20,8 +20,8 @@ local M = {}
 local function id_of(track) return type(track) == "table" and track.id or track end
 
 local function meta(id)
-  local ok, t = pcall(api.track_get, id)
-  return ok and t.meta or {}
+  local ok, m = pcall(api.track_get, id, "meta")
+  return ok and m or {}
 end
 
 local function set_meta(id, key, value)

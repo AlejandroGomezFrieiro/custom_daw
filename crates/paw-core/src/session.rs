@@ -369,6 +369,9 @@ pub struct Session {
     pub project: Project,
     /// The project as the engine last saw it.
     synced: Project,
+    /// The tracks (and the master) as the last edit left them, its notes
+    /// named: the next edit looks for notes to name only where it differs.
+    named: (Vec<Arc<Track>>, Arc<Track>),
     /// The project at the last undo step.
     checkpoint: Project,
     /// Every undo step, as a tree: see [`crate::history`] and `session/undo.rs`.
@@ -539,6 +542,7 @@ impl Session {
         let project = Project::default();
         let mut session = Self {
             synced: project.clone(),
+            named: (project.tracks.clone(), project.master.clone()),
             checkpoint: project.clone(),
             history: new_history(project.clone(), (UNDO_LIMIT, UNDO_BYTES)),
             project,
@@ -612,7 +616,8 @@ impl Session {
         let result = self.edit_named(f);
         if result.is_ok() {
             // A note is named as it is made, so that it can be addressed at once.
-            self.project.name_notes(&self.synced);
+            self.project.name_notes_since(&self.named.0, &self.named.1);
+            self.named = (self.project.tracks.clone(), self.project.master.clone());
         }
         result
     }
@@ -841,6 +846,22 @@ impl Session {
             // something in between edited the project.
             "edits": self.edits,
         })
+    }
+
+    /// One entry of [`project_view`](Self::project_view), made alone: its
+    /// `length` looks at every clip, and its `meta` can be large.
+    pub fn project_field(&self, key: &str) -> Value {
+        let p = &self.project;
+        match key {
+            "edits" => json!(self.edits),
+            "name" => json!(p.name),
+            "tempo" => json!(p.tempo),
+            "sig_num" => json!(p.sig_num),
+            "sig_den" => json!(p.sig_den),
+            "path" => json!(self.path),
+            "modified" => json!(self.touched || !self.history.at_saved()),
+            _ => self.project_view().get(key).cloned().unwrap_or(Value::Null),
+        }
     }
 
     pub fn project_set(&mut self, key: &str, value: Value) -> Result<()> {
@@ -1158,6 +1179,35 @@ impl Session {
             // The tracks that further output pairs of its devices play into.
             "pairs_into": t.devices.iter().flat_map(|d| d.outputs.values()).collect::<BTreeSet<_>>(),
         }))
+    }
+
+    /// One entry of [`track_view`](Self::track_view), made alone: the
+    /// handlers of each edit ask for a track's volume or meta, and the whole
+    /// view lists every clip of the track.
+    pub fn track_field(&self, id: Id, key: &str) -> Result<Value> {
+        let t = self
+            .project
+            .track(id)
+            .with_context(|| format!("no track {id}"))?;
+        Ok(match key {
+            "id" => json!(t.id),
+            "name" => json!(t.name),
+            "volume" => json!(t.volume),
+            "pan" => json!(t.pan),
+            "mute" => json!(t.mute),
+            "solo" => json!(t.solo),
+            "armed" => json!(t.armed),
+            "output" => json!(t.output),
+            "color" => json!(t.color),
+            "meta" => json!(t.meta),
+            "master" => json!(id == MASTER_ID),
+            "input" => json!(t.input),
+            "monitor" => json!(t.monitor),
+            "midi_input" => json!(t.midi_input),
+            "midi_output" => json!(t.midi_output),
+            "height" => json!(t.height),
+            _ => self.track_view(id)?.get(key).cloned().unwrap_or(Value::Null),
+        })
     }
 
     pub fn track_add(&mut self, opts: TrackOpts) -> Result<Id> {

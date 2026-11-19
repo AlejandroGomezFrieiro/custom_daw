@@ -137,7 +137,7 @@ function view:layout(w, h)
   local lane_lines, own = 0, false
   for _, id in ipairs(tracks) do
     lane_lines = lane_lines + paw.takes.lane_count(id) + 2 * #paw.lanes.shown(id)
-    own = own or (api.track_get(id).height or 1) ~= 1
+    own = own or (api.track_get(id, "height") or 1) ~= 1
   end
   local th = view.track_height(#tracks, math.max(1, room - lane_lines))
   -- Squeezed by panels below, a track takes what there is rather than vanish.
@@ -569,7 +569,7 @@ end
 --- of it (`height`, which a drag of its header's bottom edge sets), at
 --- least one.
 function view.row_height(id, th)
-  return math.max(1, math.floor(th * (api.track_get(id).height or 1) + 0.5))
+  return math.max(1, math.floor(th * (api.track_get(id, "height") or 1) + 0.5))
 end
 
 --- The rows from `self.top` when some tracks show their take lanes or their
@@ -1054,14 +1054,14 @@ view.grid = {
   search = function(text)
     local wanted, hits = text:lower(), {}
     for row, id in ipairs(paw.groups.rows()) do
-      if api.track_get(id).name:lower():find(wanted, 1, true) then
+      if api.track_get(id, "name"):lower():find(wanted, 1, true) then
         hits[#hits + 1] = { row = row, col = paw.cursor.beat }
       end
       for _, clip in ipairs(api.clip_list(id)) do
         if clip.name:lower():find(wanted, 1, true) then hits[#hits + 1] = { row = row, col = clip.start } end
       end
     end
-    if api.track_get(0).name:lower():find(wanted, 1, true) then
+    if api.track_get(0, "name"):lower():find(wanted, 1, true) then
       hits[#hits + 1] = { row = #paw.groups.rows() + 1, col = paw.cursor.beat }
     end
     return hits

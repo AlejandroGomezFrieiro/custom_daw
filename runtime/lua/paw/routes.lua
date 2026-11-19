@@ -71,7 +71,7 @@ function M.sidechain_sources(device)
   local reached = M.reached(track)
   local out = {}
   for _, id in ipairs(api.track_list()) do
-    if id ~= track and not reached[id] then out[#out + 1] = { id = id, name = api.track_get(id).name } end
+    if id ~= track and not reached[id] then out[#out + 1] = { id = id, name = api.track_get(id, "name") } end
   end
   return out
 end
@@ -92,7 +92,7 @@ local function track_of(track)
   local found = paw.track(track)
   if not found then
     for _, id in ipairs(api.track_list()) do
-      if api.track_get(id).name:lower():find(track:lower(), 1, true) then return paw.track(id) end
+      if api.track_get(id, "name"):lower():find(track:lower(), 1, true) then return paw.track(id) end
     end
     error("no track `" .. track .. "`", 0)
   end
@@ -211,7 +211,7 @@ function M.setup()
       local items = { { id = false, name = "Nowhere: not heard" } }
       local reaching = M.reaching(device:get().track)
       for _, id in ipairs(api.track_list()) do
-        if id ~= device:get().track and not reaching[id] then items[#items + 1] = { id = id, name = api.track_get(id).name } end
+        if id ~= device:get().track and not reaching[id] then items[#items + 1] = { id = id, name = api.track_get(id, "name") } end
       end
       paw.pick({
         title = outputs[pair].name .. " of " .. device.name .. " into", items = items,
@@ -305,7 +305,7 @@ end
 --- `members` channels (nil for 15).
 function M.set_midi_out(track, name, channel, form, members)
   if name == "none" or name == "" then return api.track_set(track, "midi_output", nil) end
-  local was = api.track_get(track).midi_output or {}
+  local was = api.track_get(track, "midi_output") or {}
   form = form or was.form
   if form ~= nil and not M.midi_out_forms[form] then
     error("a MIDI output's form is auto, plain, mpe or cc14", 0)

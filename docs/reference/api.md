@@ -2096,7 +2096,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.project_changed_files()`: The files of the open project that changed outside paw and are not acted on yet: paths in its folder, or full paths outside it.
 - `paw.api.project_file_text(value)`
 - `paw.api.project_files()`: The files of a project kept in a folder, with what each holds and whether it differs from the disk (see `:ls`).
-- `paw.api.project_get()`: --- project ---
+- `paw.api.project_get(key)`: --- project --- The project as a table. With `key`, only that entry of the table: this is quicker (`edits`, which goes up with each change, is asked for on each key and each edit).
 - `paw.api.project_keep_changes()`: Keep the project as paw has it: forget the changes made outside.
 - `paw.api.project_load(path, opts)`: `opts.plugins_offline` opens it with all plugins offline. `opts.offline` is a list of devices (by id) to open offline.
 - `paw.api.project_mark_saved()`: Count the project as it is now as saved, for a script that wrote what it holds somewhere itself (a clip opened alone, written back to its file).
@@ -2172,7 +2172,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.timer_stop(id)`
 - `paw.api.track_add(opts)`
 - `paw.api.track_attr_delay(id, attr)`: The milliseconds that the attribute map of the track moves a note with `attr` (below 0: earlier). 0 when the track has no attribute map.
-- `paw.api.track_get(id)`
+- `paw.api.track_get(id, key)`: A track as a table. With `key`, only that entry of the table: this is quicker, because the table lists each clip of the track.
 - `paw.api.track_list()`: --- tracks ---
 - `paw.api.track_meter(id)`
 - `paw.api.track_move(id, index)`
