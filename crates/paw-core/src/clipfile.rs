@@ -416,6 +416,13 @@ pub fn decode(bytes: &[u8]) -> Result<Clip> {
     // In the order they started.
     done.sort_by_key(|(seq, _)| *seq);
     clip.notes = done.into_iter().map(|(_, n)| n).collect();
+    // A file that gives no ids has the ids 1, 2, 3 in order, as the
+    // session would give them: nothing is left to name after reading.
+    if clip.notes.iter().all(|n| n.id == 0) {
+        for (i, n) in clip.notes.iter_mut().enumerate() {
+            n.id = i as u64 + 1;
+        }
+    }
     clip.length = beat(end_tick, tpq).max(0.0);
     let mut skipped: Vec<_> = skipped.into_iter().collect();
     skipped.sort();
