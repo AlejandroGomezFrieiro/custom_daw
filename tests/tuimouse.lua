@@ -37,7 +37,7 @@ local function start()
   paw.keymap.feed("<Esc><Esc>")
   while paw.ui.float do paw.ui.close() end
   require("paw.menu").close(0)
-  for _, name in ipairs({ "pianoroll", "mixer", "devices", "session" }) do paw.ui.hide(name) end
+  for _, name in ipairs({ "pianoroll", "mixer", "devices" }) do paw.ui.hide(name) end
   paw.ui.focus("arrange")
   arrange.scroll, arrange.top = 0, 1
   paw.opt.mouse, paw.opt.zoom, paw.opt.grid, paw.opt.track_height = true, 4, 1, 3
@@ -714,51 +714,6 @@ test("in the piano roll a note of another clip edited with the active one is cho
   eq(notes_of(second), "62@2+1", "and moved a beat on in its own clip")
   eq(notes_of(first), "60@0+1", "the active clip's notes as they were")
 end)
-
-test("the session view: a click chooses a slot, its play mark launches it, a double click makes a clip, a drag moves one", function()
-  start()
-  local launcher = paw.launcher
-  local t = paw.add_track({ name = "Keys" })
-  t:add_device("synth")
-  launcher.new_clip(t.id, 0)
-  paw.ui.show("session")
-  shot()
-  local rect
-  for _, r in ipairs(paw.ui.rects) do if r.name == "session" then rect = r end end
-  local view = paw.ui.views.session
-  local col = view.geometry.columns[1]
-  local function slot(row) return rect.x + col.x, rect.y + 1 + (row - view.top) + 1 end
-  local x, y = slot(1)
-  click(x + 4, y)
-  eq(launcher.row .. " " .. paw.ui.focused, "1 session", "a click chooses the slot")
-  apart()
-  x, y = slot(2)
-  click(x + 4, y)
-  click(x + 4, y)
-  eq(launcher.clip(t.id, 2) ~= nil, true, "a double click on an empty slot makes a clip there")
-  eq(paw.ui.focused, "pianoroll", "and opens it")
-  paw.ui.hide("pianoroll")
-  shot()
-  apart()
-  x, y = slot(0)
-  click(x, y)
-  local deadline = api.now() + 5000
-  local function launched()
-    local s = launcher.state()[t.id] or {}
-    return s.slot == 0 or s.queued == 0
-  end
-  while not launched() and api.now() < deadline do paw.wait(5) end
-  eq(launched(), true, "the play mark launches the clip")
-  launcher.stop(nil)
-  paw.transport.stop()
-  apart()
-  local _, y3 = slot(3)
-  drag(x + 4, y, x + 4, y3)
-  eq(launcher.clip(t.id, 3) ~= nil and launcher.clip(t.id, 0) == nil, true, "a drag moves the clip to another slot")
-  paw.ui.hide("session")
-end)
-
--- What floats over the views ------------------------------------------------------------------------
 
 test("the command line's list: a click puts a candidate in the line, a second click runs it", function()
   start()

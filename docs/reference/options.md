@@ -78,7 +78,6 @@ clip. `:set undo_steps=200` removes the oldest steps at once.
 | `paw.opt.threads` | `0` | The threads that process tracks. `0` gives one for each core. |
 | `paw.opt.audio_reconnect` | `true` | paw opens an audio device again when it returns. |
 | `paw.opt.scope_rest` | `"play"` | What the other tracks do in a narrowed tab: `"play"`, `"mute"` or `"frozen"`. |
-| `paw.opt.launch_rows` | `8` | The minimum number of rows in the session view. |
 
 ## Media and render
 

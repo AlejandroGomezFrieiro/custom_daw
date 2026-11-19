@@ -24,7 +24,7 @@ test("focus only ever goes to a view that is drawn", function()
     "e paw://tracks", "view.focus mixer", "bnext", "view.only", "view.focus mixer", "view.focus arrange",
     "copen", "view.focus qflist", "cclose", "bprevious", "bnext", "view.focus arrange",
     "split", "vsplit", "wincmd j", "wincmd w", "close", "only", "e paw://tracks", "split",
-    "view.focus mixer", "view.focus devices", "view.focus pianoroll", "view.focus session", "view.close",
+    "view.focus mixer", "view.focus devices", "view.focus pianoroll", "view.close",
     "view.toggle mixer", "view.toggle mixer", "view.toggle arrange", "view.toggle arrange", "view.next", "view.prev",
     "tabnew", "view.focus arrange", "tabnext", "tabclose", "view.only", "view.toggle arrange",
     "view.focus arrange", "view.focus mixer", "view.window arrange", "view.maximize", "view.equal",
@@ -56,36 +56,6 @@ test("a command of a bundled extension that is not loaded says how to load it, a
   eq(paw.commands.get("rpp.import") ~= nil, true, "its commands exist")
   paw.commands.exec("ext.load nonesuch")
   eq(last_message():find("no bundled extension", 1, true) ~= nil, true, last_message())
-end)
-
-test("the command picker ranks by use and by the focused view, with exact and prefix matches first", function()
-  fresh()
-  paw.keymap.feed("<Esc><Esc>")
-  if paw.ui.float then paw.ui.close() end
-  paw.state.command_uses = nil
-  local pick = paw.pick
-  local function order(view, query)
-    paw.ui.focus(view)
-    paw.pick("commands")
-    paw.keymap.feed(query)
-    local out = {}
-    for i, line in ipairs(pick.state().matches) do out[line:match("^(%S+)")] = i end
-    paw.keymap.feed("<Esc>")
-    return out
-  end
-  local rank = order("arrange", "name")
-  eq(rank["track.rename"] < rank["scene.name"], true, "in the arrange view its own rename comes before the session's scene.name")
-  rank = order("session", "name")
-  eq(rank["scene.name"] < rank["track.rename"], true, "in the session view the scene's name does")
-  for _ = 1, 10 do paw.commands.used("track.rename") end
-  rank = order("session", "name")
-  eq(rank["track.rename"] < rank["scene.name"], true, "what is used often goes first, in any view")
-  eq(paw.commands.uses("track.rename"), 10, "the count is kept")
-  for _ = 1, 50 do paw.commands.used("scene.name") end
-  rank = order("arrange", "scene.name")
-  eq(rank["scene.name"], 1, "an exact match is first however much another is used")
-  paw.state.command_uses = nil
-  paw.ui.focus("arrange")
 end)
 
 test("panels stacked under the arrange view leave it a third of the rows, and the notation view at most half", function()

@@ -28,15 +28,6 @@ pub struct Panes {
     border: Option<usize>,
 }
 
-/// Where each view the window draws itself goes, in the main area.
-pub fn natives(state: &Value) -> Vec<(String, Rect)> {
-    rows(&state["panes"])
-        .iter()
-        .filter(|p| p["kind"] == "native")
-        .map(|p| (text(&p["view"]), pane_rect(p)))
-        .collect()
-}
-
 fn pane_rect(p: &Value) -> Rect {
     Rect::from_min_size(pos2(number(&p["x"]), number(&p["y"])), vec2(number(&p["w"]), number(&p["h"])))
 }

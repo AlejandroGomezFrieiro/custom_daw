@@ -33,7 +33,7 @@ mod encode;
 mod files_watch;
 pub mod folder;
 mod keep;
-pub mod launcher;
+pub mod cues;
 mod loading;
 pub mod media;
 mod midi_out;
@@ -211,6 +211,8 @@ pub fn project_file_text(value: Value) -> Result<String> {
         bail!("the file is of a newer version");
     }
     file.project.validate()?;
+    let mut file = file;
+    file.project.upgrade();
     Ok(serde_json::to_string_pretty(&file)?)
 }
 
@@ -279,12 +281,8 @@ pub struct ClipOpts {
     pub looped: bool,
     pub loop_length: Option<f64>,
     pub loop_start: f64,
-    /// Put it in this row of the track's slots, to be launched, instead of
-    /// on the timeline; and how it launches.
-    pub slot: Option<u32>,
-    pub quantize: Option<crate::model::Quantize>,
-    pub mode: crate::model::LaunchMode,
-    pub legato: bool,
+    /// Keep it off the timeline, among the track's cues (`session/cues.rs`).
+    pub cue: bool,
 }
 
 #[derive(Default, Deserialize)]
@@ -759,7 +757,7 @@ impl Session {
         let before: HashMap<Id, &Arc<Clip>> = self
             .checkpoint
             .all_tracks()
-            .flat_map(|t| t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)))
+            .flat_map(|t| t.clips.iter().chain(&t.cues))
             .filter(|c| c.source.is_some())
             .map(|c| (c.id, c))
             .collect();
@@ -778,7 +776,7 @@ impl Session {
         };
         let mut owned = Vec::new();
         for track in self.project.all_tracks() {
-            for clip in track.clips.iter().chain(track.slots.iter().map(|s| &s.clip)) {
+            for clip in track.clips.iter().chain(&track.cues) {
                 if let Some(old) = before.get(&clip.id)
                     && clip.source.is_some()
                     && clip.source == old.source
@@ -808,7 +806,7 @@ impl Session {
         let ids: Vec<Id> = self
             .project
             .all_tracks()
-            .flat_map(|t| t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)))
+            .flat_map(|t| t.clips.iter().chain(&t.cues))
             .filter(|c| c.source.as_ref().is_some_and(|s| s.is_file()))
             .map(|c| c.id)
             .collect();
@@ -840,7 +838,6 @@ impl Session {
             "name": p.name, "tempo": p.tempo, "sig_num": p.sig_num, "sig_den": p.sig_den,
             "tempo_ramp": p.tempo_ramp, "tempo_changes": p.tempo_changes, "sig_changes": p.sig_changes,
             "path": self.path, "length": p.end(), "meta": p.meta,
-            "launch_quantize": p.launch_quantize,
             "modified": self.touched || !self.history.at_saved(),
             // Goes up with every change: compare two readings to see whether
             // something in between edited the project.
@@ -896,7 +893,6 @@ impl Session {
                     p.set_tempo_map(map);
                 }
                 "meta" => p.meta = de_meta(key, value)?,
-                "launch_quantize" => p.launch_quantize = de(key, value)?,
                 _ => bail!("project has no settable field `{key}`"),
             }
             Ok(())
@@ -967,6 +963,7 @@ impl Session {
         path: Option<PathBuf>,
         touched: Option<bool>,
     ) {
+        project.upgrade();
         project.refresh_tempo();
         self.apply_open_opts(&mut project);
         // Another project: a trial of this one's is over with it.
@@ -999,7 +996,7 @@ impl Session {
         self.screen = None;
         self.send_transport();
         self.flush();
-        self.launcher_reset();
+        self.cue_reset();
         // The old project's audio is not needed for undo any more.
         self.trim_audio();
         self.watch_project_files();
@@ -2171,10 +2168,9 @@ impl Session {
     // --- clips -------------------------------------------------------------
 
     pub fn clip_view(&self, id: Id) -> Result<Value> {
-        if let Some((track, index)) = self.project.find_slot_clip(id) {
-            let slot = &self.project.track(track).unwrap().slots[index];
-            let mut view = clip_json(&slot.clip, track);
-            launcher::slot_json(slot, &mut view);
+        if let Some((track, index)) = self.project.find_cue_clip(id) {
+            let mut view = clip_json(&self.project.track(track).unwrap().cues[index], track);
+            view["cue"] = json!(true);
             return Ok(view);
         }
         let (track, _) = self
@@ -2316,8 +2312,8 @@ impl Session {
                 loop_start: opts.loop_start,
                 id,
                 name: opts.name.unwrap_or(default_name),
-                // A clip in a slot starts at 0 whatever `start` says.
-                start: if opts.slot.is_some() { 0.0 } else { opts.start },
+                // A clip off the timeline starts at 0 whatever `start` says.
+                start: if opts.cue { 0.0 } else { opts.start },
                 length,
                 muted: false,
                 content,
@@ -2327,18 +2323,10 @@ impl Session {
                 source,
                 origin: None,
             });
-            match opts.slot {
-                Some(row) => launcher::put_slot(
-                    t,
-                    crate::model::SlotClip {
-                        row,
-                        clip,
-                        quantize: opts.quantize,
-                        mode: opts.mode,
-                        legato: opts.legato,
-                    },
-                ),
-                None => t.clips.push(clip),
+            if opts.cue {
+                t.cues.push(clip);
+            } else {
+                t.clips.push(clip);
             }
             Ok(id)
         })
@@ -2411,8 +2399,8 @@ impl Session {
 
     pub fn clip_remove(&mut self, id: Id) -> Result<()> {
         self.edit(|p| {
-            if let Some((track, index)) = p.find_slot_clip(id) {
-                p.track_mut(track).unwrap().slots.remove(index);
+            if let Some((track, index)) = p.find_cue_clip(id) {
+                p.track_mut(track).unwrap().cues.remove(index);
                 return Ok(());
             }
             let (track, index) = p.find_clip(id).with_context(|| format!("no clip {id}"))?;
@@ -2440,13 +2428,16 @@ impl Session {
             return done;
         }
         self.edit(|p| {
-            // A clip in a slot has keys of its own, and no `start` or
-            // place on a track's timeline.
-            let in_slot = p.find_slot_clip(id).is_some();
-            if in_slot && launcher::set_slot_key(p, id, key, value.clone())? {
+            // A clip off the timeline has no `start` there.
+            let cue = p.find_cue_clip(id).is_some();
+            if cue && key == "start" {
+                bail!("a clip off the timeline starts at 0");
+            }
+            if cue && key == "track" {
+                cues::move_cue(p, id, de(key, value)?)?;
                 return Ok(());
             }
-            if !in_slot && key == "track" {
+            if key == "track" {
                 let (from, index) = p.find_clip(id).with_context(|| format!("no clip {id}"))?;
                 let to: Id = de(key, value)?;
                 if to == MASTER_ID {

@@ -45,9 +45,10 @@ pub struct Project {
     /// [`set_tempo_map`](Project::set_tempo_map) whenever they change.
     #[serde(skip)]
     map: Arc<TempoMap>,
-    /// Where clips launched from slots start, unless a slot says otherwise.
-    #[serde(default, skip_serializing_if = "Quantize::is_bar")]
-    pub launch_quantize: Quantize,
+    /// A clip launcher's quantize, as projects saved before cues kept it:
+    /// moved into `meta.launcher` by [`upgrade`](Project::upgrade).
+    #[serde(default, rename = "launch_quantize", skip_serializing)]
+    pub legacy_launch_quantize: Option<Value>,
     pub master: Arc<Track>,
     pub tracks: Vec<Arc<Track>>,
     /// Free-form data for extensions, saved with the project.
@@ -66,7 +67,7 @@ impl Default for Project {
             tempo_changes: Vec::new(),
             sig_changes: Vec::new(),
             map: Arc::new(TempoMap::default()),
-            launch_quantize: Quantize::Bar,
+            legacy_launch_quantize: None,
             master: Arc::new(Track {
                 name: "Master".into(),
                 ..Track::new(MASTER_ID)
@@ -123,35 +124,37 @@ pub struct Track {
     /// its automation while the song plays, and whether its lanes play.
     #[serde(default, skip_serializing_if = "AutoMode::is_read")]
     pub automation: AutoMode,
-    /// Clips kept apart from the timeline, to be launched while the song
-    /// plays (see `session/launcher.rs`), in order of their rows.
+    /// Clips kept off the timeline, which play only when cued (see
+    /// `session/cues.rs`). Each starts at 0 and repeats every `length`
+    /// beats while it plays.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub slots: Vec<SlotClip>,
+    pub cues: Vec<Arc<Clip>>,
+    /// A clip launcher's slots, as projects saved before cues kept them:
+    /// moved into `cues` by [`Project::upgrade`].
+    #[serde(default, rename = "slots", skip_serializing)]
+    pub legacy_slots: Vec<LegacySlot>,
     /// How its notes' MIDI 2.0 attributes reach an instrument that does
     /// not take them: see `attr_map.rs`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attr_map: Option<crate::attr_map::AttrMap>,
 }
 
-/// A clip in one of a track's slots. It starts at 0 and repeats every
-/// `length` beats for as long as it plays.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SlotClip {
-    /// The row it is in, from 0: the scene it belongs to.
+/// A clip in a slot of the clip launcher, as projects saved before cues
+/// kept it. [`Project::upgrade`] makes it a cue clip whose `meta.launcher`
+/// holds the rest, for `extensions/launcher`.
+#[derive(Clone, Debug, Deserialize)]
+pub struct LegacySlot {
     pub row: u32,
     pub clip: Arc<Clip>,
-    /// Where it starts when launched, in place of the project's.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub quantize: Option<Quantize>,
-    #[serde(default, skip_serializing_if = "LaunchMode::is_trigger")]
-    pub mode: LaunchMode,
-    /// Launched while another clip of the track plays, it takes over
-    /// where that one had got to in its loop.
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(default)]
+    pub quantize: Option<Value>,
+    #[serde(default)]
+    pub mode: Option<Value>,
+    #[serde(default)]
     pub legato: bool,
 }
 
-/// The boundaries a launch waits for.
+/// The boundaries a cue waits for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Quantize {
     #[serde(rename = "off")]
@@ -175,10 +178,6 @@ pub enum Quantize {
 }
 
 impl Quantize {
-    fn is_bar(&self) -> bool {
-        *self == Quantize::Bar
-    }
-
     pub fn engine(self) -> paw_engine::launch::Quantize {
         use paw_engine::launch::Quantize as Q;
         match self {
@@ -191,25 +190,6 @@ impl Quantize {
             Quantize::TwoBars => Q::Bars(2),
             Quantize::FourBars => Q::Bars(4),
         }
-    }
-}
-
-/// What pressing and letting go of a slot's button do.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LaunchMode {
-    /// Pressing launches it, again from its start if it plays.
-    #[default]
-    Trigger,
-    /// It plays while held: letting go stops it.
-    Gate,
-    /// Pressing launches it, and pressing again stops it.
-    Toggle,
-}
-
-impl LaunchMode {
-    fn is_trigger(&self) -> bool {
-        *self == LaunchMode::Trigger
     }
 }
 
@@ -339,7 +319,8 @@ impl Track {
             midi_output: None,
             height: None,
             automation: AutoMode::Read,
-            slots: Vec::new(),
+            cues: Vec::new(),
+            legacy_slots: Vec::new(),
             attr_map: None,
         }
     }
@@ -1169,20 +1150,73 @@ impl Project {
         Some(&self.track(track)?.devices[index])
     }
 
-    /// A clip on the timeline or in a slot.
+    /// A clip on the timeline or off it, for cues.
     pub fn clip(&self, id: Id) -> Option<&Arc<Clip>> {
         if let Some((track, index)) = self.find_clip(id) {
             return Some(&self.track(track)?.clips[index]);
         }
-        let (track, index) = self.find_slot_clip(id)?;
-        Some(&self.track(track)?.slots[index].clip)
+        let (track, index) = self.find_cue_clip(id)?;
+        Some(&self.track(track)?.cues[index])
     }
 
-    /// The track that holds a clip in a slot, and the clip's index among
-    /// its slots.
-    pub fn find_slot_clip(&self, id: Id) -> Option<(Id, usize)> {
+    /// The track that holds a clip off the timeline, and the clip's index
+    /// among its cue clips.
+    pub fn find_cue_clip(&self, id: Id) -> Option<(Id, usize)> {
         self.all_tracks()
-            .find_map(|t| t.slots.iter().position(|s| s.clip.id == id).map(|i| (t.id, i)))
+            .find_map(|t| t.cues.iter().position(|c| c.id == id).map(|i| (t.id, i)))
+    }
+
+    /// Bring what an older file holds into the form of now: the clip
+    /// launcher's slots (before it was `extensions/launcher`) become cue
+    /// clips, their row, quantize, mode and legato in each clip's
+    /// `meta.launcher`, and the launcher's quantize and the names of its
+    /// scenes go into the project's `meta.launcher`. Nothing is lost
+    /// without the extension: it is data it reads again.
+    pub fn upgrade(&mut self) {
+        let mut launcher = Map::new();
+        if let Some(q) = self.legacy_launch_quantize.take() {
+            launcher.insert("quantize".into(), q);
+        }
+        let mut had_slots = false;
+        for track in self.tracks.iter_mut().chain(std::iter::once(&mut self.master)) {
+            if track.legacy_slots.is_empty() {
+                continue;
+            }
+            had_slots = true;
+            let track = Arc::make_mut(track);
+            for slot in std::mem::take(&mut track.legacy_slots) {
+                let mut clip = (*slot.clip).clone();
+                let mut meta = Map::new();
+                meta.insert("row".into(), Value::from(slot.row));
+                for (key, value) in [("quantize", slot.quantize), ("mode", slot.mode)] {
+                    if let Some(value) = value.filter(|v| !v.is_null()) {
+                        meta.insert(key.into(), value);
+                    }
+                }
+                if slot.legato {
+                    meta.insert("legato".into(), Value::Bool(true));
+                }
+                clip.start = 0.0;
+                clip.meta.insert("launcher".into(), Value::Object(meta));
+                track.cues.push(Arc::new(clip));
+            }
+        }
+        if (had_slots || !launcher.is_empty())
+            && let Some(scenes) = self.meta.remove("scenes")
+        {
+            launcher.insert("scenes".into(), scenes);
+        }
+        if !launcher.is_empty() {
+            let entry = self
+                .meta
+                .entry("launcher")
+                .or_insert_with(|| Value::Object(Map::new()));
+            if let Value::Object(m) = entry {
+                for (key, value) in launcher {
+                    m.entry(key).or_insert(value);
+                }
+            }
+        }
     }
 
     pub fn device_mut(&mut self, id: Id) -> Option<&mut DeviceInst> {
@@ -1190,13 +1224,13 @@ impl Project {
         Some(Arc::make_mut(&mut self.track_mut(track)?.devices[index]))
     }
 
-    /// A clip on the timeline or in a slot, to change.
+    /// A clip on the timeline or off it, to change.
     pub fn clip_mut(&mut self, id: Id) -> Option<&mut Clip> {
         if let Some((track, index)) = self.find_clip(id) {
             return Some(Arc::make_mut(&mut self.track_mut(track)?.clips[index]));
         }
-        let (track, index) = self.find_slot_clip(id)?;
-        Some(Arc::make_mut(&mut self.track_mut(track)?.slots[index].clip))
+        let (track, index) = self.find_cue_clip(id)?;
+        Some(Arc::make_mut(&mut self.track_mut(track)?.cues[index]))
     }
 
     /// Whether routing `from` into `to` would make audio flow in a circle.
@@ -1235,7 +1269,8 @@ impl Project {
                 std::iter::once(t.id)
                     .chain(t.devices.iter().map(|d| d.id))
                     .chain(t.clips.iter().map(|c| c.id))
-                    .chain(t.slots.iter().map(|s| s.clip.id))
+                    .chain(t.cues.iter().map(|c| c.id))
+                    .chain(t.legacy_slots.iter().map(|s| s.clip.id))
                     .chain(t.lanes.iter().map(|l| l.id))
             })
             .max()
@@ -1447,7 +1482,7 @@ impl Project {
             for d in &t.devices {
                 unique(d.id)?;
             }
-            for c in t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)) {
+            for c in t.clips.iter().chain(&t.cues).chain(t.legacy_slots.iter().map(|s| &s.clip)) {
                 unique(c.id)?;
             }
             for l in &t.lanes {
@@ -1473,12 +1508,10 @@ impl Project {
                     bail!("parameter {key} of device {} is {v}", d.id);
                 }
             }
-            if t.slots.windows(2).any(|w| w[0].row >= w[1].row)
-                || t.slots.iter().any(|s| s.clip.start != 0.0)
-            {
-                bail!("{name} has slots out of order, or a clip in a slot that does not start at 0");
+            if t.cues.iter().any(|c| c.start != 0.0) {
+                bail!("{name} has a clip off the timeline that does not start at 0");
             }
-            for c in t.clips.iter().chain(t.slots.iter().map(|s| &s.clip)) {
+            for c in t.clips.iter().chain(&t.cues).chain(t.legacy_slots.iter().map(|s| &s.clip)) {
                 if !c.start.is_finite() || c.start < 0.0 || !c.length.is_finite() || c.length <= 0.0
                 {
                     bail!(
@@ -1791,5 +1824,44 @@ mod lane_shapes {
         assert!(!text.contains("shapes"), "{text}");
         let back: Lane = serde_json::from_str(&serde_json::to_string(&held).unwrap()).unwrap();
         assert_eq!(back.shapes, held.shapes);
+    }
+}
+
+#[cfg(test)]
+mod launcher_upgrade {
+    use super::*;
+    use serde_json::json;
+
+    /// A project as the clip launcher of the core saved it, before it was
+    /// an extension: a clip in a slot, the quantize, the scenes' names.
+    const OLD: &str = r#"{
+        "name": "old", "tempo": 120.0, "sig_num": 4, "sig_den": 4, "launch_quantize": "1/8",
+        "master": { "id": 0, "name": "Master", "volume": 0.0, "pan": 0.0, "mute": false,
+            "solo": false, "armed": false, "output": null, "sends": [], "devices": [],
+            "clips": [], "color": null },
+        "tracks": [{ "id": 1, "name": "Keys", "volume": 0.0, "pan": 0.0, "mute": false,
+            "solo": false, "armed": false, "output": null, "sends": [], "devices": [],
+            "color": null, "clips": [],
+            "slots": [{ "row": 1, "mode": "gate", "legato": true,
+                "clip": { "id": 2, "name": "riff", "start": 0.0, "length": 4.0, "muted": false,
+                    "content": { "kind": "midi", "notes": [], "controls": [] } } }] }],
+        "meta": { "scenes": ["", "Drop"] }
+    }"#;
+
+    #[test]
+    fn the_slots_of_an_old_file_become_cue_clips_with_the_launchers_data_in_meta() {
+        let mut p: Project = serde_json::from_str(OLD).unwrap();
+        p.validate().unwrap();
+        assert_eq!(p.max_id(), 2, "the clip of a slot counts among the ids");
+        p.upgrade();
+        let t = &p.tracks[0];
+        assert!(t.legacy_slots.is_empty() && t.cues.len() == 1);
+        assert_eq!(t.cues[0].meta["launcher"], json!({ "row": 1, "mode": "gate", "legato": true }));
+        assert_eq!(p.meta["launcher"], json!({ "quantize": "1/8", "scenes": ["", "Drop"] }));
+        assert!(!p.meta.contains_key("scenes"));
+        let text = serde_json::to_string(&p).unwrap();
+        assert!(!text.contains("slots") && !text.contains("launch_quantize") && text.contains("cues"), "{text}");
+        p.upgrade();
+        assert_eq!(p.tracks[0].cues.len(), 1, "a second upgrade changes nothing");
     }
 }

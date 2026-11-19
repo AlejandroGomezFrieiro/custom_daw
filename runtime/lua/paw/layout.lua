@@ -1915,7 +1915,7 @@ function M.setup()
     if not close_window() then paw.notify("the last window does not close: `:q` quits", "warn") end
   end, { desc = "Close the window; a panel's comes back where it was" })
   -- A view's own name goes to it: `:arrange`, `:mixer`, `:roll`.
-  for view, word in pairs({ arrange = "arrange", mixer = "mixer", pianoroll = "roll", session = "session" }) do
+  for view, word in pairs({ arrange = "arrange", mixer = "mixer", pianoroll = "roll" }) do
     if ui().views[view] and not paw.commands.get(word) then
       command(word, function() paw.ui.focus(view) end, { desc = "Show " .. M.titles[view] .. " and go to it" })
     end

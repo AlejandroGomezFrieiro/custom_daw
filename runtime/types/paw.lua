@@ -128,9 +128,6 @@ paw.keyrule = {}
 ---@class paw.lanes
 paw.lanes = {}
 
----@class paw.launcher
-paw.launcher = {}
-
 ---@class paw.layout
 paw.layout = {}
 
@@ -2696,15 +2693,6 @@ function paw.frontend.lane_name(lane) end
 ---@param lane any
 function paw.frontend.lane_span(lane) end
 
---- What each drawn track (`ids`, the master last) plays from its slots, by
---- place. `slot` and `queued` are rows or -1. `stopping` and `back` tell
---- that a stop or a return to the timeline is in the queue. `stopped` tells
---- that the track plays nothing. `progress` is the position of the clip in
---- its loop (0 to 1). `recording` is the row that records, or -1. The
---- result is empty while no slot plays or records.
----@param ids any
-function paw.frontend.launch_state(ids) end
-
 --- How the window was left (its size, the zoom, the heights of rows and of
 --- the piano roll, if the mixer shows): a table, empty when nothing
 --- was kept. It belongs to the machine, so it is kept here, where a window
@@ -2782,11 +2770,6 @@ function paw.frontend.send_list(track) end
 --- `act.choose_sidechain` takes one by place.
 ---@param device any
 function paw.frontend.sidechain_menu(device) end
-
---- The clips in the drawn tracks' slots: `{ id, track, row, name, midi,
---- mode, legato, quantize, muted }` each, `track` by place from 0.
----@param ids any
-function paw.frontend.slots(ids) end
 
 --- The data that paw sends to a graphical frontend: transport, tracks,
 --- clips, devices and the modal state, as plain data. `known` is a list of
@@ -3914,118 +3897,6 @@ function paw.lanes.toggle(track) end
 ---@param beat any
 function paw.lanes.value_at(lane, beat) end
 
---- Send a track back to its timeline. With no track, send back each track
---- that left its timeline.
----@param track any
-function paw.launcher.back(track) end
-
---- The first boundary of a quantize (the project's by default) at or after
---- `beat`, as the engine finds it.
----@param beat any
----@param q any
-function paw.launcher.boundary(beat, q) end
-
---- Start or stop the capture. If you stop it while the song plays, paw
---- writes the captured notes.
----@param on any
-function paw.launcher.capture(on) end
-
---- The clip in a slot, or nil.
----@param track any
----@param row any
-function paw.launcher.clip(track, row) end
-
---- Copy a clip from the timeline (or another slot) into a slot.
----@param clip any
----@param track any
----@param row any
-function paw.launcher.copy(clip, track, row) end
-
---- End the clip being recorded into a slot.
-function paw.launcher.finish_recording() end
-
---- Launch the clip in a slot on its next boundary. An empty slot stops the
---- track. `opts.quantize` and `opts.legato` replace the values of the slot.
----@param track any
----@param row any
----@param opts any
-function paw.launcher.launch(track, row, opts) end
-
---- An empty MIDI clip of `bars` bars (1) in a slot. Returns its id.
----@param track any
----@param row any
----@param bars any
-function paw.launcher.new_clip(track, row, bars) end
-
---- What one track plays: "arrangement", "stopped" or a row. The second
---- value is what it has in its queue, if anything.
----@param track any
-function paw.launcher.playing(track) end
-
---- A slot's button pressed, from a key, the mouse or a controller: what that
---- does is the clip's mode. A toggle stops a clip that plays or is queued.
----@param track any
----@param row any
-function paw.launcher.press(track, row) end
-
---- Record `bars` bars (1) into an empty slot of a track, from the next
---- boundary of the quantize of the project. paw arms the track if it is not
---- armed. The track stops what it plays at that boundary. If the song is
---- stopped, it starts. If you stop the song early, paw keeps the recording.
----@param track any
----@param row any
----@param bars any
-function paw.launcher.record(track, row, bars) end
-
---- A slot's button let go: a gate clip stops.
----@param track any
----@param row any
-function paw.launcher.release(track, row) end
-
---- How many rows there are: those with clips or names, one empty row more,
---- and at least `paw.opt.launch_rows`.
-function paw.launcher.rows() end
-
---- Launch a scene: the clip in that row on every track that has one, all
---- on the same boundary. Tracks without one stop what they play from a slot.
----@param row any
-function paw.launcher.scene(row) end
-
---- A scene's name (rows from 0): its own, or "Scene N".
----@param row any
-function paw.launcher.scene_name(row) end
-
---- The names of the scenes, by row from 1. Rows without a name are nil.
-function paw.launcher.scenes() end
-
---- Where launches land unless a slot says otherwise.
----@param q any
-function paw.launcher.set_quantize(q) end
-
---- Name a scene (rows from 0), kept with the project.
----@param row any
----@param name any
-function paw.launcher.set_scene_name(row, name) end
-
---- The clips in a track's slots, by row: `{ [row] = clip view }`.
----@param track any
-function paw.launcher.slots(track) end
-
---- What each track plays and has in its queue, by track id: see
---- `paw.api.launcher`. A track with no launched clip is not in the table.
-function paw.launcher.state() end
-
---- Stop the clip of a track on the next boundary. With no track, stop the
---- clips of all tracks. A stopped track makes no sound until you launch it
---- again or send it back to its timeline.
----@param track any
-function paw.launcher.stop(track) end
-
---- Write the captured notes that paw did not write yet, as one undo step,
---- up to `position` where the capture continues.
----@param position any
-function paw.launcher.write_captured(position) end
-
 --- True if a window of this number is in a tab of the seat, or is a
 --- window in no tab (`M.loose`) that is still in use.
 ---@param id any
@@ -4507,6 +4378,17 @@ function paw.learn.target_for(word) end
 --- What a binding moves, as text: "Lead › volume", "Lead › Filter › Cutoff".
 ---@param t any
 function paw.learn.target_name(t) end
+
+--- Add a kind of target that a button or a pad presses: `spec` has
+--- `press(binding, down)` (down is false when it is let go), `name(target)`
+--- (the text of `:learn.list`), and optionally `check(target)` (an error for
+--- a target that is not right), `words` (the words of `:learn` that name it),
+--- `target_for(word, track)` (the target of a word, or nil) and
+--- `under_cursor(focused)` (the target under the cursor of a view, or nil).
+--- A target can keep a number in `slot`, such as a row.
+---@param name any
+---@param spec any
+function paw.learn.trigger(name, spec) end
 
 --- Take a binding away: by its place in `bindings()`, or everything that
 --- moves a target. Returns how many went.
@@ -7719,11 +7601,10 @@ function paw.api.clip_set_notes(id, notes) end
 ---@param id integer
 function paw.api.clip_source_length(id) end
 
---- Copy a clip into a row of a track's slots. Returns the copy's id.
+--- Copy a clip, with its `meta`, off the timeline of a track. Returns the copy's id.
 ---@param id integer
 ---@param track integer
----@param row integer
-function paw.api.clip_to_slot(id, track, row) end
+function paw.api.clip_to_cues(id, track) end
 
 --- Warp markers of an audio clip (`session/stretching.rs`), counted from 1.
 ---@param id integer
@@ -7738,6 +7619,23 @@ function paw.api.clip_warp_move(id, index, beat) end
 ---@param id integer
 ---@param index integer
 function paw.api.clip_warp_remove(id, index) end
+
+--- `{ { track =, clip = id }, { track =, stop = true },
+--- { track =, timeline = true }, ... }`, each with `quantize` (`bar`
+--- when not given: off 1/16 1/8 1/4 beat bar 2bars 4bars), `legato`
+--- and `from`: all on their boundary, timed together by the engine.
+---@param list any
+function paw.api.cue(list) end
+
+--- --- cues (session/cues.rs) ---
+--- A clip goes off the timeline with `clip_add(track, { cue = true, ... })`:
+--- it starts at 0, loops over its length, and plays only when cued.
+--- You edit it as a usual clip; `clip_set(id, "track", other)` moves it.
+---@param track integer
+function paw.api.cue_list(track) end
+
+--- What each track plays and has in its queue, in the last report of the engine.
+function paw.api.cue_state() end
 
 ---@param track integer
 ---@param kind string
@@ -7979,15 +7877,6 @@ function paw.api.lane_shapes(id) end
 ---@param beat number
 function paw.api.lane_value_at(id, beat) end
 
---- `{ { track =, slot = row }, { track =, stop = true },
---- { track =, arrangement = true }, ... }`, each with `quantize` and
---- `legato` if not the slot's: all on their boundary, timed together.
----@param list any
-function paw.api.launch(list) end
-
---- What each track plays and has in its queue, in the last report of the engine.
-function paw.api.launcher() end
-
 --- The time limit on Lua (`paw.limit`). The arguments are the function to
 --- call when a callback runs too long, and the time when the current
 --- callback must return (on the clock of `now`, nil when it returned).
@@ -8222,7 +8111,7 @@ function paw.api.project_changed_files() end
 function paw.api.project_file_text(value) end
 
 --- The files of a project kept in a folder, with what each holds and
---- whether it differs from the disk (see `:ls`).
+--- if it differs from the disk (see `:ls`).
 function paw.api.project_files() end
 
 --- --- project ---
@@ -8377,13 +8266,6 @@ paw.api.signature_set = nil
 
 ---@param ms number
 function paw.api.sleep(ms) end
-
---- --- clip launcher (session/launcher.rs) ---
---- A clip goes into a slot with `clip_add(track, { slot = row, ... })`.
---- You edit it as a usual clip. `clip_set` also accepts `row`,
---- `quantize`, `mode` and `legato` for it.
----@param track integer
-function paw.api.slot_list(track) end
 
 --- A music font's SMuFL metadata (`Leland`, the default, `Bravura` or
 --- `Petaluma`): `engravingDefaults`, `glyphBBoxes`, `glyphsWithAnchors`

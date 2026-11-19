@@ -247,6 +247,7 @@ local function each_thing(project, fn)
     for _, d in ipairs(t.devices or {}) do fn(d) end
     for _, c in ipairs(t.clips or {}) do fn(c) end
     for _, l in ipairs(t.lanes or {}) do fn(l) end
+    for _, c in ipairs(t.cues or {}) do fn(c) end
     for _, s in ipairs(t.slots or {}) do
       if s.clip then fn(s.clip) end
     end
@@ -307,6 +308,7 @@ local function renumber(base, ours, theirs)
       remap(l, "id")
       if l.target then remap(l.target, "device") end
     end
+    for _, c in ipairs(t.cues or {}) do remap(c, "id") end
     for _, s in ipairs(t.slots or {}) do
       if s.clip then remap(s.clip, "id") end
     end

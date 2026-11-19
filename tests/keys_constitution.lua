@@ -15,7 +15,7 @@ local function start()
   api.engine_restart({ backend = "null" })
   keymap.feed("<Esc><Esc>")
   while paw.ui.float do paw.ui.close() end
-  for _, name in ipairs({ "pianoroll", "mixer", "devices", "session" }) do paw.ui.hide(name) end
+  for _, name in ipairs({ "pianoroll", "mixer", "devices" }) do paw.ui.hide(name) end
   paw.ui.focus("arrange")
 end
 
@@ -116,14 +116,13 @@ test("Escape cancels and stays in every view", function()
   stays("pianoroll", function() paw.ui.views.pianoroll:edit(clip) paw.ui.focus("pianoroll") end)
   stays("mixer", function() paw.ui.show("mixer") paw.ui.focus("mixer") end)
   stays("devices", function() paw.ui.show("devices") paw.ui.focus("devices") end)
-  stays("session", function() paw.ui.show("session") paw.ui.focus("session") end)
   eq(table.concat(moved, ", "), "", "views Escape left")
   -- A second Escape soon after says how to leave.
   paw.ui.show("mixer")
   paw.ui.focus("mixer")
   keymap.feed("<Esc><Esc>")
   eq((paw.ui.message and paw.ui.message.text or ""):find("<C-w>p goes back", 1, true) ~= nil, true, "the hint")
-  for _, name in ipairs({ "pianoroll", "mixer", "devices", "session" }) do paw.ui.hide(name) end
+  for _, name in ipairs({ "pianoroll", "mixer", "devices" }) do paw.ui.hide(name) end
 end)
 
 

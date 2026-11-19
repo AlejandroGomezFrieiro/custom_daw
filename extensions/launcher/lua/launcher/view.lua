@@ -2,16 +2,20 @@
 -- scene, with the scenes' names down the right. A clip that plays is lit in
 -- its track's colour and filled as it goes round its loop; one queued to
 -- start is marked until its boundary comes. The last row says what each
--- track plays: a slot, nothing (stopped), or its timeline.
+-- track plays: a slot, nothing (stopped), or its timeline. One view for the
+-- terminal and the window: the window draws it from its scene.
 local api = paw.api
 local util = paw.util
 local draw = paw.draw
-local launcher = paw.launcher
+local mouse = paw.mouse
+local launcher = require("launcher")
 
 -- Each window of the session view has its own scroll: it shows in any
 -- number of windows. The slot of the cursor is one for them all.
 local view = {
   scroll = 0, top = 0,
+  title = "Session",
+  help = "launcher",
   window_state = { "scroll", "top", "geometry" },
   window_fresh = { "geometry" },
 }
@@ -79,10 +83,9 @@ function view:render(buf, ctx)
   for _, id in ipairs(paw.scope.tracks()) do
     if not paw.vca.is_vca(id) then tracks[#tracks + 1] = id end
   end
-  local quantize = api.project_get().launch_quantize
   local body = paw.ui.titlebar(buf, {
     name = "Session",
-    context = "launches on " .. quantize .. (launcher.capturing and ("  " .. g.rec .. " capturing") or ""),
+    context = "launches on " .. launcher.quantize() .. (launcher.capturing and ("  " .. g.rec .. " capturing") or ""),
     focused = ctx.focused,
   })
   local w, h = body.width, body.height
@@ -157,6 +160,160 @@ function view:render(buf, ctx)
   self.geometry = { columns = columns, cw = cw, sx = sx, shown = shown, h = h }
 end
 
+-- What the pointer does ---------------------------------------------------------
+--
+-- The play mark of a slot pressed launches the clip (or stops the track, on
+-- an empty slot); let go, it stops a gate clip. The rest of a slot: a click
+-- chooses it, a double click opens its notes (an empty one gets a new MIDI
+-- clip first), a drag moves the clip to another slot (Ctrl copies). A
+-- scene launches its row. The last row stops the track, or every track
+-- under the scenes. A clip from the timeline let go on a slot (in the
+-- window) is copied there.
+
+local act = {}
+view.act = act
+
+--- A click on a slot: the cursor goes there, launching nothing, and the
+--- keys are the session view's.
+function act.choose(track, row)
+  paw.cursor.set_track(track)
+  launcher.row = row
+  if paw.ui.visible("session") then paw.ui.focus("session") end
+  api.ui_redraw()
+end
+
+--- A slot pressed, or let go of (`down` false): see `launcher.press` and `release`.
+function act.press(track, row, down)
+  paw.cursor.set_track(track)
+  launcher.row = row
+  if down == false then return launcher.release(track, row) end
+  launcher.press(track, row)
+end
+
+--- Record into an empty slot, or stop the recording.
+function act.record(track, row)
+  act.choose(track, row)
+  if launcher.recording then return launcher.finish_recording() end
+  launcher.record(track, row)
+end
+
+--- A double click on an empty slot: a MIDI clip of a bar there, opened in
+--- the piano roll. On a slot with a MIDI clip it opens that. Returns the clip.
+function act.open(track, row)
+  act.choose(track, row)
+  local clip = launcher.clip(track, row)
+  local id = clip and clip.id or launcher.new_clip(track, row)
+  if not clip or clip.kind == "midi" then paw.ui.views.pianoroll:edit(paw.clip(id)) end
+  return id
+end
+
+--- A clip from the timeline let go on a slot: a copy of it goes there.
+function act.drop(clip, track, row)
+  act.choose(track, row)
+  local id = launcher.copy(clip, track, row)
+  paw.notify("copied " .. api.clip_get(id).name .. " into slot " .. (row + 1))
+  return id
+end
+
+--- A slot's clip dragged to another, with `copy` (Ctrl) as a copy.
+function act.move(clip, track, row, copy)
+  if copy then
+    launcher.copy(clip, track, row)
+  else
+    launcher.move(clip, track, row)
+  end
+  act.choose(track, row)
+end
+
+local hints = {
+  clip = "clip: its play mark launches it · click chooses · double click opens its notes · drag moves it, Ctrl copies · right click for more",
+  empty = "empty slot: double click makes a MIDI clip · its dot records a bar into it",
+  scene = "scene: launches every clip in its row together",
+  stop = "stops the track's clip",
+}
+
+--- The column of the session view under `x`, if any.
+local function column_at(geo, x)
+  for _, c in ipairs(geo.columns) do
+    if x >= c.x - 1 and x < c.x + geo.cw - 1 then return c end
+  end
+end
+
+local function screen(e) return { x = e.x + (e.view_x or 0), y = e.y + (e.view_y or 0) } end
+
+function view:on_mouse(e)
+  local geo = self.geometry
+  if not geo then return end
+  -- Under the title bar, in the body's own lines.
+  local x, y = e.x, e.y - 1
+  local row = self.top + y - 1
+  local step, sideways = mouse.wheel(e)
+  if step then
+    if sideways or mouse.has(e, "S") then paw.cursor.move_track(step) else self.top = math.max(0, self.top + step) end
+    return api.ui_redraw()
+  end
+  local in_slots = y >= 1 and y <= geo.shown
+  if x >= geo.sx then
+    if e.kind == "move" then return mouse.hint(in_slots and hints.scene or nil) end
+    if e.kind ~= "down" or e.button ~= "left" then return end
+    if y == geo.h - 1 then return launcher.stop(nil) end
+    if in_slots then
+      launcher.row = row
+      return launcher.scene(row)
+    end
+    return
+  end
+  local col = column_at(geo, x)
+  if not col then return end
+  local clip = in_slots and launcher.clip(col.id, row) or nil
+  if e.kind == "move" then
+    return mouse.hint(y == geo.h - 1 and hints.stop or in_slots and (clip and hints.clip or hints.empty) or nil)
+  end
+  if e.kind ~= "down" then return end
+  if y == geo.h - 1 then
+    if e.button == "left" then launcher.stop(col.id) end
+    return
+  end
+  if not in_slots then return end
+  if e.button == "right" then
+    if clip then
+      local where = screen(e)
+      local menus = require("paw.mouse_menus")
+      mouse.grab(e, { up = function(u) if not u.moved then paw.ui.menu(menus.clip(clip.id, clip.start), where) end end })
+    end
+    return
+  end
+  if e.button ~= "left" then return end
+  if e.double then return act.open(col.id, row) end
+  if clip and x == col.x then
+    -- The play mark launches it, and its release lets a gate or a one-shot go.
+    act.press(col.id, row, true)
+    return mouse.grab(e, { up = function() act.press(col.id, row, false) end })
+  end
+  if not clip and x == col.x + 1 then return act.record(col.id, row) end
+  act.choose(col.id, row)
+  if not clip then return end
+  mouse.grab(e, {
+    up = function(u)
+      local to = u.moved and column_at(geo, u.x)
+      local to_row = self.top + u.y - 2
+      if to and to_row >= 0 then act.move(clip.id, to.id, to_row, mouse.has(u, "C")) end
+    end,
+  })
+end
+
+--- A clip let go over the view (from the window's arrange view): into the
+--- slot under the pointer.
+function view:on_drop(e)
+  local geo = self.geometry
+  if not (geo and e.clip) then return end
+  local y = e.y - 1
+  local col = column_at(geo, e.x)
+  if not col or y < 1 or y > geo.shown then return end
+  act.drop(e.clip, col.id, self.top + y - 1)
+end
+
 paw.ui.view("session", view)
 paw.ui.dock("session", { side = "bottom", hidden = true })
+paw.panes.least.session = { h = 150 }
 return view

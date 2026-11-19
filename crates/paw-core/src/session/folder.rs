@@ -202,17 +202,15 @@ impl Writer<'_> {
         entry.devices = Vec::new();
         entry.clips = Vec::new();
         entry.lanes = Vec::new();
-        entry.slots = Vec::new();
+        entry.cues = Vec::new();
         let mut value = serde_json::to_value(&entry)?;
         let mut clips = Vec::new();
         for clip in &track.clips {
             clips.push(self.clip(clip, folder, &mut taken)?);
         }
-        let mut slots = Vec::new();
-        for slot in &track.slots {
-            let mut s = serde_json::to_value(slot)?;
-            s["clip"] = self.clip(&slot.clip, folder, &mut taken)?;
-            slots.push(s);
+        let mut cues = Vec::new();
+        for clip in &track.cues {
+            cues.push(self.clip(clip, folder, &mut taken)?);
         }
         let mut devices = Vec::new();
         let mut states = BTreeSet::new();
@@ -245,12 +243,12 @@ impl Writer<'_> {
             lanes.push(json!(rel));
         }
         let map = value.as_object_mut().context("a track")?;
-        for key in ["devices", "clips", "lanes", "slots"] {
+        for key in ["devices", "clips", "lanes", "cues"] {
             map.remove(key);
         }
         map.insert("clips".into(), Value::Array(clips));
-        if !slots.is_empty() {
-            map.insert("slots".into(), Value::Array(slots));
+        if !cues.is_empty() {
+            map.insert("cues".into(), Value::Array(cues));
         }
         if !lanes.is_empty() {
             map.insert("lanes".into(), Value::Array(lanes));
@@ -709,6 +707,12 @@ pub fn read(dir: &Path) -> Result<Read> {
                 take_clip_file(clip, files, dir);
             }
         }
+        if let Some(Value::Array(cues)) = track.get_mut("cues") {
+            for clip in cues {
+                take_clip_file(clip, files, dir);
+            }
+        }
+        // The clip launcher's slots, as folders saved before cues kept them.
         if let Some(Value::Array(slots)) = track.get_mut("slots") {
             for slot in slots {
                 if let Some(clip) = slot.get_mut("clip") {
@@ -796,7 +800,8 @@ pub fn read(dir: &Path) -> Result<Read> {
         let needs = track
             .clips
             .iter()
-            .chain(track.slots.iter().map(|s| &s.clip))
+            .chain(&track.cues)
+            .chain(track.legacy_slots.iter().map(|s| &s.clip))
             .any(|c| contents.contains_key(&c.id));
         if !needs {
             continue;
@@ -805,7 +810,10 @@ pub fn read(dir: &Path) -> Result<Read> {
         for clip in &mut track.clips {
             fill(clip);
         }
-        for slot in &mut track.slots {
+        for clip in &mut track.cues {
+            fill(clip);
+        }
+        for slot in &mut track.legacy_slots {
             fill(&mut slot.clip);
         }
     }

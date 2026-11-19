@@ -48,22 +48,40 @@ function M.source_name(b)
   return b.channel and (what .. " ch " .. b.channel) or what
 end
 
--- What a button or a pad does rather than moves (`paw.launcher`): launch a
--- slot (`track`, `slot`), launch a scene (`slot`), stop a track's clip or
--- every clip (`track` or none).
-local triggers = { launch = true, scene = true, stop = true }
+-- What a button or a pad does rather than moves: kinds of target that
+-- extensions add with `paw.learn.trigger` (the clip launcher adds `launch`,
+-- `scene` and `stop`). A binding to a kind that no loaded extension adds
+-- stays in the project and does nothing.
+M.triggers = {}
+
+--- Add a kind of target that a button or a pad presses: `spec` has
+--- `press(binding, down)` (down is false when it is let go), `name(target)`
+--- (the text of `:learn.list`), and optionally `check(target)` (an error for
+--- a target that is not right), `words` (the words of `:learn` that name it),
+--- `target_for(word, track)` (the target of a word, or nil) and
+--- `under_cursor(focused)` (the target under the cursor of a view, or nil).
+--- A target can keep a number in `slot`, such as a row.
+function M.trigger(name, spec)
+  assert(type(name) == "string" and type(spec) == "table" and type(spec.press) == "function",
+    "paw.learn.trigger(name, { press = function(binding, down) ... end, name = ... })")
+  M.triggers[name] = spec
+end
 
 --- True if you press a target, and do not move it.
-function M.is_trigger(target) return triggers[target.target] == true end
+function M.is_trigger(target) return M.triggers[target.target] ~= nil end
 
 --- What a binding moves, as text: "Lead › volume", "Lead › Filter › Cutoff".
 function M.target_name(t)
-  if t.target == "scene" then return "launch " .. paw.launcher.scene_name(t.slot) end
-  if t.target == "stop" and not t.track then return "stop every clip" end
+  local trigger = M.triggers[t.target]
+  if trigger then
+    local ok, text = pcall(trigger.name, t)
+    return ok and tostring(text) or "(" .. t.target .. ": " .. tostring(text) .. ")"
+  end
   local ok, track = pcall(api.track_get, t.track)
-  if ok and t.target == "launch" then return track.name .. " › launch slot " .. (t.slot + 1) end
-  if ok and t.target == "stop" then return track.name .. " › stop" end
   if not ok then return "(a track that is gone)" end
+  if t.target ~= "volume" and t.target ~= "pan" and t.target ~= "param" then
+    return track.name .. " › " .. t.target .. " (no loaded extension presses it)"
+  end
   if t.target ~= "param" then return track.name .. " › " .. t.target end
   local found, device = pcall(api.device_get, t.device)
   if not found then return track.name .. " › (a device that is gone)" end
@@ -102,8 +120,8 @@ local function check(target)
   assert(type(target) == "table", "a target is a table")
   if M.is_trigger(target) then
     if target.track then api.track_get(target.track) end
-    assert(target.target == "stop" or type(target.slot) == "number", "a launch or a scene names its `slot`, a row from 0")
-    assert(target.target ~= "launch" or target.track, "a launch names its track")
+    local trigger = M.triggers[target.target]
+    if trigger.check then trigger.check(target) end
     return
   end
   assert(target.track, "a target names its track")
@@ -115,7 +133,10 @@ local function check(target)
     for _, p in ipairs(device.param_info) do found = found or p.key == target.param end
     assert(found, "the device has no parameter `" .. tostring(target.param) .. "`")
   elseif target.target ~= "volume" and target.target ~= "pan" then
-    error("a controller moves `volume`, `pan` or a `param`, or presses `launch`, `scene` or `stop`", 3)
+    local names = {}
+    for name in pairs(M.triggers) do names[#names + 1] = "`" .. name .. "`" end
+    table.sort(names)
+    error("a controller moves `volume`, `pan` or a `param`" .. (#names > 0 and (", or presses " .. table.concat(names, ", ")) or ""), 3)
   end
 end
 
@@ -134,7 +155,7 @@ function M.bind(source, target)
   }
   assert(b.source == "cc" or b.source == "bend" or b.source == "pressure" or b.source == "note",
     "a controller is `cc`, `note`, `bend` or `pressure`")
-  assert(b.source ~= "note" or M.is_trigger(b), "a key or a pad presses `launch`, `scene` or `stop`; it moves nothing")
+  assert(b.source ~= "note" or M.is_trigger(b), "a key or a pad presses a button (such as the clip launcher's); it moves nothing")
   if b.source == "cc" or b.source == "note" then
     assert(type(b.number) == "number" and b.number >= 0 and b.number <= 127, "controller and note numbers go from 0 to 127")
   end
@@ -228,14 +249,7 @@ local function press(b, f)
   local down = f >= 0.5
   if down == (state.down or false) then return end
   state.down = down
-  local launcher = paw.launcher
-  if b.target == "launch" then
-    if down then launcher.press(b.track, b.slot) else launcher.release(b.track, b.slot) end
-  elseif down and b.target == "scene" then
-    launcher.scene(b.slot)
-  elseif down and b.target == "stop" then
-    launcher.stop(b.track)
-  end
+  M.triggers[b.target].press(b, down)
 end
 
 --- Wait for the next controller move and bind it to `target` (or to what
@@ -320,13 +334,12 @@ paw.on("startup", look_all)
 function M.target_for(word)
   local track = paw.cursor.track_id()
   word = tostring(word):lower()
-  -- Buttons of the launcher, by the session view's cursor.
-  local row = paw.launcher.row
-  if word == "scene" then return { target = "scene", slot = row } end
-  if word == "stop all" then return { target = "stop" } end
+  -- Buttons that extensions add.
+  for _, trigger in pairs(M.triggers) do
+    local target = trigger.target_for and trigger.target_for(word, track)
+    if target then return target end
+  end
   if not track then error("no track selected", 0) end
-  if word == "launch" then return { track = track, target = "launch", slot = row } end
-  if word == "stop" then return { track = track, target = "stop" } end
   if word == "volume" or word == "pan" then return { track = track, target = word } end
   for _, id in ipairs(api.track_get(track).devices) do
     for _, p in ipairs(api.device_get(id).param_info) do
@@ -351,10 +364,10 @@ function M.under_cursor()
   elseif ui.focused == "mixer" then
     local track = paw.cursor.track_id()
     if track then return { track = track, target = "volume" } end
-  elseif ui.focused == "session" then
-    -- The slot under the cursor: a pad launches it.
-    local track = paw.cursor.track_id()
-    if track then return { track = track, target = "launch", slot = paw.launcher.row } end
+  end
+  for _, trigger in pairs(M.triggers) do
+    local target = trigger.under_cursor and trigger.under_cursor(ui.focused)
+    if target then return target end
   end
 end
 
@@ -362,9 +375,12 @@ paw.command("learn", function(ctx)
   local word = ctx.args[1] and table.concat(ctx.args, " ")
   M.start(word and M.target_for(word) or M.under_cursor() or M.last)
 end, {
-  desc = "Bind a MIDI controller: `learn` for what was moved last (in the session view, the slot under the cursor), `learn volume`, `learn pan`, `learn cutoff`, `learn launch`, `learn scene`, `learn stop`, `learn stop all`, then move the controller or press the pad",
+  desc = "Bind a MIDI controller: `learn` for what was moved last, `learn volume`, `learn pan`, `learn cutoff`, then move the controller or press the pad",
   complete = function()
     local words = { "volume", "pan" }
+    for _, trigger in pairs(M.triggers) do
+      for _, word in ipairs(trigger.words or {}) do words[#words + 1] = word end
+    end
     local track = paw.cursor.track_id()
     for _, id in ipairs(track and api.track_get(track).devices or {}) do
       for _, p in ipairs(api.device_get(id).param_info) do words[#words + 1] = p.key end

@@ -55,7 +55,7 @@ gets.
 | `clip.copied` | `{ clip, name, origin }` | the first edit of a clip from a file outside the project made it the project's own |
 | `lane.added`, `lane.changed`, `lane.removed` | `{ id, track }` | an automation lane |
 | `lanes.changed` | `{}` | the shown lanes changed |
-| `slot.changed` | `{ track }` | a slot of the clip launcher |
+| `cue.changed` | `{ track }` | the clips off the timeline of a track, which cues play ([About cues](../explanation/about-cues.md)) |
 | `edit.before` | `{ changes }` | a turn edited the project, and the edit will become an undo step. `changes` is a list of `{ name, payload }`: the events above that make the edit. A handler can refuse: paw then puts the project back as the turn found it. Edits of a handler join the step |
 | `edit.after` | `{ changes, state }` | paw made the step. `state` is its id in the undo tree. Edits made here are a separate edit |
 | `undo`, `redo` | `{ from, to, how, label }` | a move in the undo tree. `from` and `to` are states, `label` the step. `how` is `undo`, `redo`, `goto`, `step` or `travel`. A jump to an older state is an `undo` |

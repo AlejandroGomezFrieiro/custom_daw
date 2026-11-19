@@ -113,12 +113,6 @@ M.lines.mixer = {
   },
   x = { { "+", "up" }, { "-", "down" }, { "]", "pan" }, { "x", "clear" }, { "<Esc>", "done" } },
 }
-M.lines.session = {
-  n = {
-    { "<CR>", "launch" }, { "L", "scene" }, { "S", "stop" }, { "B", "resume timeline" }, { "n", "new clip" },
-    { "i", "notes" }, { "m", "mode" }, { "<Space>", "play" }, { "?", "keys" },
-  },
-}
 M.lines.devices = {
   n = {
     { "j", "row" }, { "w", "device" }, { "+", "raise" }, { "-", "lower" }, { "a", "add" }, { "gc", "bypass" },

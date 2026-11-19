@@ -105,8 +105,7 @@ Most views come from scenes. Among them are the arrange view, the mixer,
 the piano roll, the device panel and the drum grid. The arrange view's timeline is a plane of beats along and the
 view's lines down. Lines go down, not tracks, because a take lane and an
 automation lane have heights of their own. Also, a drag of a clip goes
-across all of them in one domain. The session view is still the window's
-own drawing in egui, fed by `frontend.watch`.
+across all of them in one domain.
 [Limits](../reference/limits.md) has the current list.
 
 ## Why the window looks as it does

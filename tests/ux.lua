@@ -24,7 +24,7 @@ local function start()
   api.engine_restart({ backend = "null" })
   paw.keymap.feed("<Esc><Esc>")
   while paw.ui.float do paw.ui.close() end
-  for _, name in ipairs({ "pianoroll", "mixer", "devices", "session" }) do paw.ui.hide(name) end
+  for _, name in ipairs({ "pianoroll", "mixer", "devices" }) do paw.ui.hide(name) end
   paw.ui.focus("arrange")
 end
 

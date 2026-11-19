@@ -1,0 +1,109 @@
+-- Tests of cues, the core's primitive under the clip launcher: a clip kept
+-- off the timeline played on a track from a boundary, in place of the
+-- track's timeline, until stopped. No extension is loaded here: the core
+-- works without one. Loaded by tests/suite.lua with its helpers.
+local T = ...
+local test, eq, near, fails, fresh, render = T.test, T.eq, T.near, T.fails, T.fresh, T.render
+local api = paw.api
+
+local function start()
+  fresh()
+  api.engine_restart({ backend = "null" })
+end
+
+local function until_(check, ms, what)
+  local deadline = api.now() + (ms or 10000)
+  while not check() do
+    if api.now() > deadline then error("waited in vain for " .. what, 2) end
+    paw.wait(5)
+  end
+end
+
+local function state(track)
+  for _, s in ipairs(api.cue_state()) do
+    if s.track == track then return s end
+  end
+  return {}
+end
+
+--- A synth track with a clip off its timeline: one long note.
+local function synth(name, pitch)
+  local t = paw.add_track({ name = name })
+  t:add_device("synth", { attack = 0.001, release = 0.01 })
+  local id = api.clip_add(t.id, { cue = true, start = 8, length = 4, notes = { { pitch = pitch or 57, start = 0, length = 4 } } })
+  return t, id
+end
+
+test("cues: a clip off the timeline is kept apart, starts at 0, and is saved and undone with the project", function()
+  start()
+  local t, id = synth("Lead")
+  eq(#api.clip_list(t.id), 0, "nothing on the timeline")
+  local cues = api.cue_list(t.id)
+  eq(#cues .. " " .. cues[1].start .. " " .. tostring(cues[1].cue), "1 0 true", "off the timeline, from 0")
+  eq(api.clip_get(id).cue, true, "a clip's view says so")
+  fails(function() api.clip_set(id, "start", 4) end, "starts at 0", "it has no place in time")
+  local copy = api.clip_to_cues(t:add_clip({ start = 4, length = 2 }).id, t.id)
+  eq(api.clip_get(copy).start .. " " .. #api.cue_list(t.id), "0 2", "a clip of the timeline copied off it")
+  local other = paw.add_track({ name = "Other" })
+  api.clip_set(copy, "track", other.id)
+  eq(#api.cue_list(other.id), 1, "moved to another track")
+  api.undo_checkpoint()
+  local path = T.scratch .. "/cues.paw"
+  api.project_save(path)
+  paw.project.new()
+  api.project_load(path)
+  eq(#api.cue_list(api.track_list()[1]), 1, "saved and opened")
+  api.clip_remove(api.cue_list(api.track_list()[1])[1].id)
+  api.undo_checkpoint()
+  api.undo()
+  eq(#api.cue_list(api.track_list()[1]), 1, "undone")
+end)
+
+test("cues: a cue lands on its boundary in place of the timeline, then stops and goes back", function()
+  start()
+  local t, id = synth("Lead")
+  t:add_clip({ start = 0, length = 64, notes = { { pitch = 45, start = 0, length = 64 } } })
+  paw.transport.seek(0)
+  paw.transport.play()
+  until_(function() return paw.transport.position > 0.5 end, 10000, "the song to play")
+  api.cue({ { track = t.id, clip = id } })
+  until_(function() return state(t.id).clip == id end, 10000, "the clip to start")
+  eq(state(t.id).since, 4, "on the next bar, the default")
+  near(state(t.id).length, 4, 1e-9, "its loop")
+  api.cue({ { track = t.id, stop = true, quantize = "1/4" } })
+  until_(function() return state(t.id).stopped end, 10000, "the track to stop")
+  eq(state(t.id).since % 1, 0, "on a beat")
+  api.cue({ { track = t.id, timeline = true, quantize = "off" } })
+  until_(function() return state(t.id).clip == nil and not state(t.id).stopped end, 10000, "the timeline again")
+  fails(function() api.cue({ { track = t.id, clip = 999999 } }) end, "not off the timeline", "a clip that is not a cue clip")
+  fails(function() api.cue({ { track = t.id, clip = id, stop = true } }) end, "one of", "a cue names one thing")
+  paw.transport.stop()
+end)
+
+test("cues: a clip that plays keeps playing while other clips off the timeline come and go", function()
+  start()
+  local t, first = synth("Lead", 60)
+  local second = api.clip_add(t.id, { cue = true, length = 2, notes = { { pitch = 64, start = 0, length = 1 } } })
+  paw.transport.play()
+  api.cue({ { track = t.id, clip = second, quantize = "off" } })
+  until_(function() return state(t.id).clip == second end, 5000, "the second clip to start")
+  api.clip_remove(first)
+  paw.flush()
+  paw.wait(50)
+  eq(state(t.id).clip, second, "the same clip plays on")
+  api.clip_remove(second)
+  paw.flush()
+  until_(function() return state(t.id).stopped end, 5000, "a clip removed while it plays stops the track")
+  paw.transport.stop()
+  until_(function() return state(t.id).stopped == nil end, 5000, "stopping the song sends it back")
+end)
+
+test("cues: a render plays the timeline, not what is cued", function()
+  start()
+  local t, id = synth("Lead", 69)
+  api.cue({ { track = t.id, clip = id, quantize = "off" } })
+  until_(function() return state(t.id).clip == id end, 5000, "the clip to start")
+  local info = render({ start = 0, ["end"] = 4, tail = 0, bits = 16 })
+  eq(T.channel_peaks(info), 0, "the track has nothing on its timeline")
+  paw.transport.stop()
+end)

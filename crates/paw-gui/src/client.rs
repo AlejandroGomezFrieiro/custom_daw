@@ -222,7 +222,7 @@ impl Client {
                 project["lines"] = part("lines");
             }
             state.insert("project".into(), project);
-            for name in ["tracks", "clips", "slots"] {
+            for name in ["tracks", "clips"] {
                 state.insert(name.into(), part(name));
             }
             state.insert("selected".into(), part("view")["selected"].clone());

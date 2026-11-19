@@ -662,7 +662,6 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.frontend.input_menu(track)`: The menu of the input of a track: the choices of `paw.audio.choices` under their headings, `audio`, `midi` and `channel`. It also gives the MIDI output of the track: `midi_out`, `midi_out_channel` and `midi_out_form`. Each is a list of `{ label, checked }`. `act.choose_input` takes one by heading and place.
 - `paw.frontend.lane_name(lane)`: What a lane moves, in words: `Volume`, `Pan`, `Synth · cutoff`.
 - `paw.frontend.lane_span(lane)`: The stretch of a lane's range that is worth drawing it over: a fader's travel for volume, the whole range for anything else.
-- `paw.frontend.launch_state(ids)`: What each drawn track (`ids`, the master last) plays from its slots, by place. `slot` and `queued` are rows or -1. `stopping` and `back` tell that a stop or a return to the timeline is in the queue. `stopped` tells that the track plays nothing. `progress` is the position of the clip in its loop (0 to 1). `recording` is the row that records, or -1. The result is empty while no slot plays or records.
 - `paw.frontend.layout_get()`: How the window was left (its size, the zoom, the heights of rows and of the piano roll, if the mixer shows): a table, empty when nothing was kept. It belongs to the machine, so it is kept here, where a window attached to this kernel finds it too. (`M.layout_path` names another file, for tests.)
 - `paw.frontend.layout_set(layout)`: Keep the window's layout (see `layout_get`).
 - `paw.frontend.menu(kind, args)`: Menu `kind` for `args`, as plain data for a window to show.
@@ -685,7 +684,6 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.frontend.save_as(after)`: Save the project under a new name: choose the directory from a list, then type the file's name. `after` runs once it is saved.
 - `paw.frontend.send_list(track)`: A track's sends as `{ name, level }`, the level in dB.
 - `paw.frontend.sidechain_menu(device)`: The menu of the side-chain of a device: "None" first, then the tracks that it can listen to. The last item tells if it takes the sound before their fader. Each is `{ label, checked }`. `act.choose_sidechain` takes one by place.
-- `paw.frontend.slots(ids)`: The clips in the drawn tracks' slots: `{ id, track, row, name, midi, mode, legato, quantize, muted }` each, `track` by place from 0.
 - `paw.frontend.state(known)`: The data that paw sends to a graphical frontend: transport, tracks, clips, devices and the modal state, as plain data. `known` is a list of the data that the frontend has already.
 - `paw.frontend.step_input()`: True if step input (notes from a MIDI keyboard) is on.
 - `paw.frontend.take_preview(id, take, points)`: What take `take` of a clip plays, for the picture in its take lane. For sound, this is a waveform as `M.peaks` gives it, at `points` points. For MIDI, it is the notes as `M.preview` gives them. It repeats as a looped clip repeats. The waveform of the take that plays is the waveform of the clip, stretched. The waveform of a different take is its file, made shorter or longer in time as the clip stretches it.
@@ -965,31 +963,6 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.lanes.toggle(track)`: Show the automation lanes of a track, or hide them. Returns true if they show.
 - `paw.lanes.value_at(lane, beat)`: What a lane's target is at a beat: the curve's value, or with no points yet the target's own value.
 
-## Module paw.launcher
-
-- `paw.launcher.back(track)`: Send a track back to its timeline. With no track, send back each track that left its timeline.
-- `paw.launcher.boundary(beat, q)`: The first boundary of a quantize (the project's by default) at or after `beat`, as the engine finds it.
-- `paw.launcher.capture(on)`: Start or stop the capture. If you stop it while the song plays, paw writes the captured notes.
-- `paw.launcher.clip(track, row)`: The clip in a slot, or nil.
-- `paw.launcher.copy(clip, track, row)`: Copy a clip from the timeline (or another slot) into a slot.
-- `paw.launcher.finish_recording()`: End the clip being recorded into a slot.
-- `paw.launcher.launch(track, row, opts)`: Launch the clip in a slot on its next boundary. An empty slot stops the track. `opts.quantize` and `opts.legato` replace the values of the slot.
-- `paw.launcher.new_clip(track, row, bars)`: An empty MIDI clip of `bars` bars (1) in a slot. Returns its id.
-- `paw.launcher.playing(track)`: What one track plays: "arrangement", "stopped" or a row. The second value is what it has in its queue, if anything.
-- `paw.launcher.press(track, row)`: A slot's button pressed, from a key, the mouse or a controller: what that does is the clip's mode. A toggle stops a clip that plays or is queued.
-- `paw.launcher.record(track, row, bars)`: Record `bars` bars (1) into an empty slot of a track, from the next boundary of the quantize of the project. paw arms the track if it is not armed. The track stops what it plays at that boundary. If the song is stopped, it starts. If you stop the song early, paw keeps the recording.
-- `paw.launcher.release(track, row)`: A slot's button let go: a gate clip stops.
-- `paw.launcher.rows()`: How many rows there are: those with clips or names, one empty row more, and at least `paw.opt.launch_rows`.
-- `paw.launcher.scene(row)`: Launch a scene: the clip in that row on every track that has one, all on the same boundary. Tracks without one stop what they play from a slot.
-- `paw.launcher.scene_name(row)`: A scene's name (rows from 0): its own, or "Scene N".
-- `paw.launcher.scenes()`: The names of the scenes, by row from 1. Rows without a name are nil.
-- `paw.launcher.set_quantize(q)`: Where launches land unless a slot says otherwise.
-- `paw.launcher.set_scene_name(row, name)`: Name a scene (rows from 0), kept with the project.
-- `paw.launcher.slots(track)`: The clips in a track's slots, by row: `{ [row] = clip view }`.
-- `paw.launcher.state()`: What each track plays and has in its queue, by track id: see `paw.api.launcher`. A track with no launched clip is not in the table.
-- `paw.launcher.stop(track)`: Stop the clip of a track on the next boundary. With no track, stop the clips of all tracks. A stopped track makes no sound until you launch it again or send it back to its timeline.
-- `paw.launcher.write_captured(position)`: Write the captured notes that paw did not write yet, as one undo step, up to `position` where the capture continues.
-
 ## Module paw.layout
 
 - `paw.layout.alive(id)`: True if a window of this number is in a tab of the seat, or is a window in no tab (`M.loose`) that is still in use.
@@ -1099,6 +1072,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.learn.start(target)`: Wait for the next controller move and bind it to `target` (or to what was moved last).
 - `paw.learn.target_for(word)`: The target a word names on the selected track: "volume", "pan", or a parameter of one of its devices by key or name.
 - `paw.learn.target_name(t)`: What a binding moves, as text: "Lead › volume", "Lead › Filter › Cutoff".
+- `paw.learn.trigger(name, spec)`: Add a kind of target that a button or a pad presses: `spec` has `press(binding, down)` (down is false when it is let go), `name(target)` (the text of `:learn.list`), and optionally `check(target)` (an error for a target that is not right), `words` (the words of `:learn` that name it), `target_for(word, track)` (the target of a word, or nil) and `under_cursor(focused)` (the target under the cursor of a view, or nil). A target can keep a number in `slot`, such as a row.
 - `paw.learn.unbind(which)`: Take a binding away: by its place in `bindings()`, or everything that moves a target. Returns how many went.
 - `paw.learn.under_cursor()`: What the keyboard is on, if that is something a controller can move: the parameter under the device panel's cursor, the mixer's fader.
 
@@ -1980,10 +1954,13 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.clip_set_controls(id, controls)`
 - `paw.api.clip_set_notes(id, notes)`
 - `paw.api.clip_source_length(id)`: Beats of sound left in an audio clip's file from where the clip starts in it.
-- `paw.api.clip_to_slot(id, track, row)`: Copy a clip into a row of a track's slots. Returns the copy's id.
+- `paw.api.clip_to_cues(id, track)`: Copy a clip, with its `meta`, off the timeline of a track. Returns the copy's id.
 - `paw.api.clip_warp_add(id, beat)`: Warp markers of an audio clip (`session/stretching.rs`), counted from 1.
 - `paw.api.clip_warp_move(id, index, beat)`
 - `paw.api.clip_warp_remove(id, index)`
+- `paw.api.cue(list)`: `{ { track =, clip = id }, { track =, stop = true }, { track =, timeline = true }, ... }`, each with `quantize` (`bar` when not given: off 1/16 1/8 1/4 beat bar 2bars 4bars), `legato` and `from`: all on their boundary, timed together by the engine.
+- `paw.api.cue_list(track)`: --- cues (session/cues.rs) --- A clip goes off the timeline with `clip_add(track, { cue = true, ... })`: it starts at 0, loops over its length, and plays only when cued. You edit it as a usual clip; `clip_set(id, "track", other)` moves it.
+- `paw.api.cue_state()`: What each track plays and has in its queue, in the last report of the engine.
 - `paw.api.device_add(track, kind, opts)`
 - `paw.api.device_alias(old, new)`: Devices of `old`, a kind that was renamed, are made as `new`.
 - `paw.api.device_call(id, method, data)`: A request to a device that accepts data from scripts. Bytes in, bytes out.
@@ -2036,8 +2013,6 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.lane_set_shapes(id, shapes)`
 - `paw.api.lane_shapes(id)`: The shapes of the stretches that are not straight, `{ beat, shape, tension }` each by the beat of the point they leave: "hold" or "smooth".
 - `paw.api.lane_value_at(id, beat)`
-- `paw.api.launch(list)`: `{ { track =, slot = row }, { track =, stop = true }, { track =, arrangement = true }, ... }`, each with `quantize` and `legato` if not the slot's: all on their boundary, timed together.
-- `paw.api.launcher()`: What each track plays and has in its queue, in the last report of the engine.
 - `paw.api.limit_hook(func)`: The time limit on Lua (`paw.limit`). The arguments are the function to call when a callback runs too long, and the time when the current callback must return (on the clock of `now`, nil when it returned). `limit_async` tells if paw finds an overrun inside compiled code too.
 - `paw.api.limit_watch(deadline)`
 - `paw.api.load_apart(on)`: Make plugins apart from the main loop (true), or wait for each as it is added (false, what scripts start with). Returns what it was.
@@ -2095,7 +2070,7 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.project_backup(path, note)`: Write the project as it is now to a different file. The path of the project and its modified flag do not change. The file keeps `note` under `recovery`.
 - `paw.api.project_changed_files()`: The files of the open project that changed outside paw and are not acted on yet: paths in its folder, or full paths outside it.
 - `paw.api.project_file_text(value)`
-- `paw.api.project_files()`: The files of a project kept in a folder, with what each holds and whether it differs from the disk (see `:ls`).
+- `paw.api.project_files()`: The files of a project kept in a folder, with what each holds and if it differs from the disk (see `:ls`).
 - `paw.api.project_get(key)`: --- project --- The project as a table. With `key`, only that entry of the table: this is quicker (`edits`, which goes up with each change, is asked for on each key and each edit).
 - `paw.api.project_keep_changes()`: Keep the project as paw has it: forget the changes made outside.
 - `paw.api.project_load(path, opts)`: `opts.plugins_offline` opens it with all plugins offline. `opts.offline` is a list of devices (by id) to open offline.
@@ -2138,7 +2113,6 @@ functions of the kernel (`paw.api`, plain data in and out) are at the end.
 - `paw.api.signature_remove(...)`
 - `paw.api.signature_set(...)`
 - `paw.api.sleep(ms)`
-- `paw.api.slot_list(track)`: --- clip launcher (session/launcher.rs) --- A clip goes into a slot with `clip_add(track, { slot = row, ... })`. You edit it as a usual clip. `clip_set` also accepts `row`, `quantize`, `mode` and `legato` for it.
 - `paw.api.smufl(font)`: A music font's SMuFL metadata (`Leland`, the default, `Bravura` or `Petaluma`): `engravingDefaults`, `glyphBBoxes`, `glyphsWithAnchors` and `glyphs` (every glyph name with its code point). Nil for a font there is none of.
 - `paw.api.smufl_outline(font, codepoint)`: A music font's glyph as path commands in staff spaces from its origin, y down (`{ "M", x, y, "C", ... }`), for a frontend that cannot draw the font. Nil for a glyph or font there is none of.
 - `paw.api.sock_accept(id)`

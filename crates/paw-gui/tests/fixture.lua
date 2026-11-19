@@ -10,8 +10,6 @@ a:add_clip({ start = 4, length = 4, name = 'c', notes = {
 local b = paw.add_track({ name = 'B' })
 b:add_clip({ start = 12, length = 4, name = 'd', notes = { { pitch = 48, start = 0, length = 4 } } })
 paw.add_track({ name = 'C' })
-api.clip_add(a.id, { slot = 0, length = 4, name = 'Riff', notes = { { pitch = 67, start = 0, length = 1 } } })
-paw.launcher.set_scene_name(0, 'Verse')
 paw.markers.add(8, 'Verse')
 local lane = a:automate('volume')
 lane:set_points({ { 0, -12 }, { 8, 0 } })

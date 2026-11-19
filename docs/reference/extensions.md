@@ -20,6 +20,7 @@ made by the scenes in its `images/make` (`docs/images/make/make.sh <name>`).
 | [`drums`](../../extensions/drums/README.md) | drum tracks in one step, and a grid of the pieces of the kit by name |
 | [`luafx`](../../extensions/luafx/README.md) | devices written in Lua, to use and to copy |
 | [`midilsp`](../../extensions/midilsp/README.md) | MIDI LSP, the language server for music, in `paw.lsp`: diagnostics of voice leading with fixes, the chords it hears, suggestions |
+| [`launcher`](../../extensions/launcher/README.md) | the clip launcher: slots and scenes in the session view, launched on the beat while the song plays, and a capture of the performance into the timeline |
 | [`mixdiag`](../../extensions/mixdiag/README.md) | measurements of the mix (LUFS, true peak, phase), as findings to jump to |
 | [`musicops`](../../extensions/musicops/README.md) | musical operators: humanize, strum, arpeggiate, scales |
 | [`notation`](../../extensions/notation/README.md) | a MIDI clip as staff notation, in the terminal and in the graphical window |

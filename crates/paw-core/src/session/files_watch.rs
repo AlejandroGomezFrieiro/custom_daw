@@ -299,11 +299,7 @@ impl super::Session {
         // Clip files and sound files outside the folder.
         let mut outside = BTreeSet::new();
         for track in self.project.all_tracks() {
-            for clip in track
-                .clips
-                .iter()
-                .chain(track.slots.iter().map(|s| &s.clip))
-            {
+            for clip in track.clips.iter().chain(&track.cues) {
                 let file = match (&clip.source, &clip.content) {
                     (Some(source), _) => Some(source.clone()),
                     (None, ClipContent::Audio { file, .. }) => Some(file.clone()),
@@ -388,6 +384,7 @@ impl super::Session {
             .validate()
             .with_context(|| format!("{} cannot be loaded", dir.display()))?;
         self.find_media(&mut project, &file);
+        project.upgrade();
         project.refresh_tempo();
         keep_same(&self.project, &mut project);
         self.next_id = self.next_id.max(project.max_id() + 1);
