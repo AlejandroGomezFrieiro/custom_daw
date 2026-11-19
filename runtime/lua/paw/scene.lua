@@ -113,7 +113,7 @@ local function live()
   end
   for _, id in ipairs(api.track_list()) do
     meter(id)
-    inputs[tostring(id)] = round(paw.audio.level(api.track_get(id), levels))
+    inputs[tostring(id)] = round(paw.audio.level({ input = api.track_get(id, "input") }, levels))
   end
   -- The master's, as track 0.
   meter(0)

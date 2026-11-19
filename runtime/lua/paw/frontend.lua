@@ -469,7 +469,7 @@ function M.state(known)
   -- What arrives at each track's audio input, armed or not: 0 without one.
   local inputs, device_levels = {}, paw.audio.levels()
   for i, id in ipairs(ids) do
-    inputs[i] = id ~= 0 and paw.audio.level(api.track_get(id), device_levels) or 0
+    inputs[i] = id ~= 0 and paw.audio.level({ input = api.track_get(id, "input") }, device_levels) or 0
   end
   local num, den = paw.tempo.signature_at(t.position)
   local out = {
