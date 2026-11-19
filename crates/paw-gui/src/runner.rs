@@ -106,6 +106,37 @@ struct Gl {
     viewports: HashMap<ViewportId, Viewport>,
     by_window: HashMap<WindowId, ViewportId>,
     started: Instant,
+    /// GLX on the processor: the changed parts copied to the window, with
+    /// no swap, so that the buffer drawn into is always the last frame.
+    copy_sub: Option<CopySub>,
+}
+
+/// `glXCopySubBufferMESA`, and the display and window it copies to.
+struct CopySub {
+    copy: unsafe extern "C" fn(*const std::ffi::c_void, u64, i32, i32, i32, i32),
+    display: *const std::ffi::c_void,
+    drawable: u64,
+}
+
+/// `glXCopySubBufferMESA` for a GLX surface whose display has it.
+fn copy_sub_buffer(config: &Config, surface: &Surface<WindowSurface>) -> Option<CopySub> {
+    use glutin::display::{AsRawDisplay as _, RawDisplay};
+    use glutin::surface::{AsRawSurface as _, RawSurface};
+    let display = config.display();
+    let (RawDisplay::Glx(raw), RawSurface::Glx(drawable)) = (display.raw_display(), surface.raw_surface()) else { return None };
+    let query = display.get_proc_address(c"glXQueryExtensionsString");
+    let copy = display.get_proc_address(c"glXCopySubBufferMESA");
+    if query.is_null() || copy.is_null() {
+        return None;
+    }
+    unsafe {
+        let query: unsafe extern "C" fn(*const std::ffi::c_void, i32) -> *const std::ffi::c_char = std::mem::transmute(query);
+        let names = query(raw, 0);
+        if names.is_null() || !std::ffi::CStr::from_ptr(names).to_string_lossy().split(' ').any(|n| n == "GLX_MESA_copy_sub_buffer") {
+            return None;
+        }
+        Some(CopySub { copy: std::mem::transmute::<*const std::ffi::c_void, unsafe extern "C" fn(*const std::ffi::c_void, u64, i32, i32, i32, i32)>(copy), display: raw, drawable })
+    }
 }
 
 impl Gl {
@@ -298,6 +329,9 @@ struct Runner {
     stats: Stats,
     /// The main window has been shown (it starts hidden, until drawn).
     shown: bool,
+    /// The window was uncovered (a redraw not asked for): all of it is
+    /// shown again.
+    exposed: bool,
     closing: bool,
     failed: Option<anyhow::Error>,
 }
@@ -350,6 +384,7 @@ pub fn run(builder: ViewportBuilder, make: impl FnOnce(&egui::Context, &GlInfo) 
         damage: Damage::default(),
         stats: Stats { since: std::env::var_os("PAW_GUI_STATS").map(|_| Instant::now()), ..Stats::default() },
         shown: false,
+        exposed: false,
         closing: false,
         failed: None,
     };
@@ -373,8 +408,14 @@ impl Runner {
         let attributes = egui_winit::create_winit_window_attributes(&self.ctx, builder.clone());
         let template = ConfigTemplateBuilder::new().prefer_hardware_accelerated(None).with_depth_size(0).with_stencil_size(0).with_transparency(false);
         // EGL first: it says how old a buffer is and shows only what changed.
+        // On X11 on the processor GLX first: it copies the changed parts to
+        // the window through shared memory (GLX_MESA_copy_sub_buffer), where
+        // Mesa's EGL puts the whole window to the X server each frame.
+        let x11 = matches!(event_loop.display_handle()?.as_raw(), RawDisplayHandle::Xlib(_) | RawDisplayHandle::Xcb(_));
+        let software = std::env::var_os("LIBGL_ALWAYS_SOFTWARE").is_some_and(|v| !v.is_empty() && v != "0");
+        let preference = if x11 && software { glutin_winit::ApiPreference::FallbackEgl } else { glutin_winit::ApiPreference::PreferEgl };
         let (window, config) = glutin_winit::DisplayBuilder::new()
-            .with_preference(glutin_winit::ApiPreference::PreferEgl)
+            .with_preference(preference)
             .with_window_attributes(Some(attributes))
             .build(event_loop, template, |mut configs| configs.next().expect("an OpenGL configuration"))
             .map_err(|err| anyhow!("{err}"))?;
@@ -418,6 +459,7 @@ impl Runner {
         );
         let surface = unsafe { config.display().create_window_surface(&config, &attributes)? };
         let current = context.make_current(&surface)?;
+        let copy_sub = copy_sub_buffer(&config, &surface);
         if let Err(err) = surface.set_swap_interval(&current, swap_interval) {
             eprintln!("paw-gui: the swap interval: {err}");
         }
@@ -444,6 +486,7 @@ impl Runner {
             viewports: HashMap::from([(ViewportId::ROOT, root)]),
             by_window: HashMap::new(),
             started: Instant::now(),
+            copy_sub,
         };
         gl.open(ViewportId::ROOT, event_loop)?;
         let info = unsafe {
@@ -532,7 +575,7 @@ impl Runner {
         let font = egui::TextureId::default();
         let fonts_anew = delta.set.iter().any(|(id, images)| *id == font && images.iter().any(|image| image.pos.is_none()));
         let textures: HashSet<egui::TextureId> = delta.set.iter().map(|(id, _)| *id).filter(|id| *id != font).collect();
-        let all = !partial || !self.shown || fonts_anew;
+        let all = !partial || !self.shown || fonts_anew || std::mem::take(&mut self.exposed);
         if !self.damage.frame(shapes, ppp, screen, &textures, all) {
             return;
         }
@@ -540,7 +583,8 @@ impl Runner {
             return;
         }
         let Some(surface) = gl.viewports.get(&ViewportId::ROOT).and_then(|v| v.surface.as_ref()) else { return };
-        let age = if all { 0 } else { surface.buffer_age() };
+        // Copied, not swapped: the buffer is always the last frame.
+        let age = if all { 0 } else if gl.copy_sub.is_some() { 1 } else { surface.buffer_age() };
         self.stats.ages[(age as usize).min(3)] += 1;
         let rects = self.damage.to_draw(age);
         let changed = self.damage.changed();
@@ -569,6 +613,20 @@ impl Runner {
         gl.painter.paint_and_update_textures(screen, ppp, &primitives, delta);
         self.stats.changed_px += changed.iter().map(|r| ((r[2] - r[0]) * (r[3] - r[1])) as u64).sum::<u64>();
         // Shown: only what changed, where the platform lets it say so.
+        if let Some(copy) = &gl.copy_sub {
+            let h = screen[1] as i32;
+            let parts = if all { vec![[0, 0, screen[0] as i32, h]] } else { changed };
+            for r in parts {
+                unsafe { (copy.copy)(copy.display, copy.drawable, r[0], h - r[3], r[2] - r[0], r[3] - r[1]) };
+            }
+            self.damage.shown();
+            self.stats.shown += 1;
+            if !self.shown {
+                self.shown = true;
+                window.set_visible(true);
+            }
+            return;
+        }
         window.pre_present_notify();
         let Some(current) = &gl.current else { return };
         let surface = gl.viewports[&ViewportId::ROOT].surface.as_ref().unwrap();
@@ -663,6 +721,7 @@ impl ApplicationHandler<Wake> for Runner {
         match &event {
             WindowEvent::RedrawRequested => {
                 if id == ViewportId::ROOT {
+                    self.exposed |= !self.asked.contains_key(&ViewportId::ROOT);
                     with_loop(event_loop, || self.frame(event_loop, true));
                 } else {
                     self.wake(id, Instant::now());

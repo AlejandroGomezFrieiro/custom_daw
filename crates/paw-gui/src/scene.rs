@@ -44,17 +44,63 @@ struct Picture {
     under: bool,
     /// The size in pixels it was drawn for.
     px: [f32; 2],
-    /// The drawing read, and what its page and its overlay (what moves
-    /// over the page: a playhead, a caret) show, as hashes.
+    /// The drawing read, and what its page shows, as a hash.
     drawing: std::sync::Arc<paw_raster::Drawing>,
     page_key: u64,
-    over_key: u64,
     /// The page's image, and its size in pixels.
     image: Option<(TextureHandle, [usize; 2])>,
-    /// The overlay's image, its size in pixels, and its box in the
-    /// drawing's pixels: made apart, so that a playhead moving over a page
-    /// does not make the page's image anew.
-    over: Option<(TextureHandle, [usize; 2], [f32; 4])>,
+    /// The overlay (what moves over the page: a playhead, a caret), in
+    /// pieces that do not touch, each made apart, so that a playhead
+    /// moving over a page does not make the page's image or the rest of
+    /// the overlay anew.
+    over: Vec<Piece>,
+}
+
+/// A piece of a drawing's overlay: its items, what they show as a hash, its
+/// box in the drawing's pixels, and its image with its size in pixels.
+struct Piece {
+    items: Vec<paw_raster::Item>,
+    key: u64,
+    area: [f32; 4],
+    image: Option<(TextureHandle, [usize; 2])>,
+}
+
+/// The overlay's items in pieces that do not touch (2 pixels apart at
+/// least), each in the order drawn.
+fn pieces(items: &[paw_raster::Item]) -> Vec<Piece> {
+    let mut groups: Vec<([f32; 4], Vec<usize>)> = Vec::new();
+    for (i, item) in items.iter().enumerate() {
+        let [l, t, r, b] = item.bounds;
+        if !(r > l && b > t) {
+            continue;
+        }
+        let mut area = [l - 2.0, t - 2.0, r + 2.0, b + 2.0];
+        let mut members = vec![i];
+        // Every group it reaches joins it, and the groups those reach.
+        loop {
+            let Some(at) = groups.iter().position(|(a, _)| a[0] < area[2] && area[0] < a[2] && a[1] < area[3] && area[1] < a[3]) else { break };
+            let (a, m) = groups.swap_remove(at);
+            area = [area[0].min(a[0]), area[1].min(a[1]), area[2].max(a[2]), area[3].max(a[3])];
+            members.extend(m);
+        }
+        groups.push((area, members));
+    }
+    groups
+        .into_iter()
+        .map(|(a, mut members)| {
+            members.sort_unstable();
+            let items: Vec<paw_raster::Item> = members.iter().map(|&i| items[i].clone()).collect();
+            let mut hasher = std::hash::DefaultHasher::new();
+            for item in &items {
+                std::hash::Hash::hash(&item.key, &mut hasher);
+            }
+            let (l, t) = ((a[0] + 2.0).floor().max(0.0), (a[1] + 2.0).floor().max(0.0));
+            let area = [l, t, (a[2] - 2.0).ceil() - l, (a[3] - 2.0).ceil() - t];
+            std::hash::Hash::hash(&area.map(f32::to_bits), &mut hasher);
+            Piece { items, key: std::hash::Hasher::finish(&hasher), area, image: None }
+        })
+        .filter(|p| p.area[2] > 0.0 && p.area[3] > 0.0)
+        .collect()
 }
 
 /// What the still part of a scene was painted for: its rectangle, its cut,
@@ -254,11 +300,18 @@ impl Shown {
                 }
                 std::hash::Hasher::finish(&hasher)
             };
-            let (page_key, over_key) = (keys(&drawing.page), keys(&drawing.overlay));
-            // A page that did not change keeps its image; an overlay too.
+            let page_key = keys(&drawing.page);
+            // A page that did not change keeps its image; a piece of the
+            // overlay too.
             let old = before.remove(&node.key).filter(|p| p.rect == node.rect && p.px == picture.px);
             let image = old.as_ref().filter(|p| p.page_key == page_key).and_then(|p| p.image.clone());
-            let over = old.filter(|p| p.over_key == over_key).and_then(|p| p.over);
+            let mut over = pieces(&drawing.overlay);
+            if let Some(old) = old {
+                let mut kept: HashMap<u64, (TextureHandle, [usize; 2])> = old.over.into_iter().filter_map(|p| Some((p.key, p.image?))).collect();
+                for piece in &mut over {
+                    piece.image = kept.remove(&piece.key);
+                }
+            }
             pictures.push(Picture {
                 key: node.key.clone(),
                 rect: node.rect,
@@ -267,7 +320,6 @@ impl Shown {
                 px: picture.px,
                 drawing: std::sync::Arc::new(drawing),
                 page_key,
-                over_key,
                 image,
                 over,
             });
@@ -515,27 +567,26 @@ impl Shown {
                 let texture = ui.ctx().load_texture("scene-picture", raster(size, &p.drawing.page, at), egui::TextureOptions::LINEAR);
                 p.image = Some((texture, size));
             }
-            // The overlay: only its box, in an image of its own.
-            let boxed = p.drawing.overlay_box();
-            match boxed {
-                Some(b) => {
-                    let over = [(b[2] * scale).ceil().max(1.0) as usize, (b[3] * scale).ceil().max(1.0) as usize];
-                    if p.over.as_ref().is_none_or(|(_, made, at)| *made != over || *at != b) {
-                        let at = tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, -b[0] * scale, -b[1] * scale);
-                        let texture = ui.ctx().load_texture("scene-overlay", raster(over, &p.drawing.overlay, at), egui::TextureOptions::LINEAR);
-                        p.over = Some((texture, over, b));
-                    }
+            // The overlay's pieces, each in an image of its own the size
+            // of its box.
+            for piece in &mut p.over {
+                let b = piece.area;
+                let made = [(b[2] * scale).ceil().max(1.0) as usize, (b[3] * scale).ceil().max(1.0) as usize];
+                if piece.image.as_ref().is_none_or(|(_, size)| *size != made) {
+                    let at = tiny_skia::Transform::from_row(scale, 0.0, 0.0, scale, -b[0] * scale, -b[1] * scale);
+                    let texture = ui.ctx().load_texture("scene-overlay", raster(made, &piece.items, at), egui::TextureOptions::LINEAR);
+                    piece.image = Some((texture, made));
                 }
-                None => p.over = None,
             }
             let shown = p.clip.map_or(painter.clip_rect(), |c| units(c).intersect(painter.clip_rect()));
             let whole = Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0));
             if let Some((texture, _)) = &p.image {
                 painter.with_clip_rect(shown).image(texture.id(), rect, whole, Color32::WHITE);
             }
-            if let Some((texture, made, b)) = &p.over {
+            for piece in &p.over {
+                let Some((texture, made)) = &piece.image else { continue };
                 // Its pixels are the page's: from the box's corner, as big.
-                let corner = rect.min + vec2(b[0] * scale, b[1] * scale) / ppp;
+                let corner = rect.min + vec2(piece.area[0] * scale, piece.area[1] * scale) / ppp;
                 let over = Rect::from_min_size(corner, vec2(made[0] as f32, made[1] as f32) / ppp);
                 painter.with_clip_rect(shown).image(texture.id(), over, whole, Color32::WHITE);
             }
@@ -720,6 +771,29 @@ mod tests {
         let text = Patch { win: "1".into(), rev: 3, set: vec![run("abd")], ..Patch::default() };
         shown.take(&text, &blobs);
         assert!(shown.shapes.is_none(), "a run changed: the cells are laid out again");
+    }
+
+    #[test]
+    fn an_overlay_is_cut_into_pieces_apart_so_a_moving_playhead_is_its_own() {
+        let ops = |playhead: f32| {
+            json!([
+                ["r", 0, 0, 400, 300, "#ffffff", "", 1, 0],
+                ["layer", "playhead"],
+                ["r", playhead, 40, 2, 200, "#ff8800", "", 1, 0],
+                // The toolbar: two buttons side by side, far from the staff.
+                ["r", 10, 270, 30, 20, "#333333", "", 1, 0],
+                ["r", 41, 270, 30, 20, "#333333", "", 1, 0]
+            ])
+        };
+        let (a, b) = (paw_raster::Drawing::parse(&ops(100.0)), paw_raster::Drawing::parse(&ops(120.0)));
+        assert_eq!(a.page.len(), 1);
+        let (pa, pb) = (pieces(&a.overlay), pieces(&b.overlay));
+        assert_eq!(pa.len(), 2, "the playhead, and the toolbar's buttons together");
+        let toolbar = |p: &[Piece]| p.iter().find(|p| p.items.len() == 2).map(|p| (p.key, p.area));
+        assert_eq!(toolbar(&pa), toolbar(&pb), "the toolbar did not move: its image is kept");
+        let head = |p: &[Piece]| p.iter().find(|p| p.items.len() == 1).map(|p| p.key);
+        assert_ne!(head(&pa), head(&pb));
+        assert_eq!(pa.iter().find(|p| p.items.len() == 1).unwrap().area, [100.0, 40.0, 2.0, 200.0]);
     }
 
     #[test]
