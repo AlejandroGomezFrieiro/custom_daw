@@ -364,7 +364,7 @@ test("rpp: what is not carried over is reported, grouped", function()
   check("Muted sends (left out)", "Gtr DI -> Verb")
   local text = report:text()
   eq(text:find("Not carried over from song.rpp", 1, true) ~= nil, true, "titled")
-  eq(#report:lines(1) < #report:lines(100), true, "long groups are shortened")
+  eq(report:text(1):find("... and 1 more", 1, true) ~= nil, true, "long groups are shortened")
 end)
 
 test("rpp: MIDI timing follows the project tempo", function()
@@ -642,6 +642,7 @@ test("rpp: plugins go out and come back with their settings", function()
   local t = paw.add_track({ name = "FX" })
   local a = t:add_device(clap)
   a:set("output_gain", -6)
+  a:automate("output_gain"):set_points({ { 0, -12 }, { 4, 0 } })
   local b = t:add_device(lv2)
   b:set("scr", 37)
   b.bypass = true
@@ -659,6 +660,11 @@ test("rpp: plugins go out and come back with their settings", function()
   eq(#devs, 2, "the CLAP and the LV2 plugin")
   eq(devs[1].kind, clap, "CLAP back")
   near(devs[1].params.output_gain, -6, 1e-3, "CLAP setting from its state")
+  eq(chain:child("PARMENV") ~= nil, true, "the parameter's envelope is written")
+  local lane = devs[1]:lane("output_gain")
+  eq(lane ~= nil, true, "and comes back as a lane")
+  near(lane:points()[1][2], -12, 1e-3, "its first point")
+  near(lane:points()[2][2], 0, 1e-3, "its last point")
   eq(devs[2].kind, lv2, "LV2 back")
   near(devs[2].params.scr, 37, 1e-3, "LV2 setting from its parameters")
   eq(devs[2].bypass, true, "bypass")
@@ -924,4 +930,20 @@ test("rpp: REAPER opens an exported project with the same tracks, items, notes a
   near(got.marker[2][1], sec(9), 1e-6, "marker time")
   eq(#got.region, 1, "region")
   near(got.region[1][2], sec(9), 1e-6, "region end")
+end)
+
+test("rpp: the README names every command of the extension", function()
+  local readme = T.read_file(HERE .. "/README.md")
+  local source = T.read_file(HERE .. "/init.lua")
+  local names = {}
+  for name in source:gmatch('paw%.command%("([^"]+)"') do names[#names + 1] = name end
+  for name, alias in source:gmatch('hook%("([^"]+)", "([^"]+)"') do
+    names[#names + 1] = name
+    names[#names + 1] = alias
+  end
+  eq(#names, 6, "the commands and the hooked ones")
+  for _, name in ipairs(names) do
+    eq(readme:find("`:" .. name .. " ", 1, true) ~= nil, true, "README names :" .. name)
+  end
+  eq(source:find("paw.keymap.set", 1, true), nil, "no keys of its own")
 end)

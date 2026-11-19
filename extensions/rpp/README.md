@@ -62,8 +62,10 @@ Lines that you do not change keep their bytes.
 | `:edit song.rpp`, `:e song.rpp` | the same as `rpp.import`. Other files open as before |
 | `:write song.rpp`, `:w song.rpp` | the same as `rpp.export`. Other files save as before |
 
+The extension has no keys of its own.
+
 After an import or an export, a page lists what paw could not bring
-across, grouped by kind (plugins, takes, MIDI controllers, and other). The
+across, grouped by kind (plugins, takes, envelopes, and other). The
 message line tells how much came across. paw lists every item that it
 drops.
 
