@@ -2058,9 +2058,8 @@ impl Session {
                 .context("a preset's state is given in base64")?;
         }
         // The plugin already holds the new state when it loaded one of its
-        // own presets or answered a call, so long as no parameter changes.
-        let already = (load.factory.is_some() || load.call.is_some())
-            && self.project.device(id).is_some_and(|d| d.params == load.params);
+        // own presets or answered a call.
+        let already = load.factory.is_some() || load.call.is_some();
         self.edit(|p| {
             let d = p.device_mut(id).unwrap();
             d.state = state;
